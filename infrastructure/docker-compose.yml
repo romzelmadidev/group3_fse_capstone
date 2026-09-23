@@ -83,7 +83,7 @@ services:
     build:
       context: ./adminer
       dockerfile: Dockerfile
-    image: custom-adminer-oracle:latest
+    pull_policy: build
     restart: unless-stopped
     ports:
       - "8088:8080"
