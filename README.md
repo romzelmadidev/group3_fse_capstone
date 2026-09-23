@@ -47,6 +47,11 @@ core-retail-ledger/
 │   │   └── init.sql                     # Oracle DDL, NUMBER(18,4) constraints, and seed data
 │   └── postgres/
 │       └── init.sql                     # PostgreSQL audit DDL, immutability trigger, and seed data
+├── frontend/                            # Retail Banking SPA (React 18 + Vite :3000)
+│   ├── package.json
+│   ├── vite.config.js
+│   ├── index.html
+│   └── src/                             # Customer, Teller, and Admin views
 └── backend/
     ├── pom.xml                          # Root Maven aggregator POM (Java 21, Spring Boot 3.3)
     ├── common-contracts/                # Shared DTOs, Enums, and custom Exceptions
