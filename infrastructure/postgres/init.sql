@@ -121,3 +121,4 @@ VALUES (
            '2024-06-01 14:32:00'
        )
     ON CONFLICT (transaction_id) DO NOTHING;
+
