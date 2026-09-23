@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Banking Core API: Event-Driven Transfer & Kafka Stream",
+    "output": "api_sequence.html",
+    "viewBox": [880, 840],
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "views": [
+      {
+        "id": "ingestion-outbox",
+        "label": "Ingestion & Outbox",
+        "focus": ["client", "gateway", "redis", "core", "oracle"],
+        "note": "Immediate HTTP 202 Accepted returned upon persisting transfer command to Oracle outbox table."
+      },
+      {
+        "id": "kafka-settlement",
+        "label": "Partition Settlement",
+        "focus": ["core", "kafka", "oracle"],
+        "note": "Partition consumer locks account rows via SELECT FOR UPDATE, settles balances, and publishes events."
+      },
+      {
+        "id": "async-fanout",
+        "label": "Asynchronous Fan-Out",
+        "focus": ["kafka", "postgres", "client"],
+        "note": "Independent consumer groups stream audit records into PostgreSQL and alerts to the customer."
+      }
+    ]
+  },
+  "participants": [
+    { "id": "client", "type": "external", "label": "Client SPA", "sublabel": "Customer / Teller" },
+    { "id": "gateway", "type": "security", "label": "API Gateway", "sublabel": "Spring Cloud :8080" },
+    { "id": "redis", "type": "database", "label": "Redis Cache", "sublabel": "Token & Idempotency" },
+    { "id": "core", "type": "backend", "label": "Core Engine", "sublabel": "Ledger Service" },
+    { "id": "oracle", "type": "database", "label": "Master DB", "sublabel": "Oracle XE & Outbox" },
+    { "id": "kafka", "type": "messagebus", "label": "Apache Kafka", "sublabel": "KRaft Broker :9092" },
+    { "id": "postgres", "type": "database", "label": "Audit Vault", "sublabel": "PostgreSQL 15+" }
+  ],
+  "segments": [
+    { "from": 150, "to": 395, "label": "Perimeter & Outbox Acceptance" },
+    { "from": 415, "to": 625, "label": "Kafka Partition Settlement" },
+    { "from": 640, "to": 745, "label": "Asynchronous Fan-Out & Alerts" }
+  ],
+  "messages": [
+    { "id": "post-transfer", "from": "client", "to": "gateway", "y": 175, "label": "POST /api/v1/transfers", "variant": "emphasis" },
+    { "id": "check-token", "from": "gateway", "to": "redis", "y": 210, "label": "verify token & idempotency", "variant": "security" },
+    { "id": "token-valid", "from": "redis", "to": "gateway", "y": 240, "label": "valid session", "variant": "return" },
+    { "id": "forward-core", "from": "gateway", "to": "core", "y": 270, "label": "dispatch validated transfer", "variant": "default" },
+    { "id": "write-outbox", "from": "core", "to": "oracle", "y": 300, "label": "INSERT transfer & outbox", "variant": "emphasis" },
+    { "id": "outbox-committed", "from": "oracle", "to": "core", "y": 330, "label": "outbox committed", "variant": "return" },
+    { "id": "core-accepted", "from": "core", "to": "gateway", "y": 355, "label": "202 Accepted (transfer_id)", "variant": "return" },
+    { "id": "gateway-accepted", "from": "gateway", "to": "client", "y": 380, "label": "HTTP 202 Accepted", "variant": "return" },
+    { "id": "publish-command", "from": "core", "to": "kafka", "y": 440, "label": "produce transfers.commands", "variant": "dashed" },
+    { "id": "consume-command", "from": "kafka", "to": "core", "y": 475, "label": "consume partition (source_acc)", "variant": "default" },
+    { "id": "lock-account", "from": "core", "to": "oracle", "y": 510, "label": "SELECT ... FOR UPDATE", "variant": "emphasis" },
+    { "id": "lock-granted", "from": "oracle", "to": "core", "y": 540, "label": "locked balance rows", "variant": "return" },
+    { "id": "mutate-oracle", "from": "core", "to": "oracle", "y": 570, "label": "UPDATE balances (status: EXECUTED)", "variant": "emphasis" },
+    { "id": "publish-event", "from": "core", "to": "kafka", "y": 605, "label": "publish TransferExecuted", "variant": "dashed" },
+    { "id": "audit-stream", "from": "kafka", "to": "postgres", "y": 660, "label": "audit worker: INSERT audit", "variant": "dashed" },
+    { "id": "audit-offset", "from": "postgres", "to": "kafka", "y": 695, "label": "commit audit offset", "variant": "return" },
+    { "id": "push-notification", "from": "kafka", "to": "client", "y": 725, "label": "push SMS & receipt alert", "variant": "dashed" }
+  ],
+  "activations": [
+    { "participant": "gateway", "from": 170, "to": 275, "type": "security" },
+    { "participant": "redis", "from": 205, "to": 245, "type": "database" },
+    { "participant": "core", "from": 265, "to": 360, "type": "backend" },
+    { "participant": "oracle", "from": 295, "to": 335, "type": "database" },
+    { "participant": "gateway", "from": 350, "to": 385, "type": "security" },
+    { "participant": "kafka", "from": 435, "to": 480, "type": "messagebus" },
+    { "participant": "core", "from": 470, "to": 610, "type": "backend" },
+    { "participant": "oracle", "from": 505, "to": 575, "type": "database" },
+    { "participant": "kafka", "from": 600, "to": 730, "type": "messagebus" },
+    { "participant": "postgres", "from": 655, "to": 700, "type": "database" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Perimeter & Outbox Pattern",
+      "items": [
+        "Inbound requests validated at Spring Cloud Gateway in sub-5ms",
+        "Transfer record and outbox event written within one atomic Oracle transaction",
+        "Client receives immediate HTTP 202 Accepted without holding open persistence locks"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Ordered Partition Settlement",
+      "items": [
+        "Transfers partitioned by source_account_id guaranteeing strict sequence per account",
+        "Consumer thread acquires pessimistic lock via SELECT ... FOR UPDATE on Oracle rows",
+        "Settlement updates balance amounts and publishes TransferExecuted event"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Asynchronous Fan-Out Projections",
+      "items": [
+        "PostgreSQL audit consumer reads event stream and inserts immutable journal records",
+        "Audit consumer lag or database maintenance never impedes balance settlement",
+        "Notification service delivers real-time SMS receipts to customer devices"
+      ]
+    }
+  ]
+}

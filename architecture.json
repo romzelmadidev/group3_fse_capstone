@@ -1,0 +1,268 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "FSE Capstone: Event-Driven Retail Ledger & Balance Mutation Engine",
+    "output": "architecture.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "event-driven-transfer",
+        "label": "Event-driven transfer & outbox",
+        "focus": ["client", "gateway", "tx_engine", "master_db", "broker"],
+        "note": "Decouples transfer ingestion from execution via Transactional Outbox and Kafka command partitions."
+      },
+      {
+        "id": "perimeter-auth",
+        "label": "Perimeter security & caching",
+        "focus": ["client", "gateway", "auth_cache", "acc_svc"],
+        "note": "Stateless JWT access token verification, Redis token family rotation, and rate limiting."
+      },
+      {
+        "id": "audit-and-alert",
+        "label": "Asynchronous audit & alerts",
+        "focus": ["broker", "audit_db", "notif_svc"],
+        "note": "Kafka event fan-out streaming immutable audit entries to PostgreSQL and receipts to notifications."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "client",
+      "type": "frontend",
+      "label": "Retail Banking SPA",
+      "sublabel": "React + Vite :3000",
+      "brand": "react",
+      "pos": [50, 280],
+      "size": [150, 64]
+    },
+    {
+      "id": "gateway",
+      "type": "security",
+      "label": "API Gateway",
+      "sublabel": "Spring Cloud :8080",
+      "brand": "spring",
+      "pos": [300, 280],
+      "size": [150, 64],
+      "tag": "JWT Perimeter"
+    },
+    {
+      "id": "auth_cache",
+      "type": "database",
+      "label": "Redis Cache",
+      "sublabel": "Tokens & Locks :6379",
+      "brand": "redis",
+      "pos": [300, 100],
+      "size": [150, 64]
+    },
+    {
+      "id": "acc_svc",
+      "type": "backend",
+      "label": "Account Service",
+      "sublabel": "Spring Boot :8081",
+      "brand": "spring",
+      "pos": [560, 100],
+      "size": [160, 64]
+    },
+    {
+      "id": "tx_engine",
+      "type": "backend",
+      "label": "Core Mutation Engine",
+      "sublabel": "Spring Boot :8082",
+      "brand": "spring",
+      "pos": [560, 280],
+      "size": [160, 64],
+      "tag": "Pessimistic Lock"
+    },
+    {
+      "id": "master_db",
+      "type": "database",
+      "label": "Master Ledger DB",
+      "sublabel": "Oracle XE :1521",
+      "pos": [830, 280],
+      "size": [160, 64],
+      "tag": "Balance Master"
+    },
+    {
+      "id": "audit_db",
+      "type": "database",
+      "label": "Audit Trail DB",
+      "sublabel": "PostgreSQL :5432",
+      "brand": "postgresql",
+      "pos": [830, 460],
+      "size": [160, 64],
+      "tag": "Append-Only"
+    },
+    {
+      "id": "broker",
+      "type": "messagebus",
+      "label": "Kafka Event Bus",
+      "sublabel": "KRaft :9092 | UI :8085",
+      "brand": "apache-kafka",
+      "pos": [560, 460],
+      "size": [160, 64],
+      "tag": "Ordered Topics"
+    },
+    {
+      "id": "notif_svc",
+      "type": "backend",
+      "label": "Notification Service",
+      "sublabel": "Spring Boot :8083",
+      "brand": "spring",
+      "pos": [300, 460],
+      "size": [150, 64]
+    },
+    {
+      "id": "telemetry",
+      "type": "cloud",
+      "label": "Observability Stack",
+      "sublabel": "Prom :9090 | Graf :3001",
+      "pos": [830, 100],
+      "size": [160, 64]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Docker Compose Container Network (bridge: banking-net)",
+      "wraps": [
+        "gateway",
+        "auth_cache",
+        "acc_svc",
+        "tx_engine",
+        "master_db",
+        "audit_db",
+        "broker",
+        "notif_svc",
+        "telemetry"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "Transactional Outbox & Settlement Boundary",
+      "wraps": [
+        "tx_engine",
+        "master_db",
+        "broker"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "client-to-gateway",
+      "from": "client",
+      "to": "gateway",
+      "label": "HTTPS :443",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gateway-token-check",
+      "from": "gateway",
+      "to": "auth_cache",
+      "label": "verify token",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelDx": -45
+    },
+    {
+      "id": "gateway-to-account",
+      "from": "gateway",
+      "to": "acc_svc",
+      "label": "accounts API",
+      "fromSide": "top",
+      "toSide": "left"
+    },
+    {
+      "id": "account-token-family",
+      "from": "acc_svc",
+      "to": "auth_cache",
+      "label": "token rotation",
+      "variant": "security",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "gateway-to-tx",
+      "from": "gateway",
+      "to": "tx_engine",
+      "label": "transfer API",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "tx-master-lock",
+      "from": "tx_engine",
+      "to": "master_db",
+      "label": "SELECT FOR UPDATE",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "tx-outbox-event",
+      "from": "tx_engine",
+      "to": "broker",
+      "label": "outbox stream",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "broker-to-audit",
+      "from": "broker",
+      "to": "audit_db",
+      "label": "audit events",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "broker-to-notif",
+      "from": "broker",
+      "to": "notif_svc",
+      "label": "alert events",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "tx-to-telemetry",
+      "from": "tx_engine",
+      "to": "telemetry",
+      "label": "metrics",
+      "fromSide": "top",
+      "toSide": "left"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Perimeter & Client Ports",
+      "items": [
+        "React SPA running on port 3000 with role-specific customer, teller, and admin portals",
+        "Spring Cloud Gateway on port 8080 handling stateless JWT verification and rate limiting",
+        "Redis on port 6379 for token rotation families, blacklist, and idempotency locks"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Backend Microservice Ports",
+      "items": [
+        "Account Service running on port 8081 (KYC, provisioning, user lifecycle)",
+        "Core Mutation Engine on port 8082 executing pessimistic row locks and outbox events",
+        "Notification Service on port 8083 consuming Kafka transaction event topics"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Storage & Event Streaming Ports",
+      "items": [
+        "Oracle XE 21c on port 1521 holding mutable account balance master records and outbox log",
+        "PostgreSQL 15+ on port 5432 storing immutable ledger_mutation_audit projection",
+        "Apache Kafka KRaft on port 9092 with Kafka UI on :8085, Prometheus on :9090, Grafana on :3001"
+      ]
+    }
+  ]
+}
