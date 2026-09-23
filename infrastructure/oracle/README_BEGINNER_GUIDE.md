@@ -128,7 +128,7 @@ erDiagram
 ### Table 7: `notifications` (Customer Inbox)
 - **Analogy:** SMS/In-App inbox.
 - **Why it exists:** Stores alerts for deposits, transfers, and security events.
-- **Key Columns:** `user_id`, `message`, `read_status` (0 = unread, 1 = read), `sent_at`.
+- **Key Columns:** `user_id`, `message`, `sent_at`.
 
 ---
 
