@@ -8,41 +8,8 @@ Group 3 Engineering Repository: Definitive Architecture, Schemas, and Developer 
 
 The platform provides a high-throughput, event-driven, dual-storage retail banking system with Maker-Checker transaction verification, optimistic and pessimistic locking, and immutable audit logging.
 
-```text
-                                  ┌────────────────────────┐
-                                  │ React 18 / Vite SPA    │
-                                  │ (:3000 Frontend Portal)│
-                                  └───────────┬────────────┘
-                                              │ HTTP / REST
-                                              ▼
-                                  ┌────────────────────────┐
-                                  │ API Gateway & Security │
-                                  │ (:8080 Perimeter Node) │
-                                  └─────┬────────────┬─────┘
-                                        │            │
-                     ┌──────────────────┘            └──────────────────┐
-                     ▼                                                  ▼
-       ┌───────────────────────────┐                      ┌───────────────────────────┐
-       │ Account & KYC Service     │                      │ Ledger Mutation Engine    │
-       │ (:8081 Microservice)      │                      │ (:8082 Concurrency Engine)│
-       └─────────────┬─────────────┘                      └─────┬───────────────┬─────┘
-                     │                                          │               │
-                     │          ┌───────────────────────────────┘               │
-                     │          │ (Master State)                                │ (Audit Vault)
-                     ▼          ▼                                               ▼
-         ┌──────────────────────────────┐                   ┌───────────────────────────────┐
-         │ Oracle Database XE 21c       │                   │ PostgreSQL 16 (Audit Vault)   │
-         │ Container: oracle-xe-master  │                   │ Container: postgres-audit-vault│
-         │ Port: 1521 / Service: XEPDB1 │                   │ Port: 5432 / DB: banking_audit│
-         └──────────────────────────────┘                   └───────────────────────────────┘
-                     │                                                      ▲
-                     ▼                                                      │
-         ┌──────────────────────────────┐                   ┌───────────────┴───────────────┐
-         │ Redis 7 Distributed Cache    │                   │ Apache Kafka 3.7+ (KRaft)     │
-         │ Container: redis-cache       │                   │ Container: kafka-broker       │
-         │ Port: 6379 (Token & Idemp)   │                   │ Port: 9092 (Event Log)        │
-         └──────────────────────────────┘                   └───────────────────────────────┘
-```
+<img width="2198" height="1142" alt="image" src="https://github.com/user-attachments/assets/cd50822f-6c14-4d43-9a2f-01e3f62adff3" />
+
 
 ### Architectural Principles
 - **Dual-Storage Isolation**: Oracle XE 21c handles operational state and row locking (`SELECT ... FOR UPDATE`), while PostgreSQL 16 serves exclusively as an immutable, append-only compliance audit vault.
