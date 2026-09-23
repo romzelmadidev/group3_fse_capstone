@@ -68,6 +68,7 @@ Every container attaches to the bridge network `banking-net`. Host and internal 
 | **PostgreSQL Audit** | `postgres-audit-vault`| `5432` | `5432` | PostgreSQL | Dedicated append-only audit trail (`banking_audit`) |
 | **Kafka Broker** | `kafka-broker` | `9092` | `9092` | PLAINTEXT | Event commit log in KRaft mode |
 | **Kafka UI** | `kafka-ui` | `8085` | `8080` | HTTP | Web console for topics and consumer lag inspection |
+| **Adminer Web GUI** | `db-adminer` | `8088` | `8080` | HTTP | Web database management console for visual table inspection |
 
 ---
 
@@ -324,6 +325,16 @@ This milestone delivers the complete architectural design, containerized dual-da
 ---
 
 ## 6. Database Connection Reference
+
+### Adminer Web Console (Browser GUI)
+- **URL**: `http://localhost:8088`
+- **Container**: `db-adminer`
+- **Connecting to PostgreSQL**:
+  - System: `PostgreSQL`
+  - Server: `postgres-audit-vault` (or `postgres-audit-vault:5432`)
+  - Username: `audit_user`
+  - Password: `audit_password`
+  - Database: `banking_audit`
 
 ### PostgreSQL (Audit Vault)
 - **CLI via Docker**:
