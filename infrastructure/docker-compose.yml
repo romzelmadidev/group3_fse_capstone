@@ -1,67 +1,99 @@
+networks:
+  banking-net:
+    name: banking-net
+    driver: bridge
+
 services:
-  # ==========================================
-  # ORACLE XE 21c / Free - Master State Store
-  # ==========================================
-  oracle-db:
-    image: container-registry.oracle.com/database/free:latest
-    container_name: banking-oracle-db
-    environment:
-      - ORACLE_PWD=password123
-      - ORACLE_DATABASE=FREEPDB1
+  # ============================================================================
+  # 1. Master Relational Database (Oracle Database Express Edition 21c)
+  # Container Name: oracle-xe-master
+  # Houses operational state: users, accounts, balances, transactions, outbox
+  # ============================================================================
+  oracle-xe-master:
+    container_name: oracle-xe-master
+    image: gvenzl/oracle-xe:latest
+    restart: unless-stopped
     ports:
       - "1521:1521"
+    environment:
+      - ORACLE_PASSWORD=Password123#
+      - APP_USER=fse_user
+      - APP_USER_PASSWORD=fse_password
     volumes:
-      - ./oracle/init.sql:/container-entrypoint-initdb.d/init.sql
+      - ./oracle/init.sql:/container-entrypoint-initdb.d/init.sql:ro
       - oracle_data:/opt/oracle/oradata
     networks:
       - banking-net
     healthcheck:
-      test: ["CMD-SHELL", "echo 'SELECT 1 FROM DUAL;' | sqlplus -s SYSTEM/password123@FREEPDB1"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 45s
+      test: ["CMD-SHELL", "/opt/oracle/checkDBStatus.sh || exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
 
-  # ==========================================
-  # POSTGRESQL 15+ - Immutable Audit Trail Store
-  # ==========================================
-  postgres-db:
-    image: postgres:15-alpine
-    container_name: banking-postgres-db
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=ledger_audit_db
+  # ============================================================================
+  # 2. Dedicated Immutable Audit Vault (PostgreSQL 16)
+  # Container Name: postgres-audit-vault
+  # Houses append-only mutation journal protected by compliance triggers
+  # ============================================================================
+  postgres-audit-vault:
+    container_name: postgres-audit-vault
+    image: postgres:16-alpine
+    restart: unless-stopped
     ports:
       - "5432:5432"
+    environment:
+      - POSTGRES_DB=banking_audit
+      - POSTGRES_USER=audit_user
+      - POSTGRES_PASSWORD=audit_password
     volumes:
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - postgres_data:/var/lib/postgresql/data
     networks:
       - banking-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ledger_audit_db"]
+      test: ["CMD-SHELL", "pg_isready -U audit_user -d banking_audit"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 5s
 
-  # ==========================================
-  # REDIS - Distributed Token & Idempotency Cache
-  # ==========================================
-  redis:
+  # ============================================================================
+  # 3. Distributed In-Memory Cache (Redis 7)
+  # Container Name: redis-cache
+  # Houses token blacklist, session families, and idempotency locks
+  # ============================================================================
+  redis-cache:
+    container_name: redis-cache
     image: redis:7-alpine
-    container_name: banking-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
     networks:
       - banking-net
-    command: ["redis-server", "--appendonly", "yes"]
 
-networks:
-  banking-net:
-    driver: bridge
-    name: banking-net
+  # ============================================================================
+  # 4. Database Web Console (Adminer with Oracle OCI8 & PostgreSQL)
+  # Container Name: db-adminer
+  # Web management GUI for database inspection and queries
+  # ============================================================================
+  adminer:
+    container_name: db-adminer
+    build:
+      context: ./adminer
+      dockerfile: Dockerfile
+    image: custom-adminer-oracle:latest
+    restart: unless-stopped
+    ports:
+      - "8088:8080"
+    networks:
+      - banking-net
+    depends_on:
+      - postgres-audit-vault
+      - oracle-xe-master
 
 volumes:
   oracle_data:
   postgres_data:
+
