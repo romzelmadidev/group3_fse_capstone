@@ -256,27 +256,63 @@ If running behind a corporate proxy or next-generation firewall (such as Bluecoa
 2. Place the file at `%USERPROFILE%\.docker\certs.d\registry-1.docker.io\ca.crt` and `%USERPROFILE%\.docker\certs.d\auth.docker.io\ca.crt`.
 3. Restart Docker Desktop.
 
-### Starting Infrastructure Services
-From the repository root:
+### Step-by-Step Quick Start Tutorial
+
+#### Step 1: Ensure Your Branch Is Up to Date
+```powershell
+git checkout jm-branch
+git pull origin jm-branch
+```
+
+#### Step 2: Start All Infrastructure Services
+Run this command from the repository root:
 
 ```powershell
-# 1. Start Oracle XE 21c, PostgreSQL 16, and Redis
-docker compose -f infrastructure/docker-compose.yml up -d
+# Start Oracle XE 21c, PostgreSQL 16, Redis 7, and Adminer Web Console
+docker compose -f infrastructure/docker-compose.yml up -d --build
+```
 
-# 2. Check running container health
+> [!NOTE]
+> The `--build` flag automatically compiles the custom Adminer image with Oracle Instant Client 21 and the PHP `oci8` driver locally from `infrastructure/adminer/Dockerfile`. Team members do not need to pull any external custom images or install C libraries manually.
+
+#### Step 3: Verify Running Container Health
+```powershell
 docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 ```
 
-Expected healthy output:
+Expected healthy output (all 4 containers active):
 ```text
 NAMES                  STATUS                    PORTS
 oracle-xe-master       Up 2 minutes (healthy)    0.0.0.0:1521->1521/tcp
 postgres-audit-vault   Up 2 minutes (healthy)    0.0.0.0:5432->5432/tcp
 redis-cache            Up 2 minutes              0.0.0.0:6379->6379/tcp
+db-adminer             Up 2 minutes              0.0.0.0:8088->8080/tcp
 ```
 
-### Applying Schemas & Seeding Data
-If you need to re-execute initialization scripts into active containers:
+#### Step 4: Open Adminer Web Console in Your Browser
+Open your browser and navigate to:
+👉 **[http://localhost:8088](http://localhost:8088)**
+
+* **Oracle XE 21c (Master Operational Store)**:
+  * Direct URL: **[http://localhost:8088/?oracle=](http://localhost:8088/?oracle=)**
+  * System: `Oracle beta`
+  * Server: `oracle-xe-master:1521/XEPDB1`
+  * Username: `fse_user`
+  * Password: `fse_password`
+  * Database: Leave blank (or enter `USERS`)
+  * *Navigation*: In the left sidebar, change **DB** from `XEPDB1` to **`USERS`**, then set **Schema** to **`FSE_USER`** to browse all 7 tables (`USERS`, `ACCOUNTS`, `BALANCE_MASTER`, `CREDIT_ASSESSMENTS`, `TRANSACTIONS`, `OUTBOX_EVENTS`, `NOTIFICATIONS`).
+
+* **PostgreSQL 16 (Immutable Audit Vault)**:
+  * Direct URL: **[http://localhost:8088/?pgsql=](http://localhost:8088/?pgsql=)**
+  * System: `PostgreSQL`
+  * Server: `postgres-audit-vault`
+  * Username: `audit_user`
+  * Password: `audit_password`
+  * Database: `banking_audit`
+  * *Navigation*: Select the `public` schema and click `ledger_mutation_audit`.
+
+#### Step 5: (Optional) Re-execute Schemas & Seed Scripts
+If containers were deleted or volumes wiped, the databases automatically seed from `init.sql`. To manually re-apply them:
 
 ```powershell
 # Oracle XE 21c Pluggable Database (XEPDB1)
