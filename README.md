@@ -68,6 +68,7 @@ Every container attaches to the bridge network `banking-net`. Host and internal 
 | **PostgreSQL Audit** | `postgres-audit-vault`| `5432` | `5432` | PostgreSQL | Dedicated append-only audit trail (`banking_audit`) |
 | **Kafka Broker** | `kafka-broker` | `9092` | `9092` | PLAINTEXT | Event commit log in KRaft mode |
 | **Kafka UI** | `kafka-ui` | `8085` | `8080` | HTTP | Web console for topics and consumer lag inspection |
+| **Adminer Web GUI** | `db-adminer` | `8088` | `8080` | HTTP | Web database management console for visual table inspection |
 
 ---
 
@@ -325,7 +326,39 @@ This milestone delivers the complete architectural design, containerized dual-da
 
 ## 6. Database Connection Reference
 
-### PostgreSQL (Audit Vault)
+### Adminer Web Console (Unified Browser GUI)
+- **Base URL**: [http://localhost:8088](http://localhost:8088)
+- **Container**: `db-adminer` (Built from custom Dockerfile with Oracle Instant Client 21 and PHP OCI8)
+
+#### Connecting to Oracle XE 21c (Master Operational Store)
+- **Direct Login URL**: [http://localhost:8088/?oracle=](http://localhost:8088/?oracle=)
+- **System**: `Oracle beta`
+- **Server**: `oracle-xe-master:1521/XEPDB1`
+- **Username**: `fse_user`
+- **Password**: `fse_password`
+- **Database**: Leave blank (or enter `USERS`)
+- **Browsing Records**:
+  1. Once logged in, locate the left sidebar navigation.
+  2. Set **DB** to `USERS` (the tablespace holding your application data).
+  3. Set **Schema** to `FSE_USER`.
+  4. All 7 tables will appear: `USERS`, `ACCOUNTS`, `BALANCE_MASTER`, `CREDIT_ASSESSMENTS`, `TRANSACTIONS`, `OUTBOX_EVENTS`, and `NOTIFICATIONS`.
+  5. Click **select** next to any table to view records, or click **SQL command** to run custom queries.
+
+> [!NOTE]
+> Always verify that the **System** dropdown is set to `Oracle beta` (or use `http://localhost:8088/?oracle=`). If the URL retains `?server=`, Adminer defaults to MySQL mode and will hang waiting for a MySQL handshake. Also ensure the service name is `XEPDB1` (the pluggable database), not `XE`.
+
+#### Connecting to PostgreSQL 16 (Audit Vault)
+- **Direct Login URL**: [http://localhost:8088/?pgsql=](http://localhost:8088/?pgsql=)
+- **System**: `PostgreSQL`
+- **Server**: `postgres-audit-vault` (or `postgres-audit-vault:5432`)
+- **Username**: `audit_user`
+- **Password**: `audit_password`
+- **Database**: `banking_audit`
+- **Browsing Records**:
+  1. Once logged in, select the `public` schema.
+  2. Click **select** on `ledger_mutation_audit` to inspect immutable audit events and trigger protection.
+
+### PostgreSQL (Audit Vault CLI & External GUI)
 - **CLI via Docker**:
   ```powershell
   docker exec -it postgres-audit-vault psql -U audit_user -d banking_audit
@@ -338,7 +371,7 @@ This milestone delivers the complete architectural design, containerized dual-da
   - Password: `audit_password`
   - JDBC URL: `jdbc:postgresql://localhost:5432/banking_audit`
 
-### Oracle Database XE 21c (Master Store)
+### Oracle Database XE 21c (Master Store CLI & External GUI)
 - **CLI via Docker (SQL\*Plus)**:
   ```powershell
   docker exec -it oracle-xe-master sqlplus fse_user/fse_password@//localhost:1521/XEPDB1
@@ -369,7 +402,9 @@ This milestone delivers the complete architectural design, containerized dual-da
 ├── jira_backlog_fse_capstone.xlsx      # Sprint estimation spreadsheet
 ├── PROJECT_LAYOUT.md                   # Multi-module package and service directory guide
 ├── infrastructure/
-│   ├── docker-compose.yml              # Container orchestration (Oracle, Postgres, Redis)
+│   ├── docker-compose.yml              # Container orchestration (Oracle, Postgres, Redis, Adminer)
+│   ├── adminer/
+│   │   └── Dockerfile                  # Custom Adminer image with Oracle Instant Client & OCI8
 │   ├── oracle/
 │   │   └── init.sql                    # Oracle XE 21c DDL, constraints, and seed records
 │   └── postgres/

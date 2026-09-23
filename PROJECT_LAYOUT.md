@@ -76,6 +76,8 @@ FSE-Capstone/
 │       └── services/                       # apiService (Axios with Bearer token interceptor)
 ├── infrastructure/                         # Containerized Orchestration & DB Initialization
 │   ├── docker-compose.yml                  # Full stack runner (Databases, Broker, Services, Monitoring)
+│   ├── adminer/
+│   │   └── Dockerfile                      # Custom Adminer image with Oracle Instant Client & OCI8
 │   ├── oracle/
 │   │   └── init.sql                        # Master tables DDL & constraints
 │   ├── postgres/

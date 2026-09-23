@@ -73,6 +73,27 @@ services:
     networks:
       - banking-net
 
+  # ============================================================================
+  # 4. Database Web Console (Adminer with Oracle OCI8 & PostgreSQL)
+  # Container Name: db-adminer
+  # Web management GUI for database inspection and queries
+  # ============================================================================
+  adminer:
+    container_name: db-adminer
+    build:
+      context: ./adminer
+      dockerfile: Dockerfile
+    image: custom-adminer-oracle:latest
+    restart: unless-stopped
+    ports:
+      - "8088:8080"
+    networks:
+      - banking-net
+    depends_on:
+      - postgres-audit-vault
+      - oracle-xe-master
+
 volumes:
   oracle_data:
   postgres_data:
+
