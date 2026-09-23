@@ -293,12 +293,15 @@ If running behind a corporate proxy or next-generation firewall (such as Bluecoa
 From the repository root:
 
 ```powershell
-# 1. Start Oracle XE 21c, PostgreSQL 16, and Redis
-docker compose -f infrastructure/docker-compose.yml up -d
+# 1. Start Oracle XE 21c, PostgreSQL 16, Redis, and Adminer Web Console
+docker compose -f infrastructure/docker-compose.yml up -d --build
 
 # 2. Check running container health
 docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 ```
+
+> [!NOTE]
+> The `--build` flag ensures Docker Compose compiles the custom Adminer image with Oracle Instant Client and OCI8 locally from `infrastructure/adminer/Dockerfile` on the first run. Team members do not need to pull any external custom images.
 
 Expected healthy output:
 ```text
@@ -306,6 +309,7 @@ NAMES                  STATUS                    PORTS
 oracle-xe-master       Up 2 minutes (healthy)    0.0.0.0:1521->1521/tcp
 postgres-audit-vault   Up 2 minutes (healthy)    0.0.0.0:5432->5432/tcp
 redis-cache            Up 2 minutes              0.0.0.0:6379->6379/tcp
+db-adminer             Up 2 minutes              0.0.0.0:8088->8080/tcp
 ```
 
 ### Applying Schemas & Seeding Data
