@@ -1,0 +1,67 @@
+services:
+  # ==========================================
+  # ORACLE XE 21c / Free - Master State Store
+  # ==========================================
+  oracle-db:
+    image: container-registry.oracle.com/database/free:latest
+    container_name: banking-oracle-db
+    environment:
+      - ORACLE_PWD=password123
+      - ORACLE_DATABASE=FREEPDB1
+    ports:
+      - "1521:1521"
+    volumes:
+      - ./oracle/init.sql:/container-entrypoint-initdb.d/init.sql
+      - oracle_data:/opt/oracle/oradata
+    networks:
+      - banking-net
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'SELECT 1 FROM DUAL;' | sqlplus -s SYSTEM/password123@FREEPDB1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+
+  # ==========================================
+  # POSTGRESQL 15+ - Immutable Audit Trail Store
+  # ==========================================
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: banking-postgres-db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=ledger_audit_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - banking-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ledger_audit_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # REDIS - Distributed Token & Idempotency Cache
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: banking-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - banking-net
+    command: ["redis-server", "--appendonly", "yes"]
+
+networks:
+  banking-net:
+    driver: bridge
+    name: banking-net
+
+volumes:
+  oracle_data:
+  postgres_data:
