@@ -200,12 +200,11 @@ INSERT INTO outbox_events (
 -- Transaction alert sent to Juan for transfer T5001
 -- ------------------------------------------------------------------------------
 INSERT INTO notifications (
-    notification_id, user_id, type, message, read_status,
+    notification_id, user_id, type, message,
     sent_at, created_at, updated_at
 ) VALUES (
     'N7001', 'U1001', 'TRANSACTION_ALERT',
     'Transfer of PHP 2,000.00 sent from account 1000-2000-3001. New available balance: PHP 298,000.00.',
-    0,
     TIMESTAMP '2024-06-01 14:32:01 UTC', TIMESTAMP '2024-06-01 14:32:01 UTC', TIMESTAMP '2024-06-01 14:32:01 UTC'
 );
 

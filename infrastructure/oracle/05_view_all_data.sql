@@ -91,6 +91,6 @@ PROMPT
 PROMPT ==============================================================================
 PROMPT 7. TABLE: NOTIFICATIONS (User Alerts)
 PROMPT ==============================================================================
-SELECT notification_id, user_id, type, message, read_status FROM notifications;
+SELECT notification_id, user_id, type, message, sent_at FROM notifications;
 
 PROMPT ==============================================================================

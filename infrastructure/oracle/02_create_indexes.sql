@@ -68,6 +68,6 @@ CREATE INDEX idx_txn_pending_approval
 CREATE INDEX idx_outbox_pending_dispatch 
     ON outbox_events (status, retry_count, created_at ASC);
 
--- Index for Unread Notifications count and list
-CREATE INDEX idx_notif_user_unread 
-    ON notifications (user_id, read_status, created_at DESC);
+-- Index for Notifications list by user (ordered by latest)
+CREATE INDEX idx_notif_user_sent 
+    ON notifications (user_id, sent_at DESC);

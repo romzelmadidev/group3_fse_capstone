@@ -108,7 +108,6 @@ erDiagram
         VARCHAR user_id FK
         VARCHAR type "TRANSACTION_ALERT, SECURITY_ALERT, MAKER_CHECKER_ALERT"
         TEXT message
-        BOOLEAN read_status
         TIMESTAMP sent_at
         TIMESTAMP created_at
         TIMESTAMP updated_at
@@ -228,7 +227,6 @@ CREATE TABLE notifications (
     user_id         VARCHAR2(64) NOT NULL,
     type            VARCHAR2(50) NOT NULL CHECK (type IN ('TRANSACTION_ALERT', 'SECURITY_ALERT', 'MAKER_CHECKER_ALERT')),
     message         CLOB NOT NULL,
-    read_status     NUMBER(1) DEFAULT 0 NOT NULL CHECK (read_status IN (0, 1)),
     sent_at         TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     created_at      TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at      TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -241,7 +239,7 @@ CREATE INDEX idx_tx_from_acc ON transactions(from_account_id, created_at DESC);
 CREATE INDEX idx_tx_to_acc ON transactions(to_account_id, created_at DESC);
 CREATE INDEX idx_tx_status ON transactions(status);
 CREATE INDEX idx_outbox_status ON outbox_events(status, created_at);
-CREATE INDEX idx_notif_user ON notifications(user_id, read_status, sent_at DESC);
+CREATE INDEX idx_notif_user ON notifications(user_id, sent_at DESC);
 ```
 
 ---
