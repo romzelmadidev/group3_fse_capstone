@@ -2,7 +2,7 @@
 -- CAPSTONE FSE: Core Retail Ledger & Balance Mutation Engine
 -- Epic B: Database & Schema Design (Oracle XE 21c Master Database)
 -- File: 03_seed_sample_data.sql
--- Description: Inserts realistic seed test data corresponding to the Capstone
+-- Description: Inserts realistic seed test data matching the Capstone
 --              specification (Customers, Tellers, Admins, Accounts, Balances,
 --              Credit Assessments, Transactions, and Outbox Events).
 -- ==============================================================================
@@ -12,7 +12,6 @@ SET FEEDBACK ON;
 
 -- ------------------------------------------------------------------------------
 -- 1. SEED USERS
--- Password hashes use BCrypt ($2a$12$... format)
 -- ------------------------------------------------------------------------------
 -- Customer 1: Juan Dela Cruz
 INSERT INTO users (
@@ -26,7 +25,7 @@ INSERT INTO users (
     '$2a$12$e8rQ9vXz7Y1e8rQ9vXz7Y1e8rQ9vXz7Y1e8rQ9vXz7Y1e8rQ9vXz7Y1',
     '$2a$12$k4L9m1Wq2P8k4L9m1Wq2P8k4L9m1Wq2P8k4L9m1Wq2P8k4L9m1Wq2P8',
     3, 0, 'ACTIVE',
-    TIMESTAMP '2024-01-10 09:15:00', TIMESTAMP '2024-01-10 09:15:00'
+    TIMESTAMP '2024-01-10 09:15:00 UTC', TIMESTAMP '2024-01-10 09:15:00 UTC'
 );
 
 -- Customer 2: Maria Santos
@@ -41,7 +40,7 @@ INSERT INTO users (
     '$2a$12$e8rQ9vXz7Y1e8rQ9vXz7Y1e8rQ9vXz7Y1e8rQ9vXz7Y1e8rQ9vXz7Y1',
     '$2a$12$k4L9m1Wq2P8k4L9m1Wq2P8k4L9m1Wq2P8k4L9m1Wq2P8k4L9m1Wq2P8',
     3, 0, 'ACTIVE',
-    TIMESTAMP '2024-01-12 10:00:00', TIMESTAMP '2024-01-12 10:00:00'
+    TIMESTAMP '2024-01-12 10:00:00 UTC', TIMESTAMP '2024-01-12 10:00:00 UTC'
 );
 
 -- Bank Staff 1: Teller Alex Mercer
@@ -56,7 +55,7 @@ INSERT INTO users (
     '$2a$12$e8rQ9vXz7Y1e8rQ9vXz7Y1e8rQ9vXz7Y1e8rQ9vXz7Y1e8rQ9vXz7Y1',
     NULL,
     3, 0, 'ACTIVE',
-    TIMESTAMP '2023-11-01 08:30:00', TIMESTAMP '2023-11-01 08:30:00'
+    TIMESTAMP '2023-11-01 08:30:00 UTC', TIMESTAMP '2023-11-01 08:30:00 UTC'
 );
 
 -- Bank Staff 2: Admin / Supervisor Diana Vance
@@ -71,38 +70,38 @@ INSERT INTO users (
     '$2a$12$e8rQ9vXz7Y1e8rQ9vXz7Y1e8rQ9vXz7Y1e8rQ9vXz7Y1e8rQ9vXz7Y1',
     NULL,
     5, 0, 'ACTIVE',
-    TIMESTAMP '2023-01-15 08:00:00', TIMESTAMP '2023-01-15 08:00:00'
+    TIMESTAMP '2023-01-15 08:00:00 UTC', TIMESTAMP '2023-01-15 08:00:00 UTC'
 );
 
 
 -- ------------------------------------------------------------------------------
 -- 2. SEED ACCOUNTS
 -- ------------------------------------------------------------------------------
--- Juan's Credit Account (A2001)
+-- Juan's Credit Account (A2001) with credit limit 300,000.0000
 INSERT INTO accounts (
-    account_id, user_id, account_number, account_type, status,
+    account_id, user_id, account_number, account_type, status, credit_limit,
     created_at, updated_at
 ) VALUES (
-    'A2001', 'U1001', '1000-2000-3001', 'CREDIT', 'ACTIVE',
-    TIMESTAMP '2024-01-10 09:20:00', TIMESTAMP '2024-01-10 09:20:00'
+    'A2001', 'U1001', '1000-2000-3001', 'CREDIT', 'ACTIVE', 300000.0000,
+    TIMESTAMP '2024-01-10 09:20:00 UTC', TIMESTAMP '2024-01-10 09:20:00 UTC'
 );
 
 -- Maria's Savings Account (A2002)
 INSERT INTO accounts (
-    account_id, user_id, account_number, account_type, status,
+    account_id, user_id, account_number, account_type, status, credit_limit,
     created_at, updated_at
 ) VALUES (
-    'A2002', 'U1002', '1000-2000-3002', 'SAVINGS', 'ACTIVE',
-    TIMESTAMP '2024-01-12 10:15:00', TIMESTAMP '2024-01-12 10:15:00'
+    'A2002', 'U1002', '1000-2000-3002', 'SAVINGS', 'ACTIVE', 0.0000,
+    TIMESTAMP '2024-01-12 10:15:00 UTC', TIMESTAMP '2024-01-12 10:15:00 UTC'
 );
 
 -- Juan's Secondary Savings Account (A2003)
 INSERT INTO accounts (
-    account_id, user_id, account_number, account_type, status,
+    account_id, user_id, account_number, account_type, status, credit_limit,
     created_at, updated_at
 ) VALUES (
-    'A2003', 'U1001', '1000-2000-3003', 'SAVINGS', 'ACTIVE',
-    TIMESTAMP '2024-01-15 14:00:00', TIMESTAMP '2024-01-15 14:00:00'
+    'A2003', 'U1001', '1000-2000-3003', 'SAVINGS', 'ACTIVE', 0.0000,
+    TIMESTAMP '2024-01-15 14:00:00 UTC', TIMESTAMP '2024-01-15 14:00:00 UTC'
 );
 
 
@@ -115,7 +114,7 @@ INSERT INTO balance_master (
     account_id, balance_amount, hold_amount, created_at, updated_at
 ) VALUES (
     'A2001', 298000.0000, 0.0000,
-    TIMESTAMP '2024-01-10 09:20:00', TIMESTAMP '2024-06-01 14:32:00'
+    TIMESTAMP '2024-01-10 09:20:00 UTC', TIMESTAMP '2024-06-01 14:32:00 UTC'
 );
 
 -- Balance for Maria's Savings Account A2002 (Balance: 52,000, Hold: 0)
@@ -123,7 +122,7 @@ INSERT INTO balance_master (
     account_id, balance_amount, hold_amount, created_at, updated_at
 ) VALUES (
     'A2002', 52000.0000, 0.0000,
-    TIMESTAMP '2024-01-12 10:15:00', TIMESTAMP '2024-06-01 14:32:00'
+    TIMESTAMP '2024-01-12 10:15:00 UTC', TIMESTAMP '2024-06-01 14:32:00 UTC'
 );
 
 -- Balance for Juan's Savings Account A2003 (Balance: 15,500, Hold: 0)
@@ -131,7 +130,7 @@ INSERT INTO balance_master (
     account_id, balance_amount, hold_amount, created_at, updated_at
 ) VALUES (
     'A2003', 15500.0000, 0.0000,
-    TIMESTAMP '2024-01-15 14:00:00', TIMESTAMP '2024-05-20 11:00:00'
+    TIMESTAMP '2024-01-15 14:00:00 UTC', TIMESTAMP '2024-05-20 11:00:00 UTC'
 );
 
 
@@ -149,7 +148,7 @@ INSERT INTO credit_assessments (
     '2022 Toyota Vios 1.5G Automatic (Plate: ABC-1234)',
     750000.0000, 600000.0000, 765,
     300000.0000, 'LOW_RISK', 'U3001', 'APPROVED',
-    TIMESTAMP '2024-01-10 09:25:00', TIMESTAMP '2024-01-10 09:25:00'
+    TIMESTAMP '2024-01-10 09:25:00 UTC', TIMESTAMP '2024-01-10 09:25:00 UTC'
 );
 
 
@@ -165,7 +164,7 @@ INSERT INTO transactions (
     'T5001', 'A2001', 'A2002', 'TRANSFER', 2000.0000,
     300000.0000, 298000.0000, 'COMMITTED', 0,
     NULL,
-    TIMESTAMP '2024-06-01 14:32:00', TIMESTAMP '2024-06-01 14:32:00'
+    TIMESTAMP '2024-06-01 14:32:00 UTC', TIMESTAMP '2024-06-01 14:32:00 UTC'
 );
 
 -- Transaction T5002: Over-The-Counter Cash Deposit into Juan's Savings
@@ -177,7 +176,7 @@ INSERT INTO transactions (
     'T5002', 'A2003', NULL, 'DEPOSIT', 15500.0000,
     0.0000, 15500.0000, 'COMMITTED', 0,
     'U3001',
-    TIMESTAMP '2024-05-20 11:00:00', TIMESTAMP '2024-05-20 11:00:00'
+    TIMESTAMP '2024-05-20 11:00:00 UTC', TIMESTAMP '2024-05-20 11:00:00 UTC'
 );
 
 
@@ -192,7 +191,7 @@ INSERT INTO outbox_events (
     'EVT-9001', 'TRANSACTION', 'T5001', 'MUTATION_COMMITTED', 'transaction-events',
     '{"transactionId":"T5001","fromAccount":"A2001","toAccount":"A2002","amount":2000.0000,"status":"COMMITTED"}',
     'PUBLISHED', 0,
-    TIMESTAMP '2024-06-01 14:32:00', TIMESTAMP '2024-06-01 14:32:00'
+    TIMESTAMP '2024-06-01 14:32:00 UTC', TIMESTAMP '2024-06-01 14:32:00 UTC'
 );
 
 
@@ -207,21 +206,7 @@ INSERT INTO notifications (
     'N7001', 'U1001', 'TRANSACTION_ALERT',
     'Transfer of PHP 2,000.00 sent from account 1000-2000-3001. New available balance: PHP 298,000.00.',
     0,
-    TIMESTAMP '2024-06-01 14:32:01', TIMESTAMP '2024-06-01 14:32:01', TIMESTAMP '2024-06-01 14:32:01'
-);
-
-
--- ------------------------------------------------------------------------------
--- 8. SEED AUTH SESSIONS
--- Active session for Juan
--- ------------------------------------------------------------------------------
-INSERT INTO auth_sessions (
-    session_id, user_id, device_fingerprint, is_revoked,
-    issued_at, expires_at, created_at, updated_at
-) VALUES (
-    'S8001', 'U1001', 'chrome_win11_fp_a982f1', 0,
-    TIMESTAMP '2024-06-01 09:00:00', TIMESTAMP '2024-06-01 17:00:00',
-    TIMESTAMP '2024-06-01 09:00:00', TIMESTAMP '2024-06-01 09:00:00'
+    TIMESTAMP '2024-06-01 14:32:01 UTC', TIMESTAMP '2024-06-01 14:32:01 UTC', TIMESTAMP '2024-06-01 14:32:01 UTC'
 );
 
 -- Commit all inserted seed data

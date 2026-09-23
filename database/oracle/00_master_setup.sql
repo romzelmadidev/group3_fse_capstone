@@ -2,8 +2,8 @@
 -- CAPSTONE FSE: Core Retail Ledger & Balance Mutation Engine
 -- Epic B: Database & Schema Design (Oracle XE 21c Master Database)
 -- File: 00_master_setup.sql
--- Description: Master execution script. Runs cleanup, table creation,
---              indexing, and sample data population in one automated run.
+-- Description: Master execution script matching the official Group 3
+--              Definitive Architecture, Schemas, and Source of Truth.
 -- ==============================================================================
 
 PROMPT ====================================================================
@@ -41,9 +41,7 @@ SELECT 'TRANSACTIONS', COUNT(*) FROM transactions
 UNION ALL
 SELECT 'OUTBOX_EVENTS', COUNT(*) FROM outbox_events
 UNION ALL
-SELECT 'NOTIFICATIONS', COUNT(*) FROM notifications
-UNION ALL
-SELECT 'AUTH_SESSIONS', COUNT(*) FROM auth_sessions;
+SELECT 'NOTIFICATIONS', COUNT(*) FROM notifications;
 
 PROMPT ====================================================================
 PROMPT Epic B (FSE-201) Oracle XE Schema Setup Complete!

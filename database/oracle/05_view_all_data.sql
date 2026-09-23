@@ -2,7 +2,7 @@
 -- CAPSTONE FSE: Core Retail Ledger & Balance Mutation Engine
 -- Epic B: Database & Schema Design (Oracle XE 21c Master Database)
 -- File: 05_view_all_data.sql
--- Description: Queries and displays all records from all 8 banking tables.
+-- Description: Queries and displays all records from all 7 banking tables.
 -- ==============================================================================
 
 SET ECHO OFF;
@@ -23,6 +23,7 @@ COLUMN status FORMAT A10;
 COLUMN account_id FORMAT A8;
 COLUMN account_number FORMAT A16;
 COLUMN account_type FORMAT A10;
+COLUMN credit_limit FORMAT 999,999,990.0000;
 
 COLUMN balance_amount FORMAT 999,999,990.0000;
 COLUMN hold_amount FORMAT 999,999,990.0000;
@@ -51,9 +52,6 @@ COLUMN kafka_topic FORMAT A20;
 COLUMN notification_id FORMAT A10;
 COLUMN message FORMAT A60;
 
-COLUMN session_id FORMAT A10;
-COLUMN device_fingerprint FORMAT A25;
-
 PROMPT ==============================================================================
 PROMPT 1. TABLE: USERS (Customers, Tellers, Admins)
 PROMPT ==============================================================================
@@ -61,13 +59,13 @@ SELECT user_id, first_name, last_name, role, email, phone_number, status FROM us
 
 PROMPT 
 PROMPT ==============================================================================
-PROMPT 2. TABLE: ACCOUNTS (Bank Accounts)
+PROMPT 2. TABLE: ACCOUNTS (Bank Accounts and Credit Limits)
 PROMPT ==============================================================================
-SELECT account_id, user_id, account_number, account_type, status FROM accounts;
+SELECT account_id, user_id, account_number, account_type, credit_limit, status FROM accounts;
 
 PROMPT 
 PROMPT ==============================================================================
-PROMPT 3. TABLE: BALANCE_MASTER (Live & Available Balances)
+PROMPT 3. TABLE: BALANCE_MASTER (Live and Available Balances)
 PROMPT ==============================================================================
 SELECT account_id, balance_amount, hold_amount, available_balance FROM balance_master;
 
@@ -94,11 +92,5 @@ PROMPT =========================================================================
 PROMPT 7. TABLE: NOTIFICATIONS (User Alerts)
 PROMPT ==============================================================================
 SELECT notification_id, user_id, type, message, read_status FROM notifications;
-
-PROMPT 
-PROMPT ==============================================================================
-PROMPT 8. TABLE: AUTH_SESSIONS (Active Sessions)
-PROMPT ==============================================================================
-SELECT session_id, user_id, device_fingerprint, is_revoked, expires_at FROM auth_sessions;
 
 PROMPT ==============================================================================
