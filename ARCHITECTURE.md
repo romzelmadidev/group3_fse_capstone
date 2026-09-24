@@ -104,8 +104,8 @@ Every containerized service in the Docker Compose bridge network (`banking-net`)
 - **Runtime**: Spring Boot 3, Spring Kafka Client.
 - **Core Functions**:
   1. `TransactionEventConsumer`: Listens to `banking.transfers.events` under consumer group `notification-workers`.
-  2. `ReceiptFormatter`: Formats debit/credit receipts including transaction timestamp, before/after balances, reference numbers, and operator identity.
-  3. `PushAlertDispatcher`: Dispatches instant push and SMS alerts for customer transactions.
+  2. `ReceiptFormatter`: Formats debit/credit receipts (HTML/PDF) via Thymeleaf including transaction timestamp, before/after balances, reference numbers, and cryptographic verification hashes.
+  3. `EmailAlertDispatcher`: Dispatches rich HTML email receipts to customer inboxes and SSE toasts to the web portal.
   4. `TellerAlertDispatcher`: Dispatches high-priority notifications to active Teller screens when high-value transfers enter `PENDING_APPROVAL`.
 
 ---
@@ -242,6 +242,6 @@ sequenceDiagram
     par Audit Projection
         Kafka->>Postgres: Audit Consumer inserts ledger_mutation_audit
     and Alerts & Receipts
-        Kafka->>Notif: Notification Consumer dispatches SMS & Email
+        Kafka->>Notif: Notification Consumer dispatches HTML Email Receipt & Push
     end
 ```
