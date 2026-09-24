@@ -68,7 +68,7 @@ CREATE TABLE accounts (
     created_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT fk_acc_user FOREIGN KEY (user_id) REFERENCES users(user_id),
-    CONSTRAINT chk_acc_type CHECK (account_type IN ('SAVINGS', 'CHECKING', 'CREDIT')),
+    CONSTRAINT chk_acc_type CHECK (account_type IN ('SAVINGS', 'CREDIT')),
     CONSTRAINT chk_acc_status CHECK (status IN ('ACTIVE', 'LOCKED', 'PENDING_APPROVAL')),
     CONSTRAINT chk_acc_credit_limit CHECK (credit_limit >= 0)
 );
@@ -236,7 +236,7 @@ INSERT INTO accounts (account_id, user_id, account_number, account_type, status,
 VALUES ('acc-2001-sav-001', 'usr-1001-cst-001', '100100001234', 'SAVINGS', 'ACTIVE', 0.0000);
 
 INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
-VALUES ('acc-2002-chk-001', 'usr-1001-cst-001', '100100005678', 'CHECKING', 'ACTIVE', 0.0000);
+VALUES ('acc-2002-chk-001', 'usr-1001-cst-001', '100100005678', 'SAVINGS', 'ACTIVE', 0.0000);
 
 INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
 VALUES ('acc-2003-sav-002', 'usr-1002-cst-002', '100200009999', 'SAVINGS', 'ACTIVE', 0.0000);
