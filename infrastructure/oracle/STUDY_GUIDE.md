@@ -132,7 +132,7 @@ Ito ang pinakamahalagang file sa database dahil ito ang nagde-define ng mga tabl
 #### 2. `accounts` Table
 * **Laman:** Ang bank accounts na pagmamay-ari ng users.
 * **Mahalagang Columns:**
-  * `account_type`: `SAVINGS`, `CHECKING`, o `CREDIT`.
+  * `account_type`: `SAVINGS` o `CREDIT`.
   * `credit_limit`: `NUMBER(18, 4)`. Kapag credit account, dito nakalagay ang maximum limit; kapag savings, default ay `0.0000`.
 
 #### 3. `balance_master` Table (⭐ The Core Banking Innovation)

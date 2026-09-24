@@ -62,7 +62,7 @@ erDiagram
   - `account_id`: Internal unique ID (`VARCHAR2(64)`).
   - `user_id`: Points back to `users` (Foreign Key). Tells us who owns this account.
   - `account_number`: The formatted public account number (e.g., `1000-2000-3001`).
-  - `account_type`: `SAVINGS`, `CHECKING`, or `CREDIT`.
+  - `account_type`: `SAVINGS` or `CREDIT`.
   - `credit_limit`: Approved credit limit for credit accounts (`NUMBER(18, 4)`).
   - `status`: `ACTIVE`, `LOCKED`, or `PENDING_APPROVAL`.
 
