@@ -3,7 +3,7 @@ FROM adminer:latest
 USER root
 
 # Install dependencies required for Oracle Instant Client and Alpine compatibility
-RUN apk --no-cache add libaio libnsl libc6-compat curl autoconf gcc make g++ && \
+RUN apk --no-cache add libaio libnsl libc6-compat curl autoconf m4 file gcc make g++ && \
     ln -s /lib/libc.so.6 /usr/lib/libresolv.so.2 || true
 
 # Set up Oracle environment
@@ -11,6 +11,8 @@ ENV ORACLE_BASE=/usr/local/oracle \
     ORACLE_HOME=/usr/local/oracle/instantclient_21_7 \
     LD_LIBRARY_PATH=/usr/local/oracle/instantclient_21_7:/lib64 \
     TNS_ADMIN=/usr/local/oracle/instantclient_21_7/network/admin
+
+ENV AUTOCONF=/usr/bin/autoconf
 
 # Download Oracle Instant Client Basic Lite & SDK, compile and enable oci8 extension
 RUN mkdir -p /usr/local/oracle && \
