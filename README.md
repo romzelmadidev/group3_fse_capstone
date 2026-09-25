@@ -8,7 +8,8 @@ Group 3 Engineering Repository: Definitive Architecture, Schemas, and Developer 
 
 The platform provides a high-throughput, event-driven, dual-storage retail banking system with Maker-Checker transaction verification, optimistic and pessimistic locking, and immutable audit logging.
 
-<img width="2198" height="1142" alt="image" src="https://github.com/user-attachments/assets/cd50822f-6c14-4d43-9a2f-01e3f62adff3" />
+<img width="2151" height="887" alt="image" src="https://github.com/user-attachments/assets/b97a1f35-c952-4e9a-8b2c-d638de9deff5" />
+
 
 
 ### Architectural Principles
