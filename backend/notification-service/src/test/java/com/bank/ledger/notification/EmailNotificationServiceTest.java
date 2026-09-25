@@ -129,7 +129,7 @@ class EmailNotificationServiceTest {
     }
 
     @Test
-    @DisplayName("Should dispatch Tier 2 Dual Control alert to BOO")
+    @DisplayName("Should dispatch Tier 2 Dual Control alert to Manager")
     void shouldSendTier2MakerCheckerAlert() {
         when(templateEngine.process(eq("email/maker-checker-alert.html"), any(Context.class)))
                 .thenReturn("<html><body>Tier 2 Alert</body></html>");

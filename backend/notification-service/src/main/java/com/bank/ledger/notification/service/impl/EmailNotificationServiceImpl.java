@@ -133,10 +133,11 @@ public class EmailNotificationServiceImpl implements EmailNotificationService {
     @Override
     public boolean sendMakerCheckerAlert(TransactionNotificationEvent event) {
         String transferId = event.getTransferId();
+        String makerId = event.getMakerUserId() != null ? event.getMakerUserId() : (event.getUserId() != null ? event.getUserId() : "USR-CUSTOMER");
 
         Context context = new Context();
         context.setVariable("transferId", transferId);
-        context.setVariable("makerUserId", event.getMakerUserId() != null ? event.getMakerUserId() : "USR-TELLER");
+        context.setVariable("makerUserId", makerId);
         context.setVariable("formattedAmount", receiptGenerator.formatCurrencyPhp(event.getAmount()));
         context.setVariable("formattedDate", receiptGenerator.formatTimestamp(event.getTimestamp()));
         context.setVariable("sourceAccount", event.getSourceAccount());
@@ -145,23 +146,23 @@ public class EmailNotificationServiceImpl implements EmailNotificationService {
         context.setVariable("alertHeader", "DUAL CONTROL HOLD: Maker-Checker Review");
         context.setVariable("tierSubtitle", "BSP MORB Internal Controls (₱50,000.01 – ₱499,999.99)");
         context.setVariable("tierBadge", "TIER 2: DUAL CONTROL REQUIRED");
-        context.setVariable("thresholdNotice", "AMOUNT EXCEEDS TELLER LIMIT (₱50,000.01 – ₱499,999.99)");
+        context.setVariable("thresholdNotice", "AMOUNT EXCEEDS RETAIL LIMIT (₱50,000.01 – ₱499,999.99)");
         context.setVariable("regulatoryTier", "Tier 2: Dual Control (Maker-Checker)");
-        context.setVariable("requiredRoles", "Maker: Teller / Clerk | Checker: Branch Operations Officer (BOO) or Branch Cashier");
+        context.setVariable("requiredRoles", "Maker: Customer | Checker: Bank Operations Manager (Level 1)");
         context.setVariable("amlaStatus", "Exempt (Below PHP 500,000.00 Threshold)");
         context.setVariable("workflowInstruction",
-                "Teller encoded the debit/transfer; transaction is held in PENDING_APPROVAL. The BOO must log in on their terminal to review customer ID, signature card, and approve.");
+                "Customer initiated transfer online; transaction is held in PENDING_APPROVAL. A Bank Manager must review and authorize in the Manager Console before release.");
 
         String htmlContent = templateEngine.process("email/maker-checker-alert.html", context);
-        String subject = String.format("DUAL CONTROL REVIEW: Transfer %s Requires BOO Approval [%s]",
+        String subject = String.format("DUAL CONTROL REVIEW: Transfer %s Requires Manager Approval [%s]",
                 receiptGenerator.formatCurrencyPhp(event.getAmount()), transferId);
 
         boolean dispatched = dispatchEmail(complianceEmail, subject, htmlContent, transferId);
 
         persistNotificationRecord(
-                event.getMakerUserId() != null ? event.getMakerUserId() : "USR-TELLER",
+                makerId,
                 "MAKER_CHECKER_ALERT",
-                String.format("Tier 2 transfer %s for %s held for BOO Maker-Checker authorization.",
+                String.format("Tier 2 transfer %s for %s held for Manager Maker-Checker authorization.",
                         transferId, receiptGenerator.formatCurrencyPhp(event.getAmount()))
         );
 
@@ -171,10 +172,11 @@ public class EmailNotificationServiceImpl implements EmailNotificationService {
     @Override
     public boolean sendAmlaHighValueAlert(TransactionNotificationEvent event) {
         String transferId = event.getTransferId();
+        String makerId = event.getMakerUserId() != null ? event.getMakerUserId() : (event.getUserId() != null ? event.getUserId() : "USR-CUSTOMER");
 
         Context context = new Context();
         context.setVariable("transferId", transferId);
-        context.setVariable("makerUserId", event.getMakerUserId() != null ? event.getMakerUserId() : "USR-TELLER");
+        context.setVariable("makerUserId", makerId);
         context.setVariable("formattedAmount", receiptGenerator.formatCurrencyPhp(event.getAmount()));
         context.setVariable("formattedDate", receiptGenerator.formatTimestamp(event.getTimestamp()));
         context.setVariable("sourceAccount", event.getSourceAccount());
@@ -185,10 +187,10 @@ public class EmailNotificationServiceImpl implements EmailNotificationService {
         context.setVariable("tierBadge", "TIER 3: AMLA COVERED (CTR REQUIRED)");
         context.setVariable("thresholdNotice", "AMOUNT MEETS/EXCEEDS AMLA THRESHOLD (>= ₱500,000.00)");
         context.setVariable("regulatoryTier", "Tier 3: High-Value / AMLA Covered");
-        context.setVariable("requiredRoles", "Maker: Teller | Checker 1: BOO | Approver 2: Branch Head / Operations Manager");
+        context.setVariable("requiredRoles", "Maker: Customer | Checker 1: Manager (Level 1) | Approver 2: Senior Manager (Level 2)");
         context.setVariable("amlaStatus", "COVERED TRANSACTION REPORT (CTR) FILING MANDATORY");
         context.setVariable("workflowInstruction",
-                "Requires CTR filing under AMLA + dual manager approval (BOO + Branch Head / Operations Manager) before balance mutation.");
+                "Customer initiated high-value transfer online; requires CTR filing under AMLA + dual manager approval (Manager 1 + Manager 2) in the Manager Console before balance release.");
 
         String htmlContent = templateEngine.process("email/maker-checker-alert.html", context);
         String subject = String.format("URGENT AMLA HOLD: Transfer %s Requires CTR Filing & Dual Manager Approval [%s]",
@@ -197,7 +199,7 @@ public class EmailNotificationServiceImpl implements EmailNotificationService {
         boolean dispatched = dispatchEmail(complianceEmail, subject, htmlContent, transferId);
 
         persistNotificationRecord(
-                event.getMakerUserId() != null ? event.getMakerUserId() : "USR-TELLER",
+                makerId,
                 "AMLA_CTR_ALERT",
                 String.format("Tier 3 AMLA transfer %s for %s held. CTR filing & dual manager approval required.",
                         transferId, receiptGenerator.formatCurrencyPhp(event.getAmount()))

@@ -83,7 +83,7 @@ public class NotificationController {
                 .eventType("TRANSFER_PENDING_APPROVAL")
                 .requiresMakerChecker(true)
                 .timestamp(Instant.now())
-                .description("Tier 2: Dual Control Transfer (Maker: Teller, Checker: BOO)")
+                .description("Tier 2: Dual Control Transfer (Maker: Customer, Checker: Manager)")
                 .build();
 
         log.info("Simulating Tier 2 Maker-Checker hold alert for: {}", event.getTransferId());
@@ -93,10 +93,10 @@ public class NotificationController {
         response.put("status", "ALERT_BROADCAST");
         response.put("tier", "TIER_2_DUAL_CONTROL");
         response.put("threshold", "PHP 50,000.01 - 499,999.99");
-        response.put("requiredRoles", "Maker: Teller / Clerk | Checker: Branch Operations Officer (BOO) or Branch Cashier");
+        response.put("requiredRoles", "Maker: Customer | Checker: Bank Operations Manager (Level 1)");
         response.put("transferId", event.getTransferId());
         response.put("amount", event.getAmount());
-        response.put("message", "Tier 2 dual-control alert broadcast to /topic/teller-alerts and BOO compliance email dispatched.");
+        response.put("message", "Tier 2 dual-control alert broadcast and Manager compliance email dispatched.");
         return ResponseEntity.ok(response);
     }
 
@@ -106,8 +106,8 @@ public class NotificationController {
                 .transferId("TRX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
                 .sourceAccount("ACC-1002938471")
                 .destinationAccount("ACC-9988776655")
-                .userId("USR-882190")
-                .makerUserId("USR-TELLER-01")
+                .userId("U1001")
+                .makerUserId("U1001")
                 .recipientEmail("compliance-officer@corebank.ph")
                 .amount(new BigDecimal("750000.0000")) // Tier 3: >= PHP 500,000.00 (AMLA Covered)
                 .currency("PHP")
@@ -117,7 +117,7 @@ public class NotificationController {
                 .eventType("TRANSFER_PENDING_APPROVAL")
                 .requiresMakerChecker(true)
                 .timestamp(Instant.now())
-                .description("Tier 3: AMLA Covered Transfer (Requires CTR Filing + Dual Manager: BOO & Branch Head)")
+                .description("Tier 3: AMLA Covered Transfer (Requires CTR Filing + Dual Manager Approval)")
                 .build();
 
         log.info("Simulating Tier 3 AMLA High-Value hold alert for: {}", event.getTransferId());
@@ -127,11 +127,11 @@ public class NotificationController {
         response.put("status", "ALERT_BROADCAST");
         response.put("tier", "TIER_3_AMLA_COVERED");
         response.put("threshold", ">= PHP 500,000.00");
-        response.put("requiredRoles", "Maker: Teller | Checker 1: BOO | Approver 2: Branch Head / Operations Manager");
+        response.put("requiredRoles", "Maker: Customer | Checker 1: Manager (Level 1) | Approver 2: Senior Manager (Level 2)");
         response.put("amlaNotice", "MANDATORY: Covered Transaction Report (CTR) filing required under AMLA before balance mutation.");
         response.put("transferId", event.getTransferId());
         response.put("amount", event.getAmount());
-        response.put("message", "Tier 3 AMLA CTR alert broadcast to /topic/teller-alerts and compliance email dispatched.");
+        response.put("message", "Tier 3 AMLA CTR alert broadcast and Dual Manager compliance email dispatched.");
         return ResponseEntity.ok(response);
     }
 

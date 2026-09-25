@@ -13,12 +13,12 @@ public interface EmailNotificationService {
     boolean sendTransactionReceipt(TransactionNotificationEvent event);
 
     /**
-     * Dispatches Tier 2 Dual Control Maker-Checker compliance alert email to BOO / Branch Cashier.
+     * Dispatches Tier 2 Dual Control Maker-Checker compliance alert email to Bank Operations Manager (Level 1).
      */
     boolean sendMakerCheckerAlert(TransactionNotificationEvent event);
 
     /**
-     * Dispatches Tier 3 AMLA Covered / High-Value alert email (CTR required) to BOO & Branch Head.
+     * Dispatches Tier 3 AMLA Covered / High-Value alert email (CTR required) to Dual Managers (Level 1 & Level 2).
      */
     boolean sendAmlaHighValueAlert(TransactionNotificationEvent event);
 
