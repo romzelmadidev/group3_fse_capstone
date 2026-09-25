@@ -26,27 +26,23 @@ public class NotificationController {
     private final NotificationRepository notificationRepository;
 
     @PostMapping("/simulate-transfer")
-    public ResponseEntity<Map<String, Object>> simulateTransferNotification(
-            @RequestBody(required = false) TransactionNotificationEvent customEvent) {
-
-        TransactionNotificationEvent event = customEvent;
-        if (event == null || event.getTransferId() == null) {
-            event = TransactionNotificationEvent.builder()
-                    .transferId("TRX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
-                    .sourceAccount("ACC-1002938471")
-                    .destinationAccount("ACC-2009847192")
-                    .userId("USR-882190")
-                    .recipientEmail("customer@corebank.ph")
-                    .amount(new BigDecimal("25000.0000")) // Tier 1: <= PHP 50,000.00
-                    .currency("PHP")
-                    .beforeBalance(new BigDecimal("250000.0000"))
-                    .afterBalance(new BigDecimal("225000.0000"))
-                    .status("COMMITTED")
-                    .eventType("TRANSFER_EXECUTED")
-                    .timestamp(Instant.now())
-                    .description("Tier 1: Normal Retail Fund Transfer (Teller Only)")
-                    .build();
-        }
+    public ResponseEntity<Map<String, Object>> simulateTransferNotification() {
+        TransactionNotificationEvent event = TransactionNotificationEvent.builder()
+                .transferId("TRX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
+                .sourceAccount("ACC-1002938471")
+                .destinationAccount("ACC-2009847192")
+                .userId("U1001")
+                .makerUserId("U1001")
+                .recipientEmail("juan.delacruz@retailbank.ph")
+                .amount(new BigDecimal("7500.0000")) // Tier 1: <= PHP 50,000.00 (STP)
+                .currency("PHP")
+                .beforeBalance(new BigDecimal("250000.0000"))
+                .afterBalance(new BigDecimal("242500.0000"))
+                .status("COMMITTED")
+                .eventType("TRANSFER_EXECUTED")
+                .timestamp(Instant.now())
+                .description("Tier 1: Normal Retail Fund Transfer (Automated STP - No Manager Approval)")
+                .build();
 
         log.info("Simulating transfer notification for: {}", event.getTransferId());
         transactionEventConsumer.consumeTransactionEvent(event);
@@ -72,9 +68,9 @@ public class NotificationController {
                 .transferId("TRX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
                 .sourceAccount("ACC-1002938471")
                 .destinationAccount("ACC-9988776655")
-                .userId("USR-882190")
-                .makerUserId("USR-TELLER-01")
-                .recipientEmail("boo@corebank.ph")
+                .userId("U1001")
+                .makerUserId("U1001")
+                .recipientEmail("beatriz.ocampo@retailbank.ph")
                 .amount(new BigDecimal("150000.0000")) // Tier 2: PHP 50k - 499,999.99
                 .currency("PHP")
                 .beforeBalance(new BigDecimal("500000.0000"))
