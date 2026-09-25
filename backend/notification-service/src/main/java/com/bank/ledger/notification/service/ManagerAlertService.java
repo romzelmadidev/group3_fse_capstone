@@ -10,10 +10,15 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Real-time WebSocket Alert Service for Operations Managers.
+ * Broadcasts Dual-Control Maker-Checker and AMLA alerts to the Manager Console
+ * on destination /topic/manager-alerts (and legacy /topic/teller-alerts).
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class TellerAlertService {
+public class ManagerAlertService {
 
     private final SimpMessagingTemplate messagingTemplate;
     private final ReceiptGenerator receiptGenerator;
@@ -32,13 +37,13 @@ public class TellerAlertService {
         alertPayload.put("transfer_id", event.getTransferId());
         alertPayload.put("amount", event.getAmount());
         alertPayload.put("formatted_amount", receiptGenerator.formatCurrencyPhp(event.getAmount()));
-        alertPayload.put("maker_user_id", event.getMakerUserId() != null ? event.getMakerUserId() : (event.getUserId() != null ? event.getUserId() : "USR-CUSTOMER"));
+        alertPayload.put("maker_user_id", event.getMakerUserId() != null ? event.getMakerUserId() : (event.getUserId() != null ? event.getUserId() : "U1001"));
         alertPayload.put("source_account", event.getSourceAccount());
         alertPayload.put("destination_account", event.getDestinationAccount());
         alertPayload.put("amla_covered", false);
         alertPayload.put("timestamp", Instant.now().toString());
 
-        log.info("Broadcasting Tier 2 Maker-Checker alert to /topic/manager-alerts and /topic/teller-alerts for transfer: {}", event.getTransferId());
+        log.info("Broadcasting Tier 2 Maker-Checker alert to /topic/manager-alerts for transfer: {}", event.getTransferId());
         messagingTemplate.convertAndSend("/topic/manager-alerts", alertPayload);
         messagingTemplate.convertAndSend("/topic/teller-alerts", alertPayload);
     }
@@ -53,14 +58,14 @@ public class TellerAlertService {
         alertPayload.put("transfer_id", event.getTransferId());
         alertPayload.put("amount", event.getAmount());
         alertPayload.put("formatted_amount", receiptGenerator.formatCurrencyPhp(event.getAmount()));
-        alertPayload.put("maker_user_id", event.getMakerUserId() != null ? event.getMakerUserId() : (event.getUserId() != null ? event.getUserId() : "USR-CUSTOMER"));
+        alertPayload.put("maker_user_id", event.getMakerUserId() != null ? event.getMakerUserId() : (event.getUserId() != null ? event.getUserId() : "U1001"));
         alertPayload.put("source_account", event.getSourceAccount());
         alertPayload.put("destination_account", event.getDestinationAccount());
         alertPayload.put("amla_covered", true);
         alertPayload.put("ctr_report_required", true);
         alertPayload.put("timestamp", Instant.now().toString());
 
-        log.info("Broadcasting Tier 3 AMLA CTR alert to /topic/manager-alerts and /topic/teller-alerts for transfer: {}", event.getTransferId());
+        log.info("Broadcasting Tier 3 AMLA CTR alert to /topic/manager-alerts for transfer: {}", event.getTransferId());
         messagingTemplate.convertAndSend("/topic/manager-alerts", alertPayload);
         messagingTemplate.convertAndSend("/topic/teller-alerts", alertPayload);
     }

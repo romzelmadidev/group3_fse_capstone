@@ -3,8 +3,8 @@ package com.bank.ledger.notification.consumer;
 import com.bank.ledger.contracts.dto.TransactionNotificationEvent;
 import com.bank.ledger.notification.controller.NotificationStreamController;
 import com.bank.ledger.notification.service.EmailNotificationService;
+import com.bank.ledger.notification.service.ManagerAlertService;
 import com.bank.ledger.notification.service.ReceiptGenerator;
-import com.bank.ledger.notification.service.TellerAlertService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -24,7 +24,7 @@ public class TransactionEventConsumer {
     public static final BigDecimal BSP_TIER_3_MIN = new BigDecimal("500000.0000");  // >= 500k: AMLA Covered (CTR + Dual Manager)
 
     private final EmailNotificationService emailService;
-    private final TellerAlertService tellerAlertService;
+    private final ManagerAlertService managerAlertService;
     private final NotificationStreamController streamController;
     private final ReceiptGenerator receiptGenerator;
 
@@ -55,17 +55,17 @@ public class TransactionEventConsumer {
         if (isPending) {
             if (isAmlaCovered) {
                 // Tier 3: High-Value / AMLA Covered (>= PHP 500,000.00)
-                // Roles: Maker: Teller | Checker 1: BOO | Approver 2: Branch Head / Operations Manager
+                // Roles: Maker: Customer | Checker 1: Manager L1 | Approver 2: Senior Manager L2
                 log.warn("TIER 3 AMLA HOLD for transferId={}. Amount={} >= 500k. Requires CTR filing + Dual Manager approval.",
                         event.getTransferId(), amount);
-                tellerAlertService.broadcastTier3AmlaAlert(event);
+                managerAlertService.broadcastTier3AmlaAlert(event);
                 emailService.sendAmlaHighValueAlert(event);
             } else {
                 // Tier 2: Dual Control Maker-Checker (PHP 50,000.01 – PHP 499,999.99)
-                // Roles: Maker: Teller / Clerk | Checker: Branch Operations Officer (BOO) or Branch Cashier
-                log.info("TIER 2 DUAL CONTROL HOLD for transferId={}. Amount={} > 50k. Requires BOO review (ID, signature card).",
+                // Roles: Maker: Customer | Checker: Bank Operations Manager (Level 1)
+                log.info("TIER 2 DUAL CONTROL HOLD for transferId={}. Amount={} > 50k. Requires Manager review in Manager Console.",
                         event.getTransferId(), amount);
-                tellerAlertService.broadcastTier2MakerCheckerAlert(event);
+                managerAlertService.broadcastTier2MakerCheckerAlert(event);
                 emailService.sendMakerCheckerAlert(event);
             }
             return;
