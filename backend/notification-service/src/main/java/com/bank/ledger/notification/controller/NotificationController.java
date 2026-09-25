@@ -37,14 +37,14 @@ public class NotificationController {
                     .destinationAccount("ACC-2009847192")
                     .userId("USR-882190")
                     .recipientEmail("customer@corebank.ph")
-                    .amount(new BigDecimal("50000.0000"))
+                    .amount(new BigDecimal("25000.0000")) // Tier 1: <= PHP 50,000.00
                     .currency("PHP")
-                    .beforeBalance(new BigDecimal("25000000.0000"))
-                    .afterBalance(new BigDecimal("24950000.0000"))
+                    .beforeBalance(new BigDecimal("250000.0000"))
+                    .afterBalance(new BigDecimal("225000.0000"))
                     .status("COMMITTED")
                     .eventType("TRANSFER_EXECUTED")
                     .timestamp(Instant.now())
-                    .description("Retail Fund Transfer via Online Portal")
+                    .description("Tier 1: Normal Retail Fund Transfer (Teller Only)")
                     .build();
         }
 
@@ -53,41 +53,85 @@ public class NotificationController {
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("status", "DISPATCHED");
+        response.put("tier", "TIER_1_NORMAL");
         response.put("transferId", event.getTransferId());
         response.put("amount", event.getAmount());
         response.put("recipientEmail", event.getRecipientEmail());
-        response.put("message", "Simulated transaction consumed; email receipt dispatched & SSE toast pushed.");
+        response.put("message", "Tier 1 normal transaction consumed; email receipt dispatched & SSE toast pushed.");
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/simulate-maker-checker")
     public ResponseEntity<Map<String, Object>> simulateMakerCheckerNotification() {
+        return simulateTier2MakerChecker();
+    }
+
+    @PostMapping("/simulate-tier2-maker-checker")
+    public ResponseEntity<Map<String, Object>> simulateTier2MakerChecker() {
         TransactionNotificationEvent event = TransactionNotificationEvent.builder()
                 .transferId("TRX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
                 .sourceAccount("ACC-1002938471")
                 .destinationAccount("ACC-9988776655")
                 .userId("USR-882190")
-                .makerUserId("USR-882190")
-                .recipientEmail("compliance-officer@corebank.ph")
-                .amount(new BigDecimal("15000000.0000"))
+                .makerUserId("USR-TELLER-01")
+                .recipientEmail("boo@corebank.ph")
+                .amount(new BigDecimal("150000.0000")) // Tier 2: PHP 50k - 499,999.99
                 .currency("PHP")
-                .beforeBalance(new BigDecimal("35000000.0000"))
-                .afterBalance(new BigDecimal("20000000.0000"))
+                .beforeBalance(new BigDecimal("500000.0000"))
+                .afterBalance(new BigDecimal("350000.0000"))
                 .status("PENDING_APPROVAL")
                 .eventType("TRANSFER_PENDING_APPROVAL")
                 .requiresMakerChecker(true)
                 .timestamp(Instant.now())
-                .description("High-Value Corporate Settlement (> PHP 10M)")
+                .description("Tier 2: Dual Control Transfer (Maker: Teller, Checker: BOO)")
                 .build();
 
-        log.info("Simulating high-value hold alert for: {}", event.getTransferId());
+        log.info("Simulating Tier 2 Maker-Checker hold alert for: {}", event.getTransferId());
         transactionEventConsumer.consumeTransactionEvent(event);
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("status", "ALERT_BROADCAST");
+        response.put("tier", "TIER_2_DUAL_CONTROL");
+        response.put("threshold", "PHP 50,000.01 - 499,999.99");
+        response.put("requiredRoles", "Maker: Teller / Clerk | Checker: Branch Operations Officer (BOO) or Branch Cashier");
         response.put("transferId", event.getTransferId());
         response.put("amount", event.getAmount());
-        response.put("message", "High-value transfer alert broadcast to /topic/teller-alerts and compliance email dispatched.");
+        response.put("message", "Tier 2 dual-control alert broadcast to /topic/teller-alerts and BOO compliance email dispatched.");
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/simulate-tier3-amla")
+    public ResponseEntity<Map<String, Object>> simulateTier3Amla() {
+        TransactionNotificationEvent event = TransactionNotificationEvent.builder()
+                .transferId("TRX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
+                .sourceAccount("ACC-1002938471")
+                .destinationAccount("ACC-9988776655")
+                .userId("USR-882190")
+                .makerUserId("USR-TELLER-01")
+                .recipientEmail("compliance-officer@corebank.ph")
+                .amount(new BigDecimal("750000.0000")) // Tier 3: >= PHP 500,000.00 (AMLA Covered)
+                .currency("PHP")
+                .beforeBalance(new BigDecimal("2000000.0000"))
+                .afterBalance(new BigDecimal("1250000.0000"))
+                .status("PENDING_APPROVAL")
+                .eventType("TRANSFER_PENDING_APPROVAL")
+                .requiresMakerChecker(true)
+                .timestamp(Instant.now())
+                .description("Tier 3: AMLA Covered Transfer (Requires CTR Filing + Dual Manager: BOO & Branch Head)")
+                .build();
+
+        log.info("Simulating Tier 3 AMLA High-Value hold alert for: {}", event.getTransferId());
+        transactionEventConsumer.consumeTransactionEvent(event);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("status", "ALERT_BROADCAST");
+        response.put("tier", "TIER_3_AMLA_COVERED");
+        response.put("threshold", ">= PHP 500,000.00");
+        response.put("requiredRoles", "Maker: Teller | Checker 1: BOO | Approver 2: Branch Head / Operations Manager");
+        response.put("amlaNotice", "MANDATORY: Covered Transaction Report (CTR) filing required under AMLA before balance mutation.");
+        response.put("transferId", event.getTransferId());
+        response.put("amount", event.getAmount());
+        response.put("message", "Tier 3 AMLA CTR alert broadcast to /topic/teller-alerts and compliance email dispatched.");
         return ResponseEntity.ok(response);
     }
 

@@ -127,4 +127,30 @@ class EmailNotificationServiceTest {
         Map<String, Object> spoolStatus = emailService.getSpoolStatus();
         assertEquals(1, spoolStatus.get("spool_size"), "Spool size should be 1 pending email");
     }
+
+    @Test
+    @DisplayName("Should dispatch Tier 2 Dual Control alert to BOO")
+    void shouldSendTier2MakerCheckerAlert() {
+        when(templateEngine.process(eq("email/maker-checker-alert.html"), any(Context.class)))
+                .thenReturn("<html><body>Tier 2 Alert</body></html>");
+
+        sampleEvent.setAmount(new BigDecimal("150000.00"));
+        boolean result = emailService.sendMakerCheckerAlert(sampleEvent);
+
+        assertTrue(result, "Tier 2 alert dispatch should succeed");
+        verify(mailSender, times(1)).send(any(MimeMessage.class));
+    }
+
+    @Test
+    @DisplayName("Should dispatch Tier 3 AMLA CTR alert for >= 500k")
+    void shouldSendTier3AmlaHighValueAlert() {
+        when(templateEngine.process(eq("email/maker-checker-alert.html"), any(Context.class)))
+                .thenReturn("<html><body>Tier 3 AMLA Alert</body></html>");
+
+        sampleEvent.setAmount(new BigDecimal("750000.00"));
+        boolean result = emailService.sendAmlaHighValueAlert(sampleEvent);
+
+        assertTrue(result, "Tier 3 AMLA alert dispatch should succeed");
+        verify(mailSender, times(1)).send(any(MimeMessage.class));
+    }
 }

@@ -87,18 +87,30 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>URGENT: High-Value Transaction Hold</h1>
-            <p style="margin: 4px 0 0; font-size: 12px; color: #ffe4e6;">Maker-Checker Compliance Sign-Off Required</p>
+            <h1 th:text="${alertHeader != null ? alertHeader : 'URGENT: High-Value Transaction Hold'}">URGENT: Transaction Hold</h1>
+            <p style="margin: 4px 0 0; font-size: 12px; color: #ffe4e6;" th:text="${tierSubtitle != null ? tierSubtitle : 'BSP Regulations & Internal Controls'}">BSP MORB Compliance</p>
         </div>
         <div class="body-content">
             <div style="text-align: center;">
-                <span class="badge-warning">ACTION REQUIRED: PENDING REVIEW</span>
+                <span class="badge-warning" th:text="${tierBadge != null ? tierBadge : 'ACTION REQUIRED: PENDING REVIEW'}">ACTION REQUIRED: PENDING REVIEW</span>
             </div>
             <div class="amount-box">
-                <div style="font-size: 12px; color: #94a3b8;">HOLD AMOUNT EXCEEDS THRESHOLD (> PHP 10,000,000.00)</div>
-                <div class="amount-value" th:text="${formattedAmount}">PHP 15,000,000.00</div>
+                <div style="font-size: 12px; color: #94a3b8;" th:text="${thresholdNotice != null ? thresholdNotice : 'HOLD AMOUNT EXCEEDS THRESHOLD'}">TRANSACTION AMOUNT</div>
+                <div class="amount-value" th:text="${formattedAmount}">PHP 150,000.00</div>
             </div>
             <table class="receipt-table">
+                <tr>
+                    <td class="label-col">Regulatory Tier</td>
+                    <td class="value-col" th:text="${regulatoryTier != null ? regulatoryTier : 'Tier 2: Dual Control'}">Tier 2: Dual Control</td>
+                </tr>
+                <tr>
+                    <td class="label-col">Required Roles</td>
+                    <td class="value-col" th:text="${requiredRoles != null ? requiredRoles : 'Maker: Teller | Checker: BOO'}">Maker: Teller | Checker: BOO</td>
+                </tr>
+                <tr>
+                    <td class="label-col">AMLA / CTR Status</td>
+                    <td class="value-col" style="color: #f43f5e;" th:text="${amlaStatus != null ? amlaStatus : 'Not Applicable (Below PHP 500k)'}">Exempt</td>
+                </tr>
                 <tr>
                     <td class="label-col">Transfer ID</td>
                     <td class="value-col" th:text="${transferId}">TRX-4491-0021</td>
@@ -120,9 +132,14 @@
                     <td class="value-col" th:text="${formattedDate}">2026-09-25 04:00:00 PST</td>
                 </tr>
             </table>
+
+            <div style="margin-top: 20px; padding: 12px; background-color: #0f172a; border-radius: 8px; border-left: 4px solid #f43f5e;">
+                <div style="font-size: 11px; text-transform: uppercase; color: #f43f5e; font-weight: 700; margin-bottom: 4px;">Mandatory Bank Workflow</div>
+                <p style="margin: 0; font-size: 12px; color: #cbd5e1; line-height: 1.4;" th:text="${workflowInstruction != null ? workflowInstruction : 'Teller encoded transfer. BOO must review ID and signature card before authorization.'}">Teller encoded transfer. BOO review required.</p>
+            </div>
         </div>
         <div class="footer">
-            <p>Please log in to the Branch Teller Portal to review and execute Checker approval.</p>
+            <p>Regulated under Bangko Sentral ng Pilipinas (BSP) Manual of Regulations for Banks (MORB).</p>
         </div>
     </div>
 </body>

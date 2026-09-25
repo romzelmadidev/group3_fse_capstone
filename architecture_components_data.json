@@ -1946,33 +1946,33 @@
       },
       {
         "id": "SCEN-NOTIF-02",
-        "title": "Teller Alert Queue Dispatch for Pending High-Value Hold",
+        "title": "BSP Dual Control & AMLA Hold Dispatch (Tier 2 BOO & Tier 3 CTR)",
         "category": "Maker-Checker Approval",
-        "summary": "A 15,000,000.0000 PHP transfer enters review. The notification service consumes TransferPendingApproval, formats an urgent compliance item, and pushes a real-time WebSocket alert to branch teller consoles.",
+        "summary": "Transfers exceeding teller limits enter review under BSP MORB and AMLA rules: Tier 2 (₱50,000.01 – ₱499,999.99) requires BOO approval; Tier 3 (>= ₱500,000.00) requires CTR filing and dual manager approval (BOO + Branch Head). The notification service dispatches STOMP WebSocket alerts to teller consoles and compliance emails.",
         "steps": [
           {
             "step": 1,
             "actor": "broker (Kafka)",
             "action": "Emits TransferPendingApproval event on banking.transfers.events",
-            "payload_or_query": "{ \"transfer_id\": \"TRX-4491-0021\", \"maker_user_id\": \"USR-882190\", \"amount\": 15000000.0000, \"status\": \"PENDING_APPROVAL\" }",
-            "result": "Notification consumer ingests pending approval record"
+            "payload_or_query": "{ \"transfer_id\": \"TRX-4491-0021\", \"maker_user_id\": \"USR-TELLER-01\", \"amount\": 750000.0000, \"status\": \"PENDING_APPROVAL\", \"tier\": \"TIER_3_AMLA\" }",
+            "result": "Notification consumer ingests pending approval record and evaluates BSP tier"
           },
           {
             "step": 2,
             "actor": "notif_svc",
-            "action": "Builds high-priority alert payload for TellerPortal",
-            "payload_or_query": "Payload: { \"alert_type\": \"MAKER_CHECKER_REQUIRED\", \"transfer_id\": \"TRX-4491-0021\", \"amount\": 15000000.0000, \"maker_id\": \"USR-882190\" }",
-            "result": "Alert message generated"
+            "action": "Builds high-priority alert payload specifying required roles (BOO + Branch Head) and AMLA CTR status",
+            "payload_or_query": "Payload: { \"alert_type\": \"TIER_3_AMLA_HOLD_REQUIRED\", \"tier\": \"TIER_3\", \"threshold\": \">= PHP 500,000.00\", \"transfer_id\": \"TRX-4491-0021\", \"amount\": 750000.0000, \"amla_covered\": true }",
+            "result": "Alert message generated with mandatory workflow instructions"
           },
           {
             "step": 3,
             "actor": "notif_svc",
-            "action": "Broadcasts message over STOMP WebSocket topic `/topic/teller-alerts`",
-            "payload_or_query": "SimpMessagingTemplate.convertAndSend('/topic/teller-alerts', alertPayload)",
-            "result": "All connected teller browser sessions receive alert instantly; pending counter increments"
+            "action": "Broadcasts message over STOMP WebSocket topic `/topic/teller-alerts` and dispatches compliance email",
+            "payload_or_query": "SimpMessagingTemplate.convertAndSend('/topic/teller-alerts', alertPayload); emailService.sendAmlaHighValueAlert(event);",
+            "result": "All connected teller and manager consoles receive real-time alert; urgent compliance email delivered"
           }
         ],
-        "outcome": "Branch tellers immediately alerted to high-value transaction, minimizing customer wait time for manual review."
+        "outcome": "Branch Operations Officers and Branch Heads immediately alerted to high-value and AMLA-covered transactions, satisfying BSP MORB dual-control and AMLA CTR reporting regulations."
       },
       {
         "id": "SCEN-NOTIF-03",

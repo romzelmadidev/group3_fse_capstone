@@ -13,9 +13,14 @@ public interface EmailNotificationService {
     boolean sendTransactionReceipt(TransactionNotificationEvent event);
 
     /**
-     * Dispatches high-priority Maker-Checker compliance alert email to tellers/supervisors.
+     * Dispatches Tier 2 Dual Control Maker-Checker compliance alert email to BOO / Branch Cashier.
      */
     boolean sendMakerCheckerAlert(TransactionNotificationEvent event);
+
+    /**
+     * Dispatches Tier 3 AMLA Covered / High-Value alert email (CTR required) to BOO & Branch Head.
+     */
+    boolean sendAmlaHighValueAlert(TransactionNotificationEvent event);
 
     /**
      * Returns the current status of the retry buffer spool.

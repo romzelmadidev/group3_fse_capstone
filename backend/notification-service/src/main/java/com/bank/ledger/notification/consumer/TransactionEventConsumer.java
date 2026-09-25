@@ -19,7 +19,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class TransactionEventConsumer {
 
-    private static final BigDecimal HIGH_VALUE_THRESHOLD = new BigDecimal("10000000.0000");
+    // BSP MORB & AMLA Transaction Tier Thresholds
+    public static final BigDecimal BSP_TIER_1_MAX = new BigDecimal("50000.0000");   // <= 50k: Normal (Teller only)
+    public static final BigDecimal BSP_TIER_3_MIN = new BigDecimal("500000.0000");  // >= 500k: AMLA Covered (CTR + Dual Manager)
 
     private final EmailNotificationService emailService;
     private final TellerAlertService tellerAlertService;
@@ -37,21 +39,35 @@ public class TransactionEventConsumer {
             return;
         }
 
-        log.info("Consumed Kafka event on banking.transfers.events: transferId={}, status={}, amount={}",
-                event.getTransferId(), event.getStatus(), event.getAmount());
+        BigDecimal amount = event.getAmount() != null ? event.getAmount() : BigDecimal.ZERO;
+        boolean exceedsTellerLimit = amount.compareTo(BSP_TIER_1_MAX) > 0;
+        boolean isAmlaCovered = amount.compareTo(BSP_TIER_3_MIN) >= 0;
 
-        boolean isHighValue = event.getAmount() != null &&
-                event.getAmount().compareTo(HIGH_VALUE_THRESHOLD) > 0;
+        log.info("Consumed Kafka event on banking.transfers.events: transferId={}, status={}, amount={}, exceedsLimit={}, amlaCovered={}",
+                event.getTransferId(), event.getStatus(), amount, exceedsTellerLimit, isAmlaCovered);
 
-        // 1. Handle Pending Approval / High-Value Holds (SCEN-NOTIF-02)
-        if ("PENDING_APPROVAL".equalsIgnoreCase(event.getStatus()) ||
+        // 1. Handle Pending Approval / Exceed Limit Holds (BSP MORB Maker-Checker & AMLA CTR)
+        boolean isPending = "PENDING_APPROVAL".equalsIgnoreCase(event.getStatus()) ||
                 "TRANSFER_PENDING_APPROVAL".equalsIgnoreCase(event.getEventType()) ||
-                (isHighValue && event.isRequiresMakerChecker())) {
+                event.isRequiresMakerChecker() ||
+                (exceedsTellerLimit && !"COMMITTED".equalsIgnoreCase(event.getStatus()) && !"SUCCESS".equalsIgnoreCase(event.getStatus()));
 
-            log.info("High-value transfer hold detected for transferId={}. Disagreeing auto-settlement, notifying tellers.",
-                    event.getTransferId());
-            tellerAlertService.broadcastPendingApprovalAlert(event);
-            emailService.sendMakerCheckerAlert(event);
+        if (isPending) {
+            if (isAmlaCovered) {
+                // Tier 3: High-Value / AMLA Covered (>= PHP 500,000.00)
+                // Roles: Maker: Teller | Checker 1: BOO | Approver 2: Branch Head / Operations Manager
+                log.warn("TIER 3 AMLA HOLD for transferId={}. Amount={} >= 500k. Requires CTR filing + Dual Manager approval.",
+                        event.getTransferId(), amount);
+                tellerAlertService.broadcastTier3AmlaAlert(event);
+                emailService.sendAmlaHighValueAlert(event);
+            } else {
+                // Tier 2: Dual Control Maker-Checker (PHP 50,000.01 – PHP 499,999.99)
+                // Roles: Maker: Teller / Clerk | Checker: Branch Operations Officer (BOO) or Branch Cashier
+                log.info("TIER 2 DUAL CONTROL HOLD for transferId={}. Amount={} > 50k. Requires BOO review (ID, signature card).",
+                        event.getTransferId(), amount);
+                tellerAlertService.broadcastTier2MakerCheckerAlert(event);
+                emailService.sendMakerCheckerAlert(event);
+            }
             return;
         }
 
