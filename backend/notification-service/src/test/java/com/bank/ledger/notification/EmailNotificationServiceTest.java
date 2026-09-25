@@ -93,7 +93,8 @@ class EmailNotificationServiceTest {
         boolean result = emailService.sendTransactionReceipt(sampleEvent);
 
         assertTrue(result, "Email dispatch should succeed");
-        verify(mailSender, times(1)).send(any(MimeMessage.class));
+        // Dispatches 2 emails: 1 debit receipt to sender, 1 credit advice to beneficiary
+        verify(mailSender, times(2)).send(any(MimeMessage.class));
     }
 
     @Test
@@ -125,7 +126,7 @@ class EmailNotificationServiceTest {
 
         assertFalse(result, "Send should return false when failing to live SMTP");
         Map<String, Object> spoolStatus = emailService.getSpoolStatus();
-        assertEquals(1, spoolStatus.get("spool_size"), "Spool size should be 1 pending email");
+        assertEquals(2, spoolStatus.get("spool_size"), "Spool size should be 2 pending emails (sender + beneficiary)");
     }
 
     @Test

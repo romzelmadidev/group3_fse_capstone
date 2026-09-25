@@ -52,8 +52,9 @@ public class NotificationController {
         response.put("tier", "TIER_1_NORMAL");
         response.put("transferId", event.getTransferId());
         response.put("amount", event.getAmount());
-        response.put("recipientEmail", event.getRecipientEmail());
-        response.put("message", "Tier 1 normal transaction consumed; email receipt dispatched & SSE toast pushed.");
+        response.put("senderEmail", event.getRecipientEmail());
+        response.put("beneficiaryEmail", "maria.santos@retailbank.ph");
+        response.put("message", "Tier 1 normal transaction consumed; Debit Receipt sent to Sender (Juan Dela Cruz) & Credit Advice sent to Beneficiary (Maria Santos).");
         return ResponseEntity.ok(response);
     }
 
