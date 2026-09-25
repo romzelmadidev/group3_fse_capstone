@@ -226,6 +226,15 @@ INSERT INTO users (
     user_id, first_name, middle_name, last_name, email, phone_number, dob,
     government_id, role, password_hash, pin_hash, max_concurrent_sessions, failed_login_attempts, status
 ) VALUES (
+    'usr-1005-boo-001', 'Beatriz', 'Santos', 'Ocampo', 'beatriz.ocampo@eastwestbanker.com', '+639204445566',
+    TO_DATE('1984-07-19', 'YYYY-MM-DD'), 'PRC-9988-7711', 'TELLER',
+    '$2a$10$7EqJtq98hPqEX7fNZaFWoOdi14kS13h2qBwYvUo2a7Fv6z9O1Zqwe', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 5, 0, 'ACTIVE'
+);
+
+INSERT INTO users (
+    user_id, first_name, middle_name, last_name, email, phone_number, dob,
+    government_id, role, password_hash, pin_hash, max_concurrent_sessions, failed_login_attempts, status
+) VALUES (
     'usr-1004-adm-001', 'System', 'Core', 'Administrator', 'admin.portal@eastwestbanker.com', '+639000000000',
     TO_DATE('1980-01-01', 'YYYY-MM-DD'), 'COMPANY-ID-EMP-001', 'ADMIN',
     '$2a$10$7EqJtq98hPqEX7fNZaFWoOdi14kS13h2qBwYvUo2a7Fv6z9O1Zqwe', NULL, 10, 0, 'ACTIVE'
