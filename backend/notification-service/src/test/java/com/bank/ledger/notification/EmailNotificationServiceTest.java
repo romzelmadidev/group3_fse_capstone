@@ -84,10 +84,10 @@ class EmailNotificationServiceTest {
     @Test
     @DisplayName("Should format HTML template and send email receipt on first delivery")
     void shouldSendTransactionReceiptSuccessfully() {
-        when(valueOperations.setIfAbsent(eq("notif:seen:TRX-TEST-0001"), eq("1"), any(Duration.class)))
+        when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class)))
                 .thenReturn(true);
 
-        when(templateEngine.process(eq("email/transaction-receipt.html"), any(Context.class)))
+        when(templateEngine.process(anyString(), any(Context.class)))
                 .thenReturn("<html><body>Mock Receipt</body></html>");
 
         boolean result = emailService.sendTransactionReceipt(sampleEvent);

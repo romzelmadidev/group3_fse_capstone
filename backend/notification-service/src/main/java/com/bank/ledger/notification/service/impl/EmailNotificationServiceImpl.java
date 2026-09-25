@@ -148,7 +148,7 @@ public class EmailNotificationServiceImpl implements EmailNotificationService {
             benContext.setVariable("verificationHash", receiptGenerator.generateVerificationHash(
                     transferId, event.getDestinationAccount(), event.getAmount(), event.getTimestamp()));
 
-            String benHtml = templateEngine.process("email/transaction-receipt.html", benContext);
+            String benHtml = templateEngine.process("email/inward-credit-advice.html", benContext);
 
             String beneficiaryEmail = "maria.santos@retailbank.ph";
             String benSubject = String.format("Credit Advice: You Received %s from Juan Dela Cruz [%s]",
