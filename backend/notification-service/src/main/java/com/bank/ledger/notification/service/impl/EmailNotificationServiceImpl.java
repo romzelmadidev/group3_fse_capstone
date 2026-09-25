@@ -105,14 +105,24 @@ public class EmailNotificationServiceImpl implements EmailNotificationService {
                 transferId, event.getSourceAccount(), event.getAmount(), event.getTimestamp());
         context.setVariable("verificationHash", hash);
 
+        if ("TRANSFER_APPROVED_BY_CHECKER".equalsIgnoreCase(event.getEventType())) {
+            context.setVariable("status", "APPROVED & RELEASED (Checker: Beatriz Ocampo)");
+        }
+
         String htmlContent = templateEngine.process("email/transaction-receipt.html", context);
 
         String recipient = event.getRecipientEmail() != null && !event.getRecipientEmail().isBlank()
                 ? event.getRecipientEmail()
                 : "customer-" + (event.getUserId() != null ? event.getUserId() : "user") + "@corebank.ph";
 
-        String subject = String.format("Transaction Receipt: %s [%s]",
-                receiptGenerator.formatCurrencyPhp(event.getAmount()), transferId);
+        String subject;
+        if ("TRANSFER_APPROVED_BY_CHECKER".equalsIgnoreCase(event.getEventType())) {
+            subject = String.format("Funds Released: Transfer %s Approved [%s]",
+                    receiptGenerator.formatCurrencyPhp(event.getAmount()), transferId);
+        } else {
+            subject = String.format("Transaction Receipt: %s [%s]",
+                    receiptGenerator.formatCurrencyPhp(event.getAmount()), transferId);
+        }
 
         // 3. Dispatch Email with Circuit Buffering to Sender (Juan Dela Cruz)
         boolean dispatched = dispatchEmail(recipient, subject, htmlContent, transferId);
