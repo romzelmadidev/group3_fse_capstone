@@ -130,6 +130,22 @@ public class BalanceMutationController {
     }
 
     /**
+     * Geovelocity Anomaly / Impossible Travel Detected -> HTTP 422 Unprocessable Entity
+     */
+    @ExceptionHandler(com.bank.ledger.contracts.exception.FraudRiskException.class)
+    public ResponseEntity<Map<String, Object>> handleFraudRisk(com.bank.ledger.contracts.exception.FraudRiskException ex) {
+        log.warn("[FRAUD CONTROLLER] Transfer dropped due to fraud risk: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "status", "REJECTED_FRAUD",
+                "error_code", "RISK_THRESHOLD_EXCEEDED",
+                "risk_score", ex.getRiskScore(),
+                "reason", ex.getReason(),
+                "message", ex.getMessage(),
+                "timestamp", Instant.now()
+        ));
+    }
+
+    /**
      * Insufficient Funds -> HTTP 422 Unprocessable Entity
      */
     @ExceptionHandler(InsufficientFundsException.class)

@@ -49,6 +49,24 @@ public class TransactionMaster {
     @Column(name = "approved_by_user_id", length = 64)
     private String approvedByUserId;
 
+    @Column(name = "latitude")
+    private Double latitude;
+
+    @Column(name = "longitude")
+    private Double longitude;
+
+    @Column(name = "location_name", length = 100)
+    private String locationName;
+
+    @Column(name = "ip_address", length = 45)
+    private String ipAddress;
+
+    @Column(name = "risk_score", precision = 5, scale = 2)
+    private BigDecimal riskScore;
+
+    @Column(name = "risk_reason", length = 255)
+    private String riskReason;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

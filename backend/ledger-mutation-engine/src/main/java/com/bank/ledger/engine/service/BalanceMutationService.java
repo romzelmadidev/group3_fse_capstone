@@ -21,6 +21,9 @@ import com.bank.ledger.engine.repository.master.OutboxEventMasterRepository;
 import com.bank.ledger.engine.repository.master.TransactionMasterRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import com.bank.ledger.contracts.exception.FraudRiskException;
+import com.bank.ledger.engine.client.RiskEngineClient;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,6 +31,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -44,8 +48,9 @@ public class BalanceMutationService {
     private final AccountMasterRepository accountRepository;
     private final LedgerMutationAuditRepository auditRepository;
     private final KafkaEventPublisher kafkaPublisher;
-     private final OutboxEventMasterRepository outboxRepository; 
+    private final OutboxEventMasterRepository outboxRepository; 
     private final ObjectMapper objectMapper;
+    private final RiskEngineClient riskEngineClient;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private org.springframework.data.redis.core.StringRedisTemplate redisTemplate;
 
@@ -57,7 +62,7 @@ public class BalanceMutationService {
      * - If amount <= threshold: Immediate atomic dual-account settlement.
      * - If amount > threshold: Soft hold placed, marked PENDING_APPROVAL for Teller review.
      */
-    @Transactional(transactionManager = "oracleTransactionManager")
+    @Transactional(transactionManager = "oracleTransactionManager", noRollbackFor = {FraudRiskException.class})
     public MutationResponse executeTransfer(MutationRequest request) {
         String sourceId = request.getAccountId();
         String targetId = request.getTargetAccountId();
@@ -95,6 +100,85 @@ public class BalanceMutationService {
                             sourceId, sender.getAvailableBalance(), amount));
         }
 
+        // =========================================================================
+        // STEP 3: ASYNCHRONOUS FRAUD RISK & IMPOSSIBLE TRAVEL SCREENING (ADR-04)
+        // =========================================================================
+        Optional<TransactionMaster> lastTx = transactionRepository.findTopByFromAccountIdOrderByCreatedAtDesc(sourceId);
+        Double prevLat = lastTx.map(TransactionMaster::getLatitude).orElse(null);
+        Double prevLon = lastTx.map(TransactionMaster::getLongitude).orElse(null);
+        String prevCity = lastTx.map(TransactionMaster::getLocationName).orElse(null);
+        Long timeDiffSeconds = lastTx.filter(t -> t.getCreatedAt() != null)
+                .map(t -> Math.max(1L, Duration.between(t.getCreatedAt(), Instant.now()).getSeconds()))
+                .orElse(null);
+
+        if (timeDiffSeconds != null && request.getSimulatedTimeOffsetSeconds() != null && request.getSimulatedTimeOffsetSeconds() > 0) {
+            timeDiffSeconds += request.getSimulatedTimeOffsetSeconds();
+            log.info("[SIMULATED TIME OFFSET] Added {} seconds to time delta. Total simulated delta: {}s",
+                    request.getSimulatedTimeOffsetSeconds(), timeDiffSeconds);
+        }
+
+        RiskEngineClient.RiskAssessmentResult riskResult = riskEngineClient.evaluateRisk(
+                request.getInitiatorUserId(),
+                sourceId,
+                amount,
+                request.getLatitude(),
+                request.getLongitude(),
+                request.getLocationName(),
+                prevLat,
+                prevLon,
+                prevCity,
+                timeDiffSeconds
+        );
+
+        log.info("[RISK EVALUATION RESULT] Score: {}, Decision: {}, Reason: {}, Velocity: {} km/h",
+                riskResult.getRiskScore(), riskResult.getDecision(), riskResult.getReason(), riskResult.getVelocityKmh());
+
+        if (riskResult.getRiskScore() > 0.85 || "DENY".equalsIgnoreCase(riskResult.getDecision())) {
+            log.error("[FRAUD DETECTED] Transfer {} dropped! Reason: {}", request.getTransactionId(), riskResult.getReason());
+
+            // Persist fraud transaction record for compliance and audit
+            TransactionMaster fraudTx = TransactionMaster.builder()
+                    .transactionId(request.getTransactionId())
+                    .fromAccountId(sourceId)
+                    .toAccountId(targetId)
+                    .type("TRANSFER")
+                    .amount(amount)
+                    .beforeBalance(sender.getBalanceAmount())
+                    .afterBalance(sender.getBalanceAmount())
+                    .status("REJECTED_FRAUD")
+                    .requires2FaOtp(0)
+                    .latitude(request.getLatitude())
+                    .longitude(request.getLongitude())
+                    .locationName(request.getLocationName())
+                    .ipAddress(request.getIpAddress())
+                    .riskScore(BigDecimal.valueOf(riskResult.getRiskScore()))
+                    .riskReason(riskResult.getReason())
+                    .createdAt(Instant.now())
+                    .updatedAt(Instant.now())
+                    .build();
+            transactionRepository.save(fraudTx);
+
+            // Publish alert to Kafka
+            try {
+                kafkaPublisher.publishNotificationAlert(NotificationAlertEvent.builder()
+                        .alertId("ALT-FRAUD-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
+                        .transactionId(request.getTransactionId())
+                        .recipientUserId(request.getInitiatorUserId())
+                        .recipientAccountId(sourceId)
+                        .alertType("FRAUD_ATTEMPT_BLOCKED")
+                        .amount(amount)
+                        .balanceAfter(sender.getAvailableBalance())
+                        .title("Security Alert: Impossible Travel Detected")
+                        .message(riskResult.getReason())
+                        .createdAt(Instant.now())
+                        .build());
+            } catch (Exception ex) {
+                log.warn("[KAFKA FRAUD ALERT] Failed to publish alert: {}", ex.getMessage());
+            }
+
+            throw new FraudRiskException(riskResult.getReason(), riskResult.getRiskScore(), riskResult.getReason());
+        }
+
         BigDecimal senderBefore = sender.getBalanceAmount();
         boolean isHighValue = amount.compareTo(makerCheckerThreshold) > 0;
 
@@ -121,6 +205,12 @@ public class BalanceMutationService {
                     .afterBalance(senderBefore)
                     .status("PENDING_APPROVAL")
                     .requires2FaOtp(1)
+                    .latitude(request.getLatitude())
+                    .longitude(request.getLongitude())
+                    .locationName(request.getLocationName())
+                    .ipAddress(request.getIpAddress())
+                    .riskScore(BigDecimal.valueOf(riskResult.getRiskScore()))
+                    .riskReason(riskResult.getReason())
                     .createdAt(Instant.now())
                     .updatedAt(Instant.now())
                     .build();
@@ -193,6 +283,9 @@ public class BalanceMutationService {
                     .balanceBefore(senderBefore)
                     .balanceAfter(senderBefore)
                     .availableBalance(sender.getAvailableBalance())
+                    .riskScore(BigDecimal.valueOf(riskResult.getRiskScore()))
+                    .riskDecision(riskResult.getDecision())
+                    .riskReason(riskResult.getReason())
                     .timestamp(Instant.now())
                     .traceId(UUID.randomUUID().toString())
                     .build();
@@ -226,6 +319,12 @@ public class BalanceMutationService {
                 .afterBalance(senderAfter)
                 .status("COMMITTED")
                 .requires2FaOtp(0)
+                .latitude(request.getLatitude())
+                .longitude(request.getLongitude())
+                .locationName(request.getLocationName())
+                .ipAddress(request.getIpAddress())
+                .riskScore(BigDecimal.valueOf(riskResult.getRiskScore()))
+                .riskReason(riskResult.getReason())
                 .createdAt(Instant.now())
                 .updatedAt(Instant.now())
                 .build();
@@ -347,6 +446,9 @@ public class BalanceMutationService {
                 .balanceBefore(senderBefore)
                 .balanceAfter(senderAfter)
                 .availableBalance(sender.getAvailableBalance())
+                .riskScore(BigDecimal.valueOf(riskResult.getRiskScore()))
+                .riskDecision(riskResult.getDecision())
+                .riskReason(riskResult.getReason())
                 .timestamp(Instant.now())
                 .traceId(UUID.randomUUID().toString())
                 .build();

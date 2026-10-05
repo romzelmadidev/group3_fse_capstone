@@ -56,4 +56,7 @@ infrastructure/datadog/certs/
 infrastructure/datadog/synthetics-location-config.json
 *.pem
 *.key
+*.class
+backend/risk-engine/classes/
+
 

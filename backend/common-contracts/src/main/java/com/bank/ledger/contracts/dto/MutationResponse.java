@@ -44,4 +44,13 @@ public class MutationResponse {
 
     @JsonProperty("message")
     private String message;
+
+    @JsonProperty("risk_score")
+    private BigDecimal riskScore;
+
+    @JsonProperty("risk_decision")
+    private String riskDecision;
+
+    @JsonProperty("risk_reason")
+    private String riskReason;
 }

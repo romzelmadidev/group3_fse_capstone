@@ -19,15 +19,18 @@ import {
   Mail,
   RotateCcw,
   History,
-  RefreshCw
+  RefreshCw,
+  Navigation,
+  Globe
 } from 'lucide-react';
+import FraudMap from './FraudMap';
 import { mockState, THRESHOLDS } from '../services/api';
 import { NotificationService, LedgerService } from '../api/client';
 import { formatPHP } from '../utils/currency';
 import { cn } from '../ui/cn';
 
 export default function AdminPortal() {
-  const [activeTab, setActiveTab] = useState('audit'); // 'audit' | 'amla' | 'infra'
+  const [activeTab, setActiveTab] = useState('audit'); // 'audit' | 'amla' | 'infra' | 'georisk'
   const [searchQuery, setSearchQuery] = useState('');
   const [eventFilter, setEventFilter] = useState('ALL'); // 'ALL' | 'DEBITS' | 'AMLA' | 'OTP'
   const [selectedLog, setSelectedLog] = useState(null);
@@ -211,6 +214,14 @@ export default function AdminPortal() {
       protocol: 'Web UI',
       role: 'Oracle XE and PostgreSQL table administration',
       link: 'http://localhost:8088',
+    },
+    {
+      name: 'Python/FastAPI Risk Screening Engine',
+      port: ':8084',
+      status: 'UP',
+      protocol: 'REST / JSON',
+      role: 'Asynchronous geovelocity and impossible travel heuristics (SLA ≤ 200 ms)',
+      link: 'http://localhost:8084/health',
     },
   ];
 
@@ -479,6 +490,22 @@ export default function AdminPortal() {
           <span>Infrastructure &amp; Matrix</span>
           <span className="font-mono text-2xs px-1.5 py-0.5 border border-line bg-sunken text-fg-muted">
             {services.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('georisk')}
+          className={cn(
+            'flex items-center gap-2 pb-3 font-medium transition-colors border-b-2 -mb-px cursor-pointer',
+            activeTab === 'georisk'
+              ? 'border-red-500 text-red-600 font-semibold'
+              : 'border-transparent text-fg-muted hover:text-fg'
+          )}
+        >
+          <Navigation className="w-3.5 h-3.5 text-red-500" />
+          <span>Geovelocity &amp; Fraud Map</span>
+          <span className="font-mono text-2xs px-1.5 py-0.5 border border-red-200 bg-red-50 dark:bg-red-950/30 text-red-600 font-bold">
+            LIVE SHIELD
           </span>
         </button>
       </div>
@@ -896,6 +923,9 @@ export default function AdminPortal() {
         </div>
       )}
 
+      {/* TAB 4: Geovelocity & Impossible Travel OpenStreetMap */}
+      {activeTab === 'georisk' && <FraudMap />}
+
       {/* SCN Record Dossier Modal */}
       {selectedLog && (
         <div 
@@ -1044,6 +1074,16 @@ export default function AdminPortal() {
 
             {/* Footer Actions */}
             <div className="p-3.5 border-t border-line shrink-0 flex items-center justify-end gap-2 bg-surface">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedLog(null);
+                  setActiveTab('georisk');
+                }}
+                className="h-8 px-3 text-xs font-medium border border-line bg-sunken hover:bg-surface text-fg rounded-none transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Globe className="w-3.5 h-3.5 text-accent" /> View Geovelocity Map
+              </button>
               <button
                 type="button"
                 onClick={() => setSelectedLog(null)}

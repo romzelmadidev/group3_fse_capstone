@@ -237,6 +237,7 @@ services:
       - SPRING_DATA_REDIS_HOST=redis-cache
       - SPRING_DATA_REDIS_PORT=6379
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka-broker:29092
+      - RISK_ENGINE_URL=http://risk-engine:8084
     networks:
       - banking-net
     depends_on:
@@ -244,6 +245,23 @@ services:
       - postgres-audit-vault
       - redis-cache
       - kafka-broker
+      - risk-engine
+
+  # ============================================================================
+  # 9b. Real-Time Fraud Risk Screening Engine (Python FastAPI :8084)
+  # Container Name: risk-engine
+  # Asynchronous geovelocity & impossible travel heuristics (<= 200ms SLA)
+  # ============================================================================
+  risk-engine:
+    container_name: risk-engine
+    build:
+      context: ../backend/risk-engine
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8084:8084"
+    networks:
+      - banking-net
 
   # ============================================================================
   # 10. Notification & Alert Service (Spring Boot :8083)

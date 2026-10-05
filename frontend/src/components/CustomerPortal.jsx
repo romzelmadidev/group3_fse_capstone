@@ -31,7 +31,11 @@ import {
   ArrowRight,
   ExternalLink,
   Clock,
-  Landmark
+  Landmark,
+  ShieldAlert,
+  Navigation,
+  Globe,
+  MapPin
 } from 'lucide-react';
 import { formatPHP, parseMaskedInput, generateUUID } from '../utils/currency';
 import apiClient, { mockState, THRESHOLDS } from '../services/api';
@@ -121,6 +125,26 @@ export default function CustomerPortal({ balance, onTransactionComplete, onSwitc
   const [activePendingTx, setActivePendingTx] = useState(null);
   const [dispatchedOtpCode, setDispatchedOtpCode] = useState('');
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+
+  // Geolocation & Fraud Simulation State
+  const LOCATION_PRESETS = [
+    { id: 'MNL', name: 'Manila, Philippines (Primary / Home)', lat: 14.5995, lon: 120.9842, city: 'Manila, PH', ip: '112.198.45.10', flag: '🇵🇭', type: 'legitimate' },
+    { id: 'CEB', name: 'Cebu City, Philippines (Domestic)', lat: 10.3157, lon: 123.8854, city: 'Cebu, PH', ip: '112.198.88.22', flag: '🇵🇭', type: 'legitimate' },
+    { id: 'LON', name: 'London, UK (Attacker Simulation - Impossible Travel)', lat: 51.5074, lon: -0.1278, city: 'London, UK', ip: '185.86.151.11', flag: '🇬🇧', type: 'anomaly' },
+    { id: 'NYC', name: 'New York, USA (Attacker Simulation - Impossible Travel)', lat: 40.7128, lon: -74.0060, city: 'New York, US', ip: '198.51.100.42', flag: '🇺🇸', type: 'anomaly' },
+  ];
+  const [selectedLocation, setSelectedLocation] = useState(LOCATION_PRESETS[0]);
+  const [fraudAlertData, setFraudAlertData] = useState(null);
+
+  // Time Delta Simulation State (+2 hours, +1 day, custom)
+  const TIME_OFFSET_PRESETS = [
+    { id: 'NONE', label: '⏱️ Real-Time (+0s)', seconds: 0, desc: 'Real elapsed time (Immediate test -> impossible travel if distant)' },
+    { id: '2H', label: '🛫 +2 Hours', seconds: 7200, desc: 'Domestic flight window (e.g. Manila ➔ Cebu passes at ~285 km/h)' },
+    { id: '15H', label: '✈️ +15 Hours', seconds: 54000, desc: 'Intercontinental flight window (e.g. Manila ➔ London passes)' },
+    { id: '1D', label: '📅 +1 Day', seconds: 86400, desc: 'Next-day authorized transaction' },
+  ];
+  const [selectedTimeOffset, setSelectedTimeOffset] = useState(TIME_OFFSET_PRESETS[0]);
+  const [customTimeOffsetHours, setCustomTimeOffsetHours] = useState('');
 
   const numericAmount = parseFloat(amountInput) || 0;
   const sourceAvailable = mockState.account?.available_balance ?? balance?.available_balance ?? 15000000;
@@ -225,6 +249,18 @@ export default function CustomerPortal({ balance, onTransactionComplete, onSwitc
           currency: 'PHP',
           recipient_name: recipientName.trim(),
           memo: memo.trim() || 'Fund Transfer',
+          latitude: selectedLocation.lat,
+          longitude: selectedLocation.lon,
+          location_name: selectedLocation.city,
+          locationName: selectedLocation.city,
+          ip_address: selectedLocation.ip,
+          ipAddress: selectedLocation.ip,
+          simulated_time_offset_seconds: (customTimeOffsetHours && !isNaN(customTimeOffsetHours) && parseFloat(customTimeOffsetHours) > 0)
+            ? Math.round(parseFloat(customTimeOffsetHours) * 3600)
+            : (selectedTimeOffset?.seconds || 0),
+          simulatedTimeOffsetSeconds: (customTimeOffsetHours && !isNaN(customTimeOffsetHours) && parseFloat(customTimeOffsetHours) > 0)
+            ? Math.round(parseFloat(customTimeOffsetHours) * 3600)
+            : (selectedTimeOffset?.seconds || 0),
         },
         {
           headers: {
@@ -305,6 +341,16 @@ export default function CustomerPortal({ balance, onTransactionComplete, onSwitc
       onTransactionComplete?.();
     } catch (err) {
       const problem = err.response?.data;
+      if (err.response?.status === 422 && (problem?.error_code === 'RISK_THRESHOLD_EXCEEDED' || problem?.status === 'REJECTED_FRAUD')) {
+        setFraudAlertData({
+          title: 'Security Notice: Transaction Temporarily Held',
+          location: selectedLocation.name,
+          timestamp: new Date().toLocaleTimeString()
+        });
+        setIsConfirmModalOpen(false);
+        return;
+      }
+
       showToast?.({
         type: 'error',
         title: problem?.title || problem?.error || 'Transfer Failed',
@@ -1072,6 +1118,122 @@ export default function CustomerPortal({ balance, onTransactionComplete, onSwitc
                 />
               </div>
 
+              {/* Geolocation & Impossible Travel Origin Simulator */}
+              <div className="p-4 bg-sunken border border-line space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-fg flex items-center gap-1.5 font-mono">
+                    <Navigation className="w-3.5 h-3.5 text-accent" />
+                    Simulated GPS Origin (Geovelocity Fraud Shield)
+                  </label>
+                  <span className="text-[10px] font-mono text-fg-subtle">OpenStreetMap Geodesic Heuristic</span>
+                </div>
+                <p className="text-2xs text-fg-muted leading-relaxed">
+                  Select the originating transaction location. Firing consecutive transfers from distant locations (e.g. Manila ➔ London) within minutes will trigger immediate <strong>Impossible Travel rejection (HTTP 422)</strong> by the asynchronous Risk Screening Engine (ADR-04).
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  {LOCATION_PRESETS.map((loc) => {
+                    const isSelected = selectedLocation.id === loc.id;
+                    const isAnomaly = loc.type === 'anomaly';
+                    return (
+                      <button
+                        key={loc.id}
+                        type="button"
+                        onClick={() => setSelectedLocation(loc)}
+                        className={cn(
+                          'p-2.5 text-left border text-xs font-mono transition-colors flex items-center justify-between cursor-pointer',
+                          isSelected
+                            ? isAnomaly
+                              ? 'border-red-500 bg-red-500/10 text-red-700 dark:text-red-400 font-semibold'
+                              : 'border-accent bg-accent/10 text-fg font-semibold'
+                            : 'border-line bg-surface hover:bg-sunken text-fg-muted'
+                        )}
+                      >
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span>{loc.flag}</span>
+                            <span className="font-sans font-medium text-fg">{loc.name}</span>
+                          </div>
+                          <span className="text-[10px] text-fg-subtle block mt-0.5">
+                            {loc.lat.toFixed(4)}, {loc.lon.toFixed(4)} &bull; IP: {loc.ip}
+                          </span>
+                        </div>
+                        {isAnomaly && (
+                          <span className="text-[9px] font-mono uppercase px-1 py-0.5 border border-red-300 bg-red-100 dark:bg-red-950/40 text-red-600 font-bold shrink-0 ml-1">
+                            Simulate Attacker
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Time Travel / Elapsed Delta Simulator */}
+              <div className="p-4 bg-sunken border border-line space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-fg flex items-center gap-1.5 font-mono">
+                    <Clock className="w-3.5 h-3.5 text-accent" />
+                    Simulated Time Elapsed Since Previous Transaction
+                  </label>
+                  <span className="text-[10px] font-mono text-fg-subtle">Velocity Vector Delta (&Delta;t)</span>
+                </div>
+                <p className="text-2xs text-fg-muted leading-relaxed">
+                  Controls how much time has passed between your previous transaction and this one.
+                  A 571 km jump to Cebu in 50 seconds = <strong className="text-red-500 font-mono">40,307 km/h (BLOCKED)</strong>.
+                  The same transfer after <strong className="text-emerald-500 font-mono">+2 Hours</strong> = <strong className="text-emerald-500 font-mono">~285 km/h (PASSES)</strong>!
+                </p>
+
+                {/* Preset Time Buttons */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                  {TIME_OFFSET_PRESETS.map((t) => {
+                    const isSelected = !customTimeOffsetHours && selectedTimeOffset.id === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTimeOffset(t);
+                          setCustomTimeOffsetHours('');
+                        }}
+                        className={cn(
+                          'p-2 text-center border text-xs font-mono transition-colors cursor-pointer',
+                          isSelected
+                            ? 'border-accent bg-accent/10 text-fg font-semibold'
+                            : 'border-line bg-surface hover:bg-sunken text-fg-muted'
+                        )}
+                        title={t.desc}
+                      >
+                        <span className="block font-semibold">{t.label}</span>
+                        <span className="text-[9px] text-fg-subtle block mt-0.5">{t.seconds > 0 ? `+${(t.seconds / 3600).toFixed(0)}h` : '0s'}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Hours / Days Input */}
+                <div className="flex items-center gap-2 pt-1 border-t border-line">
+                  <span className="text-2xs font-mono text-fg-subtle shrink-0">Custom Hours (+h):</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={customTimeOffsetHours}
+                    onChange={(e) => setCustomTimeOffsetHours(e.target.value)}
+                    placeholder="e.g. 2.5 (hours), 24 (1 day), 72 (3 days)"
+                    className="flex-1 bg-surface border border-line px-2.5 py-1 text-xs text-fg font-mono focus:outline-none focus:border-accent"
+                  />
+                  {customTimeOffsetHours && (
+                    <button
+                      type="button"
+                      onClick={() => setCustomTimeOffsetHours('')}
+                      className="text-2xs font-mono text-accent hover:underline px-1"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {numericAmount > THRESHOLDS.STP_MAX && (
                 <div className="p-3 bg-accent-soft/30 border border-accent-line text-2xs text-fg flex items-start gap-2">
                   <ShieldCheck className="w-4 h-4 text-accent shrink-0 mt-0.5" />
@@ -1530,6 +1692,89 @@ export default function CustomerPortal({ balance, onTransactionComplete, onSwitc
               >
                 Close
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          MODAL 5: CUSTOMER SECURITY NOTICE (GEOVELOCITY HOLD)
+         ======================================================== */}
+      {fraudAlertData && (
+        <div 
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setFraudAlertData(null);
+          }}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="bg-surface border-2 border-amber-500 max-w-lg w-full p-6 shadow-2xl relative space-y-5">
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-full bg-amber-500/15 border border-amber-500 flex items-center justify-center shrink-0">
+                <ShieldAlert className="w-6 h-6 text-amber-500 animate-pulse" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-fg font-sans">
+                  Security Notice: Transaction Temporarily Held
+                </h3>
+                <p className="text-2xs text-fg-subtle">
+                  AuraBank Account Safeguard &bull; Real-Time Fraud &amp; Identity Protection
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-amber-500/10 border border-amber-500/25 space-y-3">
+              <p className="text-xs text-fg leading-relaxed">
+                We detected unusual activity from a new location. To protect your funds, this transfer was stopped and your account has been placed on a temporary security hold.
+              </p>
+              <p className="text-xs text-fg-muted leading-relaxed">
+                If this was you, please verify your identity via Face/2FA or contact Customer Support.
+              </p>
+              <div className="pt-2 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-2 text-2xs text-fg-subtle">
+                <span className="flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  ₱0.00 Deducted &bull; Funds Fully Protected
+                </span>
+                <span className="font-mono text-fg-subtle">
+                  Time: {fraudAlertData.timestamp || 'Just now'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  showToast?.({
+                    type: 'info',
+                    title: 'Customer Support Hotline',
+                    detail: 'Priority 24/7 Security Assistance: 1-800-888-AURA (Domestic toll-free)',
+                  });
+                }}
+                className="px-3.5 py-2 text-xs font-medium border border-line bg-sunken hover:bg-surface text-fg cursor-pointer transition-colors text-center"
+              >
+                Contact Support
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  showToast?.({
+                    type: 'info',
+                    title: 'Identity Verification Initiated',
+                    detail: 'A secure 2FA identity challenge code has been dispatched to your registered contact channel.',
+                  });
+                  setFraudAlertData(null);
+                }}
+                className="px-4 py-2 text-xs font-semibold bg-accent text-fg-inverse hover:opacity-90 cursor-pointer transition-opacity text-center"
+              >
+                Verify Identity via 2FA
+              </button>
+              <button
+                type="button"
+                onClick={() => setFraudAlertData(null)}
+                className="px-3 py-2 text-xs text-fg-subtle hover:text-fg cursor-pointer transition-colors text-center"
+              >
+                Dismiss
+              </button>
             </div>
           </div>
         </div>
