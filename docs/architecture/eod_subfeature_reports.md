@@ -177,14 +177,14 @@ sequenceDiagram
 
     %% STEP 5: EVENT PUBLICATION & ASYNC CONSUMPTION
     rect rgb(240, 255, 255)
-    Note over CBS,AzureSQL: Rule 3: Record reports completion and statement events into cbs_outbox
-    CBS->>AzureSQL: INSERT INTO cbs_outbox (event_type: "REPORTS_READY", aggregate_id: "REP-20261005", status: "PENDING")
-    CBS->>AzureSQL: INSERT INTO cbs_outbox (event_type: "STATEMENT_GENERATED", aggregate_id: "STMT-ACC-100223", status: "PENDING")
+    Note over CBS,AzureSQL: Rule 3: Record reports completion and statement events into outbox_events
+    CBS->>AzureSQL: INSERT INTO outbox_events (event_type: "REPORTS_READY", aggregate_id: "REP-20261005", status: "PENDING")
+    CBS->>AzureSQL: INSERT INTO outbox_events (event_type: "STATEMENT_GENERATED", aggregate_id: "STMT-ACC-100223", status: "PENDING")
 
-    Note over CBS,Kafka: Rule 3: CBS publishes reports & statement events directly to Kafka from cbs_outbox
+    Note over CBS,Kafka: Rule 3: CBS publishes reports & statement events directly to Kafka from outbox_events
     CBS->>Kafka: Publish ReportsReadyEvent (date: 2026-10-05, glBalanced: true, reportIds: ["GL_TRIAL_BAL", "TXN_JOURNAL", "AMLA_CTR", "EOD_SUMMARY"])
     CBS->>Kafka: Publish StatementGeneratedEvent (accountId: ACC-100223, cycleStart: 2026-09-06, cycleEnd: 2026-10-05)
-    CBS->>AzureSQL: UPDATE cbs_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id IN ("REP-20261005", "STMT-ACC-100223") AND status = "PENDING"
+    CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id IN ("REP-20261005", "STMT-ACC-100223") AND status = "PENDING"
     end
 
     par Downstream Statement Generation & Dispatch

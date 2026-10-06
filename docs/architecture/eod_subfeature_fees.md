@@ -151,8 +151,8 @@ sequenceDiagram
     CBS->>AzureSQL: INSERT INTO transactions (transaction_id, account_id, type, amount, status, description) VALUES ('TXN-FEE-881', 'ACC-101', 'FEE_BELOW_MIN_ADB', 500.0000, 'EXECUTED', 'Monthly Below-Min ADB Fee')
     CBS->>AzureSQL: INSERT INTO gl_ledger (gl_code, debit_amount, credit_amount, ref_id) VALUES ('GL-2100-CUST-LIAB', 500.0000, 0.0000, 'TXN-FEE-881')
     CBS->>AzureSQL: INSERT INTO gl_ledger (gl_code, debit_amount, credit_amount, ref_id) VALUES ('GL-4100-FEE-INCOME', 0.0000, 500.0000, 'TXN-FEE-881')
-    Note over CBS,AzureSQL: Rule 3: Record fee event into cbs_outbox within transaction
-    CBS->>AzureSQL: INSERT INTO cbs_outbox (event_type: "FEE_DEDUCTED", aggregate_id: "FEE-ACC-101", status: "PENDING")
+    Note over CBS,AzureSQL: Rule 3: Record fee event into outbox_events within transaction
+    CBS->>AzureSQL: INSERT INTO outbox_events (event_type: "FEE_DEDUCTED", aggregate_id: "FEE-ACC-101", status: "PENDING")
     CBS->>AzureSQL: COMMIT TRANSACTION
     AzureSQL-->>CBS: Transaction Committed (New Balance: 24,500.00 PHP)
     end
@@ -169,8 +169,8 @@ sequenceDiagram
     CBS->>AzureSQL: INSERT INTO uncollected_fees (account_id, original_fee_amount, collected_amount, uncollected_amount, reason) VALUES ('ACC-102', 500.0000, 200.0000, 300.0000, 'INSUFFICIENT_FUNDS')
     CBS->>AzureSQL: INSERT INTO gl_ledger (gl_code, debit_amount, credit_amount, ref_id) VALUES ('GL-2100-CUST-LIAB', 200.0000, 0.0000, 'TXN-FEE-882')
     CBS->>AzureSQL: INSERT INTO gl_ledger (gl_code, debit_amount, credit_amount, ref_id) VALUES ('GL-4100-FEE-INCOME', 0.0000, 200.0000, 'TXN-FEE-882')
-    Note over CBS,AzureSQL: Rule 3: Record fee event into cbs_outbox within transaction
-    CBS->>AzureSQL: INSERT INTO cbs_outbox (event_type: "FEE_DEDUCTED", aggregate_id: "FEE-ACC-102", status: "PENDING")
+    Note over CBS,AzureSQL: Rule 3: Record fee event into outbox_events within transaction
+    CBS->>AzureSQL: INSERT INTO outbox_events (event_type: "FEE_DEDUCTED", aggregate_id: "FEE-ACC-102", status: "PENDING")
     CBS->>AzureSQL: COMMIT TRANSACTION
     AzureSQL-->>CBS: Transaction Committed (New Balance: 0.00 PHP, Uncollected: 300.00 PHP)
     end
@@ -178,10 +178,10 @@ sequenceDiagram
     %% BATCH COMPLETION & ASYNC DELIVERY
     rect rgb(240, 255, 255)
     CBS-->>BatchCoordinator: 200 OK (OFS: AC.CHARGE-BATCH//1/SUCCESS,PROCESSED=2,DEDUCTED=700.00,ARREARS=300.00)
-    Note over CBS,Kafka: Rule 3: CBS publishes fee events directly to Kafka from cbs_outbox
+    Note over CBS,Kafka: Rule 3: CBS publishes fee events directly to Kafka from outbox_events
     CBS->>Kafka: Publish FeeDeductedEvent (accountId: ACC-101, feeType: BELOW_MIN_ADB, feeAmount: 500.00 PHP, newBalance: 24500.00 PHP)
     CBS->>Kafka: Publish FeeDeductedEvent (accountId: ACC-102, feeType: BELOW_MIN_ADB_PARTIAL, feeAmount: 200.00 PHP, uncollectedAmount: 300.00 PHP, newBalance: 0.00 PHP)
-    CBS->>AzureSQL: UPDATE cbs_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id IN ("FEE-ACC-101", "FEE-ACC-102") AND status = "PENDING"
+    CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id IN ("FEE-ACC-101", "FEE-ACC-102") AND status = "PENDING"
     end
 
     par Asynchronous Customer Advice Delivery

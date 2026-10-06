@@ -159,13 +159,13 @@ sequenceDiagram
     CBS->>AzureSQL: SELECT status FROM system_dates WITH (UPDLOCK)
     AzureSQL-->>CBS: status = "ONLINE"
     CBS->>AzureSQL: UPDATE system_dates SET status = "EOD_CUTOFF"
-    Note over CBS,AzureSQL: Rule 3: Record batch event into cbs_outbox within transaction
-    CBS->>AzureSQL: INSERT INTO cbs_outbox (event_type: "EOD_CUTOFF_INITIATED", aggregate_id: "BATCH-20261005", status: "PENDING")
+    Note over CBS,AzureSQL: Rule 3: Record batch event into outbox_events within transaction
+    CBS->>AzureSQL: INSERT INTO outbox_events (event_type: "EOD_CUTOFF_INITIATED", aggregate_id: "BATCH-20261005", status: "PENDING")
     CBS-->>Orch: 200 OK (OFS: BATCH-CUTOFF//1/SUCCESS,STATUS=EOD_CUTOFF)
 
-    Note over CBS,Kafka: Rule 3: CBS publishes batch cutoff event directly to Kafka from cbs_outbox
+    Note over CBS,Kafka: Rule 3: CBS publishes batch cutoff event directly to Kafka from outbox_events
     CBS->>Kafka: Publish EodCutoffInitiatedEvent (valueDate: 2026-10-05)
-    CBS->>AzureSQL: UPDATE cbs_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "BATCH-20261005" AND status = "PENDING"
+    CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "BATCH-20261005" AND status = "PENDING"
     end
 
     %% PHASE 1: SUBFEATURE 4.2 FEES
@@ -186,15 +186,15 @@ sequenceDiagram
         opt Partial Deduction or Zero Balance
             CBS->>AzureSQL: INSERT INTO uncollected_fees (record unpaid arrears)
         end
-        Note over CBS,AzureSQL: Rule 3: Record fee event into cbs_outbox within ACID transaction
-        CBS->>AzureSQL: INSERT INTO cbs_outbox (event_type: "FEE_DEDUCTED", aggregate_id: "BATCH-FEE-20261005", status: "PENDING")
+        Note over CBS,AzureSQL: Rule 3: Record fee event into outbox_events within ACID transaction
+        CBS->>AzureSQL: INSERT INTO outbox_events (event_type: "FEE_DEDUCTED", aggregate_id: "BATCH-FEE-20261005", status: "PENDING")
         CBS->>AzureSQL: COMMIT TRANSACTION
     end
     CBS-->>Orch: 200 OK (OFS: AC.CHARGE-BATCH//1/SUCCESS,PROCESSED=142,TOTAL_FEES=71000.00,ARREARS=300.00)
 
-    Note over CBS,Kafka: Rule 3: CBS publishes fee events directly to Kafka from cbs_outbox
+    Note over CBS,Kafka: Rule 3: CBS publishes fee events directly to Kafka from outbox_events
     CBS->>Kafka: Publish FeeDeductedEvent (processedCount: 142, totalFees: 71000.00 PHP)
-    CBS->>AzureSQL: UPDATE cbs_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "BATCH-FEE-20261005" AND status = "PENDING"
+    CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "BATCH-FEE-20261005" AND status = "PENDING"
     end
 
     %% PHASE 2: SUBFEATURE 4.3 INTEREST
@@ -220,16 +220,16 @@ sequenceDiagram
             CBS->>AzureSQL: INSERT INTO transactions (type: "WITHHOLDING_TAX")
             CBS->>AzureSQL: INSERT INTO gl_ledger (DR: GL-2200-INT-PAYABLE, CR: CustomerAcct, CR: GL-2300-WHT-PAYABLE)
             CBS->>AzureSQL: UPDATE interest_accruals SET is_capitalized = 1 WHERE account_id = ?
-            Note over CBS,AzureSQL: Rule 3: Record interest event into cbs_outbox within ACID transaction
-            CBS->>AzureSQL: INSERT INTO cbs_outbox (event_type: "INTEREST_CAPITALIZED", aggregate_id: "BATCH-INT-20261005", status: "PENDING")
+            Note over CBS,AzureSQL: Rule 3: Record interest event into outbox_events within ACID transaction
+            CBS->>AzureSQL: INSERT INTO outbox_events (event_type: "INTEREST_CAPITALIZED", aggregate_id: "BATCH-INT-20261005", status: "PENDING")
             CBS->>AzureSQL: COMMIT TRANSACTION
         end
     end
     CBS-->>Orch: 200 OK (OFS: IC.CHARGE-BATCH//1/SUCCESS,PROCESSED=12000,NET_CREDITED=2038368.00,TAX_WITHHELD=509592.00)
 
-    Note over CBS,Kafka: Rule 3: CBS publishes interest events directly to Kafka from cbs_outbox
+    Note over CBS,Kafka: Rule 3: CBS publishes interest events directly to Kafka from outbox_events
     CBS->>Kafka: Publish InterestCapitalizedEvent (capitalizedAccounts: 12000, totalNetCredited: 2038368.00 PHP)
-    CBS->>AzureSQL: UPDATE cbs_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "BATCH-INT-20261005" AND status = "PENDING"
+    CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "BATCH-INT-20261005" AND status = "PENDING"
     end
 
     %% PHASE 3: SUBFEATURE 4.1 REPORTS & RECONCILIATION
@@ -244,13 +244,13 @@ sequenceDiagram
     Note over CBS: Validate Zero-Sum GL Equation: Debits equal Credits (Passed)
     CBS->>AzureSQL: INSERT INTO eod_balance_snapshots (account_id, closing_balance, held_amount, snapshot_date)
     CBS->>AzureSQL: INSERT INTO eod_reports_metadata (report_type, status, record_count, storage_uri, file_sha256_hash)
-    Note over CBS,AzureSQL: Rule 3: Record reports event into cbs_outbox
-    CBS->>AzureSQL: INSERT INTO cbs_outbox (event_type: "REPORTS_READY", aggregate_id: "BATCH-REP-20261005", status: "PENDING")
+    Note over CBS,AzureSQL: Rule 3: Record reports event into outbox_events
+    CBS->>AzureSQL: INSERT INTO outbox_events (event_type: "REPORTS_READY", aggregate_id: "BATCH-REP-20261005", status: "PENDING")
     CBS-->>Orch: 200 OK (OFS: GL.REPORT//1/SUCCESS,BALANCED=YES,REPORT_COUNT=4)
 
-    Note over CBS,Kafka: Rule 3: CBS publishes reports event directly to Kafka from cbs_outbox
+    Note over CBS,Kafka: Rule 3: CBS publishes reports event directly to Kafka from outbox_events
     CBS->>Kafka: Publish ReportsReadyEvent (date: 2026-10-05, glBalanced: true, reportIds: ["GL_TRIAL_BAL", "TXN_JOURNAL", "AMLA_CTR", "EOD_SUMMARY"])
-    CBS->>AzureSQL: UPDATE cbs_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "BATCH-REP-20261005" AND status = "PENDING"
+    CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "BATCH-REP-20261005" AND status = "PENDING"
     end
 
     %% PHASE 4: ROLLOVER & REOPEN
@@ -261,14 +261,14 @@ sequenceDiagram
     Orch->>CBS: POST /api/v1/internal/cbs/ofs-command (Payload: DATES,ROLLOVER wire string)
 
     CBS->>AzureSQL: UPDATE system_dates SET business_date = '2026-10-06', status = 'ONLINE'
-    Note over CBS,AzureSQL: Rule 3: Record rollover event into cbs_outbox within transaction
-    CBS->>AzureSQL: INSERT INTO cbs_outbox (event_type: "EOD_COMPLETED", aggregate_id: "BATCH-EOD-20261005", status: "PENDING")
+    Note over CBS,AzureSQL: Rule 3: Record rollover event into outbox_events within transaction
+    CBS->>AzureSQL: INSERT INTO outbox_events (event_type: "EOD_COMPLETED", aggregate_id: "BATCH-EOD-20261005", status: "PENDING")
     AzureSQL-->>CBS: Date Rollover Committed
     CBS-->>Orch: 200 OK (OFS: DATES-ROLLOVER//1/SUCCESS,NEW.DATE=20261006,STATUS=ONLINE)
 
-    Note over CBS,Kafka: Rule 3: CBS publishes EOD completion event directly to Kafka from cbs_outbox
+    Note over CBS,Kafka: Rule 3: CBS publishes EOD completion event directly to Kafka from outbox_events
     CBS->>Kafka: Publish EodCompletedEvent (date: 2026-10-05, nextDate: 2026-10-06, status: SUCCESS)
-    CBS->>AzureSQL: UPDATE cbs_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "BATCH-EOD-20261005" AND status = "PENDING"
+    CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "BATCH-EOD-20261005" AND status = "PENDING"
     
     Orch-->>Gateway: 200 OK (BatchExecutionSummary: status = EOD_COMPLETED, durationSec = 142)
     Gateway-->>Operator: 200 OK (EOD Pipeline Completed Successfully)

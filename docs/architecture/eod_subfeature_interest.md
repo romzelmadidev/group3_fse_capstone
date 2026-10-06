@@ -180,16 +180,16 @@ sequenceDiagram
         CBS->>AzureSQL: INSERT INTO gl_ledger (gl_code, debit_amount, credit_amount, ref_id) VALUES ('GL-2100-CUST-LIAB', 0.0000, 169.8640, 'TXN-INT-991')
         CBS->>AzureSQL: INSERT INTO gl_ledger (gl_code, debit_amount, credit_amount, ref_id) VALUES ('GL-2300-WHT-PAYABLE', 0.0000, 42.4660, 'TXN-TAX-992')
         CBS->>AzureSQL: UPDATE interest_accruals SET is_capitalized = 1 WHERE account_id = 'ACC-101' AND is_capitalized = 0
-        Note over CBS,AzureSQL: Rule 3: Record interest event into cbs_outbox within ACID transaction
-        CBS->>AzureSQL: INSERT INTO cbs_outbox (event_type: "INTEREST_CAPITALIZED", aggregate_id: "BATCH-INT-20261005", status: "PENDING")
+        Note over CBS,AzureSQL: Rule 3: Record interest event into outbox_events within ACID transaction
+        CBS->>AzureSQL: INSERT INTO outbox_events (event_type: "INTEREST_CAPITALIZED", aggregate_id: "BATCH-INT-20261005", status: "PENDING")
         CBS->>AzureSQL: COMMIT TRANSACTION
         AzureSQL-->>CBS: Transaction Committed (New Balance: 100,169.8640 PHP)
     end
     CBS-->>BatchJob: 200 OK (OFS: IC.CHARGE-BATCH//1/SUCCESS,PROCESSED=12000,NET_CREDITED=2038368.00,TAX_WITHHELD=509592.00)
 
-    Note over CBS,Kafka: Rule 3: CBS publishes interest events directly to Kafka from cbs_outbox
+    Note over CBS,Kafka: Rule 3: CBS publishes interest events directly to Kafka from outbox_events
     CBS->>Kafka: Publish InterestCapitalizedEvent (capitalizedAccounts: 12000, totalNetCredited: 2038368.00 PHP)
-    CBS->>AzureSQL: UPDATE cbs_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "BATCH-INT-20261005" AND status = "PENDING"
+    CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "BATCH-INT-20261005" AND status = "PENDING"
     end
 
     %% ASYNCHRONOUS CONSUMPTION

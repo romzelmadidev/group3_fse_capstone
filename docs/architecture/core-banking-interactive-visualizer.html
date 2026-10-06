@@ -1,0 +1,3345 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-preset="classic">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Core Banking Platform: Interactive Architecture &amp; Sequence Visualizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root, [data-theme="dark"] {
+      --bg: #030712;
+      --bg-surface: #0b1329;
+      --bg-panel: rgba(15, 23, 42, 0.75);
+      --bg-panel-solid: #0f172a;
+      --bg-input: #1e293b;
+      --border: #1e293b;
+      --border-accent: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      
+      --cyan: #06b6d4;
+      --cyan-dim: rgba(6, 182, 212, 0.15);
+      --emerald: #10b981;
+      --emerald-dim: rgba(16, 185, 129, 0.15);
+      --purple: #8b5cf6;
+      --purple-dim: rgba(139, 92, 246, 0.15);
+      --amber: #f59e0b;
+      --amber-dim: rgba(245, 158, 11, 0.15);
+      --rose: #f43f5e;
+      --rose-dim: rgba(244, 63, 94, 0.15);
+      --blue: #3b82f6;
+      --blue-dim: rgba(59, 130, 246, 0.15);
+      --orange: #f97316;
+      --orange-dim: rgba(249, 115, 22, 0.15);
+
+      --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+      --font-mono: 'JetBrains Mono', monospace;
+      --font-sans: 'Inter', system-ui, sans-serif;
+    }
+
+    [data-theme="light"] {
+      --bg: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-panel: rgba(255, 255, 255, 0.85);
+      --bg-panel-solid: #ffffff;
+      --bg-input: #f1f5f9;
+      --border: #e2e8f0;
+      --border-accent: #cbd5e1;
+      --text: #0f172a;
+      --text-muted: #475569;
+      --text-dim: #94a3b8;
+      
+      --cyan: #0284c7;
+      --cyan-dim: rgba(2, 132, 199, 0.12);
+      --emerald: #059669;
+      --emerald-dim: rgba(5, 150, 105, 0.12);
+      --purple: #7c3aed;
+      --purple-dim: rgba(124, 58, 237, 0.12);
+      --amber: #d97706;
+      --amber-dim: rgba(217, 119, 6, 0.12);
+      --rose: #e11d48;
+      --rose-dim: rgba(225, 29, 72, 0.12);
+      --blue: #2563eb;
+      --blue-dim: rgba(37, 99, 235, 0.12);
+      --orange: #ea580c;
+      --orange-dim: rgba(234, 88, 12, 0.12);
+
+      --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* HEADER */
+    header {
+      height: 56px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1.5rem;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .brand-logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, var(--cyan), var(--purple));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: #fff;
+      font-size: 0.85rem;
+      box-shadow: 0 0 12px var(--cyan-dim);
+    }
+    .brand-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .brand-badge {
+      font-size: 0.65rem;
+      font-family: var(--font-mono);
+      background: var(--cyan-dim);
+      color: var(--cyan);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      border: 1px solid rgba(6, 182, 212, 0.3);
+    }
+
+    .header-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .nav-btn {
+      padding: 0.45rem 0.85rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid transparent;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.15s;
+    }
+    .nav-btn:hover {
+      background: var(--bg-input);
+      color: var(--text);
+    }
+    .nav-btn.active {
+      background: var(--cyan-dim);
+      color: var(--cyan);
+      border-color: rgba(6, 182, 212, 0.3);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .btn-icon {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-icon:hover {
+      color: var(--text);
+      border-color: var(--border-accent);
+    }
+
+    /* MAIN CONTAINER */
+    main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: 330px;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .sidebar-header {
+      padding: 1rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .flow-select-title {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      font-weight: 700;
+    }
+
+    .flow-filters {
+      display: flex;
+      gap: 0.35rem;
+      margin-top: 0.25rem;
+    }
+    .filter-pill {
+      flex: 1;
+      padding: 0.35rem 0.2rem;
+      border-radius: 6px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      background: var(--bg-input);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+    }
+    .filter-pill:hover {
+      color: var(--text);
+      border-color: var(--border-accent);
+    }
+    .filter-pill.active {
+      background: var(--cyan-dim);
+      color: var(--cyan);
+      border-color: var(--cyan);
+    }
+
+    .flow-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .flow-card {
+      padding: 0.75rem 0.85rem;
+      border-radius: 8px;
+      background: var(--bg-panel-solid);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      transition: all 0.15s ease;
+      text-align: left;
+    }
+    .flow-card:hover {
+      border-color: var(--border-accent);
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .flow-card.active {
+      border-color: var(--cyan);
+      background: var(--cyan-dim);
+    }
+    .flow-name {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .flow-badge {
+      font-size: 0.62rem;
+      font-family: var(--font-mono);
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      background: var(--bg-input);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .flow-badge.danger {
+      background: var(--rose-dim);
+      color: var(--rose);
+      border-color: rgba(244, 63, 94, 0.3);
+    }
+    .flow-badge.warning {
+      background: var(--amber-dim);
+      color: var(--amber);
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+    .flow-badge.success {
+      background: var(--emerald-dim);
+      color: var(--emerald);
+      border-color: rgba(16, 185, 129, 0.3);
+    }
+    .flow-desc {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      line-height: 1.35;
+    }
+
+    .sidebar-rules {
+      padding: 0.85rem 1rem;
+      border-top: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.15);
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .rule-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      line-height: 1.3;
+    }
+    .rule-tag {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 0.65rem;
+      padding: 0.1rem 0.3rem;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+    .rule-r1 { background: var(--purple-dim); color: var(--purple); }
+    .rule-r2 { background: var(--emerald-dim); color: var(--emerald); }
+    .rule-r3 { background: var(--cyan-dim); color: var(--cyan); }
+
+    /* CONTENT AREA */
+    .content-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* PLAYER TOOLBAR */
+    .player-bar {
+      height: 52px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1.25rem;
+      flex-shrink: 0;
+      gap: 1rem;
+    }
+    .player-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .btn-step {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.15s;
+    }
+    .btn-step:hover:not(:disabled) {
+      border-color: var(--border-accent);
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .btn-step:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .btn-play {
+      padding: 0 0.85rem;
+      height: 32px;
+      border-radius: 6px;
+      background: var(--cyan);
+      border: none;
+      color: #fff;
+      font-weight: 600;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-play:hover {
+      opacity: 0.9;
+    }
+
+    .step-indicator {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-left: 0.5rem;
+    }
+    .step-indicator b {
+      color: var(--text);
+    }
+
+    .timeline-scrubber {
+      flex: 1;
+      max-width: 500px;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .scrubber-slider {
+      flex: 1;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      background: var(--bg-input);
+      border-radius: 3px;
+      outline: none;
+      cursor: pointer;
+    }
+    .scrubber-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--cyan);
+      cursor: pointer;
+      box-shadow: 0 0 8px var(--cyan);
+    }
+
+    /* VISUAL CANVAS & PANELS SPLIT */
+    .workspace-split {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+    .canvas-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      background: radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.4) 0%, var(--bg) 100%);
+    }
+    .canvas-svg {
+      width: 100%;
+      height: 100%;
+      user-select: none;
+    }
+
+    /* INSPECTOR PANEL */
+    .inspector-panel {
+      width: 450px;
+      background: var(--bg-surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .inspector-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.1);
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 0.75rem 0.5rem;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+    }
+    .tab-btn:hover {
+      color: var(--text);
+    }
+    .tab-btn.active {
+      color: var(--cyan);
+      border-bottom-color: var(--cyan);
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .inspector-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+    .meta-card {
+      background: var(--bg-panel-solid);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+    .meta-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .meta-desc {
+      font-size: 0.85rem;
+      line-height: 1.45;
+      color: var(--text);
+    }
+    .code-box {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      background: #020617;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 0.75rem;
+      overflow-x: auto;
+      white-space: pre;
+      color: #38bdf8;
+      line-height: 1.4;
+    }
+    .tag-pill {
+      font-size: 0.65rem;
+      font-family: var(--font-mono);
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .tag-pill.success { background: var(--emerald-dim); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.3); }
+    .tag-pill.warning { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(245, 158, 11, 0.3); }
+    .tag-pill.info { background: var(--cyan-dim); color: var(--cyan); border: 1px solid rgba(6, 182, 212, 0.3); }
+    .tag-pill.danger { background: var(--rose-dim); color: var(--rose); border: 1px solid rgba(244, 63, 94, 0.3); }
+
+    /* SVG SEQUENCE DIAGRAM STYLES */
+    .svg-node-box {
+      transition: all 0.2s ease;
+    }
+    .svg-node-box.active {
+      filter: drop-shadow(0 0 10px currentColor);
+      stroke-width: 2.5px;
+    }
+    .svg-lifeline {
+      stroke: var(--border);
+      stroke-width: 1.5;
+      stroke-dasharray: 4, 4;
+    }
+    .svg-msg-arrow {
+      transition: stroke-width 0.2s;
+    }
+    .svg-msg-arrow.animated {
+      animation: dashPulse 1.5s infinite;
+    }
+    @keyframes dashPulse {
+      0% { stroke-opacity: 0.7; }
+      50% { stroke-opacity: 1; }
+      100% { stroke-opacity: 0.7; }
+    }
+
+    /* TOPOLOGY VIEW */
+    .topology-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.5rem;
+    }
+    .topo-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      max-width: 1100px;
+      width: 100%;
+    }
+    .topo-card {
+      background: var(--bg-panel-solid);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      transition: all 0.2s;
+    }
+    .topo-card:hover {
+      border-color: var(--cyan);
+      box-shadow: 0 4px 20px rgba(6, 182, 212, 0.1);
+      transform: translateY(-2px);
+    }
+    .topo-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .topo-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+    .topo-port {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--cyan);
+      background: var(--cyan-dim);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+    }
+
+    /* DATA TABLES */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    .data-table th, .data-table td {
+      padding: 0.6rem 0.75rem;
+      border: 1px solid var(--border);
+      text-align: left;
+    }
+    .data-table th {
+      background: var(--bg-input);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    .data-table td code {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--cyan);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="brand-group">
+      <div class="brand-logo">CB</div>
+      <div class="brand-title">
+        Core Banking Platform Visualizer
+        <span class="brand-badge">v2.5 Full Scenarios</span>
+      </div>
+    </div>
+
+    <div class="header-nav">
+      <button class="nav-btn active" onclick="switchView('sequence')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        Sequence Player
+      </button>
+      <button class="nav-btn" onclick="switchView('topology')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        System Topology
+      </button>
+      <button class="nav-btn" onclick="switchView('protocols')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        OFS &amp; Events
+      </button>
+      <button class="nav-btn" onclick="switchView('schemas')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+        Database Schemas
+      </button>
+    </div>
+
+    <div class="header-actions">
+      <button class="btn-icon" title="Toggle Theme" onclick="toggleTheme()">
+        <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <button class="btn-icon" title="Reset View" onclick="resetVisualizer()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <main>
+    
+    <!-- SIDEBAR: FLOW SELECTOR -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="flow-select-title">Capability Flows</div>
+        <div class="flow-filters">
+          <button class="filter-pill active" id="filter-all" onclick="setFlowFilter('all')">All (11)</button>
+          <button class="filter-pill" id="filter-happy" onclick="setFlowFilter('happy')">Happy (5)</button>
+          <button class="filter-pill" id="filter-failure" onclick="setFlowFilter('failure')">Failures (6)</button>
+        </div>
+      </div>
+
+      <div class="flow-list" id="flowList">
+        <!-- Flow cards generated via JS -->
+      </div>
+
+      <div class="sidebar-rules">
+        <div class="flow-select-title">Architecture Rules Enforced</div>
+        <div class="rule-item">
+          <span class="rule-tag rule-r1">RULE 1</span>
+          <span><b>OFS Wire Translation:</b> All Orchestrator to CBS commands are translated to Temenos OFS syntax before transmission.</span>
+        </div>
+        <div class="rule-item">
+          <span class="rule-tag rule-r2">RULE 2</span>
+          <span><b>DB Boundary Separation:</b> Kafka never writes to DB directly; AuditWorker persists events to PostgreSQL.</span>
+        </div>
+        <div class="rule-item">
+          <span class="rule-tag rule-r3">RULE 3</span>
+          <span><b>Master Outbox Protocol:</b> CBS records events to existing <code>outbox_events</code> within ACID ledger tx before Kafka publish.</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CONTENT AREA -->
+    <div class="content-area">
+
+      <!-- VIEW 1: SEQUENCE PLAYER VIEW -->
+      <div id="view-sequence" style="display:flex; flex-direction:column; flex:1; overflow:hidden;">
+        <!-- PLAYER TOOLBAR -->
+        <div class="player-bar">
+          <div class="player-controls">
+            <button class="btn-step" onclick="prevStep()" id="btnPrev" title="Previous Step (Left Arrow)">◀</button>
+            <button class="btn-play" onclick="togglePlay()" id="btnPlay">
+              <span id="playIcon">▶</span> <span id="playText">Play</span>
+            </button>
+            <button class="btn-step" onclick="nextStep()" id="btnNext" title="Next Step (Right Arrow)">▶</button>
+            <span class="step-indicator" id="stepIndicator">Step <b>1</b> of <b>12</b></span>
+          </div>
+
+          <div class="timeline-scrubber">
+            <input type="range" class="scrubber-slider" id="stepSlider" min="0" max="11" value="0" oninput="seekStep(this.value)">
+          </div>
+
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span style="font-size:0.75rem; color:var(--text-dim);">Speed:</span>
+            <select id="playbackSpeed" style="background:var(--bg-input); color:var(--text); border:1px solid var(--border); border-radius:4px; padding:0.25rem 0.5rem; font-size:0.75rem; font-family:var(--font-mono);">
+              <option value="1500">Fast (1.5s)</option>
+              <option value="2500" selected>Normal (2.5s)</option>
+              <option value="4000">Slow (4.0s)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- SPLIT CANVAS & INSPECTOR -->
+        <div class="workspace-split">
+          <!-- CANVAS CONTAINER -->
+          <div class="canvas-container" id="canvasContainer">
+            <svg class="canvas-svg" id="seqSvg" viewBox="0 0 1100 620" preserveAspectRatio="xMidYMid meet">
+              <defs>
+                <marker id="arrowhead-cyan" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+                  <polygon points="0 0, 8 3, 0 6" fill="var(--cyan)" />
+                </marker>
+                <marker id="arrowhead-emerald" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+                  <polygon points="0 0, 8 3, 0 6" fill="var(--emerald)" />
+                </marker>
+                <marker id="arrowhead-purple" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+                  <polygon points="0 0, 8 3, 0 6" fill="var(--purple)" />
+                </marker>
+                <marker id="arrowhead-amber" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+                  <polygon points="0 0, 8 3, 0 6" fill="var(--amber)" />
+                </marker>
+                <marker id="arrowhead-rose" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+                  <polygon points="0 0, 8 3, 0 6" fill="var(--rose)" />
+                </marker>
+                <marker id="arrowhead-orange" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+                  <polygon points="0 0, 8 3, 0 6" fill="var(--orange)" />
+                </marker>
+              </defs>
+
+              <!-- PARTICIPANTS BACKGROUND HEADERS -->
+              <g id="participantsGroup"></g>
+
+              <!-- LIFELINES -->
+              <g id="lifelinesGroup"></g>
+
+              <!-- DYNAMIC MESSAGE ARROWS & PACKETS -->
+              <g id="messagesGroup"></g>
+            </svg>
+          </div>
+
+          <!-- INSPECTOR PANEL -->
+          <div class="inspector-panel">
+            <div class="inspector-tabs">
+              <button class="tab-btn active" onclick="switchInspectorTab('overview')">Overview</button>
+              <button class="tab-btn" onclick="switchInspectorTab('payload')">Wire &amp; OFS</button>
+              <button class="tab-btn" onclick="switchInspectorTab('database')">SQL &amp; Outbox</button>
+              <button class="tab-btn" onclick="switchInspectorTab('audit')">Kafka &amp; Audit</button>
+            </div>
+
+            <div class="inspector-content">
+              <!-- TAB 1: OVERVIEW -->
+              <div id="tab-overview" style="display:flex; flex-direction:column; gap:1rem;">
+                <div class="meta-card">
+                  <div class="meta-title">
+                    <span id="stepBadge" class="tag-pill info">STEP 1</span>
+                    <span id="stepTypeTag" class="tag-pill success">SYNC REQUEST</span>
+                  </div>
+                  <div style="font-weight:700; font-size:1rem; margin-bottom:0.5rem;" id="stepTitle">Step Title</div>
+                  <div class="meta-desc" id="stepDescription">Step description text...</div>
+                </div>
+
+                <div class="meta-card">
+                  <div class="meta-title">
+                    <span>Active Participant Roles</span>
+                  </div>
+                  <div id="stepRolesBox" style="font-size:0.8rem; color:var(--text); line-height:1.4;">
+                    <!-- Injected via JS -->
+                  </div>
+                </div>
+
+                <div class="meta-card">
+                  <div class="meta-title">
+                    <span>Rules Enforced</span>
+                  </div>
+                  <div id="stepRules" style="display:flex; flex-direction:column; gap:0.4rem;"></div>
+                </div>
+
+                <div class="meta-card">
+                  <div class="meta-title">
+                    <span>State Transition</span>
+                  </div>
+                  <div id="stepStateChange" style="font-family:var(--font-mono); font-size:0.75rem; color:var(--emerald);">State OK</div>
+                </div>
+              </div>
+
+              <!-- TAB 2: WIRE & OFS PAYLOAD -->
+              <div id="tab-payload" style="display:none; flex-direction:column; gap:1rem;">
+                <div class="meta-card">
+                  <div class="meta-title">
+                    <span>Temenos OFS Wire Syntax</span>
+                    <span class="tag-pill info">RULE 1 ENFORCED</span>
+                  </div>
+                  <div class="code-box" id="ofsCodeBox">// OFS Command appears here</div>
+                </div>
+
+                <div class="meta-card">
+                  <div class="meta-title">
+                    <span>HTTP / REST Wire Payload</span>
+                  </div>
+                  <div class="code-box" id="httpCodeBox">// HTTP Payload appears here</div>
+                </div>
+              </div>
+
+              <!-- TAB 3: SQL & OUTBOX -->
+              <div id="tab-database" style="display:none; flex-direction:column; gap:1rem;">
+                <div class="meta-card">
+                  <div class="meta-title">
+                    <span>Primary DB (Azure SQL / Oracle Master)</span>
+                    <span class="tag-pill success">ACID TX BOUNDARY</span>
+                  </div>
+                  <div class="code-box" id="sqlCodeBox">-- SQL Statement appears here</div>
+                </div>
+
+                <div class="meta-card">
+                  <div class="meta-title">
+                    <span>Master Outbox Record</span>
+                    <span class="tag-pill info">RULE 3 ENFORCED</span>
+                  </div>
+                  <div class="code-box" id="outboxCodeBox">-- Outbox state appears here</div>
+                </div>
+              </div>
+
+              <!-- TAB 4: KAFKA & AUDIT VAULT -->
+              <div id="tab-audit" style="display:none; flex-direction:column; gap:1rem;">
+                <div class="meta-card">
+                  <div class="meta-title">
+                    <span>Apache Kafka Domain Event</span>
+                    <span class="tag-pill warning" id="kafkaTopicTag">TOPIC: banking.transfers.events</span>
+                  </div>
+                  <div class="code-box" id="kafkaCodeBox">// Kafka JSON payload appears here</div>
+                </div>
+
+                <div class="meta-card">
+                  <div class="meta-title">
+                    <span>Audit Vault Consumer Projection</span>
+                    <span class="tag-pill info">RULE 2 ENFORCED</span>
+                  </div>
+                  <div class="code-box" id="auditCodeBox">// PostgreSQL ingestion projection appears here</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW 2: SYSTEM TOPOLOGY VIEW -->
+      <div id="view-topology" class="topology-container" style="display:none;">
+        <div style="text-align:center; max-width:700px; margin-bottom:1rem;">
+          <h2 style="font-size:1.4rem; font-weight:700; margin-bottom:0.5rem;">Core Banking Enclave Topology</h2>
+          <p style="color:var(--text-muted); font-size:0.85rem;">
+            Click on any architectural node to inspect its operational port, database connection boundaries, and protocol translations.
+          </p>
+        </div>
+
+        <div class="topo-grid" id="topoGrid">
+          <!-- Dynamically populated via JS -->
+        </div>
+      </div>
+
+      <!-- VIEW 3: PROTOCOLS & CONTRACTS VIEW -->
+      <div id="view-protocols" style="display:none; flex:1; overflow-y:auto; padding:2rem;">
+        <div style="max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:2rem;">
+          <div>
+            <h2 style="font-size:1.3rem; font-weight:700; margin-bottom:0.5rem;">Temenos OFS Wire Syntax Reference (Rule 1)</h2>
+            <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1rem;">
+              All financial operations commanded by the Transfer Orchestrator are serialized into Temenos Open Financial Services (OFS) syntax.
+            </p>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Capability</th>
+                  <th>Operation Name</th>
+                  <th>OFS Version Routine</th>
+                  <th>Wire Format Template</th>
+                </tr>
+              </thead>
+              <tbody id="ofsTableBody"></tbody>
+            </table>
+          </div>
+
+          <div>
+            <h2 style="font-size:1.3rem; font-weight:700; margin-bottom:0.5rem;">Kafka Event Catalog &amp; Audit Schemas (Rule 2)</h2>
+            <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1rem;">
+              Domain events published from the transactional outbox to Apache Kafka and ingested by the PostgreSQL Audit Vault Consumer.
+            </p>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Topic</th>
+                  <th>Event Type</th>
+                  <th>Producer Service</th>
+                  <th>Consumer Service(s)</th>
+                  <th>Regulatory Purpose</th>
+                </tr>
+              </thead>
+              <tbody id="kafkaTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW 4: DATABASE SCHEMAS & ENTITY RELATIONS -->
+      <div id="view-schemas" style="display:none; flex:1; overflow-y:auto; padding:2rem;">
+        <div style="max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:2rem;">
+          <div>
+            <h2 style="font-size:1.3rem; font-weight:700; margin-bottom:0.5rem;">Master Database Schemas (Azure SQL / Oracle Master)</h2>
+            <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1rem;">
+              The primary ACID data store holds exclusive datasource connectivity for T24 Mock CBS. The Transfer Orchestrator possesses zero direct credentials.
+            </p>
+            <div id="schemaCardsGroup" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:1.25rem;"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script>
+    /* =========================================================================
+       DATA DEFINITIONS: FLOWS, STEPS, TOPOLOGY & CONTRACTS
+       ========================================================================= */
+
+    // Top-level global participant catalog for topology
+    const SYSTEM_COMPONENTS = [
+      { id: "gateway", name: "API Gateway", sub: "Spring Cloud", port: ":8080", color: "var(--cyan)", desc: "Perimeter gateway. Handles SSL termination, JWT authentication, and token blacklist checks against Redis." },
+      { id: "redis", name: "Token & Cache", sub: "Redis 7", port: ":6379", color: "var(--amber)", desc: "In-memory cache for distributed transaction locks, rate limiting, and 2FA OTP codes (60s TTL)." },
+      { id: "orch", name: "Transfer Orchestrator", sub: "Spring Boot", port: ":8082", color: "var(--emerald)", desc: "Business process workflow coordinator. Performs Rule 1 OFS serialization, idempotency locking, and circuit-breaker retries." },
+      { id: "risk", name: "Risk Engine", sub: "FastAPI + XGBoost", port: ":8084", color: "var(--rose)", desc: "Ultra-low-latency fraud evaluation (< 2ms SLA). Emits real-time risk scores and fraud alert events." },
+      { id: "cbs", name: "T24 Mock CBS", sub: "Temenos Kernel", port: ":8085", color: "var(--purple)", desc: "Authoritative ledger engine. Receives OFS wire syntax, enforces ACID double-entry balance updates, and manages outbox_events." },
+      { id: "azuresql", name: "Azure SQL / Oracle", sub: "Master ACID DB", port: ":1433", color: "var(--purple)", desc: "Master relational ledger storing balance_master, gl_ledger, system_dates, and outbox_events. Sole write access via CBS." },
+      { id: "kafka", name: "Kafka Broker", sub: "KRaft Event Bus", port: ":9092", color: "var(--orange)", desc: "Decoupled domain event streaming bus. Topics for transfers, batch events, fraud alerts, and dead letter queues." },
+      { id: "vault", name: "PostgreSQL Audit Vault", sub: "Append-Only Vault", port: ":5432", color: "var(--blue)", desc: "Immutable compliance audit store. Populated solely via AuditWorker Kafka consumer (Rule 2)." }
+    ];
+
+    // Flow definitions: 5 Happy Paths + 6 Failure Scenarios = 11 Flows
+    const FLOWS = [
+      // -------------------------------------------------------------
+      // 1. FUNDS TRANSFER & 2FA (Happy Path)
+      // -------------------------------------------------------------
+      {
+        id: "funds-transfer",
+        category: "happy",
+        name: "Funds Transfer & 2FA",
+        desc: "End-to-end retail payment with risk scoring, OTP step-up, OFS wire execution & master outbox.",
+        badge: "CORE",
+        participants: [
+          { id: "client", name: "Customer", sub: "React / Flutter", color: "var(--cyan)" },
+          { id: "gateway", name: "API Gateway", sub: "Spring Cloud :8080", color: "var(--cyan)" },
+          { id: "redis", name: "Token & Cache", sub: "Redis :6379", color: "var(--amber)" },
+          { id: "orch", name: "Orchestrator", sub: "Spring Boot :8082", color: "var(--emerald)" },
+          { id: "risk", name: "Risk Engine", sub: "FastAPI :8084", color: "var(--rose)" },
+          { id: "cbs", name: "T24 Mock CBS", sub: "Core Engine :8085", color: "var(--purple)" },
+          { id: "azuresql", name: "Azure SQL", sub: "Master DB :1433", color: "var(--purple)" },
+          { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
+          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
+        ],
+        steps: [
+          {
+            title: "1. Client Transfer Request Intake",
+            from: "client", to: "gateway",
+            arrowType: "solid",
+            desc: "Retail Customer initiates 65,000.00 PHP funds transfer from mobile app. API Gateway intercepts request.",
+            rules: ["Perimeter authentication boundary."],
+            state: "Gateway begins token verification.",
+            ofs: "// No OFS translation yet (Perimeter stage)",
+            http: "POST /api/v1/transfers\nAuthorization: Bearer <JWT>\nX-Idempotency-Key: TX-901\n{\n  \"sourceAccountId\": \"ACC-101\",\n  \"targetAccountId\": \"ACC-202\",\n  \"amount\": 65000.00,\n  \"currency\": \"PHP\"\n}",
+            sql: "-- In-memory Redis lookup",
+            outbox: "-- No outbox staging needed at perimeter",
+            kafka: "-- Awaiting validation",
+            audit: "-- Gateway access log recorded"
+          },
+          {
+            title: "2. Gateway Token Sanity Check",
+            from: "gateway", to: "redis",
+            arrowType: "solid",
+            desc: "Gateway interrogates Redis cache to confirm JWT has not been revoked in token blacklist.",
+            rules: ["Token revocation check (< 1ms)."],
+            state: "Redis lookup: Token active.",
+            ofs: "// Redis internal command",
+            http: "GET blacklist:jti:token-988123",
+            sql: "-- Redis: GET blacklist:jti:<jti> -> NULL",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Token sanity validated."
+          },
+          {
+            title: "3. Gateway Token Valid Response",
+            from: "redis", to: "gateway",
+            arrowType: "response-ok",
+            desc: "Redis returns nil blacklist entry. Gateway confirms token is valid and quota is unexhausted.",
+            rules: ["Perimeter security check PASSED."],
+            state: "Gateway authorizes internal dispatch to Transfer Orchestrator.",
+            ofs: "// Perimeter pass",
+            http: "HTTP 200 Token Valid",
+            sql: "-- Redis response OK",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Perimeter check passed."
+          },
+          {
+            title: "4. Internal Route to Orchestrator",
+            from: "gateway", to: "orch",
+            arrowType: "solid",
+            desc: "Gateway routes request over internal hardened bridge to Transfer Orchestrator (:8082).",
+            rules: ["Service perimeter transition."],
+            state: "Orchestrator initiates transaction lifecycle workflow.",
+            ofs: "// Routing to orchestrator",
+            http: "POST /api/v1/transfers (Internal routing)",
+            sql: "-- Orchestrator acquires workflow context",
+            outbox: "-- Staging pending",
+            kafka: "-- None",
+            audit: "Orchestrator context created."
+          },
+          {
+            title: "5. Idempotency Lock Acquisition",
+            from: "orch", to: "redis",
+            arrowType: "solid",
+            desc: "Orchestrator sets distributed lock in Redis for idempotency key TX-901 (TTL 60s).",
+            rules: ["Zero Double-Debit Invariant."],
+            state: "Redis lock acquired for TX-901.",
+            ofs: "// Redis atomic lock",
+            http: "SET tx:idemp:TX-901 PROCESSING NX EX 60",
+            sql: "-- SET tx:idemp:TX-901 NX EX 60 -> OK",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Idempotency key locked."
+          },
+          {
+            title: "6. Rule 1: OFS Initiation Dispatch",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator translates JSON to Temenos OFS wire syntax (FUNDS.TRANSFER,INITIATE). CBS creates state.",
+            rules: ["RULE 1: Translated JSON to Temenos OFS syntax before transmission.", "RULE 3: CBS records INITIATED event to outbox_events."],
+            state: "Transaction created with status 'INITIATED'. Outbox event staged.",
+            ofs: "FUNDS.TRANSFER,INITIATE/I/PROCESS,,TX-901,\nDEBIT.ACCT.NO=ACC-101,\nCREDIT.ACCT.NO=ACC-202,\nDEBIT.AMOUNT=65000.00,\nDEBIT.CURRENCY=PHP",
+            http: "POST /api/v1/internal/cbs/ofs-command\nContent-Type: text/plain",
+            sql: "BEGIN TRANSACTION;\nINSERT INTO transactions (id, status) VALUES ('TX-901', 'INITIATED');\nINSERT INTO outbox_events (event_id, aggregate_type, aggregate_id, event_type, kafka_topic, payload, status)\nVALUES ('EVT-INIT-901', 'TRANSACTION', 'TX-901', 'TRANSACTION_STATUS_CHANGED', 'banking.transfers.events', '{\"status\":\"INITIATED\"}', 'PENDING');\nCOMMIT;",
+            outbox: "Status: PENDING | Aggregate: TX-901 | Event: TRANSACTION_STATUS_CHANGED",
+            kafka: "-- Direct publish pending broker commit",
+            audit: "CBS creates transaction in Azure SQL."
+          },
+          {
+            title: "7. Rule 1: OFS Initiation ACK",
+            from: "cbs", to: "orch",
+            arrowType: "response-ok",
+            desc: "CBS returns Temenos OFS acknowledgment indicating TX-901 is registered in INITIATED state.",
+            rules: ["RULE 1: OFS Response confirmation."],
+            state: "Orchestrator proceeds to fast-path risk assessment.",
+            ofs: "TX-901//1/SUCCESS,STATUS=INITIATED",
+            http: "HTTP 200 OK (OFS ACK)",
+            sql: "-- Outbox record staged in Azure SQL",
+            outbox: "Status: PENDING -> PUBLISHED",
+            kafka: "Topic: banking.transfers.events\nEvent: TransactionStatusChangedEvent (INITIATED)",
+            audit: "CBS emits initiated event to Kafka."
+          },
+          {
+            title: "8. Fast-Path Fraud Risk Evaluation",
+            from: "orch", to: "risk",
+            arrowType: "solid",
+            desc: "Orchestrator calls Python Risk Engine (< 2ms SLA). XGBoost model evaluates amount, velocity, and geolocation.",
+            rules: ["Sub-2ms synchronous fast-path risk scoring."],
+            state: "Risk Verdict: ALLOW (Risk Score: 0.12). Threshold triggers 2FA challenge.",
+            ofs: "// Synchronous REST call to Python engine",
+            http: "POST /api/v1/risk/transfer\n{\n  \"accountId\": \"ACC-101\",\n  \"amount\": 65000.00,\n  \"currency\": \"PHP\"\n}",
+            sql: "-- Risk Engine evaluates feature cache",
+            outbox: "-- None",
+            kafka: "Topic: banking.risk.evaluations\nEvent: RiskEvaluatedEvent (score: 0.12)",
+            audit: "Risk evaluation completed."
+          },
+          {
+            title: "9. Risk Evaluation Response (ALLOW, 2FA Required)",
+            from: "risk", to: "orch",
+            arrowType: "response-ok",
+            desc: "Python Risk Engine returns verdict ALLOW with flag requiresOtp=true due to amount > 50,000 PHP.",
+            rules: ["BSP Circular 808 High-Value Transfer Threshold."],
+            state: "Orchestrator initiates step-up email OTP challenge.",
+            ofs: "// Risk verdict returned",
+            http: "HTTP 200 OK\n{ \"verdict\": \"ALLOW\", \"score\": 0.12, \"requiresOtp\": true }",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- Telemetry published",
+            audit: "Risk response received."
+          },
+          {
+            title: "10. Step-Up 2FA Email Challenge Dispatched",
+            from: "orch", to: "client",
+            arrowType: "warning",
+            desc: "Orchestrator issues 6-digit OTP (491823) to customer's registered email; returns HTTP 202 challenge.",
+            rules: ["Mandatory 2FA challenge."],
+            state: "Awaiting customer OTP input (OTP stored in Redis with 180s TTL).",
+            ofs: "// 2FA Challenge state",
+            http: "HTTP 202 Accepted\n{ \"status\": \"OTP_REQUIRED\", \"challengeId\": \"CH-901\" }",
+            sql: "-- Redis: SET otp:TX-901 \"491823\" EX 180",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "2FA challenge dispatched."
+          },
+          {
+            title: "11. Customer Submits 2FA OTP Code",
+            from: "client", to: "orch",
+            arrowType: "solid",
+            desc: "Customer inputs 6-digit code '491823' into mobile app and submits verification.",
+            rules: ["OTP verification intake."],
+            state: "Orchestrator validates OTP against Redis.",
+            ofs: "// Customer verification response",
+            http: "POST /api/v1/transfers/TX-901/verify-otp\n{ \"otp\": \"491823\" }",
+            sql: "-- Redis: GET otp:TX-901 -> \"491823\" (Match confirmed, DEL key)",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "2FA OTP matched."
+          },
+          {
+            title: "12. Rule 1: OFS Provisional Hold Placement",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator dispatches OFS AC.LOCKED.EVENTS command. CBS locks row and freezes 65,000 PHP.",
+            rules: ["RULE 1: OFS hold syntax.", "RULE 3: CBS records AMOUNT_HOLD_PLACED into outbox_events."],
+            state: "Available balance reduced by 65k PHP; hold_amount incremented.",
+            ofs: "AC.LOCKED.EVENTS,INPUT/I/PROCESS,,ACCOUNT.NUMBER=ACC-101,\nLOCKED.AMOUNT=65000.00",
+            http: "POST /api/v1/internal/cbs/ofs-command\nBody: AC.LOCKED.EVENTS,INPUT...",
+            sql: "BEGIN TRANSACTION;\nUPDATE balance_master SET hold_amount = hold_amount + 65000.00 WHERE account_id = 'ACC-101';\nINSERT INTO outbox_events VALUES ('EVT-HLD-01', 'AMOUNT_HOLD', 'HLD-99102', 'AMOUNT_HOLD_PLACED', 'banking.transfers.events', '{\"amount\":65000}', 'PENDING');\nCOMMIT;",
+            outbox: "Status: PENDING -> PUBLISHED | Event: AMOUNT_HOLD_PLACED",
+            kafka: "Topic: banking.transfers.events\nEvent: AmountHoldPlacedEvent (65000 PHP)",
+            audit: "Hold placed in Azure SQL."
+          },
+          {
+            title: "13. Rule 1: OFS Hold Confirmation ACK",
+            from: "cbs", to: "orch",
+            arrowType: "response-ok",
+            desc: "CBS confirms provisional hold placed. Returns OFS reference HLD-99102.",
+            rules: ["RULE 1: Hold ACK received."],
+            state: "Orchestrator proceeds to final settlement instruction.",
+            ofs: "HLD-99102//1/SUCCESS,STATUS=LOCKED",
+            http: "HTTP 200 OK (OFS Hold ACK)",
+            sql: "-- Hold confirmed",
+            outbox: "Status: PUBLISHED",
+            kafka: "-- Published",
+            audit: "Hold ACK processed."
+          },
+          {
+            title: "14. Rule 1: OFS Settlement Command Dispatch",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator serializes settlement command to Temenos OFS syntax (FUNDS.TRANSFER,AUTH).",
+            rules: ["RULE 1: Temenos OFS wire syntax."],
+            state: "CBS acquires row locks on ACC-101 and ACC-202 in alphabetical order.",
+            ofs: "FUNDS.TRANSFER,AUTH/I/PROCESS,//PH100223,\nTXN.REF=FT26095A,\nDEBIT.ACCT.NO=ACC-101,\nCREDIT.ACCT.NO=ACC-202,\nDEBIT.AMOUNT=65000.00,\nDEBIT.CURRENCY=PHP,\nHOLD.REF=HLD-99102",
+            http: "POST /api/v1/internal/cbs/ofs-command\nBody: FUNDS.TRANSFER,AUTH...",
+            sql: "BEGIN TRANSACTION;\n-- Locks acquired alphabetically: ACC-101, then ACC-202\nUPDATE balance_master SET balance_amount = balance_amount - 65000.00, hold_amount = hold_amount - 65000.00 WHERE account_id = 'ACC-101';\nUPDATE balance_master SET balance_amount = balance_amount + 65000.00 WHERE account_id = 'ACC-202';\nINSERT INTO transactions (id, status) VALUES ('FT26095A', 'POSTED');\nINSERT INTO gl_ledger (gl_code, debit_amount, credit_amount, ref_id) VALUES ('GL-2100-LIAB', 65000.00, 65000.00, 'FT26095A');\nINSERT INTO outbox_events VALUES ('EVT-TX-01', 'TRANSACTION', 'FT26095A', 'TRANSFER_EXECUTED', 'banking.transfers.events', '{\"amount\":65000}', 'PENDING');\nCOMMIT;",
+            outbox: "Status: PENDING | Aggregate: FT26095A | Event: TRANSFER_EXECUTED",
+            kafka: "-- Awaiting commit before direct publish",
+            audit: "Ledger mutation committed."
+          },
+          {
+            title: "15. Rule 3: CBS Direct Kafka Event Publish",
+            from: "cbs", to: "kafka",
+            arrowType: "solid",
+            desc: "Rule 3: T24 Mock CBS directly publishes TransferExecutedEvent to Kafka, then marks outbox_events as PUBLISHED.",
+            rules: ["RULE 3: Direct CBS publish from transactional kernel."],
+            state: "Outbox record updated to 'PUBLISHED'.",
+            ofs: "-- Kafka event dispatch",
+            http: "-- Internal Kafka Producer",
+            sql: "UPDATE outbox_events SET status = 'PUBLISHED', published_at = SYSUTCDATETIME() WHERE aggregate_id = 'FT26095A' AND status = 'PENDING';",
+            outbox: "Status: PUBLISHED | PublishedAt: SYSUTCDATETIME()",
+            kafka: "Topic: banking.transfers.events\nEvent: TransferExecutedEvent\n{\n  \"transferId\": \"FT26095A\",\n  \"amount\": 65000.00,\n  \"status\": \"POSTED\"\n}",
+            audit: "Kafka broker acknowledges publish."
+          },
+          {
+            title: "16. Rule 1: OFS Settlement Final ACK",
+            from: "cbs", to: "orch",
+            arrowType: "response-ok",
+            desc: "CBS returns final OFS settlement confirmation ACK with transaction reference FT26095A.",
+            rules: ["RULE 1: Final settlement confirmation."],
+            state: "Orchestrator evicts stale cache and prepares client response.",
+            ofs: "FT26095A//1/SUCCESS,AUTH.DATE=20261005,STATUS=POSTED",
+            http: "HTTP 200 OK (OFS Settlement ACK)",
+            sql: "-- Completed",
+            outbox: "Status: PUBLISHED",
+            kafka: "-- Published",
+            audit: "Orchestrator receives confirmation."
+          },
+          {
+            title: "17. Orchestrator Transfer Success Receipt",
+            from: "orch", to: "client",
+            arrowType: "response-ok",
+            desc: "Orchestrator returns HTTP 200 OK transfer receipt with T24 reference FT26095A to mobile customer.",
+            rules: ["End-to-end payment receipt returned."],
+            state: "Customer displays updated balance and successful transfer receipt.",
+            ofs: "-- Receipt returned",
+            http: "HTTP 200 OK\n{\n  \"transferId\": \"TX-901\",\n  \"cbsReference\": \"FT26095A\",\n  \"amount\": 65000.00,\n  \"status\": \"POSTED\",\n  \"sourceNewBalance\": 35000.00\n}",
+            sql: "-- Redis: DEL account:balance:ACC-101",
+            outbox: "-- Complete",
+            kafka: "-- Consumed",
+            audit: "Customer acknowledged."
+          },
+          {
+            title: "18. Rule 2: Audit Worker Vault Ingestion",
+            from: "kafka", to: "auditworker",
+            arrowType: "solid",
+            desc: "Rule 2: Audit Worker consumes TransferExecutedEvent from Kafka.",
+            rules: ["RULE 2: Kafka does not mutate database directly; AuditWorker ingests event."],
+            state: "AuditWorker prepares PostgreSQL append-only insert.",
+            ofs: "-- Asynchronous consumer",
+            http: "-- Kafka consumer loop",
+            sql: "-- PostgreSQL mutation pending",
+            outbox: "-- None",
+            kafka: "Consumer group offset committed",
+            audit: "Event ingested by daemon."
+          },
+          {
+            title: "19. Rule 2: PostgreSQL Audit Vault Archival",
+            from: "auditworker", to: "vault",
+            arrowType: "solid",
+            desc: "Rule 2: Audit Worker inserts append-only row into PostgreSQL ledger_mutation_audit table.",
+            rules: ["RULE 2: PostgreSQL Append-Only Compliance Vault."],
+            state: "Immutable audit record sealed. Zero UPDATE/DELETE trigger enforced.",
+            ofs: "-- Compliance archival",
+            http: "-- Internal JDBC",
+            sql: "INSERT INTO ledger_mutation_audit (transaction_id, account_id, mutation_type, mutation_amount, before_balance, after_balance, status)\nVALUES ('FT26095A', 'ACC-101', 'TRANSFER', 65000.00, 100000.00, 35000.00, 'COMMITTED');",
+            outbox: "-- None",
+            kafka: "-- Complete",
+            audit: "Audit trail sealed permanently."
+          }
+        ]
+      },
+
+      // -------------------------------------------------------------
+      // 2. MAKER-CHECKER REVERSAL (Happy Path)
+      // -------------------------------------------------------------
+      {
+        id: "reversal-flow",
+        category: "happy",
+        name: "Maker-Checker Reversal",
+        desc: "Dispute filing by Maker Teller, beneficiary lien placement, Checker Supervisor approval & compensating double-entry.",
+        badge: "REVERSAL",
+        participants: [
+          { id: "maker", name: "Maker Teller", sub: "Dispute Portal", color: "var(--cyan)" },
+          { id: "checker", name: "Checker Mgr", sub: "Approval Portal", color: "var(--purple)" },
+          { id: "orch", name: "Orchestrator", sub: "Spring Boot :8082", color: "var(--emerald)" },
+          { id: "cbs", name: "T24 Mock CBS", sub: "Core Engine :8085", color: "var(--purple)" },
+          { id: "azuresql", name: "Azure SQL", sub: "Master DB :1433", color: "var(--purple)" },
+          { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
+          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
+        ],
+        steps: [
+          {
+            title: "1. Maker Teller Files Dispute Ticket",
+            from: "maker", to: "orch",
+            arrowType: "solid",
+            desc: "Dispute Teller (Maker) files dispute ticket DISP-8801 for duplicate transfer TX-901 (65,000.00 PHP).",
+            rules: ["Maker-Checker Dual Control Initiated."],
+            state: "Reversal ticket registered. Beneficiary lien required.",
+            ofs: "// Preparing OFS AC.LOCKED.EVENTS lien syntax",
+            http: "POST /api/v1/transfers/TX-901/reversal-request\n{\n  \"ticketId\": \"DISP-8801\",\n  \"reason\": \"DUPLICATE_TRANSFER\",\n  \"makerId\": \"OP-MAKER-01\"\n}",
+            sql: "INSERT INTO reversal_tickets (ticket_id, original_tx_id, status) VALUES ('DISP-8801', 'TX-901', 'PENDING_CHECKER');",
+            outbox: "-- Awaiting lien placement",
+            kafka: "-- None",
+            audit: "Dispute ticket created."
+          },
+          {
+            title: "2. Rule 1: OFS Beneficiary Lien Placement",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator translates lien instruction to Temenos OFS syntax. CBS freezes 65k PHP on beneficiary account ACC-202.",
+            rules: ["RULE 1: OFS lien placement.", "RULE 3: CBS records BENEFICIARY_LIEN_PLACED in outbox_events."],
+            state: "Beneficiary ACC-202 hold_amount incremented by 65k PHP.",
+            ofs: "AC.LOCKED.EVENTS,INPUT/I/PROCESS,,ACCOUNT.NUMBER=ACC-202,\nLOCKED.AMOUNT=65000.00,\nDESCRIPTION=REVERSAL_LIEN_DISP8801",
+            http: "POST /api/v1/internal/cbs/ofs-command\nBody: AC.LOCKED.EVENTS,INPUT...",
+            sql: "BEGIN TRANSACTION;\nUPDATE balance_master SET hold_amount = hold_amount + 65000.00 WHERE account_id = 'ACC-202';\nINSERT INTO outbox_events VALUES ('EVT-REV-01', 'REVERSAL', 'DISP-8801', 'BENEFICIARY_LIEN_PLACED', 'banking.transfers.events', '{\"lien\":65000}', 'PENDING');\nCOMMIT;",
+            outbox: "Status: PENDING -> PUBLISHED | Event: BENEFICIARY_LIEN_PLACED",
+            kafka: "Topic: banking.transfers.events\nEvent: BeneficiaryLienPlacedEvent (65000 PHP)",
+            audit: "Beneficiary funds frozen."
+          },
+          {
+            title: "3. Rule 1: OFS Lien Confirmation ACK",
+            from: "cbs", to: "orch",
+            arrowType: "response-ok",
+            desc: "CBS returns OFS lien confirmation. Funds are safely locked pending Checker authorization.",
+            rules: ["RULE 1: Lien placed ACK."],
+            state: "Orchestrator routes ticket to Checker Supervisor queue.",
+            ofs: "LIEN-8801//1/SUCCESS,STATUS=LOCKED",
+            http: "HTTP 200 OK (OFS Lien ACK)",
+            sql: "-- Lien confirmed in Azure SQL",
+            outbox: "Status: PUBLISHED",
+            kafka: "-- Published",
+            audit: "Lien confirmed."
+          },
+          {
+            title: "4. Notification to Checker Supervisor",
+            from: "orch", to: "checker",
+            arrowType: "warning",
+            desc: "Orchestrator dispatches authorization alert to Branch Supervisor (Checker) with audit proofs and dispute rationale.",
+            rules: ["Dual-control separation of duties."],
+            state: "Ticket awaits Checker authorization.",
+            ofs: "// Internal notification",
+            http: "WebSocket / Push Alert to Supervisor Console\n{ \"ticketId\": \"DISP-8801\", \"status\": \"AWAITING_APPROVAL\" }",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Checker alerted."
+          },
+          {
+            title: "5. Checker Supervisor Approves Reversal",
+            from: "checker", to: "orch",
+            arrowType: "solid",
+            desc: "Checker Supervisor reviews audit proof and signs off reversal approval via RSA token signature.",
+            rules: ["Checker signoff confirmed."],
+            state: "Reversal approved. Compensating double-entry initiated.",
+            ofs: "// Approval command",
+            http: "POST /api/v1/reversals/DISP-8801/approve\n{\n  \"checkerId\": \"MGR-CHECKER-09\",\n  \"approvalSignature\": \"RSA-SIG-77182\"\n}",
+            sql: "UPDATE reversal_tickets SET status = 'APPROVED', checker_id = 'MGR-CHECKER-09' WHERE ticket_id = 'DISP-8801';",
+            outbox: "-- Reversal mutation authorized",
+            kafka: "-- None",
+            audit: "Checker approval verified."
+          },
+          {
+            title: "6. Rule 1: OFS Compensating Ledger Settlement",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator serializes compensating reversal into Temenos OFS syntax (FUNDS.TRANSFER,REVERSAL).",
+            rules: ["RULE 1: OFS reversal execution.", "RULE 3: CBS records TRANSFER_REVERSED into outbox_events."],
+            state: "Beneficiary debited 65k (lien lifted); Sender credited 65k. Status: REVERSED.",
+            ofs: "FUNDS.TRANSFER,REVERSAL/I/PROCESS,//PH100223,\nORIG.TXN.REF=FT26095A,\nDEBIT.ACCT.NO=ACC-202,\nCREDIT.ACCT.NO=ACC-101,\nDEBIT.AMOUNT=65000.00,\nLIEN.REF=LIEN-8801",
+            http: "POST /api/v1/internal/cbs/ofs-command\nBody: FUNDS.TRANSFER,REVERSAL...",
+            sql: "BEGIN TRANSACTION;\n-- Debit beneficiary & release lien:\nUPDATE balance_master SET balance_amount = balance_amount - 65000.00, hold_amount = hold_amount - 65000.00 WHERE account_id = 'ACC-202';\n-- Credit original sender:\nUPDATE balance_master SET balance_amount = balance_amount + 65000.00 WHERE account_id = 'ACC-101';\nINSERT INTO transactions (id, status) VALUES ('REV-8801', 'REVERSED');\nINSERT INTO gl_ledger (gl_code, debit_amount, credit_amount, ref_id) VALUES ('GL-2100-LIAB', 65000.00, 65000.00, 'REV-8801');\nINSERT INTO outbox_events VALUES ('EVT-REV-END', 'REVERSAL', 'DISP-8801', 'TRANSFER_REVERSED', 'banking.transfers.events', '{\"status\":\"REVERSED\"}', 'PENDING');\nCOMMIT;",
+            outbox: "Status: PENDING | Aggregate: DISP-8801 | Event: TRANSFER_REVERSED",
+            kafka: "-- Awaiting commit before direct publish",
+            audit: "Compensating ledger mutation posted."
+          },
+          {
+            title: "7. Rule 3: CBS Direct Publish Reversal Event",
+            from: "cbs", to: "kafka",
+            arrowType: "solid",
+            desc: "Rule 3: CBS directly publishes TransferReversedEvent to Kafka and marks outbox_events as PUBLISHED.",
+            rules: ["RULE 3: CBS kernel event publish."],
+            state: "Outbox marked PUBLISHED.",
+            ofs: "-- Kafka event dispatch",
+            http: "-- Internal Kafka Producer",
+            sql: "UPDATE outbox_events SET status = 'PUBLISHED', published_at = SYSUTCDATETIME() WHERE aggregate_id = 'DISP-8801' AND status = 'PENDING';",
+            outbox: "Status: PUBLISHED",
+            kafka: "Topic: banking.transfers.events\nEvent: TransferReversedEvent (amount: 65000 PHP)",
+            audit: "Reversal event published."
+          },
+          {
+            title: "8. Rule 1: OFS Reversal Success ACK",
+            from: "cbs", to: "orch",
+            arrowType: "response-ok",
+            desc: "CBS returns OFS reversal success ACK with reversal reference REV-8801.",
+            rules: ["RULE 1: Reversal confirmation ACK."],
+            state: "Orchestrator acknowledges resolution to both Teller and Supervisor.",
+            ofs: "REV-8801//1/SUCCESS,STATUS=REVERSED",
+            http: "HTTP 200 OK (OFS Reversal ACK)",
+            sql: "-- Ledger confirmed",
+            outbox: "Status: PUBLISHED",
+            kafka: "-- Published",
+            audit: "Reversal ACK confirmed."
+          },
+          {
+            title: "9. Orchestrator Notifies Maker & Checker",
+            from: "orch", to: "maker",
+            arrowType: "response-ok",
+            desc: "Orchestrator returns HTTP 200 OK confirming dispute ticket DISP-8801 resolved and customer funds restored.",
+            rules: ["Maker-Checker flow completed."],
+            state: "Ticket status marked RESOLVED.",
+            ofs: "-- Resolution notice",
+            http: "HTTP 200 OK\n{ \"ticketId\": \"DISP-8801\", \"status\": \"RESOLVED\", \"reversalId\": \"REV-8801\" }",
+            sql: "UPDATE reversal_tickets SET status = 'RESOLVED' WHERE ticket_id = 'DISP-8801';",
+            outbox: "-- Complete",
+            kafka: "-- Complete",
+            audit: "Both parties notified."
+          },
+          {
+            title: "10. Rule 2: Audit Worker Archival to PostgreSQL",
+            from: "kafka", to: "vault",
+            arrowType: "solid",
+            desc: "Rule 2: Audit Worker consumes TransferReversedEvent and writes append-only reversal audit record to PostgreSQL.",
+            rules: ["RULE 2: PostgreSQL Append-Only Compliance."],
+            state: "Reversal audit trail permanently archived.",
+            ofs: "-- Compliance archival",
+            http: "-- Internal JDBC",
+            sql: "INSERT INTO ledger_mutation_audit (transaction_id, account_id, mutation_type, mutation_amount, before_balance, after_balance, status)\nVALUES ('REV-8801', 'ACC-101', 'REVERSAL', 65000.00, 35000.00, 100000.00, 'COMMITTED');",
+            outbox: "-- Complete",
+            kafka: "-- Offset committed",
+            audit: "Reversal compliance logged."
+          }
+        ]
+      },
+
+      // -------------------------------------------------------------
+      // 3. AMOUNT HOLDS & RESERVATIONS (Happy Path)
+      // -------------------------------------------------------------
+      {
+        id: "amount-holds",
+        category: "happy",
+        name: "Provisional Amount Hold & Capture",
+        desc: "Merchant POS pre-authorization freeze (AC.LOCKED.EVENTS), capture settlement, or expiry release.",
+        badge: "HOLDS",
+        participants: [
+          { id: "pos", name: "Merchant POS", sub: "Terminal / Portal", color: "var(--cyan)" },
+          { id: "gateway", name: "API Gateway", sub: "Spring Cloud :8080", color: "var(--cyan)" },
+          { id: "orch", name: "Orchestrator", sub: "Spring Boot :8082", color: "var(--emerald)" },
+          { id: "cbs", name: "T24 Mock CBS", sub: "Core Engine :8085", color: "var(--purple)" },
+          { id: "azuresql", name: "Azure SQL", sub: "Master DB :1433", color: "var(--purple)" },
+          { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
+          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
+        ],
+        steps: [
+          {
+            title: "1. Merchant POS Pre-Authorization Request",
+            from: "pos", to: "gateway",
+            arrowType: "solid",
+            desc: "Hotel checkout terminal requests 5,000.00 PHP pre-authorization hold on customer debit card.",
+            rules: ["Card acquiring pre-authorization boundary."],
+            state: "Gateway authorizes merchant terminal request.",
+            ofs: "// Pre-auth intake",
+            http: "POST /api/v1/holds/pre-auth\n{\n  \"accountId\": \"ACC-101\",\n  \"amount\": 5000.00,\n  \"merchantId\": \"MCH-HOTEL-77\"\n}",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "POS pre-auth request received."
+          },
+          {
+            title: "2. Gateway Routes to Orchestrator",
+            from: "gateway", to: "orch",
+            arrowType: "solid",
+            desc: "Gateway verifies merchant API credentials and forwards pre-auth request to Orchestrator.",
+            rules: ["Internal routing."],
+            state: "Orchestrator translates hold into Temenos OFS syntax.",
+            ofs: "// Internal forward",
+            http: "POST /api/v1/holds/pre-auth",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Merchant validated."
+          },
+          {
+            title: "3. Rule 1: OFS Pre-Auth Hold Command",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator sends OFS AC.LOCKED.EVENTS command. CBS locks row and increments hold_amount by 5,000 PHP.",
+            rules: ["RULE 1: OFS AC.LOCKED.EVENTS command.", "RULE 3: CBS records AMOUNT_HOLD_PLACED into outbox_events."],
+            state: "Customer available balance reduced by 5,000 PHP.",
+            ofs: "AC.LOCKED.EVENTS,INPUT/I/PROCESS,,ACCOUNT.NUMBER=ACC-101,\nLOCKED.AMOUNT=5000.00,\nHOLD.EXPIRY=20261012",
+            http: "POST /api/v1/internal/cbs/ofs-command",
+            sql: "BEGIN TRANSACTION;\nUPDATE balance_master SET hold_amount = hold_amount + 5000.00 WHERE account_id = 'ACC-101';\nINSERT INTO amount_hold_history (hold_id, account_id, hold_amount, hold_status) VALUES ('HLD-4401', 'ACC-101', 5000.00, 'ACTIVE');\nINSERT INTO outbox_events VALUES ('EVT-HLD-44', 'HOLD', 'HLD-4401', 'AMOUNT_HOLD_PLACED', 'banking.transfers.events', '{\"amount\":5000}', 'PENDING');\nCOMMIT;",
+            outbox: "Status: PENDING -> PUBLISHED | Event: AMOUNT_HOLD_PLACED",
+            kafka: "Topic: banking.transfers.events\nEvent: AmountHoldPlacedEvent (5000 PHP)",
+            audit: "Hold recorded in Azure SQL."
+          },
+          {
+            title: "4. Rule 1: OFS Hold Confirmation ACK",
+            from: "cbs", to: "orch",
+            arrowType: "response-ok",
+            desc: "CBS returns OFS hold confirmation with hold reference HLD-4401.",
+            rules: ["RULE 1: Hold ACK received."],
+            state: "Orchestrator generates authorization approval code.",
+            ofs: "HLD-4401//1/SUCCESS,STATUS=LOCKED",
+            http: "HTTP 200 OK (OFS Hold ACK)",
+            sql: "-- Hold confirmed",
+            outbox: "Status: PUBLISHED",
+            kafka: "-- Published",
+            audit: "Pre-auth hold confirmed."
+          },
+          {
+            title: "5. POS Pre-Auth Approval Code Returned",
+            from: "orch", to: "pos",
+            arrowType: "response-ok",
+            desc: "Orchestrator returns HTTP 200 OK to POS terminal with Authorization Code AUTH-8821.",
+            rules: ["Terminal pre-authorization approved."],
+            state: "Customer card pre-authorized for up to 5,000 PHP.",
+            ofs: "// POS approval returned",
+            http: "HTTP 200 OK\n{ \"authCode\": \"AUTH-8821\", \"holdId\": \"HLD-4401\", \"amount\": 5000.00, \"status\": \"AUTHORIZED\" }",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Terminal receipt issued."
+          },
+          {
+            title: "6. Merchant Submits Capture Settlement (4,200 PHP)",
+            from: "pos", to: "orch",
+            arrowType: "solid",
+            desc: "At hotel checkout, final bill is 4,200.00 PHP. Terminal submits capture request against HLD-4401.",
+            rules: ["Partial capture with auto-release of uncaptured balance."],
+            state: "Capture instruction received: 4,200 PHP charged, 800 PHP excess hold released.",
+            ofs: "// Capture intake",
+            http: "POST /api/v1/holds/HLD-4401/capture\n{ \"finalAmount\": 4200.00, \"currency\": \"PHP\" }",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Capture instruction received."
+          },
+          {
+            title: "7. Rule 1: OFS Capture & Settlement Command",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator translates capture into OFS FUNDS.TRANSFER,AUTH with HOLD.REF=HLD-4401.",
+            rules: ["RULE 1: OFS Capture & Settlement.", "RULE 3: CBS records TRANSFER_EXECUTED and HOLD_RELEASED."],
+            state: "Customer debited 4,200 PHP; Merchant credited 4,200 PHP; entire 5,000 PHP hold cleared.",
+            ofs: "FUNDS.TRANSFER,AUTH/I/PROCESS,//PH100223,\nDEBIT.ACCT.NO=ACC-101,\nCREDIT.ACCT.NO=MCH-HOTEL-77,\nDEBIT.AMOUNT=4200.00,\nHOLD.REF=HLD-4401",
+            http: "POST /api/v1/internal/cbs/ofs-command",
+            sql: "BEGIN TRANSACTION;\nUPDATE balance_master SET balance_amount = balance_amount - 4200.00, hold_amount = hold_amount - 5000.00 WHERE account_id = 'ACC-101';\nUPDATE balance_master SET balance_amount = balance_amount + 4200.00 WHERE account_id = 'MCH-HOTEL-77';\nUPDATE amount_hold_history SET hold_status = 'CAPTURED', captured_amount = 4200.00 WHERE hold_id = 'HLD-4401';\nINSERT INTO outbox_events VALUES ('EVT-CAP-01', 'CAPTURE', 'HLD-4401', 'HOLD_CAPTURED', 'banking.transfers.events', '{\"captured\":4200,\"released\":800}', 'PENDING');\nCOMMIT;",
+            outbox: "Status: PENDING -> PUBLISHED | Event: HOLD_CAPTURED",
+            kafka: "Topic: banking.transfers.events\nEvent: AmountHoldCapturedEvent (4200 PHP)",
+            audit: "Capture executed in Azure SQL."
+          },
+          {
+            title: "8. Rule 1: OFS Capture Final ACK",
+            from: "cbs", to: "orch",
+            arrowType: "response-ok",
+            desc: "CBS returns OFS capture success ACK. 4,200 PHP settled, 800 PHP uncaptured hold freed.",
+            rules: ["RULE 1: Capture ACK received."],
+            state: "Settlement complete.",
+            ofs: "FT-CAP-991//1/SUCCESS,STATUS=POSTED",
+            http: "HTTP 200 OK (OFS ACK)",
+            sql: "-- Complete",
+            outbox: "Status: PUBLISHED",
+            kafka: "-- Published",
+            audit: "Capture confirmed."
+          },
+          {
+            title: "9. POS Terminal Final Settlement Receipt",
+            from: "orch", to: "pos",
+            arrowType: "response-ok",
+            desc: "Orchestrator returns HTTP 200 OK capture receipt to merchant POS terminal.",
+            rules: ["Card settlement finalized."],
+            state: "Terminal receipt printed; customer notified of 4,200 PHP debit and 800 PHP hold release.",
+            ofs: "-- Final receipt",
+            http: "HTTP 200 OK\n{ \"status\": \"SETTLED\", \"chargedAmount\": 4200.00, \"releasedAmount\": 800.00 }",
+            sql: "-- None",
+            outbox: "-- Complete",
+            kafka: "-- Complete",
+            audit: "Terminal receipt confirmed."
+          }
+        ]
+      },
+
+      // -------------------------------------------------------------
+      // 4. EOD BATCH PROCESSING PIPELINE (Happy Path)
+      // -------------------------------------------------------------
+      {
+        id: "eod-batch",
+        category: "happy",
+        name: "EOD Batch Processing Pipeline",
+        desc: "Phase 0 Cutoff -> Phase 1 Fees -> Phase 2 Interest & 20% Tax -> Phase 3 Reports -> Phase 4 Date Rollover.",
+        badge: "BATCH",
+        participants: [
+          { id: "cron", name: "Batch Scheduler", sub: "Cron Daemon", color: "var(--cyan)" },
+          { id: "ops", name: "Ops Console", sub: "Operations UI", color: "var(--amber)" },
+          { id: "orch", name: "Orchestrator", sub: "Spring Boot :8082", color: "var(--emerald)" },
+          { id: "cbs", name: "T24 Mock CBS", sub: "Core Engine :8085", color: "var(--purple)" },
+          { id: "azuresql", name: "Azure SQL", sub: "Master DB :1433", color: "var(--purple)" },
+          { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
+          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
+        ],
+        steps: [
+          {
+            title: "1. Cron Triggers EOD Posting Cutoff",
+            from: "cron", to: "orch",
+            arrowType: "solid",
+            desc: "Batch Scheduler initiates EOD processing cycle at 21:00 UTC+8.",
+            rules: ["Posting cutoff initiation."],
+            state: "Orchestrator commences EOD workflow.",
+            ofs: "// EOD trigger",
+            http: "POST /api/v1/internal/batch/trigger-eod\n{ \"businessDate\": \"2026-10-05\" }",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "EOD trigger logged."
+          },
+          {
+            title: "2. Rule 1: OFS Posting Cutoff Command",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator sends OFS BATCH.JOB,CUTOFF command. CBS transitions system_dates.status to EOD_CUTOFF.",
+            rules: ["RULE 1: OFS Cutoff command.", "RULE 3: CBS records EodCutoffInitiatedEvent to outbox_events."],
+            state: "system_dates.status = 'EOD_CUTOFF'. Daytime online traffic buffered for T+1.",
+            ofs: "BATCH.JOB,CUTOFF/I/PROCESS,,VALUE.DATE=20261005",
+            http: "POST /api/v1/internal/cbs/ofs-command",
+            sql: "UPDATE system_dates SET status = 'EOD_CUTOFF' WHERE id = 1;\nINSERT INTO outbox_events VALUES ('EVT-EOD-01', 'BATCH', 'BATCH-20261005', 'EOD_CUTOFF_INITIATED', 'banking.batch.events', '{\"date\":\"2026-10-05\"}', 'PENDING');",
+            outbox: "Status: PENDING -> PUBLISHED | Event: EOD_CUTOFF_INITIATED",
+            kafka: "Topic: banking.batch.events\nEvent: EodCutoffInitiatedEvent (valueDate: 2026-10-05)",
+            audit: "Cutoff state registered."
+          },
+          {
+            title: "3. Rule 1: OFS Cutoff Response ACK",
+            from: "cbs", to: "orch",
+            arrowType: "response-ok",
+            desc: "CBS acknowledges posting cutoff. In-flight transactions drained. Safe to run batch calculations.",
+            rules: ["Cutoff ACK."],
+            state: "Cutoff verified; starting Phase 1 (Fees).",
+            ofs: "CUTOFF//1/SUCCESS,STATUS=EOD_CUTOFF",
+            http: "HTTP 200 OK (OFS Cutoff ACK)",
+            sql: "-- Cutoff locked",
+            outbox: "Status: PUBLISHED",
+            kafka: "-- Published",
+            audit: "Posting cutoff locked."
+          },
+          {
+            title: "4. Rule 1: OFS Automated Fees Batch Command",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator sends OFS AC.CHARGE,BATCH command. CBS processes Below-Min ADB and Dormancy charges.",
+            rules: ["RULE 1: OFS Fee batch command.", "Zero-Overdraft Protection: Arrears logged; balance never goes negative."],
+            state: "Fee income posted. Arrears logged to uncollected_fees for low-balance accounts.",
+            ofs: "AC.CHARGE,BATCH/I/PROCESS,,VALUE.DATE=20261005",
+            http: "POST /api/v1/internal/cbs/ofs-command",
+            sql: "UPDATE balance_master SET balance_amount = balance_amount - 500.00 WHERE account_id = 'ACC-101';\n-- Low-balance account: balance set to 0.00, remaining logged to uncollected_fees:\nINSERT INTO uncollected_fees (account_id, uncollected_amount) VALUES ('ACC-102', 300.00);\nINSERT INTO outbox_events VALUES ('EVT-FEE-01', 'FEE', 'FEE-ACC-101', 'FEE_DEDUCTED', 'banking.batch.events', '{\"amount\":500}', 'PENDING');",
+            outbox: "Status: PENDING -> PUBLISHED | Event: FEE_DEDUCTED",
+            kafka: "Topic: banking.batch.events\nEvent: FeeDeductedEvent (processedCount: 142)",
+            audit: "Batch fees deducted."
+          },
+          {
+            title: "5. Rule 1: OFS Fees Response ACK",
+            from: "cbs", to: "orch",
+            arrowType: "response-ok",
+            desc: "CBS acknowledges fee batch completion: 142 accounts charged, 8 arrears entries logged.",
+            rules: ["Fees completed."],
+            state: "Phase 1 complete. Commencing Phase 2 (Interest & BIR Withholding Tax).",
+            ofs: "FEES//1/SUCCESS,PROCESSED=142,ARREARS=8",
+            http: "HTTP 200 OK (OFS Fees ACK)",
+            sql: "-- Fees completed",
+            outbox: "Status: PUBLISHED",
+            kafka: "-- Published",
+            audit: "Fees finished."
+          },
+          {
+            title: "6. Rule 1: OFS Daily Interest & 20% BIR Tax Command",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator sends OFS IC.CHARGE,BATCH command. Daily interest computed; month-end capitalizes net 80% and posts 20% BIR tax.",
+            rules: ["RULE 1: OFS Interest batch command.", "BIR Tax Compliance: 20% Final Withholding Tax."],
+            state: "Customer balances credited with net interest. Tax liability posted to GL-2300-WHT-PAYABLE.",
+            ofs: "IC.CHARGE,BATCH/I/PROCESS,,VALUE.DATE=20261005,PERIOD=2026-10",
+            http: "POST /api/v1/internal/cbs/ofs-command",
+            sql: "-- Gross = 212.33 PHP, Tax = 42.47 PHP, Net = 169.86 PHP:\nUPDATE balance_master SET balance_amount = balance_amount + 169.86 WHERE account_id = 'ACC-101';\nINSERT INTO gl_ledger (gl_code, debit_amount, ref_id) VALUES ('GL-2200-INT-PAYABLE', 212.33, 'TXN-INT-991');\nINSERT INTO gl_ledger (gl_code, credit_amount, ref_id) VALUES ('GL-2300-WHT-PAYABLE', 42.47, 'TXN-TAX-992');\nINSERT INTO outbox_events VALUES ('EVT-INT-01', 'INTEREST', 'INT-ACC-101', 'INTEREST_CAPITALIZED', 'banking.batch.events', '{\"net\":169.86}', 'PENDING');",
+            outbox: "Status: PENDING -> PUBLISHED | Event: INTEREST_CAPITALIZED",
+            kafka: "Topic: banking.batch.events\nEvent: InterestCapitalizedEvent",
+            audit: "Interest credited & BIR tax posted."
+          },
+          {
+            title: "7. Rule 1: OFS Interest Response ACK",
+            from: "cbs", to: "orch",
+            arrowType: "response-ok",
+            desc: "CBS confirms interest accruals and tax capitalization complete across all deposit tiers.",
+            rules: ["Interest phase completed."],
+            state: "Phase 2 complete. Commencing Phase 3 (Reports & Snapshots).",
+            ofs: "INTEREST//1/SUCCESS,ACCOUNTS=5102",
+            http: "HTTP 200 OK (OFS Interest ACK)",
+            sql: "-- Interest completed",
+            outbox: "Status: PUBLISHED",
+            kafka: "-- Published",
+            audit: "Interest acknowledged."
+          },
+          {
+            title: "8. Rule 1: OFS Snapshots & AMLA Reports Command",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator sends OFS GL.REPORT,GENERATE command. Freezes eod_balance_snapshots and compiles AMLA CTR (> 500k PHP).",
+            rules: ["RULE 1: OFS report generation.", "AMLA Compliance: Transactions >= 500k PHP flagged."],
+            state: "Immutable balance snapshots frozen. Report metadata hashed and filed in eod_reports_metadata.",
+            ofs: "GL.REPORT,GENERATE/I/PROCESS,,VALUE.DATE=20261005",
+            http: "POST /api/v1/internal/cbs/ofs-command",
+            sql: "INSERT INTO eod_balance_snapshots (account_id, closing_balance, held_amount, snapshot_date)\nSELECT account_id, balance_amount, hold_amount, '2026-10-05' FROM balance_master;\nINSERT INTO eod_reports_metadata (report_type, business_date, record_count, verification_status)\nVALUES ('TXN_JOURNAL', '2026-10-05', 4280, 'VERIFIED');\nINSERT INTO outbox_events VALUES ('EVT-REP-01', 'REPORTS', 'REP-20261005', 'REPORTS_READY', 'banking.batch.events', '{\"reports\":4}', 'PENDING');",
+            outbox: "Status: PENDING -> PUBLISHED | Event: REPORTS_READY",
+            kafka: "Topic: banking.batch.events\nEvent: ReportsReadyEvent & StatementGeneratedEvent",
+            audit: "Snapshots and reports compiled."
+          },
+          {
+            title: "9. Rule 1: OFS Reports Response ACK",
+            from: "cbs", to: "orch",
+            arrowType: "response-ok",
+            desc: "CBS acknowledges reports compiled and cryptographic hashes verified.",
+            rules: ["Reports compiled."],
+            state: "Phase 3 complete. Commencing Phase 4 (Date Rollover to T+1).",
+            ofs: "REPORTS//1/SUCCESS,REPORTS_COUNT=4",
+            http: "HTTP 200 OK (OFS Reports ACK)",
+            sql: "-- Reports confirmed",
+            outbox: "Status: PUBLISHED",
+            kafka: "-- Published",
+            audit: "Reports confirmed."
+          },
+          {
+            title: "10. Rule 1: OFS Business Date Rollover Command",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator sends OFS DATES,ROLLOVER command. Advances system_dates.business_date to 2026-10-06 and sets status ONLINE.",
+            rules: ["RULE 1: OFS Date Rollover.", "RULE 3: CBS records EodCompletedEvent to outbox_events."],
+            state: "Banking business date advances to T+1 (2026-10-06). System status restored to ONLINE.",
+            ofs: "DATES,ROLLOVER/I/PROCESS,,FROM.DATE=20261005,TO.DATE=20261006",
+            http: "POST /api/v1/internal/cbs/ofs-command",
+            sql: "UPDATE system_dates SET business_date = '2026-10-06', status = 'ONLINE' WHERE id = 1;\nINSERT INTO outbox_events VALUES ('EVT-EOD-END', 'BATCH', 'BATCH-EOD-20261005', 'EOD_COMPLETED', 'banking.batch.events', '{\"status\":\"SUCCESS\"}', 'PENDING');",
+            outbox: "Status: PENDING -> PUBLISHED | Event: EOD_COMPLETED",
+            kafka: "Topic: banking.batch.events\nEvent: EodCompletedEvent (nextDate: 2026-10-06)",
+            audit: "Business date advanced to T+1."
+          },
+          {
+            title: "11. Rule 1: OFS Rollover Final ACK & System Reopen",
+            from: "cbs", to: "orch",
+            arrowType: "response-ok",
+            desc: "CBS acknowledges rollover complete and system ONLINE. Buffered daytime T+1 transactions released for execution.",
+            rules: ["Rollover ACK."],
+            state: "Daytime buffered queue released. EOD completed successfully.",
+            ofs: "DATES//1/SUCCESS,BUSINESS_DATE=20261006,STATUS=ONLINE",
+            http: "HTTP 200 OK (OFS Rollover ACK)",
+            sql: "-- System ONLINE",
+            outbox: "Status: PUBLISHED",
+            kafka: "-- Published",
+            audit: "System reopened."
+          },
+          {
+            title: "12. Ops Console Receives Batch Complete Alert",
+            from: "orch", to: "ops",
+            arrowType: "response-ok",
+            desc: "Orchestrator notifies Operations Console: EOD for 2026-10-05 finished cleanly in 4m 12s; active date is 2026-10-06.",
+            rules: ["Batch runbook completed."],
+            state: "Operations console displays green status dashboard.",
+            ofs: "// Notification",
+            http: "HTTP 200 OK\n{ \"status\": \"EOD_SUCCESS\", \"date\": \"2026-10-06\", \"runtimeSec\": 252 }",
+            sql: "-- None",
+            outbox: "-- Complete",
+            kafka: "-- Complete",
+            audit: "Ops console updated."
+          }
+        ]
+      },
+
+      // -------------------------------------------------------------
+      // 5. 3-WAY LEDGER RECONCILIATION (Happy Path)
+      // -------------------------------------------------------------
+      {
+        id: "ledger-reconciliation",
+        category: "happy",
+        name: "3-Way Ledger Reconciliation",
+        desc: "Level 1 Zero-Sum Trial Balance, Level 2 Subledger Rollup & Level 3 Cross-Store Audit Vault Parity.",
+        badge: "RECON",
+        participants: [
+          { id: "auditor", name: "GL Accountant", sub: "Finance Portal", color: "var(--cyan)" },
+          { id: "orch", name: "Orchestrator", sub: "Spring Boot :8082", color: "var(--emerald)" },
+          { id: "cbs", name: "T24 Mock CBS", sub: "Core Engine :8085", color: "var(--purple)" },
+          { id: "azuresql", name: "Azure SQL", sub: "Master DB :1433", color: "var(--purple)" },
+          { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
+          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
+        ],
+        steps: [
+          {
+            title: "1. GL Accountant Dispatches Reconciliation Audit",
+            from: "auditor", to: "orch",
+            arrowType: "solid",
+            desc: "Finance Officer / GL Accountant initiates full 3-way trial balance and subledger reconciliation from Finance Portal.",
+            rules: ["Reconciliation audit initiation."],
+            state: "Reconciliation cycle initiated for value date 2026-10-05.",
+            ofs: "// Audit command intake",
+            http: "POST /api/v1/reconciliation/run\n{ \"businessDate\": \"2026-10-05\", \"scope\": \"FULL_3WAY\" }",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Audit command received."
+          },
+          {
+            title: "2. Rule 1: OFS Reconciliation Command",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator translates audit command into Temenos OFS syntax: GL.REPORT,RECON/I/PROCESS.",
+            rules: ["RULE 1: OFS reconciliation instruction."],
+            state: "CBS acquires read-consistent snapshot for date 2026-10-05.",
+            ofs: "GL.REPORT,RECON/I/PROCESS,,VALUE.DATE=20261005,CHECK.LEVEL=FULL_3WAY",
+            http: "POST /api/v1/internal/cbs/ofs-command",
+            sql: "-- CBS locks query snapshot",
+            outbox: "-- Staging pending outcome",
+            kafka: "-- None",
+            audit: "Reconciliation engine locked."
+          },
+          {
+            title: "3. Level 1: Horizontal Zero-Sum Trial Balance",
+            from: "cbs", to: "azuresql",
+            arrowType: "solid",
+            desc: "CBS aggregates all debit and credit entries posted across gl_ledger for date T. Proves Sum(DR) == Sum(CR).",
+            rules: ["Double-Entry Invariant: Total DR must equal Total CR (Variance == 0.0000 PHP)."],
+            state: "Query executing against Azure SQL master ledger.",
+            ofs: "// Level 1 calculation",
+            http: "-- Internal SQL computation",
+            sql: "SELECT SUM(debit_amount) AS total_dr, SUM(credit_amount) AS total_cr\nFROM gl_ledger\nWHERE posting_date = '2026-10-05';",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Level 1 query dispatched."
+          },
+          {
+            title: "4. Level 1 Response: Zero Variance Confirmed",
+            from: "azuresql", to: "cbs",
+            arrowType: "response-ok",
+            desc: "Total Debits = 14,500,000.00 PHP, Total Credits = 14,500,000.00 PHP. Variance = 0.0000 PHP (PASSED).",
+            rules: ["Level 1 Zero-Sum Trial Balance PASSED."],
+            state: "Level 1 integrity confirmed.",
+            ofs: "// Trial balance zero-sum verified",
+            http: "-- Query result OK",
+            sql: "-- total_dr = 14500000.0000, total_cr = 14500000.0000 (Variance = 0.00)",
+            outbox: "-- Level 1 verified",
+            kafka: "-- None",
+            audit: "Trial balance variance = 0.00."
+          },
+          {
+            title: "5. Level 2: Subledger to GL Control Account Rollup",
+            from: "cbs", to: "azuresql",
+            arrowType: "solid",
+            desc: "CBS sums individual customer balances in balance_master and reconciles against GL Control Account GL-2100-CUST-LIAB.",
+            rules: ["Vertical Subledger Rollup: Sum of deposit balances must match GL control account."],
+            state: "Executing rollup verification query.",
+            ofs: "// Level 2 calculation",
+            http: "-- Internal SQL computation",
+            sql: "SELECT SUM(balance_amount) AS subledger_deposits FROM balance_master;\nSELECT current_balance AS gl_liability FROM gl_balances WHERE gl_code = 'GL-2100-CUST-LIAB';\nSELECT SUM(hold_amount) FROM balance_master;\nSELECT SUM(hold_amount) FROM amount_hold_history WHERE hold_status = 'ACTIVE';",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Level 2 query dispatched."
+          },
+          {
+            title: "6. Level 2 Response: Subledger Parity Confirmed",
+            from: "azuresql", to: "cbs",
+            arrowType: "response-ok",
+            desc: "Customer balances (92.45M PHP) match GL Liability (92.45M PHP). Active holds (65k PHP) match hold subledger.",
+            rules: ["Level 2 Subledger Rollup PASSED."],
+            state: "Level 2 integrity confirmed. CBS records reconciliation outcome.",
+            ofs: "// Subledger rollup verified",
+            http: "-- Query result OK",
+            sql: "INSERT INTO reconciliation_reports (reconciliation_id, business_date, level1_variance, level2_variance, status)\nVALUES ('REC-20261005', '2026-10-05', 0.0000, 0.0000, 'RECONCILED');",
+            outbox: "INSERT INTO outbox_events VALUES ('EVT-REC-01', 'RECON', 'REC-20261005', 'LEDGER_RECONCILED', 'banking.batch.events', '{\"status\":\"RECONCILED\"}', 'PENDING');",
+            kafka: "-- Awaiting direct publish",
+            audit: "Level 2 verified."
+          },
+          {
+            title: "7. Rule 3: CBS Direct Publish Reconciled Event",
+            from: "cbs", to: "kafka",
+            arrowType: "solid",
+            desc: "Rule 3: CBS directly publishes LedgerReconciledEvent to Kafka, marking outbox_events status to PUBLISHED.",
+            rules: ["RULE 3: CBS direct event publish."],
+            state: "Outbox marked PUBLISHED.",
+            ofs: "-- Kafka event dispatch",
+            http: "-- Internal Kafka Producer",
+            sql: "UPDATE outbox_events SET status = 'PUBLISHED', published_at = SYSUTCDATETIME() WHERE aggregate_id = 'REC-20261005' AND status = 'PENDING';",
+            outbox: "Status: PUBLISHED",
+            kafka: "Topic: banking.batch.events\nEvent: LedgerReconciledEvent (status: RECONCILED)",
+            audit: "Reconciliation event published."
+          },
+          {
+            title: "8. Rule 1: OFS Level 1 & 2 Success ACK",
+            from: "cbs", to: "orch",
+            arrowType: "response-ok",
+            desc: "CBS returns OFS success ACK with Level 1 & Level 2 verification report reference REC-20261005.",
+            rules: ["RULE 1: OFS Reconciliation ACK."],
+            state: "Orchestrator proceeds to Level 3 cross-store audit vault parity check.",
+            ofs: "REC-20261005//1/SUCCESS,LEVEL1=0.00,LEVEL2=0.00,STATUS=RECONCILED",
+            http: "HTTP 200 OK (OFS Recon ACK)",
+            sql: "-- Complete in Azure SQL",
+            outbox: "Status: PUBLISHED",
+            kafka: "-- Published",
+            audit: "CBS ACK received."
+          },
+          {
+            title: "9. Level 3: Cross-Store Audit Vault Parity Interrogation",
+            from: "orch", to: "vault",
+            arrowType: "solid",
+            desc: "Level 3: Orchestrator queries PostgreSQL ledger_mutation_audit to verify 100% parity against Azure SQL committed count.",
+            rules: ["Level 3 Cross-Store Parity Check."],
+            state: "Verifying Azure SQL committed transactions match PostgreSQL audit entries.",
+            ofs: "// Level 3 verification",
+            http: "-- Read-only JDBC query to Postgres",
+            sql: "SELECT COUNT(*) AS audit_count FROM ledger_mutation_audit WHERE status = 'COMMITTED';",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Level 3 query sent."
+          },
+          {
+            title: "10. Level 3 Response: 100% Audit Parity Confirmed",
+            from: "vault", to: "orch",
+            arrowType: "response-ok",
+            desc: "PostgreSQL returns count = 4,280 committed mutations. Exactly matches 4,280 Azure SQL transactions. Zero missing rows.",
+            rules: ["Level 3 Cross-Store Parity PASSED."],
+            state: "All 3 reconciliation levels verified successfully.",
+            ofs: "// Level 3 cross-store passed",
+            http: "-- Postgres result OK",
+            sql: "-- Azure SQL count (4280) == PostgreSQL count (4280). Variance = 0.",
+            outbox: "-- Complete",
+            kafka: "-- Complete",
+            audit: "100% cross-store parity confirmed."
+          },
+          {
+            title: "11. Reconciliation Certificate Delivered to Accountant",
+            from: "orch", to: "auditor",
+            arrowType: "response-ok",
+            desc: "Orchestrator delivers full 3-Way Reconciliation Audit Certificate to GL Accountant in Finance Portal.",
+            rules: ["3-Way Reconciliation fully completed."],
+            state: "Finance Portal marks business date verified and certified for regulatory filing.",
+            ofs: "-- Certificate issued",
+            http: "HTTP 200 OK\n{\n  \"reportId\": \"REC-20261005\",\n  \"level1Variance\": 0.0000,\n  \"level2Variance\": 0.0000,\n  \"level3Parity\": \"100% (4280/4280)\",\n  \"verdict\": \"CLEAN_AUDIT\"\n}",
+            sql: "-- None",
+            outbox: "-- Complete",
+            kafka: "-- Complete",
+            audit: "Reconciliation sealed."
+          }
+        ]
+      },
+
+      // -------------------------------------------------------------
+      // 6. FAILURE: INSUFFICIENT BALANCE (OFS NACK)
+      // -------------------------------------------------------------
+      {
+        id: "fail-insufficient-funds",
+        category: "failure",
+        name: "Failure: Insufficient Balance (OFS NACK)",
+        desc: "Customer transfer exceeds available funds. CBS locks row, returns OFS NACK, stages outbox and returns HTTP 422.",
+        badge: "FAIL: FUNDS",
+        participants: [
+          { id: "client", name: "Customer", sub: "React / Flutter", color: "var(--cyan)" },
+          { id: "gateway", name: "API Gateway", sub: "Spring Cloud :8080", color: "var(--cyan)" },
+          { id: "orch", name: "Orchestrator", sub: "Spring Boot :8082", color: "var(--emerald)" },
+          { id: "cbs", name: "T24 Mock CBS", sub: "Core Engine :8085", color: "var(--purple)" },
+          { id: "azuresql", name: "Azure SQL", sub: "Master DB :1433", color: "var(--purple)" },
+          { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
+          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
+        ],
+        steps: [
+          {
+            title: "1. Customer Transfer Request (150,000 PHP)",
+            from: "client", to: "gateway",
+            arrowType: "solid",
+            desc: "Customer submits transfer of 150,000.00 PHP from mobile app. Available balance is only 35,000.00 PHP.",
+            rules: ["Perimeter intake."],
+            state: "Gateway authorizes request format.",
+            ofs: "// Request intake",
+            http: "POST /api/v1/transfers\n{\n  \"sourceAccountId\": \"ACC-101\",\n  \"amount\": 150000.00\n}",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Transfer intake received."
+          },
+          {
+            title: "2. Gateway Routes to Orchestrator",
+            from: "gateway", to: "orch",
+            arrowType: "solid",
+            desc: "Gateway forwards request to Transfer Orchestrator.",
+            rules: ["Internal routing."],
+            state: "Orchestrator prepares OFS initiation command.",
+            ofs: "// Internal forward",
+            http: "POST /api/v1/transfers",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Routed internally."
+          },
+          {
+            title: "3. Rule 1: OFS Initiation Command Dispatch",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator serializes command to Temenos OFS syntax: FUNDS.TRANSFER,INITIATE.",
+            rules: ["RULE 1: OFS command formatting."],
+            state: "CBS initiates balance solvency validation.",
+            ofs: "FUNDS.TRANSFER,INITIATE/I/PROCESS,,TX-902,\nDEBIT.ACCT.NO=ACC-101,\nDEBIT.AMOUNT=150000.00",
+            http: "POST /api/v1/internal/cbs/ofs-command",
+            sql: "-- CBS prepares solvency check",
+            outbox: "-- Pending",
+            kafka: "-- None",
+            audit: "CBS solvency check initiated."
+          },
+          {
+            title: "4. CBS Solvency Check Against balance_master",
+            from: "cbs", to: "azuresql",
+            arrowType: "solid",
+            desc: "CBS executes SELECT ... WITH (UPDLOCK, ROWLOCK) on ACC-101 to check available balance.",
+            rules: ["Pessimistic row locking on balance_master."],
+            state: "Lock acquired. Computing available balance.",
+            ofs: "// Solvency check",
+            http: "-- Internal SQL execution",
+            sql: "SELECT balance_amount, hold_amount, (balance_amount - hold_amount) AS available_balance\nFROM balance_master WITH (UPDLOCK, ROWLOCK)\nWHERE account_id = 'ACC-101';",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Row lock acquired."
+          },
+          {
+            title: "5. Solvency Failure: Available Funds Insufficient",
+            from: "azuresql", to: "cbs",
+            arrowType: "response-fail",
+            desc: "Azure SQL returns available_balance = 35,000.00 PHP. Required = 150,000.00 PHP (Shortfall: 115,000.00 PHP).",
+            rules: ["Solvency invariant violated: Balance cannot be mutated."],
+            state: "CBS rejects transaction; sets status REJECTED.",
+            ofs: "// Solvency violation detected",
+            http: "-- SQL result: Shortfall",
+            sql: "-- available_balance (35000) < required (150000). Mutation blocked.",
+            outbox: "INSERT INTO outbox_events VALUES ('EVT-REJ-01', 'TRANSACTION', 'TX-902', 'TRANSFER_REJECTED', 'banking.transfers.events', '{\"reason\":\"INSUFFICIENT_FUNDS\"}', 'PENDING');",
+            kafka: "-- Awaiting direct publish",
+            audit: "Shortfall detected."
+          },
+          {
+            title: "6. Rule 3: CBS Direct Publish Rejection Event",
+            from: "cbs", to: "kafka",
+            arrowType: "solid",
+            desc: "Rule 3: CBS directly publishes TransferRejectedEvent to Kafka, marking outbox status as PUBLISHED.",
+            rules: ["RULE 3: CBS direct event publish."],
+            state: "Outbox marked PUBLISHED.",
+            ofs: "-- Kafka event dispatch",
+            http: "-- Internal Kafka Producer",
+            sql: "UPDATE outbox_events SET status = 'PUBLISHED', published_at = SYSUTCDATETIME() WHERE aggregate_id = 'TX-902' AND status = 'PENDING';",
+            outbox: "Status: PUBLISHED",
+            kafka: "Topic: banking.transfers.events\nEvent: TransferRejectedEvent (reason: INSUFFICIENT_FUNDS)",
+            audit: "Rejection event published."
+          },
+          {
+            title: "7. Rule 1: OFS Rejection NACK Returned",
+            from: "cbs", to: "orch",
+            arrowType: "response-fail",
+            desc: "Rule 1: CBS returns official Temenos OFS NACK string: FT-ERR//2/ACCOUNT.BAL.LT.ZERO,SHORTFALL=115000.00.",
+            rules: ["RULE 1: OFS Error NACK returned."],
+            state: "Orchestrator maps OFS error to HTTP 422 Unprocessable Entity.",
+            ofs: "FT-ERR//2/ACCOUNT.BAL.LT.ZERO,TXN.REF=TX-902,SHORTFALL=115000.00",
+            http: "HTTP 422 Unprocessable Entity (OFS NACK)",
+            sql: "-- No balance changes made",
+            outbox: "Status: PUBLISHED",
+            kafka: "-- Published",
+            audit: "OFS NACK received."
+          },
+          {
+            title: "8. Gateway Returns HTTP 422 Error to Customer",
+            from: "orch", to: "client",
+            arrowType: "response-fail",
+            desc: "Customer mobile app displays clear error: 'Transfer failed: Insufficient available balance (Shortfall: 115,000.00 PHP)'.",
+            rules: ["Deterministic error response delivered."],
+            state: "Transaction terminated. Balance untouched.",
+            ofs: "// Error delivered",
+            http: "HTTP 422 Unprocessable Entity\n{\n  \"error\": \"INSUFFICIENT_FUNDS\",\n  \"availableBalance\": 35000.00,\n  \"requestedAmount\": 150000.00,\n  \"shortfall\": 115000.00\n}",
+            sql: "-- Balances intact",
+            outbox: "-- Complete",
+            kafka: "-- Consumed",
+            audit: "Error delivered to customer."
+          },
+          {
+            title: "9. Rule 2: Audit Worker Records Rejection in Vault",
+            from: "kafka", to: "vault",
+            arrowType: "solid",
+            desc: "Rule 2: Audit Worker consumes TransferRejectedEvent and logs incident in PostgreSQL audit vault.",
+            rules: ["RULE 2: PostgreSQL Append-Only Compliance."],
+            state: "Rejection incident permanently archived.",
+            ofs: "-- Compliance archival",
+            http: "-- Internal JDBC",
+            sql: "INSERT INTO ledger_mutation_audit (transaction_id, account_id, mutation_type, mutation_amount, before_balance, after_balance, status)\nVALUES ('TX-902', 'ACC-101', 'REJECTED_TRANSFER', 150000.00, 35000.00, 35000.00, 'REJECTED');",
+            outbox: "-- Complete",
+            kafka: "-- Offset committed",
+            audit: "Rejection audited in PostgreSQL."
+          }
+        ]
+      },
+
+      // -------------------------------------------------------------
+      // 7. FAILURE: FRAUD AUTO-BLOCK (XGBoost > 0.85)
+      // -------------------------------------------------------------
+      {
+        id: "fail-fraud-block",
+        category: "failure",
+        name: "Failure: High Fraud Risk (XGBoost Auto-Block)",
+        desc: "Synchronous XGBoost risk score exceeds threshold (0.94 > 0.85). Orchestrator halts flow, CBS is never touched, HTTP 403 returned.",
+        badge: "FAIL: FRAUD",
+        participants: [
+          { id: "client", name: "Customer", sub: "React / Flutter", color: "var(--cyan)" },
+          { id: "gateway", name: "API Gateway", sub: "Spring Cloud :8080", color: "var(--cyan)" },
+          { id: "orch", name: "Orchestrator", sub: "Spring Boot :8082", color: "var(--emerald)" },
+          { id: "risk", name: "Risk Engine", sub: "FastAPI :8084", color: "var(--rose)" },
+          { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
+          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
+        ],
+        steps: [
+          {
+            title: "1. Transfer Request with Anomalous Device IP",
+            from: "client", to: "gateway",
+            arrowType: "solid",
+            desc: "Transfer submitted from an unrecognized foreign IP address with rapid 10x velocity burst.",
+            rules: ["Perimeter intake."],
+            state: "Request forwarded to Orchestrator.",
+            ofs: "// Request intake",
+            http: "POST /api/v1/transfers\n{\n  \"accountId\": \"ACC-101\",\n  \"amount\": 95000.00,\n  \"ip\": \"198.51.100.99\"\n}",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Intake logged."
+          },
+          {
+            title: "2. Gateway Forwards to Orchestrator",
+            from: "gateway", to: "orch",
+            arrowType: "solid",
+            desc: "Gateway routes payload to Transfer Orchestrator.",
+            rules: ["Internal routing."],
+            state: "Orchestrator initiates synchronous risk check before touching CBS.",
+            ofs: "// Internal forward",
+            http: "POST /api/v1/transfers",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Forwarded to orchestrator."
+          },
+          {
+            title: "3. Synchronous Fast-Path Call to Risk Engine",
+            from: "orch", to: "risk",
+            arrowType: "solid",
+            desc: "Orchestrator synchronously calls Python Risk Engine (:8084) with transaction context (< 2ms SLA).",
+            rules: ["Synchronous fraud assessment protocol."],
+            state: "Python FastAPI evaluates feature vector.",
+            ofs: "// Fast-path REST call",
+            http: "POST /api/v1/risk/transfer\n{\n  \"accountId\": \"ACC-101\",\n  \"amount\": 95000.00,\n  \"ip\": \"198.51.100.99\",\n  \"velocity\": 12\n}",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Risk check dispatched."
+          },
+          {
+            title: "4. XGBoost Model Scores Fraud Risk at 0.94",
+            from: "risk", to: "risk",
+            arrowType: "self",
+            desc: "XGBoost classifier scores transaction at 0.94 (THRESHOLD: 0.85). Verdict: BLOCK.",
+            rules: ["Zero-tolerance automated fraud block."],
+            state: "Verdict: BLOCK. Generating critical fraud alert.",
+            ofs: "// Model inference in RAM (< 1.8ms)",
+            http: "-- Internal inference",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Fraud score = 0.94 computed."
+          },
+          {
+            title: "5. Risk Engine Publishes Fraud Alert Event",
+            from: "risk", to: "kafka",
+            arrowType: "solid",
+            desc: "Risk Engine publishes HighFraudRiskDetectedEvent directly to banking.risk.evaluations.",
+            rules: ["Real-time fraud alerting."],
+            state: "Kafka event published. Case queued for fraud analysts.",
+            ofs: "// Kafka event dispatch",
+            http: "-- Internal Kafka Producer",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "Topic: banking.risk.evaluations\nEvent: HighFraudRiskDetectedEvent\n{\n  \"txId\": \"TX-903\",\n  \"score\": 0.94,\n  \"reason\": \"VELOCITY_BURST_ANOMALY\"\n}",
+            audit: "Fraud alert emitted."
+          },
+          {
+            title: "6. Risk Engine Returns HTTP 200 BLOCK Verdict",
+            from: "risk", to: "orch",
+            arrowType: "response-fail",
+            desc: "Python Risk Engine returns verdict BLOCK. Orchestrator immediately terminates transaction workflow.",
+            rules: ["Pre-CBS Circuit Cut: Core banking engine is NEVER called."],
+            state: "Workflow aborted before CBS. Zero ledger mutation.",
+            ofs: "// CBS was NEVER contacted",
+            http: "HTTP 200 OK\n{ \"verdict\": \"BLOCK\", \"score\": 0.94, \"reason\": \"VELOCITY_BURST_ANOMALY\" }",
+            sql: "-- CBS database untouched",
+            outbox: "-- Zero outbox rows written",
+            kafka: "-- Event in broker",
+            audit: "Fraud verdict received."
+          },
+          {
+            title: "7. Orchestrator Returns HTTP 403 Forbidden",
+            from: "orch", to: "client",
+            arrowType: "response-fail",
+            desc: "Customer receives HTTP 403 Forbidden with security incident reference SEC-994.",
+            rules: ["Security boundary enforced."],
+            state: "Transaction blocked. Client alerted.",
+            ofs: "// Security block",
+            http: "HTTP 403 Forbidden\n{\n  \"error\": \"FRAUD_POLICY_VIOLATION\",\n  \"message\": \"Transaction flagged by automated risk policy. Contact fraud support.\",\n  \"incidentRef\": \"SEC-994\"\n}",
+            sql: "-- Zero database changes",
+            outbox: "-- None",
+            kafka: "-- Consumed",
+            audit: "Client receives 403."
+          },
+          {
+            title: "8. Rule 2: Audit Worker Persists Fraud Incident",
+            from: "kafka", to: "vault",
+            arrowType: "solid",
+            desc: "Rule 2: Audit Worker consumes HighFraudRiskDetectedEvent and logs incident in PostgreSQL audit vault.",
+            rules: ["RULE 2: PostgreSQL Append-Only Compliance."],
+            state: "Fraud prevention incident logged for regulatory compliance.",
+            ofs: "-- Compliance archival",
+            http: "-- Internal JDBC",
+            sql: "INSERT INTO suspicious_activity_audit (incident_ref, account_id, fraud_score, action_taken)\nVALUES ('SEC-994', 'ACC-101', 0.9400, 'BLOCKED_PRE_CBS');",
+            outbox: "-- None",
+            kafka: "-- Offset committed",
+            audit: "SAR record archived."
+          }
+        ]
+      },
+
+      // -------------------------------------------------------------
+      // 8. FAILURE: CBS OUTAGE & DLQ ROUTING
+      // -------------------------------------------------------------
+      {
+        id: "fail-cbs-outage-dlq",
+        category: "failure",
+        name: "Failure: CBS Outage & DLQ Routing",
+        desc: "CBS is unreachable. Orchestrator executes 3 exponential backoff retries, trips Circuit Breaker, publishes to DLQ and returns HTTP 503.",
+        badge: "FAIL: RETRY",
+        participants: [
+          { id: "client", name: "Customer", sub: "React / Flutter", color: "var(--cyan)" },
+          { id: "gateway", name: "API Gateway", sub: "Spring Cloud :8080", color: "var(--cyan)" },
+          { id: "orch", name: "Orchestrator", sub: "Spring Boot :8082", color: "var(--emerald)" },
+          { id: "cbs", name: "T24 Mock CBS (Down)", sub: "Timeout :8085", color: "var(--rose)" },
+          { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
+          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
+        ],
+        steps: [
+          {
+            title: "1. Customer Submits Funds Transfer",
+            from: "client", to: "gateway",
+            arrowType: "solid",
+            desc: "Customer initiates transfer of 15,000.00 PHP. Gateway routes to Transfer Orchestrator.",
+            rules: ["Perimeter intake."],
+            state: "Transfer intake received.",
+            ofs: "// Request intake",
+            http: "POST /api/v1/transfers\n{ \"amount\": 15000.00 }",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Intake logged."
+          },
+          {
+            title: "2. Gateway Routes to Orchestrator",
+            from: "gateway", to: "orch",
+            arrowType: "solid",
+            desc: "Gateway routes request to Transfer Orchestrator.",
+            rules: ["Internal routing."],
+            state: "Orchestrator prepares OFS dispatch to T24 Mock CBS.",
+            ofs: "// Internal forward",
+            http: "POST /api/v1/transfers",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Routed internally."
+          },
+          {
+            title: "3. Rule 1: Initial OFS Dispatch -> Socket Timeout",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator dispatches OFS command to CBS (:8085). Socket connection times out after 1000ms.",
+            rules: ["RULE 1: OFS dispatch attempt #0."],
+            state: "Connection timeout. Initiating exponential backoff retry policy.",
+            ofs: "FUNDS.TRANSFER,INITIATE/I/PROCESS,,TX-904... -> TIMEOUT",
+            http: "POST /api/v1/internal/cbs/ofs-command -> 504 Gateway Timeout",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Timeout recorded."
+          },
+          {
+            title: "4. Retry #1 (+100ms Backoff) -> Read Timeout",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Orchestrator executes Retry #1 after 100ms exponential delay. Read timeout occurs.",
+            rules: ["Exponential backoff retry #1."],
+            state: "Retry 1 failed.",
+            ofs: "// Retry #1",
+            http: "POST /api/v1/internal/cbs/ofs-command -> SocketTimeoutException",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Retry 1 failed."
+          },
+          {
+            title: "5. Retry #2 (+200ms Backoff) -> Connection Refused",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Orchestrator executes Retry #2 after 200ms delay. Connection refused by host.",
+            rules: ["Exponential backoff retry #2."],
+            state: "Retry 2 failed.",
+            ofs: "// Retry #2",
+            http: "POST /api/v1/internal/cbs/ofs-command -> ConnectException: Connection refused",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Retry 2 failed."
+          },
+          {
+            title: "6. Retry #3 (+400ms Backoff) -> Max Retries Exhausted",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Orchestrator executes Retry #3 after 400ms delay. Connection drops. Max retries (3) exhausted.",
+            rules: ["Exponential backoff retry #3 exhausted."],
+            state: "All retries exhausted.",
+            ofs: "// Retry #3 exhausted",
+            http: "POST /api/v1/internal/cbs/ofs-command -> MaxRetriesExceededException",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Retry limit hit."
+          },
+          {
+            title: "7. Resilience4j Circuit Breaker Trips to OPEN",
+            from: "orch", to: "orch",
+            arrowType: "self",
+            desc: "Circuit Breaker threshold exceeded (5 consecutive failures). Circuit trips to OPEN state to protect thread pools.",
+            rules: ["Circuit Breaker Pattern: Fast-fail subsequent calls."],
+            state: "Circuit Breaker: OPEN. Escalating payload to Dead Letter Queue.",
+            ofs: "// Circuit OPEN; halting OFS calls",
+            http: "-- Internal state update",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Circuit breaker OPEN."
+          },
+          {
+            title: "8. Escalation to Kafka Dead Letter Queue (DLQ)",
+            from: "orch", to: "kafka",
+            arrowType: "solid",
+            desc: "Orchestrator publishes TransferFailedToDlqEvent directly to banking.transfers.dlq topic.",
+            rules: ["Dead Letter Queue Routing Protocol."],
+            state: "DLQ message published with retry metadata and error trace.",
+            ofs: "// DLQ routing",
+            http: "-- Internal Kafka Producer",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "Topic: banking.transfers.dlq\nEvent: TransferFailedToDlqEvent\n{\n  \"txId\": \"TX-904\",\n  \"errorCode\": \"CBS_UNAVAILABLE\",\n  \"retries\": 3,\n  \"exhaustedAt\": \"2026-10-05T17:15:00Z\"\n}",
+            audit: "DLQ event published."
+          },
+          {
+            title: "9. Customer Receives HTTP 503 Graceful Notice",
+            from: "orch", to: "client",
+            arrowType: "response-fail",
+            desc: "Orchestrator returns HTTP 503 Service Unavailable: 'Core banking is busy; transfer queued for resolution'.",
+            rules: ["Graceful degradation response."],
+            state: "Customer notified. Double-debit prevented.",
+            ofs: "// Graceful 503",
+            http: "HTTP 503 Service Unavailable\n{\n  \"error\": \"SERVICE_UNAVAILABLE\",\n  \"message\": \"Core banking engine temporarily unreachable. Request queued for replay.\",\n  \"trackingId\": \"TX-904\"\n}",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- Consumed",
+            audit: "Customer received 503."
+          },
+          {
+            title: "10. Rule 2: Audit Worker Ingests DLQ Incident",
+            from: "kafka", to: "vault",
+            arrowType: "solid",
+            desc: "Rule 2: Audit Worker consumes from banking.transfers.dlq and inserts incident into PostgreSQL failed_transaction_history.",
+            rules: ["RULE 2: PostgreSQL Append-Only DLQ Log."],
+            state: "Failure incident permanently preserved for operations replay.",
+            ofs: "-- Compliance archival",
+            http: "-- Internal JDBC",
+            sql: "INSERT INTO failed_transaction_history (tx_id, failure_reason, retry_count, payload)\nVALUES ('TX-904', 'CBS_TIMEOUT_EXHAUSTED', 3, '{\"amount\":15000}');",
+            outbox: "-- None",
+            kafka: "-- Offset committed",
+            audit: "DLQ row logged to PostgreSQL."
+          }
+        ]
+      },
+
+      // -------------------------------------------------------------
+      // 9. FAILURE: RISK ENGINE SERVER OUTAGE (Fail-Secure)
+      // -------------------------------------------------------------
+      {
+        id: "fail-risk-outage-fallback",
+        category: "failure",
+        name: "Failure: Risk Engine Outage (Fail-Secure)",
+        desc: "Python Risk Engine server is completely down. Orchestrator circuit breaker trips, triggers Fail-Secure fallback mode (mandatory 2FA challenge).",
+        badge: "FAIL: OUTAGE",
+        participants: [
+          { id: "client", name: "Customer", sub: "React / Flutter", color: "var(--cyan)" },
+          { id: "gateway", name: "API Gateway", sub: "Spring Cloud :8080", color: "var(--cyan)" },
+          { id: "orch", name: "Orchestrator", sub: "Spring Boot :8082", color: "var(--emerald)" },
+          { id: "risk", name: "Risk Engine (Down)", sub: "502 / Unreachable", color: "var(--rose)" },
+          { id: "cbs", name: "T24 Mock CBS", sub: "Core Engine :8085", color: "var(--purple)" },
+          { id: "azuresql", name: "Azure SQL", sub: "Master DB :1433", color: "var(--purple)" },
+          { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" }
+        ],
+        steps: [
+          {
+            title: "1. Customer Submits 25,000 PHP Transfer",
+            from: "client", to: "gateway",
+            arrowType: "solid",
+            desc: "Customer initiates transfer of 25,000.00 PHP (normally below the 50,000 PHP 2FA threshold).",
+            rules: ["Standard intake."],
+            state: "Intake received.",
+            ofs: "// Request intake",
+            http: "POST /api/v1/transfers\n{ \"amount\": 25000.00 }",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Intake logged."
+          },
+          {
+            title: "2. Gateway Routes to Orchestrator",
+            from: "gateway", to: "orch",
+            arrowType: "solid",
+            desc: "Gateway forwards request to Orchestrator.",
+            rules: ["Internal routing."],
+            state: "Orchestrator initiates synchronous risk scoring.",
+            ofs: "// Forward",
+            http: "POST /api/v1/transfers",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Routed internally."
+          },
+          {
+            title: "3. Synchronous Call to Risk Engine -> 502 / Socket Error",
+            from: "orch", to: "risk",
+            arrowType: "solid",
+            desc: "Orchestrator sync call to Python Risk Engine (:8084) fails: 502 Bad Gateway / Connection Refused.",
+            rules: ["External dependency outage."],
+            state: "Risk Engine process is dead or unresponsive.",
+            ofs: "// Risk Engine down",
+            http: "POST /api/v1/risk/transfer -> 502 Bad Gateway / ConnectException",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Risk service unavailable."
+          },
+          {
+            title: "4. Orchestrator Circuit Breaker Trips to OPEN",
+            from: "orch", to: "orch",
+            arrowType: "self",
+            desc: "Resilience4j RiskCircuitBreaker trips to OPEN. Orchestrator invokes configured Fallback Policy.",
+            rules: ["Risk Engine Circuit Breaker Trips."],
+            state: "Policy: FAIL_SECURE_MODE activated.",
+            ofs: "// Circuit Breaker OPEN",
+            http: "-- Internal state update",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Fallback activated."
+          },
+          {
+            title: "5. Orchestrator Emits Risk Engine Degraded Alert",
+            from: "orch", to: "kafka",
+            arrowType: "solid",
+            desc: "Orchestrator publishes RiskEngineDegradedEvent to banking.system.alerts to wake SRE on-call engineers.",
+            rules: ["Operational alerting."],
+            state: "Alert event emitted.",
+            ofs: "// Alert dispatch",
+            http: "-- Internal Kafka Producer",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "Topic: banking.system.alerts\nEvent: RiskEngineDegradedEvent\n{\n  \"status\": \"DOWN\",\n  \"fallbackMode\": \"FAIL_SECURE_ENFORCE_2FA\"\n}",
+            audit: "SRE alert emitted."
+          },
+          {
+            title: "6. Fail-Secure Policy: Mandatory 2FA Enforced",
+            from: "orch", to: "client",
+            arrowType: "warning",
+            desc: "Under Fail-Secure mode, Orchestrator enforces mandatory step-up 2FA regardless of amount to prevent fraud during outage.",
+            rules: ["Fail-Secure Banking Policy."],
+            state: "Awaiting customer OTP input.",
+            ofs: "// Step-up challenge",
+            http: "HTTP 202 Accepted\n{ \"status\": \"OTP_REQUIRED\", \"reason\": \"SECURITY_POLICY_STEP_UP\" }",
+            sql: "-- Redis: SET otp:TX-905 \"718293\" EX 180",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Mandatory 2FA enforced."
+          },
+          {
+            title: "7. Customer Submits Verified 2FA Code",
+            from: "client", to: "orch",
+            arrowType: "solid",
+            desc: "Customer submits correct email OTP '718293'. Orchestrator validates code against Redis.",
+            rules: ["2FA verified."],
+            state: "Security challenge satisfied.",
+            ofs: "// Verification intake",
+            http: "POST /api/v1/transfers/TX-905/verify-otp\n{ \"otp\": \"718293\" }",
+            sql: "-- Redis: GET otp:TX-905 -> Valid",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "2FA verified."
+          },
+          {
+            title: "8. Rule 1: OFS Settlement Executed Safely",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator sends OFS FUNDS.TRANSFER,AUTH command. CBS executes double-entry ledger mutation.",
+            rules: ["RULE 1: OFS Settlement execution."],
+            state: "Ledger updated under degraded mode.",
+            ofs: "FUNDS.TRANSFER,AUTH/I/PROCESS,,TX-905,\nDEBIT.ACCT.NO=ACC-101,\nDEBIT.AMOUNT=25000.00,\nAUTH.METHOD=FAIL_SECURE_2FA",
+            http: "POST /api/v1/internal/cbs/ofs-command",
+            sql: "UPDATE balance_master SET balance_amount = balance_amount - 25000.00 WHERE account_id = 'ACC-101';\nUPDATE balance_master SET balance_amount = balance_amount + 25000.00 WHERE account_id = 'ACC-202';",
+            outbox: "Status: PENDING -> PUBLISHED | Event: TRANSFER_EXECUTED",
+            kafka: "Topic: banking.transfers.events\nEvent: TransferExecutedEvent (25000 PHP)",
+            audit: "CBS ledger settled."
+          },
+          {
+            title: "9. Customer Receives Success Receipt",
+            from: "orch", to: "client",
+            arrowType: "response-ok",
+            desc: "Customer receives transfer success receipt. Platform safely handled payment despite total risk engine outage.",
+            rules: ["Graceful resilience complete."],
+            state: "Payment completed successfully.",
+            ofs: "-- Success receipt",
+            http: "HTTP 200 OK\n{ \"status\": \"POSTED\", \"amount\": 25000.00, \"notice\": \"Processed under enhanced security verification\" }",
+            sql: "-- Completed",
+            outbox: "-- Complete",
+            kafka: "-- Complete",
+            audit: "Receipt delivered."
+          }
+        ]
+      },
+
+      // -------------------------------------------------------------
+      // 10. FAILURE: SUPERVISOR REJECTION (Lien Lifted)
+      // -------------------------------------------------------------
+      {
+        id: "fail-reversal-rejected",
+        category: "failure",
+        name: "Failure: Supervisor Rejection (Lien Lifted)",
+        desc: "Teller files reversal ticket and beneficiary lien is placed. Checker Supervisor discovers valid merchant sale and REJECTS dispute; lien is released.",
+        badge: "FAIL: REJECT",
+        participants: [
+          { id: "maker", name: "Maker Teller", sub: "Dispute Portal", color: "var(--cyan)" },
+          { id: "checker", name: "Checker Mgr", sub: "Approval Portal", color: "var(--purple)" },
+          { id: "orch", name: "Orchestrator", sub: "Spring Boot :8082", color: "var(--emerald)" },
+          { id: "cbs", name: "T24 Mock CBS", sub: "Core Engine :8085", color: "var(--purple)" },
+          { id: "azuresql", name: "Azure SQL", sub: "Master DB :1433", color: "var(--purple)" },
+          { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
+          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
+        ],
+        steps: [
+          {
+            title: "1. Maker Teller Files Dispute Ticket",
+            from: "maker", to: "orch",
+            arrowType: "solid",
+            desc: "Teller files reversal ticket DISP-8802 claiming accidental customer transfer of 65,000.00 PHP.",
+            rules: ["Maker-Checker dual control."],
+            state: "Dispute ticket DISP-8802 created.",
+            ofs: "// Dispute intake",
+            http: "POST /api/v1/transfers/TX-901/reversal-request\n{\n  \"ticketId\": \"DISP-8802\",\n  \"makerId\": \"OP-MAKER-01\"\n}",
+            sql: "INSERT INTO reversal_tickets (ticket_id, status) VALUES ('DISP-8802', 'PENDING_CHECKER');",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Ticket registered."
+          },
+          {
+            title: "2. Rule 1: OFS Beneficiary Lien Placement",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator sends OFS AC.LOCKED.EVENTS command. CBS places provisional 65k PHP lien on beneficiary.",
+            rules: ["RULE 1: OFS lien placement.", "RULE 3: CBS records BENEFICIARY_LIEN_PLACED in outbox_events."],
+            state: "Beneficiary ACC-202 hold_amount incremented by 65k PHP.",
+            ofs: "AC.LOCKED.EVENTS,INPUT/I/PROCESS,,ACCOUNT.NUMBER=ACC-202,\nLOCKED.AMOUNT=65000.00",
+            http: "POST /api/v1/internal/cbs/ofs-command",
+            sql: "UPDATE balance_master SET hold_amount = hold_amount + 65000.00 WHERE account_id = 'ACC-202';\nINSERT INTO outbox_events VALUES ('EVT-REV-21', 'REVERSAL', 'DISP-8802', 'BENEFICIARY_LIEN_PLACED', 'banking.transfers.events', '{\"lien\":65000}', 'PENDING');",
+            outbox: "Status: PENDING -> PUBLISHED | Event: BENEFICIARY_LIEN_PLACED",
+            kafka: "Topic: banking.transfers.events\nEvent: BeneficiaryLienPlacedEvent",
+            audit: "Lien placed in Azure SQL."
+          },
+          {
+            title: "3. Rule 1: OFS Lien Confirmation ACK",
+            from: "cbs", to: "orch",
+            arrowType: "response-ok",
+            desc: "CBS acknowledges beneficiary lien placed.",
+            rules: ["Lien ACK."],
+            state: "Awaiting Checker Supervisor review.",
+            ofs: "LIEN-8802//1/SUCCESS,STATUS=LOCKED",
+            http: "HTTP 200 OK (OFS Lien ACK)",
+            sql: "-- Lien confirmed",
+            outbox: "Status: PUBLISHED",
+            kafka: "-- Published",
+            audit: "Lien acknowledged."
+          },
+          {
+            title: "4. Notification to Checker Supervisor",
+            from: "orch", to: "checker",
+            arrowType: "warning",
+            desc: "Orchestrator notifies Checker Supervisor of pending reversal ticket DISP-8802.",
+            rules: ["Supervisor review."],
+            state: "Supervisor investigates transaction history.",
+            ofs: "// Notification",
+            http: "Push Alert to Supervisor Console\n{ \"ticketId\": \"DISP-8802\" }",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Supervisor notified."
+          },
+          {
+            title: "5. Checker Rejects Reversal Dispute",
+            from: "checker", to: "orch",
+            arrowType: "response-fail",
+            desc: "Checker Supervisor reviews merchant invoice: Goods were already delivered. Reversal claim is invalid! Rejection issued.",
+            rules: ["Dual-control rejection authority."],
+            state: "Reversal REJECTED. Initiating lien removal.",
+            ofs: "// Rejection command",
+            http: "POST /api/v1/reversals/DISP-8802/reject\n{\n  \"checkerId\": \"MGR-CHECKER-09\",\n  \"reason\": \"LEGITIMATE_MERCHANT_PURCHASE_CONFIRMED\"\n}",
+            sql: "UPDATE reversal_tickets SET status = 'REJECTED_BY_CHECKER' WHERE ticket_id = 'DISP-8802';",
+            outbox: "-- Lien release authorized",
+            kafka: "-- None",
+            audit: "Supervisor rejection recorded."
+          },
+          {
+            title: "6. Rule 1: OFS Beneficiary Lien Release Command",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator sends OFS AC.LOCKED.EVENTS,RELEASE command. CBS removes lien and unfreezes beneficiary funds.",
+            rules: ["RULE 1: OFS lien release.", "RULE 3: CBS records BENEFICIARY_LIEN_RELEASED in outbox_events."],
+            state: "Beneficiary hold_amount decremented by 65k PHP. Funds fully restored.",
+            ofs: "AC.LOCKED.EVENTS,RELEASE/I/PROCESS,,ACCOUNT.NUMBER=ACC-202,\nLOCKED.AMOUNT=65000.00,\nDESCRIPTION=REVERSAL_REJECTED",
+            http: "POST /api/v1/internal/cbs/ofs-command",
+            sql: "BEGIN TRANSACTION;\nUPDATE balance_master SET hold_amount = hold_amount - 65000.00 WHERE account_id = 'ACC-202';\nINSERT INTO outbox_events VALUES ('EVT-REV-22', 'REVERSAL', 'DISP-8802', 'BENEFICIARY_LIEN_RELEASED', 'banking.transfers.events', '{\"lien\":0}', 'PENDING');\nCOMMIT;",
+            outbox: "Status: PENDING -> PUBLISHED | Event: BENEFICIARY_LIEN_RELEASED",
+            kafka: "Topic: banking.transfers.events\nEvent: BeneficiaryLienReleasedEvent",
+            audit: "Lien lifted in Azure SQL."
+          },
+          {
+            title: "7. Rule 1: OFS Lien Release Response ACK",
+            from: "cbs", to: "orch",
+            arrowType: "response-ok",
+            desc: "CBS acknowledges lien removed. Beneficiary funds unlocked.",
+            rules: ["Lien release ACK."],
+            state: "Lien removal complete.",
+            ofs: "LIEN-8802//1/SUCCESS,STATUS=RELEASED",
+            http: "HTTP 200 OK (OFS Release ACK)",
+            sql: "-- Lien cleared",
+            outbox: "Status: PUBLISHED",
+            kafka: "-- Published",
+            audit: "Lien release ACK received."
+          },
+          {
+            title: "8. Dispute Rejection Notice Delivered to Maker",
+            from: "orch", to: "maker",
+            arrowType: "response-fail",
+            desc: "Teller receives formal dispute rejection: 'Ticket DISP-8802 REJECTED by supervisor. Beneficiary lien lifted.'",
+            rules: ["Reversal rejection closed."],
+            state: "Ticket closed with status REJECTED.",
+            ofs: "// Rejection notice",
+            http: "HTTP 200 OK\n{\n  \"ticketId\": \"DISP-8802\",\n  \"status\": \"REJECTED\",\n  \"reason\": \"LEGITIMATE_MERCHANT_PURCHASE_CONFIRMED\",\n  \"lienStatus\": \"LIFTED\"\n}",
+            sql: "-- Reversal closed",
+            outbox: "-- Complete",
+            kafka: "-- Complete",
+            audit: "Teller notified."
+          },
+          {
+            title: "9. Rule 2: Audit Worker Archives Rejection",
+            from: "kafka", to: "vault",
+            arrowType: "solid",
+            desc: "Rule 2: Audit Worker logs supervisor rejection rationale in PostgreSQL audit trail.",
+            rules: ["RULE 2: PostgreSQL Append-Only Compliance."],
+            state: "Reversal rejection audit trail permanently archived.",
+            ofs: "-- Compliance archival",
+            http: "-- Internal JDBC",
+            sql: "INSERT INTO reversal_audit (ticket_id, action, checker_id, reason)\nVALUES ('DISP-8802', 'REJECTED', 'MGR-CHECKER-09', 'LEGITIMATE_MERCHANT_PURCHASE_CONFIRMED');",
+            outbox: "-- Complete",
+            kafka: "-- Offset committed",
+            audit: "Reversal rejection audited."
+          }
+        ]
+      },
+
+      // -------------------------------------------------------------
+      // 11. FAILURE: OUT-OF-BALANCE EOD VARIANCE (System Halt)
+      // -------------------------------------------------------------
+      {
+        id: "fail-eod-variance-halt",
+        category: "failure",
+        name: "Failure: Out-of-Balance EOD Variance (System Halt)",
+        desc: "EOD trial balance detects DR != CR (+15k PHP variance). System transitions to EOD_HALTED, business date rollover is BLOCKED, P1 alert emitted.",
+        badge: "FAIL: VARIANCE",
+        participants: [
+          { id: "cron", name: "Batch Scheduler", sub: "Cron Daemon", color: "var(--cyan)" },
+          { id: "ops", name: "Ops Console", sub: "Operations UI", color: "var(--amber)" },
+          { id: "orch", name: "Orchestrator", sub: "Spring Boot :8082", color: "var(--emerald)" },
+          { id: "cbs", name: "T24 Mock CBS", sub: "Core Engine :8085", color: "var(--purple)" },
+          { id: "azuresql", name: "Azure SQL", sub: "Master DB :1433", color: "var(--purple)" },
+          { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
+          { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
+        ],
+        steps: [
+          {
+            title: "1. Cron Triggers EOD Posting Cutoff",
+            from: "cron", to: "orch",
+            arrowType: "solid",
+            desc: "Batch Scheduler initiates EOD cycle.",
+            rules: ["EOD initiation."],
+            state: "Orchestrator commands cutoff.",
+            ofs: "// EOD trigger",
+            http: "POST /api/v1/internal/batch/trigger-eod",
+            sql: "-- None",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "EOD triggered."
+          },
+          {
+            title: "2. Rule 1: OFS Posting Cutoff Command",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator sends OFS BATCH.JOB,CUTOFF command. CBS transitions system_dates to EOD_CUTOFF.",
+            rules: ["RULE 1: OFS Cutoff command."],
+            state: "system_dates.status = 'EOD_CUTOFF'.",
+            ofs: "BATCH.JOB,CUTOFF/I/PROCESS,,VALUE.DATE=20261005",
+            http: "POST /api/v1/internal/cbs/ofs-command",
+            sql: "UPDATE system_dates SET status = 'EOD_CUTOFF' WHERE id = 1;",
+            outbox: "-- Cutoff recorded",
+            kafka: "Topic: banking.batch.events\nEvent: EodCutoffInitiatedEvent",
+            audit: "Cutoff set."
+          },
+          {
+            title: "3. Rule 1: OFS Trial Balance Reconciliation Command",
+            from: "orch", to: "cbs",
+            arrowType: "solid",
+            desc: "Rule 1: Orchestrator sends OFS GL.REPORT,RECON command to verify double-entry trial balance before date rollover.",
+            rules: ["Mandatory zero-variance check before rollover."],
+            state: "CBS queries gl_ledger trial balance.",
+            ofs: "GL.REPORT,RECON/I/PROCESS,,VALUE.DATE=20261005",
+            http: "POST /api/v1/internal/cbs/ofs-command",
+            sql: "SELECT SUM(debit_amount) AS total_dr, SUM(credit_amount) AS total_cr FROM gl_ledger WHERE posting_date = '2026-10-05';",
+            outbox: "-- None",
+            kafka: "-- None",
+            audit: "Trial balance query dispatched."
+          },
+          {
+            title: "4. Trial Balance Query Detects Out-of-Balance Variance",
+            from: "azuresql", to: "cbs",
+            arrowType: "response-fail",
+            desc: "Query result: Total DR = 14,500,000.00 PHP, Total CR = 14,485,000.00 PHP. Variance = +15,000.00 PHP != 0.0000!",
+            rules: ["CRITICAL INVARIANT VIOLATED: Debits do not match Credits!"],
+            state: "Variance detected: +15,000.00 PHP. Immediate safety halt.",
+            ofs: "// Variance detected",
+            http: "-- SQL calculation: OUT_OF_BALANCE",
+            sql: "-- DR = 14500000.00, CR = 14485000.00. Variance = +15000.00 PHP",
+            outbox: "-- Variance alert staging",
+            kafka: "-- None",
+            audit: "Variance detected."
+          },
+          {
+            title: "5. CBS Sets system_dates to EOD_HALTED",
+            from: "cbs", to: "azuresql",
+            arrowType: "solid",
+            desc: "CBS executes emergency safety protocol: Sets system_dates.status to 'EOD_HALTED'. Inserts eod_reports_metadata with status EXCEPTION.",
+            rules: ["Date Rollover Strictly BLOCKED: System prevents advancing corrupted ledger to T+1."],
+            state: "system_dates.status = 'EOD_HALTED'. Date advancement BLOCKED.",
+            ofs: "// Emergency safety halt",
+            http: "-- Internal SQL execution",
+            sql: "BEGIN TRANSACTION;\nUPDATE system_dates SET status = 'EOD_HALTED' WHERE id = 1;\nINSERT INTO eod_reports_metadata (report_type, business_date, variance_amount, verification_status)\nVALUES ('GL_TRIAL_BALANCE', '2026-10-05', 15000.00, 'EXCEPTION');\nINSERT INTO outbox_events VALUES ('EVT-HALT-01', 'BATCH', 'BATCH-20261005', 'EOD_HALTED', 'banking.audit.alerts', '{\"variance\":15000}', 'PENDING');\nCOMMIT;",
+            outbox: "Status: PENDING -> PUBLISHED | Event: EOD_HALTED",
+            kafka: "Topic: banking.audit.alerts\nEvent: EodTrialBalanceVarianceAlertEvent (variance: 15000 PHP)",
+            audit: "System status set to EOD_HALTED."
+          },
+          {
+            title: "6. Rule 3: CBS Publishes Critical P1 Alert Event",
+            from: "cbs", to: "kafka",
+            arrowType: "solid",
+            desc: "Rule 3: CBS publishes EodTrialBalanceVarianceAlertEvent to banking.audit.alerts.",
+            rules: ["RULE 3: CBS kernel event publish."],
+            state: "High-priority P1 alert published to event stream.",
+            ofs: "-- Kafka event dispatch",
+            http: "-- Internal Kafka Producer",
+            sql: "UPDATE outbox_events SET status = 'PUBLISHED', published_at = SYSUTCDATETIME() WHERE aggregate_id = 'BATCH-20261005' AND status = 'PENDING';",
+            outbox: "Status: PUBLISHED",
+            kafka: "Topic: banking.audit.alerts\nEvent: EodTrialBalanceVarianceAlertEvent\n{\n  \"severity\": \"CRITICAL_P1\",\n  \"date\": \"2026-10-05\",\n  \"variance\": 15000.00\n}",
+            audit: "Critical alert published."
+          },
+          {
+            title: "7. Rule 1: OFS Rejection NACK Returned",
+            from: "cbs", to: "orch",
+            arrowType: "response-fail",
+            desc: "Rule 1: CBS returns Temenos OFS NACK string: GL-ERR//2/OUT_OF_BALANCE_VARIANCE,VARIANCE=15000.00,STATUS=EOD_HALTED.",
+            rules: ["RULE 1: OFS Error NACK returned."],
+            state: "Orchestrator halts batch execution pipeline immediately.",
+            ofs: "GL-ERR//2/OUT_OF_BALANCE_VARIANCE,VARIANCE=15000.00,STATUS=EOD_HALTED",
+            http: "HTTP 500 Internal Server Error (OFS NACK)",
+            sql: "-- System locked in EOD_HALTED",
+            outbox: "Status: PUBLISHED",
+            kafka: "-- Published",
+            audit: "OFS NACK received."
+          },
+          {
+            title: "8. Critical P1 Incident Alert Sent to Operations Console",
+            from: "orch", to: "ops",
+            arrowType: "response-fail",
+            desc: "Operations Console triggers flashing RED siren banner: 'CRITICAL: EOD Halted. GL Trial Balance Variance of +15,000.00 PHP detected. Rollover to T+1 BLOCKED.'",
+            rules: ["P1 Emergency Protocol: On-call finance auditors and DBAs paged."],
+            state: "System halted for manual investigation of orphan debit journal.",
+            ofs: "// Emergency alert",
+            http: "CRITICAL P1 ALERT\n{\n  \"status\": \"EOD_HALTED\",\n  \"reason\": \"TRIAL_BALANCE_VARIANCE\",\n  \"variance\": 15000.00,\n  \"rolloverBlocked\": true\n}",
+            sql: "-- Ledger frozen",
+            outbox: "-- Complete",
+            kafka: "-- Complete",
+            audit: "Operations console alerted."
+          },
+          {
+            title: "9. Rule 2: Audit Worker Archives Variance in Vault",
+            from: "kafka", to: "vault",
+            arrowType: "solid",
+            desc: "Rule 2: Audit Worker consumes variance alert and records incident in PostgreSQL audit vault for regulatory audit.",
+            rules: ["RULE 2: PostgreSQL Append-Only Compliance."],
+            state: "Incident sealed for internal audit and BSP compliance filing.",
+            ofs: "-- Compliance archival",
+            http: "-- Internal JDBC",
+            sql: "INSERT INTO reconciliation_exceptions_audit (business_date, variance_amount, status)\nVALUES ('2026-10-05', 15000.00, 'EOD_HALTED_EXCEPTION');",
+            outbox: "-- Complete",
+            kafka: "-- Offset committed",
+            audit: "Variance exception archived."
+          }
+        ]
+      }
+    ];
+
+    // Protocols reference
+    const OFS_ROUTINES = [
+      { cap: "Funds Transfer", op: "Initiate Transfer", routine: "FUNDS.TRANSFER,INITIATE", wire: "FUNDS.TRANSFER,INITIATE/I/PROCESS,,TX-901,DEBIT.ACCT.NO=ACC-101,CREDIT.ACCT.NO=ACC-202,DEBIT.AMOUNT=65000.00,DEBIT.CURRENCY=PHP" },
+      { cap: "Funds Transfer", op: "Authorize Settlement", routine: "FUNDS.TRANSFER,AUTH", wire: "FUNDS.TRANSFER,AUTH/I/PROCESS,//PH100223,TXN.REF=FT26095A,DEBIT.ACCT.NO=ACC-101,CREDIT.ACCT.NO=ACC-202,DEBIT.AMOUNT=65000.00,HOLD.REF=HLD-99102" },
+      { cap: "Amount Holds", op: "Freeze Balance Hold", routine: "AC.LOCKED.EVENTS,INPUT", wire: "AC.LOCKED.EVENTS,INPUT/I/PROCESS,,ACCOUNT.NUMBER=ACC-101,LOCKED.AMOUNT=65000.00,DESCRIPTION=TRANSFER_HOLD" },
+      { cap: "Amount Holds", op: "Release / Unfreeze Hold", routine: "AC.LOCKED.EVENTS,RELEASE", wire: "AC.LOCKED.EVENTS,RELEASE/I/PROCESS,,ACCOUNT.NUMBER=ACC-101,LOCKED.AMOUNT=65000.00,DESCRIPTION=HOLD_RELEASED" },
+      { cap: "Maker-Checker", op: "Compensating Reversal", routine: "FUNDS.TRANSFER,REVERSAL", wire: "FUNDS.TRANSFER,REVERSAL/I/PROCESS,//PH100223,ORIG.TXN.REF=FT26095A,DEBIT.ACCT.NO=ACC-202,CREDIT.ACCT.NO=ACC-101,DEBIT.AMOUNT=65000.00" },
+      { cap: "EOD Batch", op: "Posting Cutoff", routine: "BATCH.JOB,CUTOFF", wire: "BATCH.JOB,CUTOFF/I/PROCESS,,VALUE.DATE=20261005" },
+      { cap: "EOD Batch", op: "Automated Fee Deductions", routine: "AC.CHARGE,BATCH", wire: "AC.CHARGE,BATCH/I/PROCESS,,VALUE.DATE=20261005" },
+      { cap: "EOD Batch", op: "Interest & Withholding Tax", routine: "IC.CHARGE,BATCH", wire: "IC.CHARGE,BATCH/I/PROCESS,,VALUE.DATE=20261005,PERIOD=2026-10" },
+      { cap: "EOD Batch", op: "GL Trial Balance Recon", routine: "GL.REPORT,RECON", wire: "GL.REPORT,RECON/I/PROCESS,,VALUE.DATE=20261005,CHECK.LEVEL=FULL_3WAY" },
+      { cap: "EOD Batch", op: "Business Date Rollover", routine: "DATES,ROLLOVER", wire: "DATES,ROLLOVER/I/PROCESS,,FROM.DATE=20261005,TO.DATE=20261006" }
+    ];
+
+    const KAFKA_CATALOG = [
+      { topic: "banking.transfers.events", event: "TransferExecutedEvent", producer: "T24 Mock CBS (Rule 3)", consumer: "AuditWorker, Notification Svc", purpose: "Legal ledger state change and immutable customer receipts." },
+      { topic: "banking.transfers.events", event: "AmountHoldPlacedEvent", producer: "T24 Mock CBS (Rule 3)", consumer: "AuditWorker, Webhook Dispatcher", purpose: "Notification of frozen balance for pre-authorizations." },
+      { topic: "banking.transfers.events", event: "TransferReversedEvent", producer: "T24 Mock CBS (Rule 3)", consumer: "AuditWorker, Settlement Engine", purpose: "Audit proof of dual-control authorized compensating double-entry." },
+      { topic: "banking.transfers.dlq", event: "TransferFailedToDlqEvent", producer: "Transfer Orchestrator", consumer: "AuditWorker, DLQ Replay Daemon", purpose: "Incident preservation when CBS is unreachable after exponential retries." },
+      { topic: "banking.risk.evaluations", event: "HighFraudRiskDetectedEvent", producer: "Python Risk Engine", consumer: "AuditWorker, Case Review Queue", purpose: "Real-time fraud alerting when XGBoost risk score > 0.85." },
+      { topic: "banking.batch.events", event: "EodCompletedEvent", producer: "T24 Mock CBS (Rule 3)", consumer: "AuditWorker, Reporting Service", purpose: "Signal that business date advanced to T+1; triggers daytime queue release." },
+      { topic: "banking.audit.alerts", event: "EodTrialBalanceVarianceAlertEvent", producer: "T24 Mock CBS (Rule 3)", consumer: "AuditWorker, Operations Siren", purpose: "Critical P1 alert when horizontal zero-sum trial balance variance != 0.00." }
+    ];
+
+    const DATABASE_SCHEMAS = [
+      {
+        table: "outbox_events",
+        db: "Azure SQL / Oracle Master",
+        desc: "Transactional Outbox table written atomically within the same ACID transaction as balance mutations (Rule 3).",
+        cols: [
+          { name: "event_id", type: "VARCHAR(64)", key: "PK", desc: "Unique UUID event identifier" },
+          { name: "aggregate_type", type: "VARCHAR(64)", key: "", desc: "TRANSACTION, AMOUNT_HOLD, REVERSAL, BATCH" },
+          { name: "aggregate_id", type: "VARCHAR(64)", key: "IDX", desc: "Target entity ID (e.g. FT26095A, TX-901)" },
+          { name: "event_type", type: "VARCHAR(64)", key: "", desc: "TRANSFER_EXECUTED, AMOUNT_HOLD_PLACED, EOD_COMPLETED" },
+          { name: "kafka_topic", type: "VARCHAR(128)", key: "", desc: "Target Kafka topic destination" },
+          { name: "payload", type: "NVARCHAR(MAX)", key: "", desc: "Serialized JSON domain event payload" },
+          { name: "status", type: "VARCHAR(32)", key: "IDX", desc: "PENDING, PUBLISHED, FAILED" },
+          { name: "created_at", type: "DATETIME2", key: "", desc: "UTC timestamp of ACID commit" },
+          { name: "published_at", type: "DATETIME2", key: "", desc: "UTC timestamp of Kafka broker ACK" }
+        ]
+      },
+      {
+        table: "balance_master",
+        db: "Azure SQL / Oracle Master",
+        desc: "Exclusive target for pessimistic row locks. Invariant: balance_amount >= hold_amount.",
+        cols: [
+          { name: "account_id", type: "VARCHAR(64)", key: "PK", desc: "Target customer deposit account ID" },
+          { name: "balance_amount", type: "DECIMAL(18,4)", key: "CHK", desc: "Total ledger balance (@Digits(14,4))" },
+          { name: "hold_amount", type: "DECIMAL(18,4)", key: "CHK", desc: "Frozen funds for active holds / dispute liens" },
+          { name: "available_balance", type: "DECIMAL(18,4)", key: "CALC", desc: "Computed: (balance_amount - hold_amount)" },
+          { name: "updated_at", type: "DATETIME2", key: "", desc: "Timestamp of last ledger mutation" }
+        ]
+      },
+      {
+        table: "system_dates",
+        db: "Azure SQL / Oracle Master",
+        desc: "Authoritative business date and operational state singleton (id = 1).",
+        cols: [
+          { name: "id", type: "INT", key: "PK", desc: "Singleton row key (always 1)" },
+          { name: "business_date", type: "DATE", key: "", desc: "Current value date (e.g. 2026-10-05)" },
+          { name: "status", type: "VARCHAR(32)", key: "CHK", desc: "ONLINE, EOD_CUTOFF, EOD_PROCESSING, EOD_HALTED, EOD_COMPLETED" },
+          { name: "updated_at", type: "DATETIME2", key: "", desc: "Timestamp of last rollover" }
+        ]
+      },
+      {
+        table: "eod_reports_metadata",
+        db: "Azure SQL / Oracle Master",
+        desc: "Trial balance verification records, variance tracking, and cryptographic hashes.",
+        cols: [
+          { name: "report_id", type: "BIGINT", key: "PK", desc: "Auto-increment primary key" },
+          { name: "report_type", type: "VARCHAR(64)", key: "", desc: "GL_TRIAL_BALANCE, TXN_JOURNAL, AMLA_CTR" },
+          { name: "business_date", type: "DATE", key: "", desc: "Banking date for which report was compiled" },
+          { name: "variance_amount", type: "DECIMAL(18,4)", key: "", desc: "Variance (DR - CR). Must be 0.0000 for VERIFIED." },
+          { name: "verification_status", type: "VARCHAR(32)", key: "CHK", desc: "PENDING, VERIFIED, EXCEPTION" }
+        ]
+      }
+    ];
+
+    /* =========================================================================
+       APPLICATION STATE & CONTROLLER
+       ========================================================================= */
+
+    let currentFlowIndex = 0;
+    let currentStepIndex = 0;
+    let currentFilter = "all";
+    let isPlaying = false;
+    let playTimer = null;
+
+    function init() {
+      renderFlowList();
+      renderTopology();
+      renderProtocols();
+      renderSchemas();
+      loadFlow(0);
+
+      // Keyboard shortcuts
+      document.addEventListener("keydown", (e) => {
+        if (e.code === "ArrowRight") nextStep();
+        if (e.code === "ArrowLeft") prevStep();
+        if (e.code === "Space") {
+          e.preventDefault();
+          togglePlay();
+        }
+      });
+    }
+
+    function setFlowFilter(filter) {
+      currentFilter = filter;
+      document.querySelectorAll(".filter-pill").forEach(pill => pill.classList.remove("active"));
+      document.getElementById(`filter-${filter}`).classList.add("active");
+      renderFlowList();
+    }
+
+    function renderFlowList() {
+      const container = document.getElementById("flowList");
+      const filtered = FLOWS.filter(f => currentFilter === "all" || f.category === currentFilter);
+
+      container.innerHTML = filtered.map((flow) => {
+        const realIdx = FLOWS.indexOf(flow);
+        const isActive = realIdx === currentFlowIndex;
+        let badgeClass = "flow-badge";
+        if (flow.category === "failure") badgeClass += " danger";
+        else if (flow.badge === "REVERSAL") badgeClass += " warning";
+        else badgeClass += " success";
+
+        return `
+          <button class="flow-card ${isActive ? 'active' : ''}" id="flow-card-${realIdx}" onclick="selectFlow(${realIdx})">
+            <div class="flow-name">
+              <span>${flow.name}</span>
+              <span class="${badgeClass}">${flow.badge}</span>
+            </div>
+            <div class="flow-desc">${flow.desc}</div>
+          </button>
+        `;
+      }).join("");
+    }
+
+    function selectFlow(index) {
+      if (isPlaying) togglePlay();
+      currentFlowIndex = index;
+      currentStepIndex = 0;
+      
+      document.querySelectorAll(".flow-card").forEach(card => card.classList.remove("active"));
+      const activeCard = document.getElementById(`flow-card-${index}`);
+      if (activeCard) activeCard.classList.add("active");
+
+      loadFlow(index);
+    }
+
+    function loadFlow(index) {
+      const flow = FLOWS[index];
+      const slider = document.getElementById("stepSlider");
+      slider.max = flow.steps.length - 1;
+      slider.value = 0;
+
+      updateStepView();
+    }
+
+    function getFlowParticipants(flow) {
+      const parts = flow.participants || SYSTEM_COMPONENTS;
+      const count = parts.length;
+      const canvasWidth = 1100;
+      const pad = 65;
+      const spacing = (canvasWidth - 2 * pad) / Math.max(count - 1, 1);
+      return parts.map((p, i) => ({
+        ...p,
+        x: pad + i * spacing
+      }));
+    }
+
+    function updateStepView() {
+      const flow = FLOWS[currentFlowIndex];
+      const step = flow.steps[currentStepIndex];
+      const participants = getFlowParticipants(flow);
+
+      // Update indicator & slider
+      document.getElementById("stepIndicator").innerHTML = `Step <b>${currentStepIndex + 1}</b> of <b>${flow.steps.length}</b>`;
+      document.getElementById("stepSlider").value = currentStepIndex;
+      document.getElementById("btnPrev").disabled = currentStepIndex === 0;
+      document.getElementById("btnNext").disabled = currentStepIndex === flow.steps.length - 1;
+
+      // Update inspector details
+      document.getElementById("stepBadge").innerText = `STEP ${currentStepIndex + 1}`;
+      
+      // Step Type Tag
+      const stepTypeTag = document.getElementById("stepTypeTag");
+      if (step.arrowType === "response-ok") {
+        stepTypeTag.innerText = "SUCCESS ACK (RESPONSE)";
+        stepTypeTag.className = "tag-pill success";
+      } else if (step.arrowType === "response-fail" || step.arrowType === "error") {
+        stepTypeTag.innerText = "ERROR / NACK (RESPONSE)";
+        stepTypeTag.className = "tag-pill danger";
+      } else if (step.arrowType === "warning") {
+        stepTypeTag.innerText = "CHALLENGE / ALERT";
+        stepTypeTag.className = "tag-pill warning";
+      } else if (step.arrowType === "self") {
+        stepTypeTag.innerText = "INTERNAL LOGIC / STATE";
+        stepTypeTag.className = "tag-pill info";
+      } else {
+        stepTypeTag.innerText = "COMMAND / REQUEST";
+        stepTypeTag.className = "tag-pill info";
+      }
+
+      document.getElementById("stepTitle").innerText = step.title;
+      document.getElementById("stepDescription").innerText = step.desc;
+
+      // Active roles
+      const pFrom = participants.find(p => p.id === step.from);
+      const pTo = participants.find(p => p.id === step.to);
+      const fromLabel = pFrom ? `<b>${pFrom.name}</b> (${pFrom.sub})` : step.from;
+      const toLabel = pTo ? `<b>${pTo.name}</b> (${pTo.sub})` : step.to;
+      document.getElementById("stepRolesBox").innerHTML = `
+        <div style="margin-bottom:0.3rem;"><span style="color:var(--text-dim);">Source / Sender:</span> ${fromLabel}</div>
+        <div><span style="color:var(--text-dim);">Target / Receiver:</span> ${toLabel}</div>
+      `;
+
+      document.getElementById("stepRules").innerHTML = step.rules.map(r => `
+        <div style="font-size:0.75rem; color:var(--text); display:flex; align-items:flex-start; gap:0.4rem;">
+          <span style="color:var(--emerald);">✔</span> <span>${r}</span>
+        </div>
+      `).join("");
+      document.getElementById("stepStateChange").innerText = step.state;
+
+      document.getElementById("ofsCodeBox").innerText = step.ofs;
+      document.getElementById("httpCodeBox").innerText = step.http;
+      document.getElementById("sqlCodeBox").innerText = step.sql;
+      document.getElementById("outboxCodeBox").innerText = step.outbox;
+      document.getElementById("kafkaCodeBox").innerText = step.kafka;
+      document.getElementById("auditCodeBox").innerText = step.audit;
+
+      // Render SVG Canvas
+      renderSvgDiagram(flow, currentStepIndex);
+    }
+
+    function renderSvgDiagram(flow, stepIdx) {
+      const currentStep = flow.steps[stepIdx];
+      const participants = getFlowParticipants(flow);
+      const partGroup = document.getElementById("participantsGroup");
+      const lifeGroup = document.getElementById("lifelinesGroup");
+      const msgGroup = document.getElementById("messagesGroup");
+
+      const topY = 40;
+      const bottomY = 580;
+
+      // Render participants & lifelines
+      partGroup.innerHTML = participants.map(p => {
+        const isActive = p.id === currentStep.from || p.id === currentStep.to;
+        return `
+          <g>
+            <rect class="svg-node-box ${isActive ? 'active' : ''}" x="${p.x - 48}" y="${topY - 20}" width="96" height="42" fill="var(--bg-panel-solid)" stroke="${p.color}" color="${p.color}" rx="6" />
+            <text x="${p.x}" y="${topY - 3}" text-anchor="middle" fill="var(--text)" font-family="var(--font-sans)" font-size="10.5" font-weight="600">${p.name}</text>
+            <text x="${p.x}" y="${topY + 12}" text-anchor="middle" fill="var(--text-dim)" font-family="var(--font-mono)" font-size="8">${p.sub}</text>
+          </g>
+        `;
+      }).join("");
+
+      lifeGroup.innerHTML = participants.map(p => `
+        <line class="svg-lifeline" x1="${p.x}" y1="${topY + 22}" x2="${p.x}" y2="${bottomY}" />
+      `).join("");
+
+      // Render message arrows
+      let msgHtml = "";
+      const stepSpacing = (bottomY - topY - 70) / Math.max(flow.steps.length, 1);
+
+      flow.steps.forEach((s, idx) => {
+        const y = topY + 46 + (idx * stepSpacing);
+        const pFrom = participants.find(p => p.id === s.from);
+        const pTo = participants.find(p => p.id === s.to);
+
+        if (!pFrom || !pTo) return;
+
+        const isCurrent = idx === stepIdx;
+        const isPast = idx < stepIdx;
+
+        if (idx > stepIdx) return; // Future steps hidden
+
+        let strokeColor = "var(--border-accent)";
+        let marker = "";
+        let dashAttr = "";
+        let strokeWidth = isCurrent ? "2.5" : "1.2";
+        let opacity = isCurrent ? "1" : "0.38";
+
+        // Determine color and marker based on arrowType
+        if (s.arrowType === "response-ok") {
+          strokeColor = isCurrent ? "var(--emerald)" : "rgba(16, 185, 129, 0.45)";
+          marker = isCurrent ? "url(#arrowhead-emerald)" : "";
+          dashAttr = "stroke-dasharray='5,4'";
+        } else if (s.arrowType === "response-fail" || s.arrowType === "error") {
+          strokeColor = isCurrent ? "var(--rose)" : "rgba(244, 63, 94, 0.45)";
+          marker = isCurrent ? "url(#arrowhead-rose)" : "";
+          dashAttr = "stroke-dasharray='5,4'";
+        } else if (s.arrowType === "warning") {
+          strokeColor = isCurrent ? "var(--amber)" : "rgba(245, 158, 11, 0.45)";
+          marker = isCurrent ? "url(#arrowhead-amber)" : "";
+          dashAttr = "stroke-dasharray='5,4'";
+        } else if (s.arrowType === "dashed") {
+          strokeColor = isCurrent ? "var(--cyan)" : "var(--border-accent)";
+          marker = isCurrent ? "url(#arrowhead-cyan)" : "";
+          dashAttr = "stroke-dasharray='5,4'";
+        } else {
+          // Solid forward
+          strokeColor = isCurrent ? "var(--cyan)" : "var(--border-accent)";
+          marker = isCurrent ? "url(#arrowhead-cyan)" : "";
+          dashAttr = "";
+        }
+
+        if (pFrom.id === pTo.id) {
+          // Self-call loop
+          const x = pFrom.x;
+          msgHtml += `
+            <g opacity="${opacity}">
+              <path d="M ${x} ${y - 8} C ${x + 36} ${y - 8}, ${x + 36} ${y + 8}, ${x + 4} ${y + 8}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" marker-end="${marker}" ${dashAttr} />
+              <circle cx="${x}" cy="${y - 8}" r="${isCurrent ? '3.5' : '2'}" fill="${strokeColor}" />
+              <rect x="${x + 42}" y="${y - 7}" width="200" height="15" fill="var(--bg-panel-solid)" opacity="0.92" rx="3" />
+              <text x="${x + 46}" y="${y + 4}" text-anchor="start" fill="${isCurrent ? 'var(--text)' : 'var(--text-dim)'}" font-family="var(--font-mono)" font-size="${isCurrent ? '9' : '8'}" font-weight="${isCurrent ? '600' : '400'}">
+                ${s.title}
+              </text>
+            </g>
+          `;
+        } else {
+          // Line between participants
+          const minX = Math.min(pFrom.x, pTo.x);
+          const maxX = Math.max(pFrom.x, pTo.x);
+          const midX = (pFrom.x + pTo.x) / 2;
+          const textWidth = Math.min(maxX - minX - 16, 270);
+
+          msgHtml += `
+            <g opacity="${opacity}">
+              <line class="svg-msg-arrow ${isCurrent ? 'animated' : ''}" x1="${pFrom.x}" y1="${y}" x2="${pTo.x}" y2="${y}" stroke="${strokeColor}" stroke-width="${strokeWidth}" marker-end="${marker}" ${dashAttr} />
+              <circle cx="${pFrom.x}" cy="${y}" r="${isCurrent ? '3.5' : '2'}" fill="${strokeColor}" />
+              <rect x="${midX - (textWidth / 2)}" y="${y - 13}" width="${textWidth}" height="14" fill="var(--bg-panel-solid)" opacity="0.92" rx="3" />
+              <text x="${midX}" y="${y - 3}" text-anchor="middle" fill="${isCurrent ? 'var(--text)' : 'var(--text-dim)'}" font-family="var(--font-mono)" font-size="${isCurrent ? '9' : '8'}" font-weight="${isCurrent ? '600' : '400'}">
+                ${s.title}
+              </text>
+            </g>
+          `;
+        }
+      });
+
+      msgGroup.innerHTML = msgHtml;
+    }
+
+    function nextStep() {
+      const flow = FLOWS[currentFlowIndex];
+      if (currentStepIndex < flow.steps.length - 1) {
+        currentStepIndex++;
+        updateStepView();
+      } else if (isPlaying) {
+        togglePlay();
+      }
+    }
+
+    function prevStep() {
+      if (currentStepIndex > 0) {
+        currentStepIndex--;
+        updateStepView();
+      }
+    }
+
+    function seekStep(val) {
+      currentStepIndex = parseInt(val, 10);
+      updateStepView();
+    }
+
+    function togglePlay() {
+      isPlaying = !isPlaying;
+      const playIcon = document.getElementById("playIcon");
+      const playText = document.getElementById("playText");
+
+      if (isPlaying) {
+        playIcon.innerText = "⏸";
+        playText.innerText = "Pause";
+        const speed = parseInt(document.getElementById("playbackSpeed").value, 10);
+        playTimer = setInterval(() => {
+          const flow = FLOWS[currentFlowIndex];
+          if (currentStepIndex < flow.steps.length - 1) {
+            nextStep();
+          } else {
+            togglePlay();
+          }
+        }, speed);
+      } else {
+        playIcon.innerText = "▶";
+        playText.innerText = "Play";
+        clearInterval(playTimer);
+      }
+    }
+
+    function switchView(viewName) {
+      document.querySelectorAll(".nav-btn").forEach(btn => btn.classList.remove("active"));
+      event.currentTarget.classList.add("active");
+
+      document.getElementById("view-sequence").style.display = viewName === "sequence" ? "flex" : "none";
+      document.getElementById("view-topology").style.display = viewName === "topology" ? "flex" : "none";
+      document.getElementById("view-protocols").style.display = viewName === "protocols" ? "flex" : "none";
+      document.getElementById("view-schemas").style.display = viewName === "schemas" ? "flex" : "none";
+    }
+
+    function switchInspectorTab(tabName) {
+      document.querySelectorAll(".tab-btn").forEach(btn => btn.classList.remove("active"));
+      event.currentTarget.classList.add("active");
+
+      document.getElementById("tab-overview").style.display = tabName === "overview" ? "flex" : "none";
+      document.getElementById("tab-payload").style.display = tabName === "payload" ? "flex" : "none";
+      document.getElementById("tab-database").style.display = tabName === "database" ? "flex" : "none";
+      document.getElementById("tab-audit").style.display = tabName === "audit" ? "flex" : "none";
+    }
+
+    function toggleTheme() {
+      const html = document.documentElement;
+      const current = html.getAttribute("data-theme") || "dark";
+      const next = current === "dark" ? "light" : "dark";
+      html.setAttribute("data-theme", next);
+      localStorage.setItem("cb-visualizer-theme", next);
+    }
+
+    function resetVisualizer() {
+      if (isPlaying) togglePlay();
+      currentStepIndex = 0;
+      updateStepView();
+    }
+
+    function renderTopology() {
+      const grid = document.getElementById("topoGrid");
+      grid.innerHTML = SYSTEM_COMPONENTS.map(c => `
+        <div class="topo-card">
+          <div class="topo-header">
+            <div class="topo-title" style="color:${c.color};">${c.name}</div>
+            <div class="topo-port">${c.port}</div>
+          </div>
+          <div style="font-size:0.75rem; color:var(--text-dim); font-family:var(--font-mono);">${c.sub}</div>
+          <div style="font-size:0.8rem; color:var(--text-muted); line-height:1.4;">${c.desc}</div>
+        </div>
+      `).join("");
+    }
+
+    function renderProtocols() {
+      document.getElementById("ofsTableBody").innerHTML = OFS_ROUTINES.map(r => `
+        <tr>
+          <td><span class="tag-pill info">${r.cap}</span></td>
+          <td><b>${r.op}</b></td>
+          <td><code>${r.routine}</code></td>
+          <td style="font-family:var(--font-mono); font-size:0.75rem; color:var(--emerald); word-break:break-all;">${r.wire}</td>
+        </tr>
+      `).join("");
+
+      document.getElementById("kafkaTableBody").innerHTML = KAFKA_CATALOG.map(evt => `
+        <tr>
+          <td><code>${evt.topic}</code></td>
+          <td><span class="tag-pill warning">${evt.event}</span></td>
+          <td>${evt.producer}</td>
+          <td>${evt.consumer}</td>
+          <td style="color:var(--text-muted);">${evt.purpose}</td>
+        </tr>
+      `).join("");
+    }
+
+    function renderSchemas() {
+      const container = document.getElementById("schemaCardsGroup");
+      container.innerHTML = DATABASE_SCHEMAS.map(s => `
+        <div class="meta-card">
+          <div class="meta-title">
+            <span style="font-family:var(--font-mono); font-size:0.95rem; color:var(--cyan);">${s.table}</span>
+            <span class="tag-pill info">${s.db}</span>
+          </div>
+          <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.75rem;">${s.desc}</p>
+          <table class="data-table">
+            <thead>
+              <tr><th>Column</th><th>Type</th><th>Key</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+              ${s.cols.map(c => `
+                <tr>
+                  <td><code>${c.name}</code></td>
+                  <td style="font-family:var(--font-mono); font-size:0.75rem; color:var(--purple);">${c.type}</td>
+                  <td>${c.key ? `<span class="tag-pill ${c.key === 'PK' ? 'success' : 'warning'}">${c.key}</span>` : ''}</td>
+                  <td style="font-size:0.75rem; color:var(--text-muted);">${c.desc}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      `).join("");
+    }
+
+    // Launch on DOM ready
+    window.addEventListener("DOMContentLoaded", init);
+  </script>
+</body>
+</html>

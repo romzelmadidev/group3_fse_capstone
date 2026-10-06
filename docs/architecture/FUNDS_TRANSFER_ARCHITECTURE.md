@@ -16,20 +16,19 @@ Under the revised architecture, ledger mutations and balance locking have been c
    - Coordinates step-up 2FA email verification via the **Notification Service (`notif_service` :8083)** for transfers exceeding 50,000.00 PHP or flagged by risk scoring.
    - Serializes validated JSON transfer requests into standard **Temenos Open Financial Services (OFS)** command syntax before transmission to T24 Mock CBS.
    - Dispatches OFS commands and hold requests to T24 Mock CBS over high-performance internal REST/TCP sockets.
-   - **Transactional Outbox Pattern**: Records perimeter lifecycle domain events into its local `orchestrator_outbox` table before dispatching to Apache Kafka, guaranteeing at-least-once delivery without dual-write inconsistencies.
+   - **OFS Command Dispatcher & DLQ Router**: Coordinates synchronous validation, risk assessment, and 2FA step-up before serializing financial requests into Temenos OFS wire syntax for CBS execution. When retries are exhausted, trips the circuit breaker and publishes directly to the Kafka Dead Letter Queue (`banking.transfers.dlq`).
    - **Flow Coordinator & OFS Gateway**: Coordinates synchronous validation, risk assessment, and 2FA step-up before serializing financial requests into Temenos OFS wire syntax for CBS execution.
 4. **T24 Mock CBS (`t24_cbs` :8085)**:
    - Operates as the **Authoritative Core Banking Engine**: it connects to **Azure SQL Database (`azure_sql` :1433)** for master ledgers and connects directly to **Apache Kafka (`kafka` :9092)** for streaming domain events.
    - Holds the **exclusive primary datasource connection** to **Azure SQL Database (`azure_sql` :1433)**. No other microservice has direct datasource access.
-   - Maintains a transactional `cbs_outbox` table in Azure SQL Database, staging domain events within the same atomic ACID transaction as balance mutations.
+   - Maintains the existing transactional `outbox_events` table in Azure SQL Database, staging domain events within the same atomic ACID transaction as balance mutations.
    - Directly publishes authoritative financial domain events (`TransferExecutedEvent`, `AmountHoldPlacedEvent`, `TransferReversedEvent`) to Apache Kafka (`:9092`).
    - Ingests and executes exclusively serialized Temenos OFS financial messages (`FUNDS.TRANSFER`, `AC.LOCKED.EVENTS`) dispatched by the Orchestrator.
    - Acquires deterministic row-level locks (`SELECT ... WITH (UPDLOCK, ROWLOCK)`) to guarantee strict ACID concurrency and prevent race conditions or overdrafts.
    - Executes double-entry balance debits and credits, records transaction journals, and commits the ledger transaction.
    - Returns standard Temenos OFS success/error response strings (`FT26095A//1/SUCCESS`) and status responses directly to the Orchestrator.
 5. **Event Emission & Downstream Consumers**:
-   - Senders of events must record each event in a transactional outbox first: Transfer Orchestrator records to `orchestrator_outbox`; T24 Mock CBS records to `cbs_outbox`; Python Risk Engine records to `risk_outbox`.
-   - The **T24 Mock CBS** directly publishes domain events (`TransferExecutedEvent`, `AmountHoldPlacedEvent`) to **Apache Kafka (`kafka` :9092)** from its core kernel via its transactional `cbs_outbox`.
+   - **Transactional Outbox Protocol**: The **T24 Mock CBS** records domain events into the existing `outbox_events` table in Azure SQL Database within the same ACID transaction as the ledger mutations, commits, publishes directly to **Apache Kafka (`kafka` :9092)**, and marks `outbox_events.status = 'PUBLISHED'`.
    - **Strict Database Boundary Separation**: Apache Kafka does NOT mutate databases directly.
    - **Audit Vault Consumer Worker (`audit_worker`)**: An explicit consumer worker daemon belonging to consumer group `audit-vault-workers` consumes events from Kafka and writes them into the **Azure PostgreSQL (`azure_pg` :5432)** append-only, tamper-proof **Audit Vault** (`ledger_mutation_audit`).
    - **Notification Service (`notif_service` :8083)**: Consumes Kafka events to generate and email HTML transaction receipts via MailHog.
@@ -59,16 +58,14 @@ flowchart TD
     %% ==========================================
     %% SWIMLANE: TRANSFER ORCHESTRATOR
     %% ==========================================
-    subgraph Lane_Orch["Transfer Orchestrator (:8082) - Event Broker & Flow Controller"]
+    subgraph Lane_Orch["Transfer Orchestrator (:8082) - Flow Controller & OFS Gateway"]
         IdempCheck["1. Idempotency & Schema Validation<br/>(Check X-Idempotency-Key)"]
         RiskCoordinator["2. Risk Screening Coordinator<br/>(Sync Call to Python Engine)"]
         TwoFaCoordinator{"3. 2FA Threshold Triage<br/>(Amount > 50k or Risk Escalated?)"}
         OtpValidator["3b. Verify 2FA OTP Code<br/>(Consume token from Redis)"]
         HoldSerializer["4. Translate Hold to OFS<br/>(AC.LOCKED.EVENTS,INPUT...)"]
         OfsSerializer["5. Serialize Transfer to OFS<br/>(FUNDS.TRANSFER,AUTH...)"]
-        OutboxWriter["6a. Record to Transactional Outbox<br/>(orchestrator_outbox PENDING)"]
-        EventProducer["6b. Publish Lifecycle Events to Kafka<br/>(Brokered on behalf of CBS)"]
-        ReceiptHandler["7. Evict Cache & Return 200 OK<br/>(Transaction Receipt)"]
+        ReceiptHandler["6. Evict Cache & Return 200 OK<br/>(Transaction Receipt)"]
     end
 
     %% ==========================================
@@ -96,6 +93,7 @@ flowchart TD
         BalanceMaster[("balance_master<br/>(Row-Level UPDLOCK, ROWLOCK)")]
         TransactionsTable[("transactions<br/>(Financial Journals)")]
         GlLedgerTable[("gl_ledger<br/>(Double-Entry Accounts)")]
+        OutboxTable[("outbox_events<br/>(Transactional Outbox)")]
     end
 
     %% ==========================================
@@ -147,8 +145,8 @@ flowchart TD
     LedgerMutation -->|"Atomic Balance & Hold Updates"| BalanceMaster
     LedgerMutation -->|"Insert Txn Record"| TransactionsTable
     LedgerMutation -->|"Insert GL Double-Entry"| GlLedgerTable
-    LedgerMutation -->|"Rule 3: Write cbs_outbox"| BalanceMaster
-    LedgerMutation -->|"Directly Publish TransferExecutedEvent"| KafkaBroker
+    LedgerMutation -->|"Rule 3: Write outbox_events"| OutboxTable
+    LedgerMutation -->|"Rule 3: Direct Publish TransferExecutedEvent"| KafkaBroker
     LedgerMutation -->|"OFS Return: FT26095A//1/SUCCESS"| ReceiptHandler
 
     ReceiptHandler -->|"Evict Balance Cache (DEL)"| RedisCache
@@ -170,7 +168,6 @@ sequenceDiagram
     participant Gateway as API Gateway (:8080)
     participant Redis as Redis Cache (:6379)
     participant Orch as Transfer Orchestrator (:8082)
-    participant OrchOutbox as Orchestrator Outbox
     participant RiskEngine as Risk Engine (:8084)
     participant RiskOutbox as Risk Engine Outbox
     participant CBS as T24 Mock CBS (:8085)
@@ -192,13 +189,16 @@ sequenceDiagram
     Note over Orch: Rule 1: Translate transfer initiation to Temenos OFS syntax before transmission
     Orch->>Orch: Serialize to OFS: FUNDS.TRANSFER,INITIATE/I/PROCESS,,TX-901,DEBIT=ACC-101,CREDIT=ACC-202,AMOUNT=65000.00
     Orch->>CBS: POST /api/v1/internal/cbs/ofs-command (Payload: FUNDS.TRANSFER initiation wire)
+    CBS->>AzureSQL: BEGIN TRANSACTION
     CBS->>AzureSQL: INSERT INTO transactions (id: "TX-901", status: "INITIATED")
     CBS->>AzureSQL: INSERT INTO transaction_status_history (tx_id: "TX-901", to_status: "INITIATED", reason: "API_INGESTION")
+    Note over CBS,AzureSQL: Rule 3: Record domain event into outbox_events within transaction
+    CBS->>AzureSQL: INSERT INTO outbox_events (event_id, aggregate_type, aggregate_id, event_type, kafka_topic, payload, status) VALUES ('EVT-INIT-901', 'TRANSACTION', 'TX-901', 'TRANSACTION_STATUS_CHANGED', 'banking.transfers.events', '{"status":"INITIATED"}', 'PENDING')
+    CBS->>AzureSQL: COMMIT TRANSACTION
     CBS-->>Orch: 201 Created (OFS: TX-901//1/INITIATED)
-    Note over Orch,OrchOutbox: Rule 3: Record domain event into Outbox prior to Kafka publication
-    Orch->>OrchOutbox: INSERT INTO orchestrator_outbox (event_type: "TRANSACTION_STATUS_CHANGED", aggregate_id: "TX-901", status: "PENDING")
-    Orch->>Kafka: Publish TransactionStatusChangedEvent (TX-901, INITIATED)
-    Orch->>OrchOutbox: UPDATE orchestrator_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "TX-901" AND status = "PENDING"
+    Note over CBS,Kafka: Rule 3: CBS publishes domain event directly to Kafka from outbox_events
+    CBS->>Kafka: Publish TransactionStatusChangedEvent (TX-901, INITIATED)
+    CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "TX-901" AND status = "PENDING"
     end
 
     %% STAGE 2: REAL-TIME RISK EVALUATION & 2FA (AUTHORIZED)
@@ -213,11 +213,8 @@ sequenceDiagram
 
     Note over Orch: Amount 65,000.00 PHP exceeds 50,000.00 PHP threshold (Mandate 2FA OTP)
     Orch->>Redis: SET otp:TX-901 "491823" EX 300 (5-minute TTL)
-    Note over Orch,OrchOutbox: Rule 3: Record OTP dispatch event into Outbox prior to Kafka publication
-    Orch->>OrchOutbox: INSERT INTO orchestrator_outbox (event_type: "OTP_DISPATCH_REQUESTED", aggregate_id: "TX-901", status: "PENDING")
-    Orch->>Kafka: Publish OtpDispatchRequestedEvent (TX-901, cust@bank.com)
-    Orch->>OrchOutbox: UPDATE orchestrator_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "TX-901" AND status = "PENDING"
-    Kafka->>Notif: Consume event & send 6-digit OTP email via MailHog (:8025)
+    Orch->>Notif: POST /api/v1/internal/notifications/otp (TX-901, cust@bank.com)
+    Notif-->>Notif: Send 6-digit OTP email via MailHog (:8025)
     Orch-->>Gateway: HTTP 202 Accepted (TX-901, PENDING_2FA_VERIFICATION)
     Gateway-->>Customer: HTTP 202 Accepted (Display 2FA OTP Input Screen)
 
@@ -230,13 +227,16 @@ sequenceDiagram
     Note over Orch: Rule 1: Translate authorization to Temenos OFS syntax before transmission
     Orch->>Orch: Serialize to OFS: FUNDS.TRANSFER,AUTHORIZE/I/PROCESS,,TX-901,AUTH.METHOD=2FA_EMAIL_OTP
     Orch->>CBS: POST /api/v1/internal/cbs/ofs-command (Payload: FUNDS.TRANSFER authorize wire)
+    CBS->>AzureSQL: BEGIN TRANSACTION
     CBS->>AzureSQL: UPDATE transactions SET status = "AUTHORIZED" WHERE id = "TX-901"
     CBS->>AzureSQL: INSERT INTO transaction_status_history (tx_id: "TX-901", from_status: "INITIATED", to_status: "AUTHORIZED", reason: "RISK_AND_2FA_PASSED")
+    Note over CBS,AzureSQL: Rule 3: Record domain event into outbox_events within transaction
+    CBS->>AzureSQL: INSERT INTO outbox_events (event_id, aggregate_type, aggregate_id, event_type, kafka_topic, payload, status) VALUES ('EVT-AUTH-901', 'TRANSACTION', 'TX-901', 'TRANSACTION_STATUS_CHANGED', 'banking.transfers.events', '{"status":"AUTHORIZED"}', 'PENDING')
+    CBS->>AzureSQL: COMMIT TRANSACTION
     CBS-->>Orch: 200 OK (OFS: TX-901//1/AUTHORIZED)
-    Note over Orch,OrchOutbox: Rule 3: Record domain event into Outbox prior to Kafka publication
-    Orch->>OrchOutbox: INSERT INTO orchestrator_outbox (event_type: "TRANSACTION_STATUS_CHANGED", aggregate_id: "TX-901", status: "PENDING")
-    Orch->>Kafka: Publish TransactionStatusChangedEvent (TX-901, AUTHORIZED)
-    Orch->>OrchOutbox: UPDATE orchestrator_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "TX-901" AND status = "PENDING"
+    Note over CBS,Kafka: Rule 3: CBS publishes domain event directly to Kafka from outbox_events
+    CBS->>Kafka: Publish TransactionStatusChangedEvent (TX-901, AUTHORIZED)
+    CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "TX-901" AND status = "PENDING"
     end
 
     %% STAGE 3: AMOUNT HOLD PLACEMENT (RESERVED)
@@ -251,13 +251,13 @@ sequenceDiagram
     CBS->>AzureSQL: UPDATE balance_master SET hold_amount = hold_amount + 65000.0000 WHERE account_id = 'ACC-101'
     CBS->>AzureSQL: UPDATE transactions SET status = "RESERVED" WHERE id = "TX-901"
     CBS->>AzureSQL: INSERT INTO transaction_status_history (tx_id: "TX-901", from_status: "AUTHORIZED", to_status: "RESERVED", reason: "AMOUNT_HOLD_APPLIED")
-    Note over CBS,AzureSQL: Rule 3: Record hold event into cbs_outbox within ACID transaction
-    CBS->>AzureSQL: INSERT INTO cbs_outbox (event_type: "AMOUNT_HOLD_PLACED", aggregate_id: "HLD-99102", status: "PENDING")
+    Note over CBS,AzureSQL: Rule 3: Record hold event into outbox_events within ACID transaction
+    CBS->>AzureSQL: INSERT INTO outbox_events (event_id, aggregate_type, aggregate_id, event_type, kafka_topic, payload, status) VALUES ('EVT-HLD-01', 'AMOUNT_HOLD', 'HLD-99102', 'AMOUNT_HOLD_PLACED', 'banking.transfers.events', '{"amount":65000}', 'PENDING')
     CBS->>AzureSQL: COMMIT TRANSACTION
     CBS-->>Orch: 200 OK (OFS: ACLK26095A//1/SUCCESS,HOLD.ID=HLD-99102)
-    Note over CBS,Kafka: Rule 3: CBS publishes hold event directly to Kafka from cbs_outbox
+    Note over CBS,Kafka: Rule 3: CBS publishes hold event directly to Kafka from outbox_events
     CBS->>Kafka: Publish AmountHoldPlacedEvent (holdId: HLD-99102, amount: 65000.00 PHP)
-    CBS->>AzureSQL: UPDATE cbs_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "HLD-99102" AND status = "PENDING"
+    CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "HLD-99102" AND status = "PENDING"
     end
 
     %% STAGE 4: TEMENOS OFS DISPATCH & IN-FLIGHT STATE (PROCESSING)
@@ -283,14 +283,14 @@ sequenceDiagram
     CBS->>AzureSQL: INSERT INTO gl_ledger (DR: ACC-101, CR: ACC-202, amount: 65000.0000, ref: "FT26095A")
     CBS->>AzureSQL: UPDATE transactions SET status = "POSTED" WHERE id = "TX-901"
     CBS->>AzureSQL: INSERT INTO transaction_status_history (tx_id: "TX-901", from_status: "PROCESSING", to_status: "POSTED", reason: "LEDGER_COMMITTED")
-    Note over CBS,AzureSQL: Rule 3: Record execution event into cbs_outbox within ACID transaction
-    CBS->>AzureSQL: INSERT INTO cbs_outbox (event_type: "TRANSFER_EXECUTED", aggregate_id: "FT26095A", status: "PENDING")
+    Note over CBS,AzureSQL: Rule 3: Record execution event into outbox_events within ACID transaction
+    CBS->>AzureSQL: INSERT INTO outbox_events (event_id, aggregate_type, aggregate_id, event_type, kafka_topic, payload, status) VALUES ('EVT-TX-01', 'TRANSACTION', 'FT26095A', 'TRANSFER_EXECUTED', 'banking.transfers.events', '{"amount":65000}', 'PENDING')
     CBS->>AzureSQL: COMMIT TRANSACTION
     AzureSQL-->>CBS: Transaction Committed (ACID Complete)
     
-    Note over CBS,Kafka: Rule 3: CBS publishes domain event directly to Kafka from cbs_outbox
+    Note over CBS,Kafka: Rule 3: CBS publishes domain event directly to Kafka from outbox_events
     CBS->>Kafka: Publish TransferExecutedEvent (txId: FT26095A, amount: 65000.00 PHP)
-    CBS->>AzureSQL: UPDATE cbs_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "FT26095A" AND status = "PENDING"
+    CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "FT26095A" AND status = "PENDING"
     CBS-->>Orch: OFS Response: FT26095A//1/SUCCESS,AUTH.DATE=20261005,STATUS=POSTED
     end
 
@@ -324,7 +324,6 @@ sequenceDiagram
     actor Checker as Checker (Branch Manager)
     participant Gateway as API Gateway
     participant Orch as Orchestrator
-    participant OrchOutbox as Orchestrator Outbox
     participant Risk as Risk Engine
     participant CBS as T24 Mock CBS
     participant AzureSQL as Azure SQL DB
@@ -356,12 +355,13 @@ sequenceDiagram
     Note over CBS: Available 45000.00 < 100000.00 (Insufficient Funds)
     CBS->>AzureSQL: UPDATE transactions SET status = "FAILED" WHERE id = 'TX-902'
     CBS->>AzureSQL: INSERT INTO transaction_status_history (tx_id: "TX-902", to_status: "FAILED", reason: "NSF_INSUFFICIENT_FUNDS")
+    Note over CBS,AzureSQL: Rule 3: Record failure event into outbox_events within ACID transaction
+    CBS->>AzureSQL: INSERT INTO outbox_events (event_id, aggregate_type, aggregate_id, event_type, kafka_topic, payload, status) VALUES ('EVT-FAIL-902', 'TRANSACTION', 'TX-902', 'TRANSACTION_STATUS_CHANGED', 'banking.transfers.events', '{"status":"FAILED","reason":"NSF"}', 'PENDING')
     CBS->>AzureSQL: COMMIT TRANSACTION
     CBS-->>Orch: HTTP 422 Unprocessable Entity (OFS: TX-902//-1/FAILED,REASON=NSF)
-    Note over Orch,OrchOutbox: Rule 3: Record failure event into Outbox prior to Kafka publication
-    Orch->>OrchOutbox: INSERT INTO orchestrator_outbox (event_type: "TRANSACTION_STATUS_CHANGED", aggregate_id: "TX-902", to_status: "FAILED", status: "PENDING")
-    Orch->>Kafka: Publish TransactionStatusChangedEvent (TX-902, FAILED, reason: "NSF")
-    Orch->>OrchOutbox: UPDATE orchestrator_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "TX-902" AND status = "PENDING"
+    Note over CBS,Kafka: Rule 3: CBS publishes domain event directly to Kafka from outbox_events
+    CBS->>Kafka: Publish TransactionStatusChangedEvent (TX-902, FAILED, reason: "NSF")
+    CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "TX-902" AND status = "PENDING"
     Orch-->>Customer: HTTP 422 Unprocessable Entity (INSUFFICIENT_FUNDS)
     end
 
@@ -395,12 +395,13 @@ sequenceDiagram
     CBS->>AzureSQL: INSERT INTO reversal_requests (ticket_id, transaction_id, maker_id, reversal_reason, status) VALUES ('DISP-8801', 'TX-901', 'OP-MAKER-01', 'DUPLICATE_TRANSFER', 'PENDING_APPROVAL')
     CBS->>AzureSQL: UPDATE transactions SET status = "REVERSAL_REQUESTED" WHERE id = 'TX-901'
     CBS->>AzureSQL: INSERT INTO transaction_status_history (tx_id: "TX-901", from_status: "POSTED", to_status: "REVERSAL_REQUESTED", reason: "MAKER_DISPUTE_FILED", operator_id: "OP-MAKER-01")
+    Note over CBS,AzureSQL: Rule 3: Record domain event into outbox_events within ACID transaction
+    CBS->>AzureSQL: INSERT INTO outbox_events (event_id, aggregate_type, aggregate_id, event_type, kafka_topic, payload, status) VALUES ('EVT-REV-901', 'TRANSACTION', 'TX-901', 'TRANSACTION_STATUS_CHANGED', 'banking.transfers.events', '{"status":"REVERSAL_REQUESTED"}', 'PENDING')
     CBS->>AzureSQL: COMMIT TRANSACTION
     CBS-->>Orch: 201 Created (OFS: ACLK26095L//1/SUCCESS,TICKET.ID=DISP-8801,STATUS=PENDING_APPROVAL)
-    Note over Orch,OrchOutbox: Rule 3: Record domain event into Outbox prior to Kafka publication
-    Orch->>OrchOutbox: INSERT INTO orchestrator_outbox (event_type: "TRANSACTION_STATUS_CHANGED", aggregate_id: "TX-901", status: "PENDING")
-    Orch->>Kafka: Publish TransactionStatusChangedEvent (TX-901, REVERSAL_REQUESTED, ticketId: "DISP-8801")
-    Orch->>OrchOutbox: UPDATE orchestrator_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "TX-901" AND status = "PENDING"
+    Note over CBS,Kafka: Rule 3: CBS publishes domain event directly to Kafka from outbox_events
+    CBS->>Kafka: Publish TransactionStatusChangedEvent (TX-901, REVERSAL_REQUESTED, ticketId: "DISP-8801")
+    CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "TX-901" AND status = "PENDING"
     Orch-->>Maker: 201 Created (Reversal Request Queued for Checker Review)
 
     Note over Checker,Orch: Checker reviews reversal ticket in authorization queue
@@ -420,14 +421,14 @@ sequenceDiagram
     CBS->>AzureSQL: UPDATE reversal_requests SET status = "APPROVED", checker_id = "OP-CHECKER-09", reviewed_at = SYSUTCDATETIME() WHERE ticket_id = 'DISP-8801'
     CBS->>AzureSQL: UPDATE transactions SET status = "REVERSED", reversal_ref_id = "TX-REV-901" WHERE id = 'TX-901'
     CBS->>AzureSQL: INSERT INTO transaction_status_history (tx_id: "TX-901", from_status: "REVERSAL_REQUESTED", to_status: "REVERSED", reason: "CHECKER_APPROVED", operator_id: "OP-CHECKER-09")
-    Note over CBS,AzureSQL: Rule 3: Record reversal event into cbs_outbox within ACID transaction
-    CBS->>AzureSQL: INSERT INTO cbs_outbox (event_type: "TRANSFER_REVERSED", aggregate_id: "TX-901", status: "PENDING")
+    Note over CBS,AzureSQL: Rule 3: Record reversal event into outbox_events within ACID transaction
+    CBS->>AzureSQL: INSERT INTO outbox_events (event_id, aggregate_type, aggregate_id, event_type, kafka_topic, payload, status) VALUES ('EVT-REV-902', 'TRANSACTION', 'TX-901', 'TRANSFER_REVERSED', 'banking.transfers.events', '{"reversalRefId":"TX-REV-901"}', 'PENDING')
     CBS->>AzureSQL: COMMIT TRANSACTION
     CBS-->>Orch: 200 OK (OFS: TX-901//1/REVERSED,REV.REF=TX-REV-901)
     
-    Note over CBS,Kafka: Rule 3: CBS publishes reversal event directly to Kafka from cbs_outbox
+    Note over CBS,Kafka: Rule 3: CBS publishes reversal event directly to Kafka from outbox_events
     CBS->>Kafka: Publish TransferReversedEvent (txId: "TX-901", reversalRefId: "TX-REV-901", makerId: "OP-MAKER-01", checkerId: "OP-CHECKER-09")
-    CBS->>AzureSQL: UPDATE cbs_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "TX-901" AND status = "PENDING"
+    CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "TX-901" AND status = "PENDING"
     Orch-->>Checker: HTTP 200 OK (Transfer Reversal Confirmed)
     
     %% RULE 2: AUDIT WORKER PERSISTS TO POSTGRES
