@@ -12,7 +12,7 @@ The **T24 Mock CBS** (:8085) executes the interest engine directly against the *
    - Executed on every business day $T$ for all eligible interest-bearing accounts (e.g., Regular Savings, High-Yield Savings).
    - Calculates daily interest using the **Average Daily Balance (ADB)** or daily closing cleared balance:
      $$\text{Daily Accrual} = \text{Cleared Balance} \times \frac{\text{Annual Interest Rate}}{365}$$
-   - **Threshold Rule**: Accounts below the minimum balance to earn interest (e.g., ₱10,000.00 PHP) earn ₱0.0000.
+   - **Threshold Rule**: Accounts below the minimum balance to earn interest (e.g., 10,000.00 PHP) earn 0.0000 PHP.
    - Updates the cumulative accrual table `interest_accruals`.
    - Posts daily accrual double-entry journal:
      - **Debit**: Interest Expense GL (`GL-5100-INT-EXP`)
@@ -134,6 +134,7 @@ sequenceDiagram
     participant AzureSQL as Azure SQL DB (:1433)
     participant Kafka as Kafka Broker (:9092)
     participant Notif as Notification Svc (:8083)
+    participant AuditWorker as Audit Vault Consumer
     participant AuditVault as Postgres Audit (:5432)
 
     Note over BatchJob,AuditVault: Subfeature 4.3 Execution Sequence: Daily Accrual & Month-End Capitalization
@@ -141,7 +142,10 @@ sequenceDiagram
     %% PART 1: DAILY ACCRUAL
     rect rgb(240, 248, 255)
     Note over CBS,AzureSQL: Part 1: Daily Accrual Calculation (Every Business Day)
-    BatchJob->>CBS: POST /api/v1/batch/interest/accrue { valueDate: "2026-10-05" }
+    Note over BatchJob: Rule 1: Translate Accrual command to Temenos OFS wire syntax
+    BatchJob->>BatchJob: Map to OFS: IC.CHARGE,ACCRUAL/I/PROCESS,,VALUE.DATE=20261005
+    BatchJob->>CBS: POST /api/v1/internal/cbs/ofs-command (Payload: IC.CHARGE,ACCRUAL wire string)
+
     CBS->>AzureSQL: SELECT a.account_id, a.interest_rate, b.balance_amount FROM accounts a JOIN balance_master b ON a.account_id = b.account_id WHERE a.status = 'ACTIVE' AND a.is_interest_bearing = 1 AND b.balance_amount >= a.min_balance_to_earn_interest
     AzureSQL-->>CBS: List of qualifying accounts (e.g., ACC-101 balance = 100000 PHP, rate = 2.50%)
     loop For each eligible account
@@ -151,20 +155,23 @@ sequenceDiagram
         CBS->>AzureSQL: INSERT INTO gl_ledger (gl_code, debit_amount, credit_amount, ref_id) VALUES ('GL-2200-INT-PAYABLE', 0.0000, 6.8493, 'ACCRUAL-ACC-101-20261005')
     end
     AzureSQL-->>CBS: Daily accruals committed
-    CBS-->>BatchJob: 200 OK { status: "ACCRUAL_COMPLETED", processedAccounts: 12000, totalAccruedPHP: 82191.60 }
+    CBS-->>BatchJob: 200 OK (OFS: IC.CHARGE-ACCRUAL//1/SUCCESS,PROCESSED=12000,TOTAL_ACCRUED=82191.60)
     end
 
     %% PART 2: MONTH-END CAPITALIZATION
     rect rgb(255, 250, 240)
     Note over CBS,AzureSQL: Part 2: Periodic Capitalization & 20% Withholding Tax (Month-End Cutoff)
-    BatchJob->>CBS: POST /api/v1/batch/interest/capitalize { valueDate: "2026-10-05", period: "2026-10" }
+    Note over BatchJob: Rule 1: Translate Interest Capitalization command to Temenos OFS wire syntax
+    BatchJob->>BatchJob: Map to OFS: IC.CHARGE,BATCH/I/PROCESS,,VALUE.DATE=20261005,PERIOD=2026-10
+    BatchJob->>CBS: POST /api/v1/internal/cbs/ofs-command (Payload: IC.CHARGE,BATCH wire string)
+
     CBS->>AzureSQL: SELECT account_id, SUM(daily_accrued_amount) AS gross_interest FROM interest_accruals WHERE is_capitalized = 0 GROUP BY account_id
     AzureSQL-->>CBS: Accounts with accrued interest (e.g., ACC-101 gross_interest = 212.3300 PHP)
 
     loop For each capitalized account
-        Note over CBS: Compute 20% Final Withholding Tax:<br/>Gross = 212.3300 PHP<br/>Tax (20%) = 42.4660 PHP<br/>Net Credited = 169.8640 PHP
+        Note over CBS: Compute 20% Final Withholding Tax (Gross 212.3300 PHP, Tax 42.4660 PHP, Net 169.8640 PHP)
         CBS->>AzureSQL: BEGIN TRANSACTION
-        CBS->>AzureSQL: SELECT balance_amount FROM balance_master WITH (UPDLOCK, ROWLOCK) WHERE account_id = 'ACC-101'
+        CBS->>AzureSQL: SELECT balance_amount, accrued_interest FROM balance_master WITH (UPDLOCK, ROWLOCK) WHERE account_id = 'ACC-101'
         AzureSQL-->>CBS: balance_amount = 100000.0000
         CBS->>AzureSQL: UPDATE balance_master SET balance_amount = balance_amount + 169.8640 WHERE account_id = 'ACC-101'
         CBS->>AzureSQL: INSERT INTO transactions (transaction_id, account_id, type, amount, status, description) VALUES ('TXN-INT-991', 'ACC-101', 'INTEREST_CREDIT', 169.8640, 'EXECUTED', 'Monthly Net Interest Credit')
@@ -173,12 +180,16 @@ sequenceDiagram
         CBS->>AzureSQL: INSERT INTO gl_ledger (gl_code, debit_amount, credit_amount, ref_id) VALUES ('GL-2100-CUST-LIAB', 0.0000, 169.8640, 'TXN-INT-991')
         CBS->>AzureSQL: INSERT INTO gl_ledger (gl_code, debit_amount, credit_amount, ref_id) VALUES ('GL-2300-WHT-PAYABLE', 0.0000, 42.4660, 'TXN-TAX-992')
         CBS->>AzureSQL: UPDATE interest_accruals SET is_capitalized = 1 WHERE account_id = 'ACC-101' AND is_capitalized = 0
+        Note over CBS,AzureSQL: Rule 3: Record interest event into cbs_outbox within ACID transaction
+        CBS->>AzureSQL: INSERT INTO cbs_outbox (event_type: "INTEREST_CAPITALIZED", aggregate_id: "BATCH-INT-20261005", status: "PENDING")
         CBS->>AzureSQL: COMMIT TRANSACTION
         AzureSQL-->>CBS: Transaction Committed (New Balance: 100,169.8640 PHP)
     end
-    CBS-->>BatchJob: 200 OK { status: "CAPITALIZATION_COMPLETED", capitalizedAccounts: 12000, totalGrossPHP: 2547960.00, totalTaxWithheldPHP: 509592.00, totalNetCreditedPHP: 2038368.00 }
-    Note over BatchJob,Kafka: Batch Orchestrator publishes capitalization event to Kafka on behalf of isolated CBS
-    BatchJob->>Kafka: Publish InterestCapitalizedEvent { accountId: 'ACC-101', grossInterest: 212.3300, withholdingTax: 42.4660, netInterest: 169.8640, newBalance: 100169.8640 }
+    CBS-->>BatchJob: 200 OK (OFS: IC.CHARGE-BATCH//1/SUCCESS,PROCESSED=12000,NET_CREDITED=2038368.00,TAX_WITHHELD=509592.00)
+
+    Note over CBS,Kafka: Rule 3: CBS publishes interest events directly to Kafka from cbs_outbox
+    CBS->>Kafka: Publish InterestCapitalizedEvent (capitalizedAccounts: 12000, totalNetCredited: 2038368.00 PHP)
+    CBS->>AzureSQL: UPDATE cbs_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "BATCH-INT-20261005" AND status = "PENDING"
     end
 
     %% ASYNCHRONOUS CONSUMPTION
@@ -186,9 +197,9 @@ sequenceDiagram
         Kafka->>Notif: Consume InterestCapitalizedEvent
         Notif->>Notif: Generate HTML Monthly Interest & Tax Certificate
         Notif->>Notif: Dispatch Email via MailHog (:8025)
-    and Append-Only Compliance Archival
-        Kafka->>AuditVault: Consume InterestCapitalizedEvent
-        AuditVault->>AuditVault: INSERT INTO ledger_mutation_audit (event: "INTEREST_CAPITALIZED", details: json)
+    and Rule 2: Append-Only Compliance Archival via Audit Worker
+        Kafka->>AuditWorker: Consume InterestCapitalizedEvent
+        AuditWorker->>AuditVault: INSERT INTO ledger_mutation_audit (event: "INTEREST_CAPITALIZED", details: json)
     end
 ```
 

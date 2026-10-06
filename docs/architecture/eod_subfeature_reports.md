@@ -23,7 +23,7 @@ At the conclusion of the daily posting cycle, **T24 Mock CBS** (:8085) generates
    - Compiles monthly transaction history, opening/closing balance, interest earned, and withholding tax withheld.
    - Emits Kafka events for the **Notification Service** (:8083) to generate PDF statements and dispatch email advisories.
 5. **Regulatory AMLA Covered Transaction Report (CTR)**:
-   - Identifies all transactions exceeding the Anti-Money Laundering Act (AMLA) threshold of ₱500,000.00 PHP (or aggregated structuring).
+   - Identifies all transactions exceeding the Anti-Money Laundering Act (AMLA) threshold of 500,000.00 PHP (or aggregated structuring).
    - Compiles structured compliance data ready for AMLC regulator extraction.
 6. **Batch Execution & Exception Summary**:
    - Logs overall batch run statistics, record throughput, execution duration, and uncollected fee exceptions.
@@ -119,23 +119,26 @@ sequenceDiagram
     participant Storage as Report Document Vault
     participant Kafka as Kafka Broker (:9092)
     participant Notif as Notification Svc (:8083)
+    participant AuditWorker as Audit Vault Consumer
     participant AuditVault as Postgres Audit (:5432)
 
     Note over BatchJob,AuditVault: Subfeature 4.1 Execution Sequence: Balance Rollup, GL Recon & Reports
 
     %% STEP 1: GL TRIAL BALANCE & RECONCILIATION
     rect rgb(240, 248, 255)
-    BatchJob->>CBS: POST /api/v1/batch/reports/run { valueDate: "2026-10-05" }
+    Note over BatchJob: Rule 1: Translate GL Recon command to Temenos OFS wire syntax
+    BatchJob->>BatchJob: Map to OFS: GL.REPORT,GENERATE/I/PROCESS,,VALUE.DATE=20261005
+    BatchJob->>CBS: POST /api/v1/internal/cbs/ofs-command (Payload: GL.REPORT,GENERATE wire string)
     CBS->>AzureSQL: SELECT gl_code, SUM(debit_amount) AS total_dr, SUM(credit_amount) AS total_cr FROM gl_ledger WHERE posting_date = '2026-10-05' GROUP BY gl_code
     AzureSQL-->>CBS: GL summary rows
     Note over CBS: Validate Zero-Sum Balance:<br/>Total Debits == Total Credits<br/>Variance == 0.0000 PHP
     alt Variance != 0 (Out-of-Balance Exception)
-        CBS->>AzureSQL: INSERT INTO batch_eod_logs (status: "FAILED", error: "GL_OUT_OF_BALANCE")
-        CBS-->>BatchJob: 500 Internal Error (GL Reconciliation Failed)
-        Note over BatchJob,Kafka: Batch Orchestrator publishes error event on behalf of isolated CBS
-        BatchJob->>Kafka: Publish BatchErrorEvent { error: "GL Imbalance Detected" }
+        CBS->>AzureSQL: INSERT INTO eod_reports_metadata (report_type: "GL_TRIAL_BALANCE", verification_status: "EXCEPTION", variance_amount: variance)
+        CBS-->>BatchJob: 500 Internal Error (OFS: GL.REPORT//-1/FAILED,ERROR=OUT_OF_BALANCE)
+        Note over BatchJob: Rule 3: Orchestrator records error into outbox prior to publishing
+        BatchJob->>Kafka: Publish BatchErrorEvent (error: "GL Imbalance Detected", date: "2026-10-05")
     else Variance == 0 (Reconciliation Passed)
-        CBS->>AzureSQL: INSERT INTO eod_reports_metadata (type: "GL_TRIAL_BALANCE", status: "VERIFIED", balance: 0.0000)
+        CBS->>AzureSQL: INSERT INTO eod_reports_metadata (report_type: "GL_TRIAL_BALANCE", verification_status: "VERIFIED", variance_amount: 0.0000)
     end
     end
 
@@ -148,6 +151,7 @@ sequenceDiagram
     AzureSQL-->>CBS: Daily financial transactions list
     CBS->>Storage: Store Daily Transaction Journal (CSV/JSON/PDF)
     Storage-->>CBS: Storage URI: /vault/reports/20261005/txn_journal_20261005.pdf
+    CBS->>AzureSQL: INSERT INTO eod_reports_metadata (report_type: "TXN_JOURNAL", storage_uri: "/vault/reports/...", verification_status: "VERIFIED")
     end
 
     %% STEP 3: AMLA CTR REGULATORY COMPLIANCE REPORT
@@ -156,7 +160,7 @@ sequenceDiagram
     AzureSQL-->>CBS: High-value CTR records
     CBS->>Storage: Store AMLA CTR Compliance Report (JSON/XML)
     Storage-->>CBS: Storage URI: /vault/compliance/20261005/amla_ctr_20261005.json
-    CBS->>AzureSQL: INSERT INTO eod_reports_metadata (type: "AMLA_CTR", uri: "/vault/compliance/...")
+    CBS->>AzureSQL: INSERT INTO eod_reports_metadata (report_type: "AMLA_CTR", storage_uri: "/vault/compliance/...", verification_status: "VERIFIED")
     end
 
     %% STEP 4: MONTHLY CUSTOMER E-STATEMENTS
@@ -167,23 +171,29 @@ sequenceDiagram
         CBS->>AzureSQL: SELECT * FROM transactions WHERE account_id = ? AND created_at BETWEEN '2026-09-06' AND '2026-10-05'
         AzureSQL-->>CBS: Monthly transactions and opening/closing balances
     end
+    CBS->>AzureSQL: INSERT INTO eod_reports_metadata (report_type: "EOD_BATCH_SUMMARY", verification_status: "COMPLETED")
+    CBS-->>BatchJob: 200 OK (OFS: GL.REPORT//1/SUCCESS,BALANCED=YES,REPORT_COUNT=4,STATEMENT_COUNT=1250)
     end
 
-    %% STEP 5: COMPLETION NOTIFICATION & AUDIT PROJECTION
+    %% STEP 5: EVENT PUBLICATION & ASYNC CONSUMPTION
     rect rgb(240, 255, 255)
-    CBS->>AzureSQL: INSERT INTO eod_reports_metadata (type: "EOD_BATCH_SUMMARY", status: "COMPLETED", date: '2026-10-05')
-    CBS-->>BatchJob: 200 OK { status: "REPORTS_GENERATED", totalReports: 4, statementCount: 1250 }
-    Note over BatchJob,Kafka: Batch Orchestrator publishes completion & statement events to Kafka on behalf of isolated CBS
-    BatchJob->>Kafka: Publish ReportsReadyEvent { date: '2026-10-05', reports: ["GL_TRIAL_BAL", "TXN_JOURNAL", "AMLA_CTR", "EOD_SUMMARY"] }
+    Note over CBS,AzureSQL: Rule 3: Record reports completion and statement events into cbs_outbox
+    CBS->>AzureSQL: INSERT INTO cbs_outbox (event_type: "REPORTS_READY", aggregate_id: "REP-20261005", status: "PENDING")
+    CBS->>AzureSQL: INSERT INTO cbs_outbox (event_type: "STATEMENT_GENERATED", aggregate_id: "STMT-ACC-100223", status: "PENDING")
+
+    Note over CBS,Kafka: Rule 3: CBS publishes reports & statement events directly to Kafka from cbs_outbox
+    CBS->>Kafka: Publish ReportsReadyEvent (date: 2026-10-05, glBalanced: true, reportIds: ["GL_TRIAL_BAL", "TXN_JOURNAL", "AMLA_CTR", "EOD_SUMMARY"])
+    CBS->>Kafka: Publish StatementGeneratedEvent (accountId: ACC-100223, cycleStart: 2026-09-06, cycleEnd: 2026-10-05)
+    CBS->>AzureSQL: UPDATE cbs_outbox SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id IN ("REP-20261005", "STMT-ACC-100223") AND status = "PENDING"
     end
 
     par Downstream Statement Generation & Dispatch
         Kafka->>Notif: Consume StatementGeneratedEvent
         Notif->>Notif: Render HTML/PDF E-Statement via Thymeleaf
         Notif->>Notif: Dispatch E-Statement advice email via MailHog (:8025)
-    and Append-Only Compliance Archival
-        Kafka->>AuditVault: Consume ReportsReadyEvent
-        AuditVault->>AuditVault: INSERT INTO ledger_mutation_audit (event: "REPORTS_FILED", hash: sha256)
+    and Rule 2: Append-Only Compliance Archival via Audit Worker
+        Kafka->>AuditWorker: Consume ReportsReadyEvent
+        AuditWorker->>AuditVault: INSERT INTO ledger_mutation_audit (event: "REPORTS_FILED", hash: sha256)
     end
 ```
 
