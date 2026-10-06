@@ -54,9 +54,9 @@ The architecture enforces a strict boundary between Edge Orchestration and the A
 
 ---
 
-## 2. Master Ledgers & Specialized History Schemas (Azure SQL & PostgreSQL Audit Vault)
+## 2. Master Ledgers & Specialized History Schemas (Azure SQL)
 
-The data model unifies an end-to-end chronological status transition history with specialized domain metadata tables across the isolated Core Banking System (Azure SQL) and the asynchronous Audit Vault (PostgreSQL):
+The data model unifies an end-to-end chronological status transition history with specialized domain metadata tables:
 
 ```mermaid
 erDiagram
@@ -123,7 +123,6 @@ erDiagram
     FAILED_TRANSACTION_HISTORY {
         string failure_id PK
         string idempotency_key UK
-        string cbs_reference
         string source_account_id
         string target_account_id
         decimal attempted_amount
@@ -248,36 +247,29 @@ ON amount_hold_history (account_id, hold_status);
 
 ---
 
-### 2.5 Failed Transaction & DLQ Telemetry Table: `failed_transaction_history` (PostgreSQL Audit Vault)
+### 2.5 Failed Transaction & DLQ Telemetry Table: `failed_transaction_history`
 
-Records network timeouts, circuit breaker trips, and Dead Letter Queue escalations.
-
-> [!NOTE]
-> While Sections 2.1 through 2.4 define the primary banking and audit ledgers managed exclusively by T24 Mock CBS in **Azure SQL Database (`:1433`)**, the `failed_transaction_history` table resides in the **PostgreSQL Audit Vault (`:5432`)**. It is asynchronously populated by consumers of the Kafka `banking.transfers.dlq` topic. This ensures that the isolated Core Banking System remains completely decoupled from web idempotency keys and edge retry telemetry.
+Records network timeouts, circuit breaker trips, and Dead Letter Queue escalations:
 
 ```sql
 CREATE TABLE failed_transaction_history (
     failure_id          VARCHAR(64) PRIMARY KEY,           -- e.g. 'FAIL-8801'
     idempotency_key     VARCHAR(128) NOT NULL,
-    cbs_reference       VARCHAR(64) NULL,                  -- Canonical Temenos reference derived by Orchestrator (e.g. 'FT26095A')
     source_account_id   VARCHAR(32) NOT NULL,
     target_account_id   VARCHAR(32) NOT NULL,
     attempted_amount    DECIMAL(18, 4) NOT NULL,
     failure_stage       VARCHAR(64) NOT NULL,              -- 'NETWORK_TIMEOUT', 'CBS_REJECTED', 'CIRCUIT_BREAKER_TRIPPED'
     error_code          VARCHAR(32) NOT NULL,              -- 'HTTP_504', 'OFS_TIMEOUT', 'MAX_RETRIES_EXCEEDED'
-    error_message       VARCHAR(500) NOT NULL,
+    error_message       NVARCHAR(500) NOT NULL,
     retry_count         INT NOT NULL,
     resolution_status   VARCHAR(32) NOT NULL,              -- 'RECOVERED_ON_RETRY', 'RECOVERED_ALREADY_COMMITTED', 'FAILED_EXHAUSTED'
     dlq_topic           VARCHAR(128) NULL,                 -- 'banking.transfers.dlq'
-    created_at          TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    last_attempt_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at          DATETIME2 DEFAULT SYSUTCDATETIME(),
+    last_attempt_at     DATETIME2 DEFAULT SYSUTCDATETIME()
 );
 
-CREATE INDEX idx_fail_idemp 
+CREATE NONCLUSTERED INDEX idx_fail_idemp 
 ON failed_transaction_history (idempotency_key);
-
-CREATE INDEX idx_fail_cbs_ref 
-ON failed_transaction_history (cbs_reference);
 ```
 
 ---
@@ -461,28 +453,13 @@ sequenceDiagram
 
 ---
 
-## 5. Feature 3: Failed Transaction & Retry Management (Option A: Edge-Managed Idempotency & Core Uniqueness)
+## 5. Feature 3: Failed Transaction & Retry Management
 
 ### 5.1 Overview & Zero Double-Debit Guarantee
 
-Under the **Option A Architecture Protocol**, the platform maintains a strict separation of concerns between web edge idempotency and core banking ledger isolation:
-
-- **Edge vs. Core Enclave Separation:**
-  - **Edge / Perimeter Tier (Transfer Orchestrator `:8082` + Redis `:6379`):** External web and mobile clients submit HTTP requests bearing the `X-Idempotency-Key` header (e.g., `IDEMP-7701`). Real-world Temenos core banking engines do not recognize, parse, or persist HTTP transport headers. The Transfer Orchestrator and Redis act as the authoritative boundary for web idempotency tokens.
-  - **Deterministic Reference Derivation:** Upon receiving a new transfer request, the Transfer Orchestrator checks Redis (`GET tx:idemp:IDEMP-7701`). If absent, the Orchestrator deterministically derives or generates a canonical Temenos banking transaction reference (e.g., `cbsRef = "FT26095A"`). It atomically writes this association to Redis: `SET tx:idemp:IDEMP-7701 '{"status":"PROCESSING","cbsRef":"FT26095A"}' NX EX 300`.
-  - **Core Banking System (T24 Mock CBS `:8085` + Azure SQL `:1433`):** The CBS operates exclusively with canonical banking references (`FT...`). It has **zero awareness of web idempotency keys**. When inserting into Azure SQL `transactions`, `transaction_id = 'FT26095A'` acts as the primary key constraint, physically preventing double-debits at the database engine level.
-
-- **Idempotent Status Interrogation (Option A Protocol):**
-  - **The Problem:** When an HTTP 504 Gateway Timeout or network socket drop occurs mid-flight, the Orchestrator does not know whether the CBS executed the ledger update before disconnecting. Blindly retrying with a new or arbitrary ID causes **catastrophic double-debits**.
-  - **The Interrogation Routine:** Instead of blind retries, the Orchestrator extracts `cbsRef = "FT26095A"` from Redis and dispatches an OFS status inquiry: `FUNDS.TRANSFER,STATUS/S/PROCESS/0/1,,,FT26095A`.
-  - **CBS Primary Key Inspection:** The CBS inspects its master ledger: `SELECT transaction_id, status FROM transactions WHERE transaction_id = 'FT26095A'`.
-  - **Scenario A (Already Committed):** If the record exists (`status = 'POSTED'`), CBS returns `200 OK (OFS: FT26095A//1/COMMITTED)`. The Orchestrator marks Redis as `{"status":"POSTED","cbsRef":"FT26095A"}`, suppresses redundant execution, and returns the existing receipt to the client.
-  - **Scenario B (Absent / Unprocessed):** If CBS returns `404 Not Found (OFS: FT26095A//-1/NO,ERROR=TXN_NOT_FOUND)`, the Orchestrator verifies that no ledger update occurred. It safely re-transmits the original transfer payload with the **exact same canonical reference `FT26095A`**. Because the reference is identical, even if a transient hiccup recurred, CBS primary key uniqueness guarantees zero double-debit.
-
-- **Failure Telemetry & DLQ Routing (Zero SQL Dependency):**
-  - The Transfer Orchestrator holds no credentials or direct network connection to Azure SQL.
-  - If retries exhaust after 3 exponential backoff attempts (e.g., CBS or database unreachable), the Orchestrator trips its circuit breaker to OPEN, updates Redis with `{"status":"FAILED_EXHAUSTED","cbsRef":"FT26095A"}`, and publishes a `TransferFailedToDlqEvent` to Kafka topic `banking.transfers.dlq` containing both `idempotencyKey` and `cbsReference`.
-  - The **PostgreSQL Audit Vault (`:5432`)** consumes the event and logs the failure in `failed_transaction_history`.
+- **The Problem:** When an HTTP 504 Gateway Timeout or network socket drop occurs mid-flight, the Orchestrator does not know whether the CBS executed the ledger update before disconnecting. Blindly retrying causes **catastrophic double-debits**.
+- **The Solution (Idempotent Status Interrogation):** Prior to initiating retry logic, the Transfer Orchestrator issues a dedicated status inquiry: `FUNDS.TRANSFER,STATUS/S/PROCESS` referencing the client's `X-Idempotency-Key`.
+- **Zero SQL Dependency for Orchestrator:** The Orchestrator does not connect to Azure SQL to insert failure rows. Instead, it trips the circuit breaker and publishes a `TransferFailedToDlqEvent` to Kafka topic `banking.transfers.dlq`, which is ingested into the Audit Vault asynchronously.
 
 ### 5.2 Sequence Diagram: Idempotent Interrogation, Retry & DLQ Routing
 
@@ -491,7 +468,7 @@ sequenceDiagram
     autonumber
     actor Client as Client Channels
     participant Gateway as API Gateway (:8080)
-    participant Redis as Token and Idempotency Cache (:6379)
+    participant Redis as Token & Idempotency Cache (:6379)
     participant Orch as Transfer Orchestrator (:8082)
     participant CBS as T24 Mock CBS (:8085)
     participant AzureSQL as Azure SQL DB (:1433)
@@ -504,58 +481,54 @@ sequenceDiagram
     Redis-->>Gateway: Token Valid
     Gateway->>Orch: Forward Transfer Request
 
-    Note over Orch: Option A: Deterministically derive canonical Temenos reference
-    Orch->>Orch: Generate cbsRef = FT26095A from idempotency context
-    Orch->>Redis: SET tx:idemp:IDEMP-7701 {"status":"PROCESSING","cbsRef":"FT26095A"} NX EX 300
-    Redis-->>Orch: OK (Lock Acquired and Reference Mapped)
+    Orch->>Redis: SET tx:idemp:IDEMP-7701 "PROCESSING" NX EX 300
+    Redis-->>Orch: OK (Lock Acquired)
 
-    Orch->>Orch: Serialize OFS wire with cbsRef (FUNDS.TRANSFER,AUTH/I/PROCESS... FT26095A)
-    Orch->>CBS: POST /api/v1/internal/cbs/ofs-command (FUNDS.TRANSFER Wire with FT26095A)
+    Orch->>Orch: Map to OFS: FUNDS.TRANSFER,AUTH/I/PROCESS...
+    Orch->>CBS: POST /api/v1/internal/cbs/ofs-command (FUNDS.TRANSFER Wire)
 
     CBS--xOrch: Network Socket Timeout / HTTP 504 Gateway Drop
 
     Note over Orch: In-flight disconnect detected. Initiate exponential backoff (Attempt 1 of 3: Wait 500ms)
 
-    Note over Orch,CBS: Step 1: Status Interrogation via Canonical Reference FT26095A (Do NOT blind retry!)
-    Orch->>Redis: GET tx:idemp:IDEMP-7701 (Lookup mapped cbsRef FT26095A)
-    Redis-->>Orch: {"status":"PROCESSING","cbsRef":"FT26095A"}
-    Orch->>CBS: POST /api/v1/internal/cbs/ofs-command (Inquiry: FUNDS.TRANSFER,STATUS/S/PROCESS,,,FT26095A)
-    CBS->>AzureSQL: SELECT transaction_id, status FROM transactions WHERE transaction_id = 'FT26095A'
+    Note over Orch,CBS: Step 1: Idempotency Status Interrogation (Do NOT blind retry!)
+    Orch->>CBS: POST /api/v1/internal/cbs/ofs-command (Inquiry: FUNDS.TRANSFER,STATUS/S/PROCESS,,,IDEMP-7701)
+    CBS->>AzureSQL: SELECT transaction_id, status FROM transactions WHERE transaction_id = 'IDEMP-7701'
 
     alt Scenario A: Transaction was already committed prior to network drop
-        AzureSQL-->>CBS: Found record (status = "POSTED", transaction_id = "FT26095A")
-        CBS-->>Orch: 200 OK (OFS: FT26095A//1/COMMITTED)
+        AzureSQL-->>CBS: Found record (status = "POSTED", tx_id = "FT26095A")
+        CBS-->>Orch: 200 OK (OFS: IDEMP-7701//1/COMMITTED,TXN.ID=FT26095A)
         Note over Orch: Transaction already settled in CBS! Suppress retry to prevent double-debit.
-        Orch->>Redis: SET tx:idemp:IDEMP-7701 {"status":"POSTED","cbsRef":"FT26095A"} EX 86400
+        Orch->>Redis: SET tx:idemp:IDEMP-7701 "POSTED" EX 86400
         Orch-->>Gateway: 200 OK (TransferReceiptDTO: status = POSTED, cbsRef = FT26095A)
         Gateway-->>Client: 200 OK (Existing Transaction Receipt Returned)
 
     else Scenario B: Transaction record absent (CBS never processed payload)
         AzureSQL-->>CBS: Null (No record found)
-        CBS-->>Orch: 404 Not Found (OFS: FT26095A//-1/NO,ERROR=TXN_NOT_FOUND)
-        Note over Orch: Verified safe to retry. Re-transmit original transfer wire with FT26095A.
+        CBS-->>Orch: 404 Not Found (OFS: IDEMP-7701//-1/NO,ERROR=TXN_NOT_FOUND)
+        Note over Orch: Verified safe to retry. Re-transmit original transfer wire.
 
-        Orch->>CBS: POST /api/v1/internal/cbs/ofs-command (Re-transmit OFS FUNDS.TRANSFER FT26095A)
+        Orch->>CBS: POST /api/v1/internal/cbs/ofs-command (Re-transmit OFS FUNDS.TRANSFER)
 
         alt Replay Succeeds
-            CBS->>AzureSQL: BEGIN TX: Deduct Balances and Commit Ledger (transaction_id = 'FT26095A')
+            CBS->>AzureSQL: BEGIN TX: Deduct Balances & Commit Ledger
             AzureSQL-->>CBS: Transaction Committed (status = POSTED)
-            CBS-->>Orch: 200 OK (OFS: FT26095A//1/SUCCESS)
+            CBS-->>Orch: 200 OK (OFS: FT26095B//1/SUCCESS)
             Note over Orch,Kafka: Orchestrator publishes event to Kafka on behalf of isolated CBS
-            Orch->>Kafka: Publish TransferExecutedEvent (txId: FT26095A, amount: 15000.00 PHP)
-            Orch->>Redis: SET tx:idemp:IDEMP-7701 {"status":"POSTED","cbsRef":"FT26095A"} EX 86400
+            Orch->>Kafka: Publish TransferExecutedEvent (txId: FT26095B, amount: 15000.00 PHP)
+            Orch->>Redis: SET tx:idemp:IDEMP-7701 "POSTED" EX 86400
             Orch-->>Gateway: 200 OK (TransferReceiptDTO)
             Gateway-->>Client: 200 OK (Transaction Success Screen)
 
         else Replay Exhausted (Downstream Database / CBS Outage)
             CBS--xOrch: Connection Refused / Continuous Timeout
             Note over Orch: 3 Attempts Exhausted. Trip Circuit Breaker.
-            Orch->>Redis: SET tx:idemp:IDEMP-7701 {"status":"FAILED_EXHAUSTED","cbsRef":"FT26095A"} EX 86400
+            Orch->>Redis: SET tx:idemp:IDEMP-7701 "FAILED_EXHAUSTED" EX 86400
             
             Note over Orch,Kafka: Orchestrator routes failure telemetry to Dead Letter Queue (DLQ)
-            Orch->>Kafka: Publish TransferFailedToDlqEvent (topic: banking.transfers.dlq, key: IDEMP-7701, cbsRef: FT26095A, reason: MAX_RETRIES_EXCEEDED)
+            Orch->>Kafka: Publish TransferFailedToDlqEvent (topic: banking.transfers.dlq, key: IDEMP-7701, reason: MAX_RETRIES_EXCEEDED)
             
-            par Asynchronous DLQ Audit and Customer Alert
+            par Asynchronous DLQ Audit & Customer Alert
                 Kafka->>Vault: Ingest DLQ Event into PostgreSQL failed_transaction_history
                 Kafka->>Notif: Dispatch Transfer Failure Alert Email via MailHog
             end
@@ -577,9 +550,9 @@ sequenceDiagram
 | **Amount Holds** | Create Provisional Hold | `AC.LOCKED.EVENTS,INPUT/I/PROCESS/0/1` | `AC.LOCKED.EVENTS,INPUT/I/PROCESS/0/1,U1001/PH100223/1,,ACCOUNT.NUMBER=ACC-101,LOCKED.AMOUNT=60000.00` |
 | **Amount Holds** | Capture Hold into Transfer | `FUNDS.TRANSFER,AUTH/I/PROCESS/0/1` | `FUNDS.TRANSFER,AUTH/I/PROCESS/0/1,U1001/PH100223/1,TX-HOLD-102,HOLD.REF=HLD-99102,AMOUNT=60000.00` |
 | **Amount Holds** | Cancel / Release Hold | `AC.LOCKED.EVENTS,REVERSE/R/PROCESS/0/1` | `AC.LOCKED.EVENTS,REVERSE/R/PROCESS/0/1,U1001/PH100223/1,HLD-99102,REVERSAL.REASON=CANCELLED` |
-| **Retry & Failure** | Idempotency Interrogation | `FUNDS.TRANSFER,STATUS/S/PROCESS/0/1` | `FUNDS.TRANSFER,STATUS/S/PROCESS/0/1,U1001/PH100223/1,,,FT26095A` |
-| **Retry & Failure** | Inquiry: Not Found (Safe) | CBS Query Response | `FT26095A//-1/NO,ERROR=TXN_NOT_FOUND` |
-| **Retry & Failure** | Inquiry: Already Settled | CBS Query Response | `FT26095A//1/COMMITTED` |
+| **Retry & Failure** | Idempotency Interrogation | `FUNDS.TRANSFER,STATUS/S/PROCESS/0/1` | `FUNDS.TRANSFER,STATUS/S/PROCESS/0/1,U1001/PH100223/1,,IDEMP-7701` |
+| **Retry & Failure** | Inquiry: Not Found (Safe) | CBS Query Response | `IDEMP-7701//-1/NOT_FOUND` |
+| **Retry & Failure** | Inquiry: Already Settled | CBS Query Response | `IDEMP-7701//1/COMMITTED,TXN.ID:1:1=FT26095A` |
 
 ---
 
@@ -635,7 +608,6 @@ All domain events are published exclusively by the **Transfer Orchestrator (`:80
   "eventId": "evt_dlq_440192",
   "eventType": "TRANSFER_FAILED_TO_DLQ",
   "idempotencyKey": "IDEMP-7701",
-  "cbsReference": "FT26095A",
   "sourceAccountId": "ACC-101",
   "targetAccountId": "ACC-202",
   "amount": 15000.0000,
