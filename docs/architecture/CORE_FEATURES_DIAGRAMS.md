@@ -62,7 +62,7 @@ The architecture enforces a strict boundary between Edge Orchestration and the A
 2. **Exclusive Primary Ledger Connection:** Only **T24 Mock CBS** holds datasource credentials to **Azure SQL Database**. The Transfer Orchestrator has **no database credentials or direct SQL connectivity to the primary ledger**. Any database query or mutation must be commanded through the CBS.
 3. **Mandatory OFS Translation Before Transmission:** High-level REST or JSON requests must be explicitly serialized into Temenos Open Financial Services (OFS) syntax strings (e.g., `AC.LOCKED.EVENTS`, `FUNDS.TRANSFER,AUTH`, `FUNDS.TRANSFER,STATUS`, `FUNDS.TRANSFER,REVERSE`, `BATCH.JOB,CUTOFF`, `AC.CHARGE,BATCH`) by the sender before transmission to the T24 Mock CBS.
 4. **Transactional Outbox Pattern Prior to Publishing:** Senders of events must record every event into the existing transactional outbox table (`outbox_events`), already defined in the master database, before dispatching messages to Apache Kafka. The T24 Mock CBS atomically records domain events and financial state mutations into `outbox_events` in Azure SQL Database within the same local ACID transaction as balance mutations, commits the transaction, and publishes the event to Apache Kafka before updating `status = 'PUBLISHED'` and setting `published_at = SYSUTCDATETIME()`.
-5. **Strict Kafka Database Boundary Separation:** Apache Kafka never mutates databases directly. An explicit consumer worker (`Audit Vault Consumer Worker`) consumes events from Kafka and performs persistence into the PostgreSQL Audit Vault (`ledger_mutation_audit`). Similarly, the Notification Service consumes events from Kafka to deliver emails.
+5. **Strict Kafka Database Boundary Separation (Path B - Compliance Service):** Apache Kafka never mutates databases directly. The dedicated **Compliance & Reporting Service (`:8086`)** consumes events from Kafka (`banking.transfers.events`, `banking.batch.events`, `banking.transfers.dlq`) and persists immutable audit records into the PostgreSQL Audit Vault (`ledger_mutation_audit`), compiles AMLA Covered Transaction Reports (CTR), and manages EOD financial statements. Similarly, the Notification Service consumes events from Kafka to deliver customer emails.
 6. **Authoritative Core Domain Event Streaming:** The **T24 Mock CBS** directly publishes authoritative financial domain events (`TransferExecutedEvent`, `TransferReversedEvent`, `AmountHoldPlacedEvent`, `AmountHoldCapturedEvent`, `AmountHoldReleasedEvent`, `FeeDeductedEvent`, `InterestCapitalizedEvent`, `ReportsReadyEvent`, `StatementGeneratedEvent`, `EodCompletedEvent`, `TransactionStatusChangedEvent`) to **Apache Kafka (`:9092`)** from its core domain kernel via the existing transactional `outbox_events` table. The **Transfer Orchestrator** routes failure escalations (`TransferFailedToDlqEvent`) upon circuit breaker trip.
 7. **Maker-Checker Segregation of Duties:** All manual intra-bank financial corrections mandate dual authorization. The initiating user (Maker) cannot be the approving supervisor (Checker).
 
@@ -513,7 +513,7 @@ sequenceDiagram
     participant CBS as T24 Mock CBS (:8085)
     participant AzureSQL as Azure SQL DB (:1433)
     participant Kafka as Kafka Broker (:9092)
-    participant AuditWorker as Audit Vault Consumer
+    participant ComplianceSvc as Compliance & Reporting Svc (:8086)
     participant Vault as Postgres Audit (:5432)
     participant Notif as Notification Svc (:8083)
 
@@ -580,8 +580,8 @@ sequenceDiagram
 
     %% RULE 2: KAFKA DOES NOT MUTATE DATABASE DIRECTLY - AUDIT WORKER INGESTS AND PERSISTS
     par Asynchronous Audit & Notification Fan-Out
-        Kafka->>AuditWorker: Consume TransferReversedEvent
-        AuditWorker->>Vault: INSERT INTO ledger_mutation_audit (Project Reversal to PostgreSQL)
+        Kafka->>ComplianceSvc: Consume TransferReversedEvent
+        ComplianceSvc->>Vault: INSERT INTO ledger_mutation_audit (Project Reversal to PostgreSQL)
         Kafka->>Notif: Consume TransferReversedEvent
         Notif->>Notif: Dispatch Advice Email to Customer via MailHog
     end
@@ -611,7 +611,7 @@ sequenceDiagram
     participant CBS as T24 Mock CBS (:8085)
     participant AzureSQL as Azure SQL DB (:1433)
     participant Kafka as Kafka Broker (:9092)
-    participant AuditWorker as Audit Vault Consumer
+    participant ComplianceSvc as Compliance & Reporting Svc (:8086)
     participant Vault as Postgres Audit (:5432)
 
     %% PHASE 1: HOLD PLACEMENT (RESERVED)
@@ -646,8 +646,8 @@ sequenceDiagram
     CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id IN ("HLD-99102", "TX-HOLD-102") AND status = "PENDING"
     
     %% Rule 2: Audit Worker ingests from Kafka and persists to Postgres
-    Kafka->>AuditWorker: Consume AmountHoldPlacedEvent & TransactionStatusChangedEvent
-    AuditWorker->>Vault: INSERT INTO amount_hold_history (Project hold to PostgreSQL)
+    Kafka->>ComplianceSvc: Consume AmountHoldPlacedEvent & TransactionStatusChangedEvent
+    ComplianceSvc->>Vault: INSERT INTO amount_hold_history (Project hold to PostgreSQL)
     Orch-->>Gateway: 201 Created (HoldResponseDTO: hold_id = HLD-99102, status = ACTIVE)
     Gateway-->>Customer: 201 Created (Reservation Confirmed)
     end
@@ -680,8 +680,8 @@ sequenceDiagram
     CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "FT26095C" AND status = "PENDING"
     
     %% Rule 2: Audit Worker ingests from Kafka and persists to Postgres
-    Kafka->>AuditWorker: Consume TransferExecutedEvent & TransactionStatusChangedEvent
-    AuditWorker->>Vault: INSERT INTO ledger_mutation_audit (Project settlement to PostgreSQL)
+    Kafka->>ComplianceSvc: Consume TransferExecutedEvent & TransactionStatusChangedEvent
+    ComplianceSvc->>Vault: INSERT INTO ledger_mutation_audit (Project settlement to PostgreSQL)
     Orch-->>Gateway: 200 OK (TransferReceiptDTO: status = POSTED)
     Gateway-->>Checker: 200 OK (Transfer Settled)
     end
@@ -708,8 +708,8 @@ sequenceDiagram
     CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "HLD-99102" AND status = "PENDING"
     
     %% Rule 2: Audit Worker ingests from Kafka and persists to Postgres
-    Kafka->>AuditWorker: Consume AmountHoldReleasedEvent
-    AuditWorker->>Vault: INSERT INTO amount_hold_history (Project release to PostgreSQL)
+    Kafka->>ComplianceSvc: Consume AmountHoldReleasedEvent
+    ComplianceSvc->>Vault: INSERT INTO amount_hold_history (Project release to PostgreSQL)
     Orch-->>Gateway: 200 OK (HoldResponseDTO: status = RELEASED)
     Gateway-->>Checker: 200 OK (Hold Cancelled, Available Balance Restored)
     end
@@ -723,7 +723,7 @@ sequenceDiagram
 
 - **The Problem:** When an HTTP 504 Gateway Timeout or network socket drop occurs mid-flight, the Orchestrator does not know whether the CBS executed the ledger update before disconnecting. Blindly retrying causes **catastrophic double-debits**.
 - **The Solution (Idempotent Status Interrogation):** Prior to initiating retry logic, the Transfer Orchestrator issues a dedicated status inquiry: `FUNDS.TRANSFER,STATUS/S/PROCESS` referencing the client's `X-Idempotency-Key`.
-- **Zero Primary SQL Dependency for Orchestrator:** The Orchestrator does not connect to Azure SQL to insert failure rows. Instead, when retries are exhausted, it trips the circuit breaker and publishes a `TransferFailedToDlqEvent` directly to Kafka topic `banking.transfers.dlq`. An explicit consumer worker (`Audit Vault Consumer Worker`) ingests from the DLQ and persists telemetry into the PostgreSQL Audit Vault (`failed_transaction_history`).
+- **Zero Primary SQL Dependency for Orchestrator:** The Orchestrator does not connect to Azure SQL to insert failure rows. Instead, when retries are exhausted, it trips the circuit breaker and publishes a `TransferFailedToDlqEvent` directly to Kafka topic `banking.transfers.dlq`. An explicit consumer worker (`Compliance & Reporting Service (:8086)`) ingests from the DLQ and persists telemetry into the PostgreSQL Audit Vault (`failed_transaction_history`).
 
 ### 5.2 Sequence Diagram: Idempotent Interrogation, Retry & DLQ Routing
 
@@ -737,7 +737,7 @@ sequenceDiagram
     participant CBS as T24 Mock CBS (:8085)
     participant AzureSQL as Azure SQL DB (:1433)
     participant Kafka as Kafka Broker (:9092)
-    participant AuditWorker as Audit Vault Consumer
+    participant ComplianceSvc as Compliance & Reporting Svc (:8086)
     participant Vault as Postgres Audit (:5432)
     participant Notif as Notification Svc (:8083)
 
@@ -791,8 +791,8 @@ sequenceDiagram
             CBS->>AzureSQL: UPDATE outbox_events SET status = "PUBLISHED", published_at = SYSUTCDATETIME() WHERE aggregate_id = "FT26095B" AND status = "PENDING"
             
             %% Rule 2: Audit Worker ingests from Kafka and persists to Postgres
-            Kafka->>AuditWorker: Consume TransferExecutedEvent
-            AuditWorker->>Vault: INSERT INTO ledger_mutation_audit (Project committed transfer to PostgreSQL)
+            Kafka->>ComplianceSvc: Consume TransferExecutedEvent
+            ComplianceSvc->>Vault: INSERT INTO ledger_mutation_audit (Project committed transfer to PostgreSQL)
             
             Orch->>Redis: SET tx:idemp:IDEMP-7701 "POSTED" EX 86400
             Orch-->>Gateway: 200 OK (TransferReceiptDTO)
@@ -808,8 +808,8 @@ sequenceDiagram
             
             %% Rule 2: Audit Worker ingests from Kafka and persists to Postgres
             par Asynchronous DLQ Audit & Customer Alert
-                Kafka->>AuditWorker: Consume TransferFailedToDlqEvent
-                AuditWorker->>Vault: INSERT INTO failed_transaction_history (Persist DLQ failure to PostgreSQL)
+                Kafka->>ComplianceSvc: Consume TransferFailedToDlqEvent
+                ComplianceSvc->>Vault: INSERT INTO failed_transaction_history (Persist DLQ failure to PostgreSQL)
                 Kafka->>Notif: Consume TransferFailedToDlqEvent
                 Notif->>Notif: Dispatch Transfer Failure Alert Email via MailHog
             end
@@ -833,7 +833,7 @@ In accordance with enterprise banking architecture standards and core platform d
 - **Decoupled Downstream Workers**:
   - **Apache Kafka (`:9092`)** transports asynchronous batch state events (`banking.batch.events`) published directly by T24 Mock CBS via the existing transactional `outbox_events` table.
   - **Notification Service (`:8083`)** delivers customer statements, fee advices, and interest credit receipts.
-  - **Audit Vault Consumer Worker** ingests batch events and writes append-only audit records into **Azure PostgreSQL (`:5432`)** (`ledger_mutation_audit`).
+  - **Compliance & Reporting Service (:8086)** ingests batch events and writes append-only audit records into **Azure PostgreSQL (`:5432`)** (`ledger_mutation_audit`).
 
 The End-of-Day batch processing run follows five strictly sequential execution phases:
 1. **Phase 0: Posting Date Cutoff & Channel Freeze**: Orchestrator pauses $T$ transactional intake; pending in-flight transactions are cleared.
@@ -901,7 +901,7 @@ flowchart TD
     %% ==========================================
     subgraph Lane_Downstream["Downstream Consumers Tier"]
         NotifService["Notification Service (:8083)<br/>(E-Statements, Fee & Tax Advices)"]
-        AuditWorker["Audit Vault Consumer Worker<br/>(audit-vault-workers group)"]
+        ComplianceSvc["Compliance & Reporting Service (:8086)<br/>(compliance-reporting-group)"]
         PostgresAudit[("Azure PostgreSQL (:5432)<br/>Immutable Audit Vault")]
     end
 
@@ -945,8 +945,8 @@ flowchart TD
 
     %% DOWNSTREAM CONSUMPTION
     KafkaBatch -->|"Fan-Out Events"| NotifService
-    KafkaBatch -->|"Consume Batch Events"| AuditWorker
-    AuditWorker -->|"Append-Only Audit Log"| PostgresAudit
+    KafkaBatch -->|"Consume Batch Events"| ComplianceSvc
+    ComplianceSvc -->|"Append-Only Audit Log"| PostgresAudit
 ```
 
 ---
@@ -962,7 +962,7 @@ sequenceDiagram
     participant CBS as T24 Mock CBS (:8085)
     participant AzureSQL as Azure SQL DB (:1433)
     participant Kafka as Kafka Broker (:9092)
-    participant AuditWorker as Audit Vault Consumer
+    participant ComplianceSvc as Compliance & Reporting Svc (:8086)
     participant Vault as Postgres Audit (:5432)
     participant Notif as Notification Svc (:8083)
 
@@ -1102,8 +1102,8 @@ sequenceDiagram
         Kafka->>Notif: Consume ReportsReadyEvent
         Notif->>Notif: Generate and Dispatch Monthly Customer E-Statements
     and Rule 2: Immutable Compliance Projection via Audit Worker
-        Kafka->>AuditWorker: Consume All Batch Events
-        AuditWorker->>Vault: INSERT INTO ledger_mutation_audit (Append-Only Audit Log)
+        Kafka->>ComplianceSvc: Consume All Batch Events
+        ComplianceSvc->>Vault: INSERT INTO ledger_mutation_audit (Append-Only Audit Log)
     end
 ```
 
@@ -1120,7 +1120,7 @@ sequenceDiagram
     participant AzureSQL as Azure SQL DB (:1433)
     participant Storage as Report Document Vault
     participant Kafka as Kafka Broker (:9092)
-    participant AuditWorker as Audit Vault Consumer
+    participant ComplianceSvc as Compliance & Reporting Svc (:8086)
     participant Vault as Postgres Audit (:5432)
     participant Notif as Notification Svc (:8083)
 
@@ -1196,8 +1196,8 @@ sequenceDiagram
         Notif->>Notif: Render HTML/PDF E-Statement via Thymeleaf
         Notif->>Notif: Dispatch E-Statement advice email via MailHog (:8025)
     and Rule 2: Append-Only Compliance Archival via Audit Worker
-        Kafka->>AuditWorker: Consume ReportsReadyEvent
-        AuditWorker->>Vault: INSERT INTO ledger_mutation_audit (event: "REPORTS_FILED", hash: sha256)
+        Kafka->>ComplianceSvc: Consume ReportsReadyEvent
+        ComplianceSvc->>Vault: INSERT INTO ledger_mutation_audit (event: "REPORTS_FILED", hash: sha256)
     end
 ```
 
@@ -1213,7 +1213,7 @@ sequenceDiagram
     participant CBS as T24 Mock CBS (:8085)
     participant AzureSQL as Azure SQL DB (:1433)
     participant Kafka as Kafka Broker (:9092)
-    participant AuditWorker as Audit Vault Consumer
+    participant ComplianceSvc as Compliance & Reporting Svc (:8086)
     participant Vault as Postgres Audit (:5432)
     participant Notif as Notification Svc (:8083)
 
@@ -1275,8 +1275,8 @@ sequenceDiagram
         Notif->>Notif: Generate HTML Fee Advice Email
         Notif->>Notif: Send Email via MailHog (:8025)
     and Rule 2: Append-Only Compliance Archival via Audit Worker
-        Kafka->>AuditWorker: Consume FeeDeductedEvent
-        AuditWorker->>Vault: INSERT INTO ledger_mutation_audit (event: "FEE_DEDUCTED", details: json)
+        Kafka->>ComplianceSvc: Consume FeeDeductedEvent
+        ComplianceSvc->>Vault: INSERT INTO ledger_mutation_audit (event: "FEE_DEDUCTED", details: json)
     end
 ```
 
@@ -1292,7 +1292,7 @@ sequenceDiagram
     participant CBS as T24 Mock CBS (:8085)
     participant AzureSQL as Azure SQL DB (:1433)
     participant Kafka as Kafka Broker (:9092)
-    participant AuditWorker as Audit Vault Consumer
+    participant ComplianceSvc as Compliance & Reporting Svc (:8086)
     participant Vault as Postgres Audit (:5432)
     participant Notif as Notification Svc (:8083)
 
@@ -1357,8 +1357,8 @@ sequenceDiagram
         Notif->>Notif: Generate HTML Monthly Interest & Tax Certificate
         Notif->>Notif: Dispatch Email via MailHog (:8025)
     and Rule 2: Append-Only Compliance Archival via Audit Worker
-        Kafka->>AuditWorker: Consume InterestCapitalizedEvent
-        AuditWorker->>Vault: INSERT INTO ledger_mutation_audit (event: "INTEREST_CAPITALIZED", details: json)
+        Kafka->>ComplianceSvc: Consume InterestCapitalizedEvent
+        ComplianceSvc->>Vault: INSERT INTO ledger_mutation_audit (event: "INTEREST_CAPITALIZED", details: json)
     end
 ```
 

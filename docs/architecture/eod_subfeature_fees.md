@@ -128,7 +128,7 @@ sequenceDiagram
     participant AzureSQL as Azure SQL DB (:1433)
     participant Kafka as Kafka Broker (:9092)
     participant Notif as Notification Svc (:8083)
-    participant AuditWorker as Audit Vault Consumer
+    participant ComplianceSvc as Compliance & Reporting Svc (:8086)
     participant AuditVault as Postgres Audit (:5432)
 
     Note over BatchCoordinator,AuditVault: Subfeature 4.2 Execution Sequence: Batch Fee Assessment & Deduction
@@ -189,8 +189,8 @@ sequenceDiagram
         Notif->>Notif: Generate HTML Fee Advice Email
         Notif->>Notif: Send Email via MailHog (:8025)
     and Rule 2: Append-Only Compliance Archival via Audit Worker
-        Kafka->>AuditWorker: Consume FeeDeductedEvent
-        AuditWorker->>AuditVault: INSERT INTO ledger_mutation_audit (event: "FEE_DEDUCTED", details: json)
+        Kafka->>ComplianceSvc: Consume FeeDeductedEvent
+        ComplianceSvc->>AuditVault: INSERT INTO ledger_mutation_audit (event: "FEE_DEDUCTED", details: json)
     end
 ```
 

@@ -85,7 +85,7 @@ flowchart TD
     %% ==========================================
     subgraph Lane_Downstream["Downstream Consumers Tier"]
         NotifService["Notification Service (:8083)<br/>(E-Statements, Fee & Tax Advices)"]
-        AuditWorker["Audit Consumer Worker<br/>(audit-vault-workers group)"]
+        ComplianceSvc["Audit Consumer Worker<br/>(compliance-reporting-group)"]
         PostgresAudit[("Azure PostgreSQL (:5432)<br/>Immutable Audit Vault")]
     end
 
@@ -124,8 +124,8 @@ flowchart TD
     EodMaster -.->|"Progress Telemetry"| BatchMonitor
 
     KafkaBatch -->|"Fan-Out Events"| NotifService
-    KafkaBatch -->|"Consume Batch Events"| AuditWorker
-    AuditWorker -->|"Append-Only Audit Log"| PostgresAudit
+    KafkaBatch -->|"Consume Batch Events"| ComplianceSvc
+    ComplianceSvc -->|"Append-Only Audit Log"| PostgresAudit
 ```
 
 ---
@@ -142,7 +142,7 @@ sequenceDiagram
     participant AzureSQL as Azure SQL DB (:1433)
     participant Kafka as Kafka Broker (:9092)
     participant Notif as Notification Svc (:8083)
-    participant AuditWorker as Audit Vault Consumer
+    participant ComplianceSvc as Compliance & Reporting Svc (:8086)
     participant AuditVault as Postgres Audit (:5432)
 
     %% PHASE 0: INITIATION & CUTOFF
@@ -281,8 +281,8 @@ sequenceDiagram
         Kafka->>Notif: Consume ReportsReadyEvent
         Notif-->>Notif: Generate and Dispatch Monthly Customer E-Statements
     and Rule 2: Immutable Compliance Projection via Audit Worker
-        Kafka->>AuditWorker: Consume All Batch Events
-        AuditWorker->>AuditVault: INSERT INTO ledger_mutation_audit (Append-Only Audit Log)
+        Kafka->>ComplianceSvc: Consume All Batch Events
+        ComplianceSvc->>AuditVault: INSERT INTO ledger_mutation_audit (Append-Only Audit Log)
     end
 ```
 

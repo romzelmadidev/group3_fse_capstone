@@ -720,7 +720,7 @@
         </div>
         <div class="rule-item">
           <span class="rule-tag rule-r2">RULE 2</span>
-          <span><b>DB Boundary Separation:</b> Kafka never writes to DB directly; AuditWorker persists events to PostgreSQL.</span>
+          <span><b>DB Boundary Separation:</b> Kafka never writes to DB directly; Compliance & Reporting Service persists events to PostgreSQL.</span>
         </div>
         <div class="rule-item">
           <span class="rule-tag rule-r3">RULE 3</span>
@@ -890,7 +890,7 @@
 
                 <div class="meta-card">
                   <div class="meta-title">
-                    <span>Audit Vault Consumer Projection</span>
+                    <span>Compliance & Reporting Service Projection</span>
                     <span class="tag-pill info">RULE 2 ENFORCED</span>
                   </div>
                   <div class="code-box" id="auditCodeBox">// PostgreSQL ingestion projection appears here</div>
@@ -939,7 +939,7 @@
           <div>
             <h2 style="font-size:1.3rem; font-weight:700; margin-bottom:0.5rem;">Kafka Event Catalog &amp; Audit Schemas (Rule 2)</h2>
             <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1rem;">
-              Domain events published from the transactional outbox to Apache Kafka and ingested by the PostgreSQL Audit Vault Consumer.
+              Domain events published from the transactional outbox to Apache Kafka and ingested by the PostgreSQL Compliance & Reporting Service.
             </p>
             <table class="data-table">
               <thead>
@@ -987,7 +987,7 @@
       { id: "cbs", name: "T24 Mock CBS", sub: "Temenos Kernel", port: ":8085", color: "var(--purple)", desc: "Authoritative ledger engine. Receives OFS wire syntax, enforces ACID double-entry balance updates, and manages outbox_events." },
       { id: "azuresql", name: "Azure SQL / Oracle", sub: "Master ACID DB", port: ":1433", color: "var(--purple)", desc: "Master relational ledger storing balance_master, gl_ledger, system_dates, and outbox_events. Sole write access via CBS." },
       { id: "kafka", name: "Kafka Broker", sub: "KRaft Event Bus", port: ":9092", color: "var(--orange)", desc: "Decoupled domain event streaming bus. Topics for transfers, batch events, fraud alerts, and dead letter queues." },
-      { id: "vault", name: "PostgreSQL Audit Vault", sub: "Append-Only Vault", port: ":5432", color: "var(--blue)", desc: "Immutable compliance audit store. Populated solely via AuditWorker Kafka consumer (Rule 2)." }
+      { id: "vault", name: "PostgreSQL Audit Vault", sub: "Append-Only Vault", port: ":5432", color: "var(--blue)", desc: "Immutable compliance audit store. Populated solely via Compliance & Reporting Service Kafka consumer (Rule 2)." }
     ];
 
     // Flow definitions: 5 Happy Paths + 6 Failure Scenarios = 11 Flows
@@ -1010,7 +1010,7 @@
           { id: "cbs", name: "T24 Mock CBS", sub: "Core Engine :8085", color: "var(--purple)" },
           { id: "azuresql", name: "Azure SQL", sub: "Master DB :1433", color: "var(--purple)" },
           { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
-          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "compliance", name: "Compliance Svc", sub: "Spring Boot :8086", color: "var(--blue)" },
           { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
         ],
         steps: [
@@ -1253,12 +1253,12 @@
             audit: "Customer acknowledged."
           },
           {
-            title: "18. Rule 2: Audit Worker Vault Ingestion",
-            from: "kafka", to: "auditworker",
+            title: "18. Rule 2: Compliance & Reporting Service Vault Ingestion",
+            from: "kafka", to: "compliance",
             arrowType: "solid",
-            desc: "Rule 2: Audit Worker consumes TransferExecutedEvent from Kafka.",
-            rules: ["RULE 2: Kafka does not mutate database directly; AuditWorker ingests event."],
-            state: "AuditWorker prepares PostgreSQL append-only insert.",
+            desc: "Rule 2: Compliance & Reporting Service consumes TransferExecutedEvent from Kafka.",
+            rules: ["RULE 2: Kafka does not mutate database directly; Compliance & Reporting Service ingests event."],
+            state: "Compliance & Reporting Service prepares PostgreSQL append-only insert.",
             ofs: "-- Asynchronous consumer",
             http: "-- Kafka consumer loop",
             sql: "-- PostgreSQL mutation pending",
@@ -1268,9 +1268,9 @@
           },
           {
             title: "19. Rule 2: PostgreSQL Audit Vault Archival",
-            from: "auditworker", to: "vault",
+            from: "compliance", to: "vault",
             arrowType: "solid",
-            desc: "Rule 2: Audit Worker inserts append-only row into PostgreSQL ledger_mutation_audit table.",
+            desc: "Rule 2: Compliance & Reporting Service inserts append-only row into PostgreSQL ledger_mutation_audit table.",
             rules: ["RULE 2: PostgreSQL Append-Only Compliance Vault."],
             state: "Immutable audit record sealed. Zero UPDATE/DELETE trigger enforced.",
             ofs: "-- Compliance archival",
@@ -1299,7 +1299,7 @@
           { id: "cbs", name: "T24 Mock CBS", sub: "Core Engine :8085", color: "var(--purple)" },
           { id: "azuresql", name: "Azure SQL", sub: "Master DB :1433", color: "var(--purple)" },
           { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
-          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "compliance", name: "Compliance Svc", sub: "Spring Boot :8086", color: "var(--blue)" },
           { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
         ],
         steps: [
@@ -1430,10 +1430,10 @@
             audit: "Both parties notified."
           },
           {
-            title: "10. Rule 2: Audit Worker Archival to PostgreSQL",
+            title: "10. Rule 2: Compliance & Reporting Service Archival to PostgreSQL",
             from: "kafka", to: "vault",
             arrowType: "solid",
-            desc: "Rule 2: Audit Worker consumes TransferReversedEvent and writes append-only reversal audit record to PostgreSQL.",
+            desc: "Rule 2: Compliance & Reporting Service consumes TransferReversedEvent and writes append-only reversal audit record to PostgreSQL.",
             rules: ["RULE 2: PostgreSQL Append-Only Compliance."],
             state: "Reversal audit trail permanently archived.",
             ofs: "-- Compliance archival",
@@ -1462,7 +1462,7 @@
           { id: "cbs", name: "T24 Mock CBS", sub: "Core Engine :8085", color: "var(--purple)" },
           { id: "azuresql", name: "Azure SQL", sub: "Master DB :1433", color: "var(--purple)" },
           { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
-          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "compliance", name: "Compliance Svc", sub: "Spring Boot :8086", color: "var(--blue)" },
           { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
         ],
         steps: [
@@ -1611,7 +1611,7 @@
           { id: "cbs", name: "T24 Mock CBS", sub: "Core Engine :8085", color: "var(--purple)" },
           { id: "azuresql", name: "Azure SQL", sub: "Master DB :1433", color: "var(--purple)" },
           { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
-          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "compliance", name: "Compliance Svc", sub: "Spring Boot :8086", color: "var(--blue)" },
           { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
         ],
         steps: [
@@ -1801,7 +1801,7 @@
           { id: "cbs", name: "T24 Mock CBS", sub: "Core Engine :8085", color: "var(--purple)" },
           { id: "azuresql", name: "Azure SQL", sub: "Master DB :1433", color: "var(--purple)" },
           { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
-          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "compliance", name: "Compliance Svc", sub: "Spring Boot :8086", color: "var(--blue)" },
           { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
         ],
         steps: [
@@ -1978,7 +1978,7 @@
           { id: "cbs", name: "T24 Mock CBS", sub: "Core Engine :8085", color: "var(--purple)" },
           { id: "azuresql", name: "Azure SQL", sub: "Master DB :1433", color: "var(--purple)" },
           { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
-          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "compliance", name: "Compliance Svc", sub: "Spring Boot :8086", color: "var(--blue)" },
           { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
         ],
         steps: [
@@ -2095,10 +2095,10 @@
             audit: "Error delivered to customer."
           },
           {
-            title: "9. Rule 2: Audit Worker Records Rejection in Vault",
+            title: "9. Rule 2: Compliance & Reporting Service Records Rejection in Vault",
             from: "kafka", to: "vault",
             arrowType: "solid",
-            desc: "Rule 2: Audit Worker consumes TransferRejectedEvent and logs incident in PostgreSQL audit vault.",
+            desc: "Rule 2: Compliance & Reporting Service consumes TransferRejectedEvent and logs incident in PostgreSQL audit vault.",
             rules: ["RULE 2: PostgreSQL Append-Only Compliance."],
             state: "Rejection incident permanently archived.",
             ofs: "-- Compliance archival",
@@ -2126,7 +2126,7 @@
           { id: "orch", name: "Orchestrator", sub: "Spring Boot :8082", color: "var(--emerald)" },
           { id: "risk", name: "Risk Engine", sub: "FastAPI :8084", color: "var(--rose)" },
           { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
-          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "compliance", name: "Compliance Svc", sub: "Spring Boot :8086", color: "var(--blue)" },
           { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
         ],
         steps: [
@@ -2229,10 +2229,10 @@
             audit: "Client receives 403."
           },
           {
-            title: "8. Rule 2: Audit Worker Persists Fraud Incident",
+            title: "8. Rule 2: Compliance & Reporting Service Persists Fraud Incident",
             from: "kafka", to: "vault",
             arrowType: "solid",
-            desc: "Rule 2: Audit Worker consumes HighFraudRiskDetectedEvent and logs incident in PostgreSQL audit vault.",
+            desc: "Rule 2: Compliance & Reporting Service consumes HighFraudRiskDetectedEvent and logs incident in PostgreSQL audit vault.",
             rules: ["RULE 2: PostgreSQL Append-Only Compliance."],
             state: "Fraud prevention incident logged for regulatory compliance.",
             ofs: "-- Compliance archival",
@@ -2260,7 +2260,7 @@
           { id: "orch", name: "Orchestrator", sub: "Spring Boot :8082", color: "var(--emerald)" },
           { id: "cbs", name: "T24 Mock CBS (Down)", sub: "Timeout :8085", color: "var(--rose)" },
           { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
-          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "compliance", name: "Compliance Svc", sub: "Spring Boot :8086", color: "var(--blue)" },
           { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
         ],
         steps: [
@@ -2391,10 +2391,10 @@
             audit: "Customer received 503."
           },
           {
-            title: "10. Rule 2: Audit Worker Ingests DLQ Incident",
+            title: "10. Rule 2: Compliance & Reporting Service Ingests DLQ Incident",
             from: "kafka", to: "vault",
             arrowType: "solid",
-            desc: "Rule 2: Audit Worker consumes from banking.transfers.dlq and inserts incident into PostgreSQL failed_transaction_history.",
+            desc: "Rule 2: Compliance & Reporting Service consumes from banking.transfers.dlq and inserts incident into PostgreSQL failed_transaction_history.",
             rules: ["RULE 2: PostgreSQL Append-Only DLQ Log."],
             state: "Failure incident permanently preserved for operations replay.",
             ofs: "-- Compliance archival",
@@ -2571,7 +2571,7 @@
           { id: "cbs", name: "T24 Mock CBS", sub: "Core Engine :8085", color: "var(--purple)" },
           { id: "azuresql", name: "Azure SQL", sub: "Master DB :1433", color: "var(--purple)" },
           { id: "kafka", name: "Kafka Broker", sub: "Event Stream :9092", color: "var(--orange)" },
-          { id: "auditworker", name: "Audit Worker", sub: "Vault Consumer", color: "var(--blue)" },
+          { id: "compliance", name: "Compliance Svc", sub: "Spring Boot :8086", color: "var(--blue)" },
           { id: "vault", name: "Audit Vault", sub: "Postgres :5432", color: "var(--blue)" }
         ],
         steps: [
@@ -2688,10 +2688,10 @@
             audit: "Teller notified."
           },
           {
-            title: "9. Rule 2: Audit Worker Archives Rejection",
+            title: "9. Rule 2: Compliance & Reporting Service Archives Rejection",
             from: "kafka", to: "vault",
             arrowType: "solid",
-            desc: "Rule 2: Audit Worker logs supervisor rejection rationale in PostgreSQL audit trail.",
+            desc: "Rule 2: Compliance & Reporting Service logs supervisor rejection rationale in PostgreSQL audit trail.",
             rules: ["RULE 2: PostgreSQL Append-Only Compliance."],
             state: "Reversal rejection audit trail permanently archived.",
             ofs: "-- Compliance archival",
@@ -2836,10 +2836,10 @@
             audit: "Operations console alerted."
           },
           {
-            title: "9. Rule 2: Audit Worker Archives Variance in Vault",
+            title: "9. Rule 2: Compliance & Reporting Service Archives Variance in Vault",
             from: "kafka", to: "vault",
             arrowType: "solid",
-            desc: "Rule 2: Audit Worker consumes variance alert and records incident in PostgreSQL audit vault for regulatory audit.",
+            desc: "Rule 2: Compliance & Reporting Service consumes variance alert and records incident in PostgreSQL audit vault for regulatory audit.",
             rules: ["RULE 2: PostgreSQL Append-Only Compliance."],
             state: "Incident sealed for internal audit and BSP compliance filing.",
             ofs: "-- Compliance archival",
@@ -2868,13 +2868,13 @@
     ];
 
     const KAFKA_CATALOG = [
-      { topic: "banking.transfers.events", event: "TransferExecutedEvent", producer: "T24 Mock CBS (Rule 3)", consumer: "AuditWorker, Notification Svc", purpose: "Legal ledger state change and immutable customer receipts." },
-      { topic: "banking.transfers.events", event: "AmountHoldPlacedEvent", producer: "T24 Mock CBS (Rule 3)", consumer: "AuditWorker, Webhook Dispatcher", purpose: "Notification of frozen balance for pre-authorizations." },
-      { topic: "banking.transfers.events", event: "TransferReversedEvent", producer: "T24 Mock CBS (Rule 3)", consumer: "AuditWorker, Settlement Engine", purpose: "Audit proof of dual-control authorized compensating double-entry." },
-      { topic: "banking.transfers.dlq", event: "TransferFailedToDlqEvent", producer: "Transfer Orchestrator", consumer: "AuditWorker, DLQ Replay Daemon", purpose: "Incident preservation when CBS is unreachable after exponential retries." },
-      { topic: "banking.risk.evaluations", event: "HighFraudRiskDetectedEvent", producer: "Python Risk Engine", consumer: "AuditWorker, Case Review Queue", purpose: "Real-time fraud alerting when XGBoost risk score > 0.85." },
-      { topic: "banking.batch.events", event: "EodCompletedEvent", producer: "T24 Mock CBS (Rule 3)", consumer: "AuditWorker, Reporting Service", purpose: "Signal that business date advanced to T+1; triggers daytime queue release." },
-      { topic: "banking.audit.alerts", event: "EodTrialBalanceVarianceAlertEvent", producer: "T24 Mock CBS (Rule 3)", consumer: "AuditWorker, Operations Siren", purpose: "Critical P1 alert when horizontal zero-sum trial balance variance != 0.00." }
+      { topic: "banking.transfers.events", event: "TransferExecutedEvent", producer: "T24 Mock CBS (Rule 3)", consumer: "Compliance & Reporting Service, Notification Svc", purpose: "Legal ledger state change and immutable customer receipts." },
+      { topic: "banking.transfers.events", event: "AmountHoldPlacedEvent", producer: "T24 Mock CBS (Rule 3)", consumer: "Compliance & Reporting Service, Webhook Dispatcher", purpose: "Notification of frozen balance for pre-authorizations." },
+      { topic: "banking.transfers.events", event: "TransferReversedEvent", producer: "T24 Mock CBS (Rule 3)", consumer: "Compliance & Reporting Service, Settlement Engine", purpose: "Audit proof of dual-control authorized compensating double-entry." },
+      { topic: "banking.transfers.dlq", event: "TransferFailedToDlqEvent", producer: "Transfer Orchestrator", consumer: "Compliance & Reporting Service, DLQ Replay Daemon", purpose: "Incident preservation when CBS is unreachable after exponential retries." },
+      { topic: "banking.risk.evaluations", event: "HighFraudRiskDetectedEvent", producer: "Python Risk Engine", consumer: "Compliance & Reporting Service, Case Review Queue", purpose: "Real-time fraud alerting when XGBoost risk score > 0.85." },
+      { topic: "banking.batch.events", event: "EodCompletedEvent", producer: "T24 Mock CBS (Rule 3)", consumer: "Compliance & Reporting Service, Reporting Service", purpose: "Signal that business date advanced to T+1; triggers daytime queue release." },
+      { topic: "banking.audit.alerts", event: "EodTrialBalanceVarianceAlertEvent", producer: "T24 Mock CBS (Rule 3)", consumer: "Compliance & Reporting Service, Operations Siren", purpose: "Critical P1 alert when horizontal zero-sum trial balance variance != 0.00." }
     ];
 
     const DATABASE_SCHEMAS = [

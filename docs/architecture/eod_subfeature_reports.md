@@ -119,7 +119,7 @@ sequenceDiagram
     participant Storage as Report Document Vault
     participant Kafka as Kafka Broker (:9092)
     participant Notif as Notification Svc (:8083)
-    participant AuditWorker as Audit Vault Consumer
+    participant ComplianceSvc as Compliance & Reporting Svc (:8086)
     participant AuditVault as Postgres Audit (:5432)
 
     Note over BatchJob,AuditVault: Subfeature 4.1 Execution Sequence: Balance Rollup, GL Recon & Reports
@@ -192,8 +192,8 @@ sequenceDiagram
         Notif->>Notif: Render HTML/PDF E-Statement via Thymeleaf
         Notif->>Notif: Dispatch E-Statement advice email via MailHog (:8025)
     and Rule 2: Append-Only Compliance Archival via Audit Worker
-        Kafka->>AuditWorker: Consume ReportsReadyEvent
-        AuditWorker->>AuditVault: INSERT INTO ledger_mutation_audit (event: "REPORTS_FILED", hash: sha256)
+        Kafka->>ComplianceSvc: Consume ReportsReadyEvent
+        ComplianceSvc->>AuditVault: INSERT INTO ledger_mutation_audit (event: "REPORTS_FILED", hash: sha256)
     end
 ```
 

@@ -30,7 +30,7 @@ Under the revised architecture, ledger mutations and balance locking have been c
 5. **Event Emission & Downstream Consumers**:
    - **Transactional Outbox Protocol**: The **T24 Mock CBS** records domain events into the existing `outbox_events` table in Azure SQL Database within the same ACID transaction as the ledger mutations, commits, publishes directly to **Apache Kafka (`kafka` :9092)**, and marks `outbox_events.status = 'PUBLISHED'`.
    - **Strict Database Boundary Separation**: Apache Kafka does NOT mutate databases directly.
-   - **Audit Vault Consumer Worker (`audit_worker`)**: An explicit consumer worker daemon belonging to consumer group `audit-vault-workers` consumes events from Kafka and writes them into the **Azure PostgreSQL (`azure_pg` :5432)** append-only, tamper-proof **Audit Vault** (`ledger_mutation_audit`).
+   - **Compliance & Reporting Service (:8086) (`audit_worker`)**: An explicit consumer worker daemon belonging to consumer group `compliance-reporting-workers` consumes events from Kafka and writes them into the **Azure PostgreSQL (`azure_pg` :5432)** append-only, tamper-proof **Audit Vault** (`ledger_mutation_audit`).
    - **Notification Service (`notif_service` :8083)**: Consumes Kafka events to generate and email HTML transaction receipts via MailHog.
 
 ---
@@ -102,7 +102,7 @@ flowchart TD
     subgraph Lane_Downstream["Event Stream, Alerts & Compliance Vault"]
         KafkaBroker["Apache Kafka (:9092)<br/>Topic: banking.transfers.events"]
         NotifService["Notification Service (:8083)<br/>(HTML Receipts via MailHog :8025)"]
-        AuditWorker["Audit Consumer Worker<br/>(audit-vault-workers group)"]
+        ComplianceSvc["Audit Consumer Worker<br/>(compliance-reporting-group)"]
         AuditVault[("Azure PostgreSQL (:5432)<br/>Immutable Audit Vault")]
     end
 
@@ -153,8 +153,8 @@ flowchart TD
     ReceiptHandler -->|"200 OK + Transaction Receipt"| CustomerApp
 
     KafkaBroker -->|"Consume Transfer Event"| NotifService
-    KafkaBroker -->|"Consume All Events"| AuditWorker
-    AuditWorker -->|"Append-Only Audit Log"| AuditVault
+    KafkaBroker -->|"Consume All Events"| ComplianceSvc
+    ComplianceSvc -->|"Append-Only Audit Log"| AuditVault
 ```
 
 ---
@@ -174,7 +174,7 @@ sequenceDiagram
     participant AzureSQL as Azure SQL DB (:1433)
     participant Kafka as Kafka Broker (:9092)
     participant Notif as Notification Svc (:8083)
-    participant AuditWorker as Audit Vault Consumer
+    participant ComplianceSvc as Compliance & Reporting Svc (:8086)
     participant AuditVault as Postgres Audit (:5432)
 
     %% STAGE 1: INGESTION & PERIMETER (INITIATED)
@@ -306,8 +306,8 @@ sequenceDiagram
         Notif->>Notif: Render HTML customer receipt via Thymeleaf
         Notif->>Notif: Dispatch email to sender & recipient via MailHog (:8025)
     and Asynchronous Immutable Compliance Projection via Audit Worker
-        Kafka->>AuditWorker: Consume TransactionStatusChangedEvents & TransferExecutedEvent
-        AuditWorker->>AuditVault: INSERT INTO ledger_mutation_audit (Full Status Roll & Ledger Postings)
+        Kafka->>ComplianceSvc: Consume TransactionStatusChangedEvents & TransferExecutedEvent
+        ComplianceSvc->>AuditVault: INSERT INTO ledger_mutation_audit (Full Status Roll & Ledger Postings)
     end
     end
 ```
@@ -328,7 +328,7 @@ sequenceDiagram
     participant CBS as T24 Mock CBS
     participant AzureSQL as Azure SQL DB
     participant Kafka as Kafka Broker
-    participant AuditWorker as Audit Vault Consumer
+    participant ComplianceSvc as Compliance & Reporting Svc (:8086)
     participant AuditVault as Postgres Audit (:5432)
 
     %% EXCEPTION 1: HIGH RISK FRAUD SCORE
@@ -433,8 +433,8 @@ sequenceDiagram
     
     %% RULE 2: AUDIT WORKER PERSISTS TO POSTGRES
     par Asynchronous Audit Ingestion
-        Kafka->>AuditWorker: Consume TransferReversedEvent
-        AuditWorker->>AuditVault: INSERT INTO ledger_mutation_audit (Project Reversal to PostgreSQL)
+        Kafka->>ComplianceSvc: Consume TransferReversedEvent
+        ComplianceSvc->>AuditVault: INSERT INTO ledger_mutation_audit (Project Reversal to PostgreSQL)
     end
     end
 ```
@@ -516,7 +516,7 @@ Emitted by the Python Risk Engine to topic `banking.risk.evaluations`:
 
 #### Downstream Consumers of `RiskEvaluatedEvent`:
 1. **Azure PostgreSQL Audit Vault (`azure_pg` :5432)**:
-   - Consumer group `audit-vault-workers` projects the event into `risk_decision_audit`.
+   - Consumer group `compliance-reporting-workers` projects the event into `risk_decision_audit`.
    - **Regulatory Purpose (BSP Circular 808 & AMLA)**: Proves to auditors why an automated ML algorithm approved, challenged, or blocked a financial transaction.
 2. **Asynchronous "Second-Look" Reviewer (NanoJev / Qwen2.5-0.5B ONNX)**:
    - As documented in [`decoupled_risk_flow.html`](file:///c:/Users/HRR83780/Downloads/group3_fse_capstone/docs/architecture/decoupled_risk_flow.html), background worker pools consume the event to perform deep semantic evaluation of transfer memos and scam typologies without delaying the sub-2ms synchronous fast path.

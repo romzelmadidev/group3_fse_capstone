@@ -84,7 +84,7 @@ sequenceDiagram
     participant CBS as T24 Mock CBS (:8085)
     participant AzureSQL as Azure SQL DB (:1433)
     participant Kafka as Kafka Broker (:9092)
-    participant AuditWorker as Audit Vault Consumer
+    participant ComplianceSvc as Compliance & Reporting Svc (:8086)
     participant AuditVault as Postgres Audit (:5432)
 
     %% PHASE 1: INITIATED TO RESERVED
@@ -216,8 +216,8 @@ sequenceDiagram
 
     %% RULE 2: AUDIT WORKER PERSISTS TO POSTGRES
     par Asynchronous Audit Ingestion
-        Kafka->>AuditWorker: Consume All TransactionStatusChangedEvents
-        AuditWorker->>AuditVault: INSERT INTO ledger_mutation_audit (Full Status Transition Roll)
+        Kafka->>ComplianceSvc: Consume All TransactionStatusChangedEvents
+        ComplianceSvc->>AuditVault: INSERT INTO ledger_mutation_audit (Full Status Transition Roll)
     end
 ```
 
