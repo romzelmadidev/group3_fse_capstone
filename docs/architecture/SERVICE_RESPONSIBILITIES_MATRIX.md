@@ -21,7 +21,7 @@ The platform separates fast-path edge orchestration, real-time machine learning 
 │                                                   ┌────────────────────────┐   idemp lock   ┌─────────┴─────┐
 │                                                   │ Transfer Orchestrator  │───────────────►│  Redis Cache  │
 │                                                   │   Spring Boot :8082    │◄───────────────│     :6379     │
-│                                                   └───────────┬────────────┘  OTP / session └───────────────┘
+│                                                   └───────────┬────────────┘ MPIN / session └───────────────┘
 │                                                               │                                       │
 │                                      ┌────────────────────────┴──────────────────────┐                │
 │                                      │ sync risk check (< 2ms)                       │                │
@@ -57,10 +57,10 @@ The platform separates fast-path edge orchestration, real-time machine learning 
 │ Notification Service (Spring Boot :8083) │  │ Compliance & Reporting Service (Spring Boot :8086)      │
 │                                          │  │                                                         │
 │ • HTML Customer Email Receipts           │  │ • AMLA Covered Transaction Reporting (CTR >= 500k PHP)  │
-│ • Step-Up 2FA Email OTP Codes            │  │ • Suspicious Transaction Reporting (STR Dockets)       │
+│ • High-Risk Security Alert Notices       │  │ • Suspicious Transaction Reporting (STR Dockets)       │
 │ • Real-Time SSE Browser Toasts           │  │ • EOD Financial Report Generation (PDF/CSV Extracts)    │
 │ • MailHog SMTP (:1025) Integration       │  │ • Report File Persistence (S3 / Blob Storage Volume)    │
-│                                          │  │ • Cryptographic Hash Chaining & DLQ Replay Auditing     │
+│ • Cryptographic Hash Chaining & DLQ Replay Auditing     │
 │                                          │  │ • Custodian of Immutable PostgreSQL Audit Vault (:5432) │
 └──────────────────────────────────────────┘  └────────────────────────────┬────────────────────────────┘
                                                                            │ append-only SQL inserts
@@ -80,7 +80,7 @@ The platform separates fast-path edge orchestration, real-time machine learning 
 * **Port**: Public Host Browser (:3000).
 * **Primary Responsibilities**:
   1. **Customer Self-Service Interface**: Interactive balance cards, preset transfer buttons, 4-decimal transfer inputs, recipient account selection, and live transaction ledger view.
-  2. **Security Step-Up Challenge UX**: Renders responsive modal dialogs to capture 6-digit email OTP verification codes when transfers exceed ₱50,000.00 or trip fraud policy thresholds.
+  2. **Security Step-Up Challenge UX**: Renders responsive in-app modal popup prompts to capture and verify 6-digit in-app MPIN authorization codes when transfers exceed ₱50,000.00 or trip fraud policy thresholds.
   3. **Operations & Admin Portal**: System telemetry grid, real-time circuit breaker status, and the **Maker-Checker Dispute Resolution Console** (allows Tellers to file reversals and Branch Managers to review and approve/reject claims).
   4. **Merchant POS Simulator**: Simulates merchant card pre-authorizations (hotel/car rental holds), capture settlements, and voids/releases.
   5. **Real-Time Push Notifications**: Listens on Server-Sent Events (SSE) connections from `notification-service` to display instantaneous success/failure toast alerts.
@@ -112,7 +112,7 @@ The platform separates fast-path edge orchestration, real-time machine learning 
 * **Port**: `:6379`.
 * **Primary Responsibilities**:
   1. **Distributed Idempotency Locks**: Atomic key-value locking (`SET tx:idemp:<id> "PROCESSING" NX EX 60`) preventing concurrent double-click debits from executing in parallel.
-  2. **Short-Lived 2FA OTP Storage**: Stores cryptographically generated 6-digit OTP codes (`otp:transfer:<txId>`) with a sliding 180s/300s TTL.
+  2. **MPIN Brute-Force Rate Limiting & Challenge Store**: Stores sliding-window failed MPIN attempt counters (`mpin:attempts:<userId>`, max 3 tries before 15-minute lockout) and active transfer challenge references.
   3. **Token Revocation Blacklist**: Stores blacklisted JWT identifiers (`blacklist:jti:<jti>`) matching the remaining lifetime of revoked access tokens.
   4. **Refresh Token Rotation (RTR) Family Store**: Maintains session metadata hashes and token sets (`token_family:<sessionId>`) to detect token replay breaches and trigger instant family-wide session invalidation.
   5. **Stale Balance Read Cache**: Caches current customer balances for mobile UI rendering (`account:balance:<id>`, 30s TTL). Evicted immediately (`DEL`) upon any ledger mutation.
@@ -127,7 +127,7 @@ The platform separates fast-path edge orchestration, real-time machine learning 
   1. **Saga Workflow Coordination**: Orchestrates the multi-step transaction lifecycle across perimeter security, risk scoring, customer step-up verification, and core CBS dispatch **without holding database locks**.
   2. **Financial Perimeter Validation**: Enforces `@Digits(integer=14, fraction=4)` currency precision, ISO currency rules (`PHP`), positive amounts, and distinct source/destination accounts. Returns RFC-7807 Problem Details on invalid requests.
   3. **Synchronous Fast-Path Risk Client**: Dispatches transfer context to `risk-service:8084` (`POST /api/v1/risk/transfer`) over non-blocking WebClient with a strict 200ms timeout SLA.
-  4. **Step-Up 2FA Challenge Management**: Intercepts transfers requiring verification (amount $> ₱50,000.00$ or fraud engine flags), dispatches OTP requests to `notification-service`, stores OTP in Redis, and returns `HTTP 202 Accepted` challenges to the client.
+  4. **Step-Up MPIN Challenge Management**: Intercepts transfers requiring verification (amount $> ₱50,000.00$ or fraud engine flags), returns `HTTP 202 Accepted` in-app MPIN popup prompt challenges to the client channel, and verifies submitted MPIN against cryptographic BCrypt `pin_hash` in `account-service`.
   5. **Temenos OFS Wire Serialization (Rule 1)**: Translates validated high-level JSON transfer instructions into official Temenos OFS syntax strings:
      * `FUNDS.TRANSFER,INITIATE`
      * `AC.LOCKED.EVENTS,INPUT` (Amount holds / liens)
@@ -153,7 +153,7 @@ The platform separates fast-path edge orchestration, real-time machine learning 
      * **Counterparty Risk**: Inspects beneficiary account flags and newly added payee age.
   3. **Multi-Tier Risk Decision Engine**:
      * **`ALLOW` (Score $\le 0.40$)**: Low risk. Authorizes straight-through processing (STP).
-     * **`REQUIRE_2FA` ($0.40 < \text{Score} \le 0.85$)**: Medium risk. Mandates customer email OTP verification regardless of transfer amount.
+     * **`REQUIRE_2FA` ($0.40 < \text{Score} \le 0.85$)**: Medium risk. Mandates in-app popup/prompt MPIN verification regardless of transfer amount.
      * **`BLOCK` (Score $> 0.85$)**: High risk. Triggers automated pre-CBS circuit cut; blocks transaction before any ledger mutation can occur.
   4. **Asynchronous Risk Telemetry Publishing**: Emits structured evaluation payloads to Kafka topic `banking.risk.evaluations` (`RiskEvaluatedEvent`, `HighFraudRiskDetectedEvent`).
   5. **Asynchronous Case Review Queue**: Background thread pool feeding suspicious transactions into an internal queue for second-look human fraud analyst review.
@@ -180,7 +180,8 @@ The platform separates fast-path edge orchestration, real-time machine learning 
   8. **3-Way General Ledger Reconciliation (Levels 1 & 2)**:
      * **Level 1 (Horizontal Trial Balance)**: Verifies $\sum \text{debit\_amount} == \sum \text{credit\_amount}$ across `gl_ledger`. Halts EOD if variance $\ne 0.0000$.
      * **Level 2 (Vertical Subledger Rollup)**: Reconciles $\sum \text{balance\_master} \equiv \text{GL-2100-CUST-LIAB}$ and active holds against subledgers.
-  9. **Transactional Outbox Event Publishing (Rule 3)**: Atomically writes domain events to `outbox_events` in Azure SQL within the same ACID transaction as balance mutations, commits, and directly publishes to Apache Kafka before setting `status = 'PUBLISHED'`.
+   9. **Transactional Outbox Event Publishing (Rule 3)**: Atomically writes domain events to `outbox_events` in Azure SQL within the same ACID transaction as balance mutations, commits, and directly publishes to Apache Kafka before setting `status = 'PUBLISHED'`.
+   10. **Transaction Status Lifecycle & Reason Tracking (Rule 9)**: Maintains the authoritative finite state machine (`Initiated`, `Authorized`, `Reserved`, `Processing`, `Posted`, `Failed`, `Cancelled`, `PendingReversal`, `Reversed`) in `transactions` and logs every state mutation into `transaction_status_history` with mandatory change reason code, narrative details, actor ID, and high-precision UTC timestamp.
 * **Data Ownership**: **Exclusive owner of the Master Database** (`azure-sql-db` / `oracle-xe-master`). Zero connectivity to PostgreSQL.
 
 ---
@@ -192,7 +193,7 @@ The platform separates fast-path edge orchestration, real-time machine learning 
   1. **Customer Communication Gateway**: Consumes `banking.transfers.events` and `banking.risk.evaluations` under consumer group `notification-workers`.
   2. **File & Receipt Generation**: Formats rich HTML transaction receipts using Thymeleaf templates, displaying masked account numbers, before/after balances, reference numbers, and SHA-256 verification hashes.
   3. **Receipt Dispatch**: Sends receipts to customer email inboxes via MailHog SMTP (`:1025` / Web UI `:8025`).
-  4. **Security OTP Delivery**: Formats and emails 6-digit 2FA verification codes to customers when transfers require step-up authentication.
+  4. **Security Alert Dispatch**: Formats and delivers manager security alerts and suspicious account warnings when unusual login or transfer anomalies trip high fraud thresholds (Transfer OTP verification is handled via in-app popup prompt).
   5. **Real-Time Client Push Alerts**: Broadcasts Server-Sent Events (SSE) toasts directly to active browser sessions (`GET /api/v1/notifications/stream/{userId}`).
   6. **Deduplication & Fault Tolerance**: Checks Redis deduplication keys (`notif:seen:<eventId>`) to prevent duplicate customer emails during Kafka message re-deliveries.
 * **Data Ownership**: Connects to Redis (`:6379`) for deduplication and Kafka (`:9092`) for event consumption. Zero SQL database connectivity.
@@ -215,7 +216,8 @@ The platform separates fast-path edge orchestration, real-time machine learning 
      * **Covered Transaction Reporting (CTR)**: Scans transfer events; automatically aggregates and compiles mandatory CTR regulatory files for single or aggregate transactions $\ge ₱500,000.00$.
      * **Suspicious Transaction Reporting (STR)**: Ingests high-fraud alerts from `banking.risk.evaluations` (score $> 0.85$ or structuring patterns) and creates STR investigation dockets for the bank's Compliance Officer.
   6. **BSP Circular 808 IT Risk Audit Trail**: Records complete audit trails for all manual Maker-Checker dispute reversals, recording Maker ID, Checker ID, approval signatures, and timestamps.
-  7. **File Generation (Offloading Core CBS)**:
+  7. **Status Audit Log Mirroring**: Consumes `TransactionStatusChangedEvent` from Kafka and records append-only records to `transaction_status_audit` with cryptographic SHA-256 hash chaining.
+  8. **File Generation (Offloading Core CBS)**:
      * **Customer Electronic Account Statements (E-Statements)**: Generates monthly customer PDF account statements with transaction tables and opening/closing balances.
      * **General Ledger Trial Balance Reports**: Generates formal trial balance balance sheet PDFs/Excels for internal and external auditors.
      * **Daily Transaction Journals**: Compiles complete debit/credit transaction journals with sequence numbers.
@@ -287,7 +289,7 @@ The platform separates fast-path edge orchestration, real-time machine learning 
 | **Maker-Checker Reversal Settlement** | `t24-mock-cbs` (:8085) | `transfer-orchestrator` | `FUNDS.TRANSFER,REVERSAL` Compensating Entries |
 | **EOD Batch Pipeline & Rollover** | `t24-mock-cbs` (:8085) | `azure-sql-db` | State Machine (Cutoff $\rightarrow$ Fees $\rightarrow$ Int $\rightarrow$ Date+1) |
 | **GL Trial Balance Recon (L1 & L2)** | `t24-mock-cbs` (:8085) | `azure-sql-db` | $\sum \text{DR} == \sum \text{CR}$ & Subledger Rollup Check |
-| **Customer Email Receipts & OTPs** | `notification-service` (:8083) | `kafka-broker` | Thymeleaf HTML Engine, MailHog SMTP (:1025) |
+| **Customer Email Receipts & Alerts** | `notification-service` (:8083) | `kafka-broker` | Thymeleaf HTML Engine, MailHog SMTP (:1025) |
 | **Real-Time Client Toasts** | `notification-service` (:8083) | `frontend` | Server-Sent Events (SSE) `/stream/{userId}` |
 | **File Generation (Statements & Reports)**| `compliance-service` (:8086) | `kafka-broker` | OpenPDF, Apache POI, XML Serializers |
 | **File Persistence & Hash Tracking** | `compliance-service` (:8086) | `postgres-audit-vault`| Storage Volume / S3, `eod_reports_metadata` |
@@ -323,7 +325,7 @@ The platform separates fast-path edge orchestration, real-time machine learning 
 │ File Document Type       │ Format & Generator          │ Regulatory / Business Purpose │
 ├──────────────────────────┼─────────────────────────────┼───────────────────────────────┤
 │ 1. Transaction Receipts  │ HTML (Thymeleaf Engine)     │ Instantaneous customer receipt│
-│ 2. 2FA Security Notices  │ HTML (Thymeleaf Engine)     │ Email OTP challenge delivery  │
+│ 2. Security Alerts       │ HTML (Thymeleaf Engine)     │ Security anomaly notification │
 └──────────────────────────┴─────────────────────────────┴───────────────────────────────┘
 ```
 
