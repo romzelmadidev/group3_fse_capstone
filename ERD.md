@@ -50,7 +50,7 @@ erDiagram
         VARCHAR account_id PK, FK
         DECIMAL balance_amount "NUMBER(18, 4)"
         DECIMAL hold_amount "NUMBER(18, 4)"
-        DECIMAL available_balance "NUMBER(18, 4)"
+        DECIMAL available_balance "VIRTUAL GENERATED ALWAYS AS (balance_amount - hold_amount)"
         TIMESTAMP created_at
         TIMESTAMP updated_at
     }
@@ -139,7 +139,7 @@ CREATE TABLE balance_master (
     account_id        VARCHAR2(64) PRIMARY KEY,
     balance_amount    NUMBER(18, 4) DEFAULT 0.0000 NOT NULL CHECK (balance_amount >= 0),
     hold_amount       NUMBER(18, 4) DEFAULT 0.0000 NOT NULL CHECK (hold_amount >= 0),
-    available_balance NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    available_balance NUMBER(18, 4) GENERATED ALWAYS AS (balance_amount - hold_amount) VIRTUAL,
     created_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT fk_bm_account FOREIGN KEY (account_id) REFERENCES accounts(account_id),

@@ -14,7 +14,6 @@ import java.util.Optional;
 public class CbsAuditQueryService {
 
     private final LedgerMutationAuditRepository ledgerMutationAuditRepository;
-    private final ReversalAuditRepository reversalAuditRepository;
     private final TransactionStatusAuditRepository transactionStatusAuditRepository;
     private final FailedTransactionAuditRepository failedTransactionAuditRepository;
     private final EodReportsMetadataRepository eodReportsMetadataRepository;
@@ -23,14 +22,12 @@ public class CbsAuditQueryService {
 
     public CbsAuditQueryService(
             LedgerMutationAuditRepository ledgerMutationAuditRepository,
-            ReversalAuditRepository reversalAuditRepository,
             TransactionStatusAuditRepository transactionStatusAuditRepository,
             FailedTransactionAuditRepository failedTransactionAuditRepository,
             EodReportsMetadataRepository eodReportsMetadataRepository,
             ComplianceFilingRepository complianceFilingRepository,
             CbsAuditAnchoringService auditAnchoringService) {
         this.ledgerMutationAuditRepository = ledgerMutationAuditRepository;
-        this.reversalAuditRepository = reversalAuditRepository;
         this.transactionStatusAuditRepository = transactionStatusAuditRepository;
         this.failedTransactionAuditRepository = failedTransactionAuditRepository;
         this.eodReportsMetadataRepository = eodReportsMetadataRepository;
@@ -49,8 +46,10 @@ public class CbsAuditQueryService {
     }
 
     @Transactional(value = "auditTransactionManager", readOnly = true)
-    public Optional<ReversalAudit> getReversalByOriginalTx(String originalTransactionId) {
-        return reversalAuditRepository.findByOriginalTxId(originalTransactionId);
+    public List<LedgerMutationAudit> getReversalByOriginalTx(String originalTransactionId) {
+        return ledgerMutationAuditRepository.findAllByTransactionId(originalTransactionId).stream()
+                .filter(a -> "REVERSAL".equals(a.getMutationType()))
+                .toList();
     }
 
     @Transactional(value = "auditTransactionManager", readOnly = true)

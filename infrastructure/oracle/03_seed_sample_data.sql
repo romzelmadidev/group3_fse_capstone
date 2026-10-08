@@ -127,7 +127,7 @@ INSERT INTO accounts (
 
 -- ------------------------------------------------------------------------------
 -- 3. SEED BALANCE MASTER
--- Note: available_balance is automatically calculated via trg_calc_available_balance
+-- Note: available_balance is automatically calculated via virtual generated column (balance_amount - hold_amount)
 -- ------------------------------------------------------------------------------
 -- Balance for Juan's Savings Account A2001 (Balance: 298,000, Hold: 0)
 INSERT INTO balance_master (

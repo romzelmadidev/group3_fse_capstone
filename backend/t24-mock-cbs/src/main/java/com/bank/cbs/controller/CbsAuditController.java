@@ -30,10 +30,12 @@ public class CbsAuditController {
     }
 
     @GetMapping("/reversals/{transactionId}")
-    public ResponseEntity<ReversalAudit> getReversalAudit(@PathVariable String transactionId) {
-        return auditQueryService.getReversalByOriginalTx(transactionId)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<List<LedgerMutationAudit>> getReversalAudit(@PathVariable String transactionId) {
+        List<LedgerMutationAudit> reversals = auditQueryService.getReversalByOriginalTx(transactionId);
+        if (reversals.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(reversals);
     }
 
     @GetMapping("/failed-transactions")

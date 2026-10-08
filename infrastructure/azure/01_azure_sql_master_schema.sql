@@ -103,7 +103,7 @@ CREATE TABLE core.balance_master (
     account_id        NVARCHAR(64) NOT NULL PRIMARY KEY,
     balance_amount    DECIMAL(18, 4) DEFAULT 0.0000 NOT NULL,
     hold_amount       DECIMAL(18, 4) DEFAULT 0.0000 NOT NULL,
-    available_balance DECIMAL(18, 4) DEFAULT 0.0000 NOT NULL,
+    available_balance AS (balance_amount - hold_amount),
     created_at        DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     updated_at        DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT fk_bm_account FOREIGN KEY (account_id) REFERENCES core.accounts(account_id),
@@ -411,11 +411,11 @@ VALUES
 ('acc-2002-chk-001', 'usr-1001-cst-001', '100100005678', 'SAVINGS', 'ACTIVE', 0.0000),
 ('acc-2003-sav-002', 'usr-1002-cst-002', '100200009999', 'SAVINGS', 'ACTIVE', 0.0000);
 
-INSERT INTO core.balance_master (account_id, balance_amount, hold_amount, available_balance)
+INSERT INTO core.balance_master (account_id, balance_amount, hold_amount)
 VALUES 
-('1000-2000-3001', 25000000.0000, 0.0000, 25000000.0000),
-('1000-2000-3002', 5000000.0000, 0.0000, 5000000.0000),
-('1000-2000-3003', 10000000.0000, 0.0000, 10000000.0000),
-('acc-2001-sav-001', 25000000.0000, 5000000.0000, 20000000.0000),
-('acc-2002-chk-001', 8500000.0000, 0.0000, 8500000.0000),
-('acc-2003-sav-002', 12345678.1250, 0.0000, 12345678.1250);
+('1000-2000-3001', 25000000.0000, 0.0000),
+('1000-2000-3002', 5000000.0000, 0.0000),
+('1000-2000-3003', 10000000.0000, 0.0000),
+('acc-2001-sav-001', 25000000.0000, 5000000.0000),
+('acc-2002-chk-001', 8500000.0000, 0.0000),
+('acc-2003-sav-002', 12345678.1250, 0.0000);

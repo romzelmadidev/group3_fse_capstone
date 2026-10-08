@@ -68,7 +68,7 @@ CREATE TABLE balance_master (
     account_id        VARCHAR2(64) PRIMARY KEY,
     balance_amount    NUMBER(18, 4) DEFAULT 0.0000 NOT NULL CHECK (balance_amount >= 0),
     hold_amount       NUMBER(18, 4) DEFAULT 0.0000 NOT NULL CHECK (hold_amount >= 0),
-    available_balance NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    available_balance NUMBER(18, 4) GENERATED ALWAYS AS (balance_amount - hold_amount) VIRTUAL,
     created_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT fk_bm_account FOREIGN KEY (account_id) REFERENCES accounts(account_id),
@@ -78,14 +78,13 @@ CREATE TABLE balance_master (
 COMMENT ON TABLE balance_master IS 'Master balance records optimized for SELECT FOR UPDATE pessimistic locking';
 COMMENT ON COLUMN balance_master.balance_amount IS 'Total ledger balance with 4 decimal places precision (@Digits(14,4))';
 COMMENT ON COLUMN balance_master.hold_amount IS 'Funds frozen for pending approvals (Maker-Checker threshold > 100,000)';
-COMMENT ON COLUMN balance_master.available_balance IS 'Spendable balance: (balance_amount - hold_amount)';
+COMMENT ON COLUMN balance_master.available_balance IS 'Spendable balance: (balance_amount - hold_amount) virtual generated column';
 
--- Trigger to automatically calculate and maintain available_balance
-CREATE OR REPLACE TRIGGER trg_calc_available_balance
-BEFORE INSERT OR UPDATE ON balance_master
+-- Trigger to maintain updated_at timestamp on balance_master updates
+CREATE OR REPLACE TRIGGER trg_balance_master_updated_at
+BEFORE UPDATE ON balance_master
 FOR EACH ROW
 BEGIN
-    :NEW.available_balance := :NEW.balance_amount - :NEW.hold_amount;
     :NEW.updated_at := CURRENT_TIMESTAMP;
 END;
 /

@@ -28,7 +28,7 @@ public class BalanceMaster {
     @Column(name = "hold_amount", nullable = false, precision = 18, scale = 4)
     private BigDecimal holdAmount;
 
-    @Column(name = "available_balance", nullable = false, precision = 18, scale = 4)
+    @Column(name = "available_balance", precision = 18, scale = 4, insertable = false, updatable = false)
     private BigDecimal availableBalance;
 
     @Column(name = "created_at", nullable = false)

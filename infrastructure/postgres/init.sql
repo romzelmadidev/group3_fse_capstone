@@ -78,24 +78,6 @@ CREATE INDEX IF NOT EXISTS idx_audit_acc_time
     ON ledger_mutation_audit(account_id, created_at DESC);
 
 -- ============================================================
--- TABLE: reversal_audit
--- Dual-control Maker-Checker Reversal Audit Log
--- ============================================================
-CREATE TABLE IF NOT EXISTS reversal_audit (
-    audit_id BIGSERIAL PRIMARY KEY,
-    ticket_id VARCHAR(64) NOT NULL UNIQUE,
-    maker_id VARCHAR(64) NOT NULL,
-    checker_id VARCHAR(64) NOT NULL,
-    original_tx_id VARCHAR(64) NOT NULL,
-    reversal_tx_id VARCHAR(64) NOT NULL,
-    approved_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_rev_audit_ticket ON reversal_audit(ticket_id);
-CREATE INDEX IF NOT EXISTS idx_rev_audit_orig_tx ON reversal_audit(original_tx_id);
-
--- ============================================================
 -- TABLE: failed_transaction_audit
 -- Dead Letter Queue (DLQ) Incident Ingestion
 -- ============================================================

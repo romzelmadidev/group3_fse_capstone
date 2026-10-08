@@ -3,11 +3,9 @@ package com.bank.cbs.service;
 import com.bank.cbs.config.KafkaConfig;
 import com.bank.cbs.entity.audit.FailedTransactionAudit;
 import com.bank.cbs.entity.audit.LedgerMutationAudit;
-import com.bank.cbs.entity.audit.ReversalAudit;
 import com.bank.cbs.entity.audit.TransactionStatusAudit;
 import com.bank.cbs.repository.audit.FailedTransactionAuditRepository;
 import com.bank.cbs.repository.audit.LedgerMutationAuditRepository;
-import com.bank.cbs.repository.audit.ReversalAuditRepository;
 import com.bank.cbs.repository.audit.TransactionStatusAuditRepository;
 import com.bank.ledger.contracts.dto.events.TransactionStatusChangedEvent;
 import com.bank.ledger.contracts.dto.events.TransferExecutedEvent;
@@ -37,7 +35,6 @@ public class CbsAuditSelfConsumptionService {
     private static final String GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000";
 
     private final LedgerMutationAuditRepository ledgerMutationAuditRepository;
-    private final ReversalAuditRepository reversalAuditRepository;
     private final TransactionStatusAuditRepository transactionStatusAuditRepository;
     private final FailedTransactionAuditRepository failedTransactionAuditRepository;
     private final ObjectMapper objectMapper;
@@ -45,13 +42,11 @@ public class CbsAuditSelfConsumptionService {
 
     public CbsAuditSelfConsumptionService(
             LedgerMutationAuditRepository ledgerMutationAuditRepository,
-            ReversalAuditRepository reversalAuditRepository,
             TransactionStatusAuditRepository transactionStatusAuditRepository,
             FailedTransactionAuditRepository failedTransactionAuditRepository,
             ObjectMapper objectMapper,
             MerkleTreeService merkleTreeService) {
         this.ledgerMutationAuditRepository = ledgerMutationAuditRepository;
-        this.reversalAuditRepository = reversalAuditRepository;
         this.transactionStatusAuditRepository = transactionStatusAuditRepository;
         this.failedTransactionAuditRepository = failedTransactionAuditRepository;
         this.objectMapper = objectMapper;
@@ -162,24 +157,62 @@ public class CbsAuditSelfConsumptionService {
     }
 
     private void handleTransferReversed(TransferReversedEvent event) {
-        if (event.getReversalTransactionId() != null && reversalAuditRepository.findByReversalTxId(event.getReversalTransactionId()).isPresent()) {
-            log.info("Reversal audit for revTxId {} already processed, skipping duplicate event", event.getReversalTransactionId());
+        String revTxId = event.getReversalTransactionId();
+        if (revTxId != null && !ledgerMutationAuditRepository.findByTransactionId(revTxId).isEmpty()) {
+            log.info("Reversal audit for revTxId {} already processed, skipping duplicate event", revTxId);
             return;
         }
 
-        log.info("Auditing TransferReversedEvent into PostgreSQL audit vault: origTxId={}, revTxId={}",
-                event.getOriginalTransactionId(), event.getReversalTransactionId());
+        log.info("Auditing TransferReversedEvent into PostgreSQL audit vault via Merkle leaf: origTxId={}, revTxId={}",
+                event.getOriginalTransactionId(), revTxId);
 
-        ReversalAudit audit = ReversalAudit.builder()
-                .ticketId(event.getTicketId() != null ? event.getTicketId() : UUID.randomUUID().toString())
-                .originalTxId(event.getOriginalTransactionId())
-                .reversalTxId(event.getReversalTransactionId())
-                .makerId(event.getMakerId())
-                .checkerId(event.getCheckerId())
-                .approvedAt(event.getExecutedAtUtc() != null ? event.getExecutedAtUtc() : Instant.now())
-                .createdAt(Instant.now())
-                .build();
-        reversalAuditRepository.save(audit);
+        Instant eventTime = event.getExecutedAtUtc() != null ? event.getExecutedAtUtc() : Instant.now();
+
+        // Beneficiary debit leg (reclaiming disbursed funds)
+        if (event.getBeneficiaryAccountId() != null && event.getBeneficiaryBalanceAfter() != null) {
+            BigDecimal beforeBal = event.getBeneficiaryBalanceAfter().add(event.getAmount());
+            String payload = revTxId + "|" + event.getBeneficiaryAccountId() + "|REVERSAL|" + event.getAmount() + "|" + beforeBal + "|" + event.getBeneficiaryBalanceAfter() + "|" + eventTime;
+            String leafHash = merkleTreeService.calculateSha256(payload);
+
+            LedgerMutationAudit debitLeg = LedgerMutationAudit.builder()
+                    .transactionId(revTxId)
+                    .accountId(event.getBeneficiaryAccountId())
+                    .mutationType("REVERSAL")
+                    .mutationAmount(event.getAmount())
+                    .beforeBalance(beforeBal)
+                    .afterBalance(event.getBeneficiaryBalanceAfter())
+                    .initiatorUserId(event.getMakerId() != null ? event.getMakerId() : "SYSTEM")
+                    .approvedByUserId(event.getCheckerId())
+                    .status("COMMITTED")
+                    .prevHash("MERKLE_LEAF")
+                    .sha256Hash(leafHash)
+                    .createdAt(eventTime)
+                    .build();
+            ledgerMutationAuditRepository.save(debitLeg);
+        }
+
+        // Original sender credit leg (restoring funds back to original sender)
+        if (event.getOriginalSenderAccountId() != null && event.getOriginalSenderBalanceAfter() != null) {
+            BigDecimal beforeBal = event.getOriginalSenderBalanceAfter().subtract(event.getAmount());
+            String payload = revTxId + "|" + event.getOriginalSenderAccountId() + "|REVERSAL|" + event.getAmount() + "|" + beforeBal + "|" + event.getOriginalSenderBalanceAfter() + "|" + eventTime;
+            String leafHash = merkleTreeService.calculateSha256(payload);
+
+            LedgerMutationAudit creditLeg = LedgerMutationAudit.builder()
+                    .transactionId(revTxId)
+                    .accountId(event.getOriginalSenderAccountId())
+                    .mutationType("REVERSAL")
+                    .mutationAmount(event.getAmount())
+                    .beforeBalance(beforeBal)
+                    .afterBalance(event.getOriginalSenderBalanceAfter())
+                    .initiatorUserId(event.getMakerId() != null ? event.getMakerId() : "SYSTEM")
+                    .approvedByUserId(event.getCheckerId())
+                    .status("COMMITTED")
+                    .prevHash("MERKLE_LEAF")
+                    .sha256Hash(leafHash)
+                    .createdAt(eventTime)
+                    .build();
+            ledgerMutationAuditRepository.save(creditLeg);
+        }
     }
 
     private void handleStatusChanged(TransactionStatusChangedEvent event) {

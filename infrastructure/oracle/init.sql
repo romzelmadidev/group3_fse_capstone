@@ -89,7 +89,7 @@ CREATE TABLE balance_master (
     account_id        VARCHAR2(64) PRIMARY KEY,
     balance_amount    NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
     hold_amount       NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
-    available_balance NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    available_balance NUMBER(18, 4) GENERATED ALWAYS AS (balance_amount - hold_amount) VIRTUAL,
     created_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT fk_bm_account FOREIGN KEY (account_id) REFERENCES accounts(account_id),
@@ -339,29 +339,29 @@ INSERT INTO accounts (account_id, user_id, account_number, account_type, status,
 VALUES ('1000-2000-3009', 'usr-2008-cst-008', '1000-2000-3009', 'SAVINGS', 'ACTIVE', 0.0000);
 
 -- 3. Balance Master (Exact 4-decimal precision)
-INSERT INTO balance_master (account_id, balance_amount, hold_amount, available_balance)
-VALUES ('1000-2000-3001', 25000000.0000, 0.0000, 25000000.0000);
+INSERT INTO balance_master (account_id, balance_amount, hold_amount)
+VALUES ('1000-2000-3001', 25000000.0000, 0.0000);
 
-INSERT INTO balance_master (account_id, balance_amount, hold_amount, available_balance)
-VALUES ('1000-2000-3002', 5000000.0000, 0.0000, 5000000.0000);
+INSERT INTO balance_master (account_id, balance_amount, hold_amount)
+VALUES ('1000-2000-3002', 5000000.0000, 0.0000);
 
-INSERT INTO balance_master (account_id, balance_amount, hold_amount, available_balance)
-VALUES ('1000-2000-3004', 5200000.0000, 0.0000, 5200000.0000);
+INSERT INTO balance_master (account_id, balance_amount, hold_amount)
+VALUES ('1000-2000-3004', 5200000.0000, 0.0000);
 
-INSERT INTO balance_master (account_id, balance_amount, hold_amount, available_balance)
-VALUES ('1000-2000-3005', 3750000.0000, 0.0000, 3750000.0000);
+INSERT INTO balance_master (account_id, balance_amount, hold_amount)
+VALUES ('1000-2000-3005', 3750000.0000, 0.0000);
 
-INSERT INTO balance_master (account_id, balance_amount, hold_amount, available_balance)
-VALUES ('1000-2000-3006', 4200000.0000, 0.0000, 4200000.0000);
+INSERT INTO balance_master (account_id, balance_amount, hold_amount)
+VALUES ('1000-2000-3006', 4200000.0000, 0.0000);
 
-INSERT INTO balance_master (account_id, balance_amount, hold_amount, available_balance)
-VALUES ('1000-2000-3007', 6800000.0000, 0.0000, 6800000.0000);
+INSERT INTO balance_master (account_id, balance_amount, hold_amount)
+VALUES ('1000-2000-3007', 6800000.0000, 0.0000);
 
-INSERT INTO balance_master (account_id, balance_amount, hold_amount, available_balance)
-VALUES ('1000-2000-3008', 2950000.0000, 0.0000, 2950000.0000);
+INSERT INTO balance_master (account_id, balance_amount, hold_amount)
+VALUES ('1000-2000-3008', 2950000.0000, 0.0000);
 
-INSERT INTO balance_master (account_id, balance_amount, hold_amount, available_balance)
-VALUES ('1000-2000-3009', 9100000.0000, 0.0000, 9100000.0000);
+INSERT INTO balance_master (account_id, balance_amount, hold_amount)
+VALUES ('1000-2000-3009', 9100000.0000, 0.0000);
 
 -- 4. Transactions
 -- Tx 1: High-value transfer pending Customer Email Verification (> 50k PHP hold applied)
