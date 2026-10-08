@@ -6,9 +6,12 @@ import com.bank.orchestrator.service.CoolOffService;
 import com.bank.orchestrator.service.TransferOrchestrationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.util.Map;
 
 @RestController
@@ -112,6 +115,24 @@ public class TransferOrchestratorController {
                 "transactionId", request.transactionId(),
                 "cancelled", cancelled,
                 "message", cancelled ? "Transfer cancelled successfully during cooling-off window" : "Cooling-off window expired or not found"
+        ));
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> handleResponseStatusException(ResponseStatusException ex) {
+        if (ex.getStatusCode() == HttpStatus.FORBIDDEN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                    "error", "TRANSACTION_DECLINED",
+                    "code", "TX_DECLINED_POLICY",
+                    "status", "Cancelled",
+                    "message", "Transaction could not be processed at this time. Please contact customer support.",
+                    "timestampUtc", Instant.now().toString()
+            ));
+        }
+        return ResponseEntity.status(ex.getStatusCode()).body(Map.of(
+                "error", ex.getStatusCode().toString(),
+                "message", ex.getReason() != null ? ex.getReason() : ex.getMessage(),
+                "timestampUtc", Instant.now().toString()
         ));
     }
 }

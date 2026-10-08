@@ -70,7 +70,7 @@ public class TransferOrchestrationService {
 
             if ("BLOCK".equalsIgnoreCase(riskResp.decision())) {
                 log.warn("Transfer {} blocked by Fraud Engine: {}", txId, riskResp.riskReason());
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "FRAUD_POLICY_CIRCUIT_CUT: Transaction blocked by anti-fraud rule: " + riskResp.riskReason());
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Transaction could not be processed at this time. Please contact customer support.");
             }
 
             if ("ADVISORY_WARNING".equalsIgnoreCase(riskResp.decision()) && !request.scamAdvisoryAcknowledged()) {

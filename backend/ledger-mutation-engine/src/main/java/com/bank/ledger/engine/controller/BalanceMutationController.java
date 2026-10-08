@@ -173,10 +173,12 @@ public class BalanceMutationController {
      */
     @ExceptionHandler(SecurityException.class)
     public ResponseEntity<Map<String, Object>> handleSecurityBlocked(SecurityException ex) {
+        log.warn("[SECURITY REJECTION] Transaction blocked by security policy: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
-                "status", "BLOCKED",
-                "error_code", "RISK_ENGINE_BLOCKED",
-                "message", ex.getMessage(),
+                "error", "TRANSACTION_DECLINED",
+                "code", "TX_DECLINED_POLICY",
+                "status", "Cancelled",
+                "message", "Transaction could not be processed at this time. Please contact customer support.",
                 "timestamp", Instant.now()
         ));
     }
