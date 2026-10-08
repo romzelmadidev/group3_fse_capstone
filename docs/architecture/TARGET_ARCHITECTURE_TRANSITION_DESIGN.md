@@ -19,11 +19,11 @@ In the current repository implementation:
 4. **Missing Production Capabilities**: Intra-bank transaction reversals, circuit breaking with dead letter queueing, multi-phase End-of-Day (EOD) batch accounting, and automated AMLA/BIR regulatory filings are currently unimplemented.
 
 ### 1.3 The Target State Solution (Path B)
-The target architecture introduces an **asynchronous, event-driven boundary** between transactional accounting and compliance auditing:
-* **Decoupled Financial Engine (`t24-mock-cbs` :8085)**: Exclusively owns the primary master database. Acquires sub-5ms row-level locks, mutates balances, writes double-entry general ledger journals, and records domain events to an ACID transactional `outbox_events` table before streaming them to Apache Kafka.
-* **Stateless Perimeter Orchestrator (`transfer-orchestrator` :8082)**: Coordinates fraud evaluation, mandatory biometric confirmation (Face ID / Fingerprint), and behavioral 10-minute cool-off holds without tying up database locks, translating client JSON commands into Temenos Open Financial Services (OFS) syntax.
-* **Intelligent Anti-Scam Protection & Cognitive Cool-Off**: Leverages a local neural LLM (`Qwen2.5-0.5B-Instruct` / NanoJev) within `risk-service:8084` to synthesize personalized, natural language anti-scam advisories for high-risk transfer contexts (e.g. advance-fee prize claims, impersonation, phone call coercion). Empowers users to trigger a voluntary **10-minute cooling-off period** managed by `redis-cache`, enforcing a cognitive pause to break psychological social engineering before funds can be settled.
-* **Dedicated Compliance & Reporting Engine (`compliance-service` :8086)**: Ingests Kafka events asynchronously to write append-only audit records to the PostgreSQL Audit Vault, manages cryptographic SHA-256 hash chains, compiles AMLA reports, and offloads heavy End-of-Day PDF/Excel statement generation.
+The target architecture introduces complete database custodianship isolation between the financial/audit core and peripheral services:
+* **Authoritative Financial & Audit Engine (`t24-mock-cbs` :8085)**: **Sole and exclusive custodian of BOTH database engines** (`azure-sql-db` / Primary Master DB and `postgres-audit-vault` / PostgreSQL 16). Acquires sub-5ms row-level locks on `balance_master`, mutates accounts, posts double-entry general ledger lines to `gl_ledger`, records domain events to `outbox_events` for Kafka streaming, and **directly writes immutable audit records to `ledger_mutation_audit`, `reversal_audit`, and `transaction_status_audit` in PostgreSQL with sequential SHA-256 hash chaining**. This guarantees immediate audit finality within CBS execution without relying on asynchronous message bus arrival for regulatory audit preservation.
+* **Stateless Perimeter Orchestrator (`transfer-orchestrator` :8082)**: Possesses **zero SQL datasource configurations or JDBC drivers**. Coordinates fraud evaluation, mandatory biometric confirmation (Face ID / Fingerprint), and behavioral 10-minute cool-off holds without tying up database locks, translating client JSON commands into Temenos Open Financial Services (OFS) syntax.
+* **Intelligent Anti-Scam Protection & Cognitive Cool-Off**: Leverages the two-stage risk pipeline (Gate 0 + S2 XGBoost, and Stage B Laya ModernBERT/mmBERT encoder with NanoJev fallback) within `risk-service:8084` to synthesize personalized anti-scam advisories. Empowers users to trigger a voluntary **10-minute cooling-off period** managed by `redis-cache`, enforcing a cognitive pause before funds can be settled.
+* **Stateless Compliance & Reporting Engine (`compliance-service` :8086)**: Possesses **zero SQL datasource configurations or direct database connections**. Decoupled completely from database access, it consumes Kafka events and queries CBS read-only audit APIs to compile AMLA reports (CTR $\ge 500\text{k}$, STR), manage DLQ incident inspections/replays, and offload CPU-heavy End-of-Day PDF/Excel customer statement and GL trial balance generation.
 
 ---
 
@@ -37,22 +37,22 @@ flowchart TD
         ACCT["Account Service (:8081)<br/>(Auth, JWT, KYC Profile &<br/>Biometric Assertion Validator)"]
         REDIS[("Redis Cache (:6379)<br/>Token Blacklist, Idempotency<br/>& 10-Min Cool-Off Locks")]
         ORCH["Transfer Orchestrator (:8082)<br/>(Stateless Saga, OFS Serializer<br/>& Cool-Off Coordinator)"]
-        RISK["Python Risk Engine (:8084)<br/>(FastAPI, XGBoost<br/>& Qwen2.5 LLM Scam Warnings)"]
+        RISK["Python Risk Engine (:8084)<br/>- Gate 0 Deterministic Hard Rules<br/>- S2 XGBoost Tabular Model (&lt;2ms)<br/>- Stage B Laya / NanoJev NLP<br/>- Analyst Desk & AMLC SAR Generator"]
     end
 
-    subgraph Core_Enclave["Authoritative Core Banking Enclave"]
-        CBS["T24 Mock CBS (:8085)<br/>(Authoritative Financial Engine)"]
-        MASTER_DB[("Primary Master Database (:1433 / :1521)<br/>Azure SQL / Oracle Master<br/>• balance_master • gl_ledger<br/>• transactions • outbox_events")]
+    subgraph Core_Enclave["Authoritative Core Banking Enclave (Sole Database Custodian)"]
+        CBS["T24 Mock CBS (:8085)<br/>(Authoritative Financial & Audit Engine<br/>Sole Custodian of Master & Audit DBs)"]
+        MASTER_DB[("Primary Master Database (:1433 / :1521)<br/>Azure SQL / Oracle Master<br/>- balance_master - gl_ledger<br/>- transactions - outbox_events")]
+        AUDIT_DB[("PostgreSQL Audit Vault (:5432)<br/>- ledger_mutation_audit (Hash Chained)<br/>- reversal_audit - status_audit")]
     end
 
     subgraph Event_Log["Event Log Streaming Tier"]
         KAFKA{{"Apache Kafka Bus (:9092)<br/>KRaft Mode Partitioned Log"}}
     end
 
-    subgraph Async_Subscribers["Asynchronous Downstream Tier"]
+    subgraph Async_Subscribers["Asynchronous Downstream Tier (Zero-DB Reporting)"]
         NOTIF["Notification Service (:8083)<br/>(HTML Receipts & Security Alerts)"]
-        COMP["Compliance & Reporting Svc (:8086)<br/>(Audit Vault Custodian & Reports)"]
-        AUDIT_DB[("PostgreSQL Audit Vault (:5432)<br/>• ledger_mutation_audit<br/>• reversal_audit • eod_reports")]
+        COMP["Compliance & Reporting Svc (:8086)<br/>(Pure Document & Report Generator)"]
         STORAGE[("Object Storage Volume<br/>PDF/Excel/XML Vault")]
     end
 
@@ -63,14 +63,17 @@ flowchart TD
     ACCT -->|Token Sessions & Blacklist| REDIS
     ORCH -->|Validate Biometric Signature| ACCT
     ORCH -->|Atomic Idempotency & Cool-Off Locks| REDIS
-    ORCH -->|Sync Risk Check < 2ms| RISK
+    ORCH -->|Stage A/B Risk Scoring & Event Callbacks| RISK
     ORCH -->|Temenos OFS Wire Commands| CBS
-    CBS -->|ACID Balance & Outbox Mutations| MASTER_DB
+    RISK -.->|AMLC SAR Drafts & Escalated Case Cards| COMP
+    CBS -->|Exclusive Primary RW Mutations| MASTER_DB
     CBS -->|Publish Outbox Events| KAFKA
+    KAFKA -->|Self-Consumption: cbs-audit-workers<br/>TransferExecutedEvent| CBS
+    CBS -->|Asynchronous Audit Writes & SHA-256 Chaining| AUDIT_DB
     KAFKA -->|banking.transfers.events| NOTIF
     KAFKA -->|banking.transfers.events<br/>banking.batch.events| COMP
     KAFKA -->|banking.transfers.dlq| COMP
-    COMP -->|Append-Only SQL Inserts| AUDIT_DB
+    COMP -.->|Audit REST Queries| CBS
     COMP -->|Persist Statements & Filings| STORAGE
 ```
 
@@ -82,12 +85,12 @@ flowchart TD
   * **`Transfer Orchestrator (:8082)`**: Stateless Saga orchestrator decoupled from direct database drivers; manages perimeter validation, invokes `risk-service`, coordinates mandatory biometric confirmation challenges with `account-service`, enforces cool-off countdowns, and serializes requests to Temenos OFS syntax.
   * **`Python Risk Engine (:8084)`**: Real-time FastAPI microservice executing sub-2ms XGBoost scoring and local neural LLM (`Qwen2.5-0.5B-Instruct` / NanoJev) inference to evaluate transfer risk and generate natural language anti-scam warning advisories.
 * **Authoritative Core Banking Enclave**:
-  * **`T24 Mock CBS (:8085)`**: Isolated financial accounting engine holding exclusive database connectivity to `balance_master`, `gl_ledger`, `gl_balances`, `transactions`, and `outbox_events`. Executes atomic sub-5ms row-level locks and double-entry postings.
+  * **`T24 Mock CBS (:8085)`**: Isolated financial and audit core holding exclusive database connectivity to **BOTH** `azure-sql-db` and `postgres-audit-vault`. Executes atomic sub-5ms row-level locks and double-entry postings in Master DB, publishes domain events via the transactional outbox, and asynchronously consumes its own TransferExecutedEvent (and related events) from Kafka to write immutable audit records with SHA-256 hash chains to PostgreSQL.
 * **Event Log Streaming Tier**:
   * **`Apache Kafka Bus (:9092)`**: High-throughput partitioned event broker in KRaft mode decoupling authoritative core banking mutations from asynchronous downstream subscribers.
 * **Asynchronous Downstream Tier**:
   * **`Notification Service (:8083)`**: Consumes domain events from Kafka to deliver customer HTML transaction receipts and security alerts via SMTP.
-  * **`Compliance & Reporting Service (:8086)`**: Consumes domain and DLQ events to maintain the append-only PostgreSQL Audit Vault (`:5432`), calculate sequential SHA-256 hash chains, compile AMLA CTR/STR filings, provide DLQ incident inspection/replay, and generate heavy End-of-Day PDF/Excel reports.
+  * **`Compliance & Reporting Service (:8086)`**: Possesses zero database connections. Consumes domain and DLQ events and queries CBS audit APIs to compile AMLA CTR/STR filings, coordinate DLQ incident replay, and generate heavy End-of-Day PDF/Excel reports without database contention.
 
 ---
 
@@ -109,8 +112,8 @@ flowchart LR
     end
 
     LME -.->|Stateless Orchestration & OFS| NEW_ORCH
-    LME -.->|Financial Core & Pessimistic Locks| NEW_CBS
-    LME -.->|Decoupled Audit & Report Generation| NEW_COMP
+    LME -.->|Financial Core & Sole DB Custodian (Azure + Postgres)| NEW_CBS
+    LME -.->|Decoupled Report & Document Generation (Zero DB)| NEW_COMP
 ```
 
 ### 3.1 Service Evolution Breakdown
@@ -118,18 +121,18 @@ flowchart LR
 | Service Name | Port | Transition Nature | Origin & Rationale for Addition / Split |
 | :--- | :--- | :--- | :--- |
 | **`transfer-orchestrator`** | `:8082` | **Split Service** | **Split from `ledger-mutation-engine`**.<br/>*Why Split*: Stripping database drivers and datasource configurations out of the intake tier prevents database connections from idling during perimeter validation, external risk scoring, or mandatory biometric verification. It acts as a stateless Saga orchestrator, coordinates Resilience4j circuit breakers with DLQ routing, enforces 10-minute anti-scam cool-off locks in Redis, and serializes requests into Temenos OFS wire syntax. |
-| **`t24-mock-cbs`** | `:8085` | **Split Service** | **Split from `ledger-mutation-engine`**.<br/>*Why Split*: Isolates the Authoritative Core Banking System. It is the sole entity holding credentials to the Primary Master Database. Eliminating external HTTP and secondary database calls ensures account row-level locks are held strictly under 5 milliseconds. |
-| **`compliance-service`** | `:8086` | **Added Service** | **Newly Added Service (replaces legacy synchronous dual-write)**.<br/>*Why Added*: Decouples the PostgreSQL Audit Vault from the core transaction loop. Ingests Kafka events to execute idempotent append-only inserts, calculates cryptographic SHA-256 hash chains, compiles AMLA CTR/STR regulatory filings, provides DLQ inspection/replay endpoints, and generates CPU-heavy EOD PDF/Excel reports without impacting CBS throughput. |
+| **`t24-mock-cbs`** | `:8085` | **Split Service** | **Split from `ledger-mutation-engine`**.<br/>*Why Split*: Isolates the Authoritative Core Banking System as the **sole custodian of BOTH databases** (`azure-sql-db` and `postgres-audit-vault`). It manages ledger mutations in Azure SQL, publishes domain events to Kafka, and asynchronously consumes its own published events (such as TransferExecutedEvent) to write immutable audit trails in PostgreSQL with sequential SHA-256 hash chains. Eliminating external HTTP calls and deferring audit vault writes to asynchronous self-consumption ensures account row-level locks are held strictly under 5 milliseconds. |
+| **`compliance-service`** | `:8086` | **Added Service** | **Newly Added Service (pure reporting & compliance worker)**.<br/>*Why Added*: Holds **zero SQL datasource connections**. Consumes Kafka events and queries CBS audit APIs to compile AMLA CTR/STR regulatory filings, coordinates DLQ inspection/replay, and generates CPU-heavy EOD PDF/Excel reports without database contention or impacting CBS throughput. |
 | **`gateway-service`** | `:8080` | Existing (Retained) | Updated routing rules to proxy `/api/v1/compliance/**` to port `:8086`, `/api/v1/transfers/**` and `/api/v1/reversals/**` to port `:8082`. |
 | **`account-service`** | `:8081` | Existing (Retained) | Manages user registration, authentication, JWT issuing, KYC tier levels, Redis session stores, and public-key biometric credential validation. |
 | **`notification-service`**| `:8083` | Existing (Retained) | Consumes domain events from Kafka to generate customer HTML transaction receipts and deliver manager security alerts via MailHog SMTP (Transfer authorization is validated directly via mandatory device biometric confirmation). |
-| **`risk-service`** | `:8084` | Existing (Retained) | Real-time Python FastAPI microservice combining XGBoost classification with local neural LLM inference (Qwen2.5-0.5B-Instruct / NanoJev) to evaluate transfer risk and generate contextual natural language anti-scam advisories. |
+| **`risk-service`** | `:8084` | Existing (Retained) | Real-time Python FastAPI microservice executing a production **Two-Stage Multi-Model Risk Engine**:<br/>• **Stage A (Synchronous Tabular Risk, latency &lt; 30ms)**: Gate 0 deterministic hard rules (impossible travel velocity &gt; 1,000 km/h, mock GPS, device tampering, emulator) and S2 XGBoost model evaluating 40+ behavioral, velocity, and counterparty features (including real-time balance drain ratio and spike ratio).<br/>• **Stage B (Synchronous NLP Threat & Memo Synthesis, latency &lt; 0.10ms)**: Powered by the **Laya** non-autoregressive encoder (ModernBERT / mmBERT, 10,000+ tx/s, detecting Philippine scam typologies in English/Tagalog/Taglish and mobile threat context like AnyDesk/active call coercion) with fallback to **NanoJev** (Qwen2.5-0.5B INT8 ONNX). Enforces the **Escalate-Only Safety Invariant**.<br/>• **Compliance & Analyst Desk**: Fire-and-forget event feedback loop (`POST /api/v1/risk/events`), automated AMLC Suspicious Activity Report (SAR / STR) draft generation via `hybrid_bench.sar_generator`, and an interactive Analyst Triage Desk (`GET /api/v1/analyst/cases`, `POST /api/v1/analyst/decision`). |
 
 ---
 
 ## 4. Database Additions & Segregation Model
 
-The system enforces strict multi-database segregation: **No microservice connects to more than one database engine**.
+The system enforces strict database custodianship: **`t24-mock-cbs (:8085)` has sole and exclusive ownership of BOTH database engines** (`azure-sql-db` and `postgres-audit-vault`). All other microservices (`transfer-orchestrator`, `compliance-service`, `risk-service`, `account-service`) possess **zero direct SQL database connectivity**.
 
 ```mermaid
 flowchart TD
@@ -157,8 +160,8 @@ flowchart TD
         A6["Added: transaction_status_audit (Tamper-Evident Mirror of Status Changes)"]
     end
 
-    CBS_NODE["T24 Mock CBS (:8085)"] -->|Exclusive Read / Write| Master_Persistence
-    COMP_NODE["Compliance Service (:8086)"] -->|Exclusive Append-Only| Audit_Vault
+    CBS_NODE["T24 Mock CBS (:8085)<br/>Sole Database Custodian"] -->|Exclusive Primary RW| Master_Persistence
+    CBS_NODE -->|Exclusive Asynchronous Audit Ledger RW<br/>(via Kafka Self-Consumption)| Audit_Vault
 ```
 
 ### 4.1 Master Database Table Additions (`azure-sql-db` / `oracle-xe-master`)
@@ -179,12 +182,12 @@ flowchart TD
 
 | Table Name | Schema Type | Primary Purpose | Key Fields & Security Constraints | Exclusive Owner |
 | :--- | :--- | :--- | :--- | :--- |
-| **`ledger_mutation_audit`**| Immutable Audit | Append-only financial mutation mirror. Protected by PostgreSQL triggers preventing `UPDATE`/`DELETE`. | `audit_id` (PK), `transaction_id` (UNIQUE), `source_account_id`, `target_account_id`, `amount`, `sha256_hash` | `compliance-service` |
-| **`reversal_audit`** | Compliance | Immutable audit trail of dual-control Maker-Checker reversal operations. | `audit_id` (PK), `ticket_id`, `maker_id`, `checker_id`, `original_tx_id`, `approved_at`, `reversal_tx_id` | `compliance-service` |
-| **`failed_transaction_audit`**| Ops / Compliance | Dead Letter Queue (DLQ) ingested failure payloads and circuit breaker trip events for incident replay. | `incident_id` (PK), `transaction_id`, `error_code`, `payload_json`, `stack_trace`, `replay_status` | `compliance-service` |
-| **`eod_reports_metadata`**| Compliance Vault | Registry and cryptographic verification ledger of all generated EOD PDFs, CSVs, and Excel sheets. | `report_id` (PK), `report_type`, `file_uri`, `sha256_checksum`, `record_count`, `retention_expiry_date` | `compliance-service` |
-| **`compliance_filings`** | Regulatory | Automated Covered Transaction Reports (CTR) and Suspicious Transaction Reports (STR) filed per AMLA. | `filing_id` (PK), `filing_type` (`CTR_500K`, `STR_FRAUD`), `transaction_id`, `payload_xml`, `amlc_ref` | `compliance-service` |
-| **`transaction_status_audit`**| Immutable Audit | Mirrored append-only status change audit trail with cryptographic SHA-256 hash chaining. Protected by trigger against `UPDATE`/`DELETE`. | `audit_id` (PK), `transaction_id`, `from_status`, `to_status`, `change_reason`, `reason_details`, `actor_id`, `actor_type`, `changed_at`, `sha256_hash`, `prev_hash` | `compliance-service` |
+| **`ledger_mutation_audit`**| Immutable Audit | Append-only financial mutation mirror. Written directly by `t24-mock-cbs` upon transaction commit. Protected by PostgreSQL triggers preventing `UPDATE`/`DELETE`. | `audit_id` (PK), `transaction_id` (UNIQUE), `source_account_id`, `target_account_id`, `amount`, `sha256_hash` | `t24-mock-cbs` |
+| **`reversal_audit`** | Compliance | Immutable audit trail of dual-control Maker-Checker reversal operations. Written directly by `t24-mock-cbs` upon reversal commit. | `audit_id` (PK), `ticket_id`, `maker_id`, `checker_id`, `original_tx_id`, `approved_at`, `reversal_tx_id` | `t24-mock-cbs` |
+| **`failed_transaction_audit`**| Ops / Compliance | Dead Letter Queue (DLQ) failure payloads and circuit breaker trip events for incident inspection and replay. Managed by `t24-mock-cbs`. | `incident_id` (PK), `transaction_id`, `error_code`, `payload_json`, `stack_trace`, `replay_status` | `t24-mock-cbs` |
+| **`eod_reports_metadata`**| Compliance Vault | Registry and cryptographic verification ledger of generated EOD artifacts. Managed by `t24-mock-cbs` upon EOD batch finalization. | `report_id` (PK), `report_type`, `file_uri`, `sha256_checksum`, `record_count`, `retention_expiry_date` | `t24-mock-cbs` |
+| **`compliance_filings`** | Regulatory | Covered Transaction Reports (CTR) and Suspicious Transaction Reports (STR) filed per AMLA. Sealed by `t24-mock-cbs`. | `filing_id` (PK), `filing_type` (`CTR_500K`, `STR_FRAUD`), `transaction_id`, `payload_xml`, `amlc_ref` | `t24-mock-cbs` |
+| **`transaction_status_audit`**| Immutable Audit | Mirrored append-only status change audit trail with cryptographic SHA-256 hash chaining. Written directly by `t24-mock-cbs`. Protected by triggers against `UPDATE`/`DELETE`. | `audit_id` (PK), `transaction_id`, `from_status`, `to_status`, `change_reason`, `reason_details`, `actor_id`, `actor_type`, `changed_at`, `sha256_hash`, `prev_hash` | `t24-mock-cbs` |
 
 ### 4.3 Canonical Transaction Status Model & Lifecycle Audit Architecture
 
@@ -282,7 +285,7 @@ Every status mutation within the core banking enclave creates an immutable entry
 * Designed for low-latency chronological lineage lookups by `transaction_id` and regulatory compliance aggregation by `change_reason`.
 
 ##### Dedicated Audit Vault Entity: `transaction_status_audit` (`postgres-audit-vault :5432`)
-The `compliance-service` consumes all `TransactionStatusChangedEvent` messages from Kafka and mirrors them into the dedicated Audit Vault:
+The `t24-mock-cbs` core engine directly records all state transitions into the dedicated Audit Vault, maintaining an unbroken cryptographic hash chain across the financial lifecycle:
 
 | Logical Attribute | Domain Concept | Cardinality / Nullability | Architectural Purpose & Regulatory Semantics |
 | :--- | :--- | :--- | :--- |
@@ -370,15 +373,15 @@ flowchart TD
 
 | Topic Name | Event Name | Producer Service | When Produced (Trigger Condition) | Consumer Service(s) | Consumer Purpose & Action |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `banking.transfers.events` | `TransferExecutedEvent` | `t24-mock-cbs` | After ACID transaction successfully commits debits, credits, and GL entries in master DB. | 1. `notification-service`<br/>2. `compliance-service` | 1. Renders HTML receipt and emails customer.<br/>2. Persists row to `ledger_mutation_audit`, calculates hash chain, and triggers AMLA CTR if amount $\ge ₱500,000.00$. |
-| `banking.transfers.events` | `TransferReversedEvent` | `t24-mock-cbs` | After dual-control reversal settles compensating accounting entries in master DB. | 1. `notification-service`<br/>2. `compliance-service` | 1. Emails customer reversal confirmation.<br/>2. Persists immutable entry to `reversal_audit`. |
-| `banking.transfers.events` | `TransactionStatusChangedEvent` | `transfer-orchestrator` / `t24-mock-cbs` | Emitted upon every state transition across the canonical status set (`Initiated`, `Authorized`, `Reserved`, `Processing`, `Posted`, `Failed`, `Cancelled`, `PendingReversal`, `Reversed`) with mandatory change reason code and actor telemetry. | 1. `compliance-service`<br/>2. `notification-service` | 1. Mirrors transition to `transaction_status_audit` in PostgreSQL with SHA-256 hash chaining.<br/>2. Emits real-time SSE push updates / toasts to client UI. |
-| `banking.transfers.dlq` | `TransferFailedToDlqEvent` | `transfer-orchestrator`| When Resilience4j circuit breaker trips or retries exhaust. | `compliance-service` | Ingests payload into `failed_transaction_audit` for administrative review and replay API. |
+| `banking.transfers.events` | `TransferExecutedEvent` | `t24-mock-cbs` | After ACID transaction successfully commits debits, credits, and GL entries in master DB. | 1. `t24-mock-cbs` (Self-Consumption: `cbs-audit-workers`)<br/>2. `notification-service`<br/>3. `compliance-service` | 1. Asynchronously consumes own event to persist immutable audit row to `ledger_mutation_audit` in PostgreSQL with continuous SHA-256 hash chaining.<br/>2. Renders HTML receipt and emails customer.<br/>3. Aggregates stateless reporting metrics and triggers AMLA CTR generation if amount $\ge ₱500,000.00$. |
+| `banking.transfers.events` | `TransferReversedEvent` | `t24-mock-cbs` | After dual-control reversal settles compensating accounting entries in master DB. | 1. `t24-mock-cbs` (Self-Consumption: `cbs-audit-workers`)<br/>2. `notification-service`<br/>3. `compliance-service` | 1. Asynchronously consumes own event to persist immutable records to `reversal_audit` and compensating entries to `ledger_mutation_audit` with SHA-256 hash chains.<br/>2. Emails customer reversal confirmation.<br/>3. Updates reversal dispute metrics and compliance logs. |
+| `banking.transfers.events` | `TransactionStatusChangedEvent` | `transfer-orchestrator` / `t24-mock-cbs` | Emitted upon every state transition across the canonical status set (`Initiated`, `Authorized`, `Reserved`, `Processing`, `Posted`, `Failed`, `Cancelled`, `PendingReversal`, `Reversed`) with mandatory change reason code and actor telemetry. | 1. `t24-mock-cbs` (Self-Consumption: `cbs-audit-workers`)<br/>2. `compliance-service`<br/>3. `notification-service` | 1. Asynchronously consumes event to mirror state transition into `transaction_status_audit` in PostgreSQL with SHA-256 hash chaining.<br/>2. Updates in-memory compliance monitoring metrics.<br/>3. Emits real-time SSE push updates / toasts to client UI. |
+| `banking.transfers.dlq` | `TransferFailedToDlqEvent` | `transfer-orchestrator`| When Resilience4j circuit breaker trips or retries exhaust. | 1. `t24-mock-cbs`<br/>2. `compliance-service` | 1. Ingests payload into `failed_transaction_audit` for administrative review and replay.<br/>2. Alerts compliance and operations dashboard. |
 | `banking.risk.evaluations` | `RiskEvaluatedEvent` | `risk-service` | Upon completion of real-time ML fraud inference ($< 2\text{ms}$). | `compliance-service` | Stores scoring telemetry and feature vectors for auditability. |
 | `banking.risk.evaluations` | `HighFraudRiskDetectedEvent` | `risk-service` | When fraud probability score exceeds $0.85$ or structuring alert trips. | 1. `compliance-service`<br/>2. `notification-service` | 1. Creates AMLA Suspicious Transaction Report (STR) investigation docket.<br/>2. Alerts Branch Manager. |
 | `banking.batch.events` | `PostingCutoffInitiatedEvent` | `t24-mock-cbs` | When EOD Phase 0 starts and daytime online traffic is buffered for $T+1$. | `compliance-service` | Prepares reporting engines and queues nightly jobs. |
 | `banking.batch.events` | `FeeDeductedEvent` | `t24-mock-cbs` | During EOD Phase 1 when below-min ADB or dormancy fees are debited. | 1. `notification-service`<br/>2. `compliance-service` | 1. Dispatches fee deduction statement notice.<br/>2. Records fee collection audit. |
-| `banking.batch.events` | `InterestCapitalizedEvent` | `t24-mock-cbs` | During EOD Phase 2 when net 80% interest is capitalized and 20% BIR tax withheld. | 1. `notification-service`<br/>2. `compliance-service` | 1. Emails interest credited notification.<br/>2. Records BIR Form 2306 tax withholding line in audit vault. |
+| `banking.batch.events` | `InterestCapitalizedEvent` | `t24-mock-cbs` | During EOD Phase 2 when net 80% interest is capitalized and 20% BIR tax withheld. | 1. `notification-service`<br/>2. `compliance-service` | 1. Emails interest credited notification.<br/>2. Compiles BIR Form 2306 tax withholding documentation and certificates. |
 | `banking.batch.events` | `BalanceSnapshotFrozenEvent` | `t24-mock-cbs` | During EOD Phase 3 when closing balances are committed to `eod_balance_snapshots`. | `compliance-service` | Triggers E-Statement and Trial Balance generation routines. |
 | `banking.batch.events` | `EodCompletedEvent` | `t24-mock-cbs` | During EOD Phase 4 when business date advances to $T+1$ and status returns to `ONLINE`. | 1. `compliance-service`<br/>2. `gateway-service` | 1. Finalizes daily reporting packages.<br/>2. Unfreezes regular daytime transaction routing. |
 
@@ -418,9 +421,18 @@ sequenceDiagram
     Orch->>Redis: SET tx:idemp:{id} "PROCESSING" NX EX 60
     Redis-->>Orch: OK (Lock Acquired)
 
-    Note over Orch,Risk: Real-Time Background Fraud Screening (< 2ms)
-    Orch->>Risk: POST /api/v1/risk/transfer (Context)
-    Risk-->>Orch: HTTP 200 {decision: "ALLOW", score: 0.12}
+    Note over Orch,CBS: Step 1 (Read): Authoritative Account Balance Inquiry (OFS: ENQUIRY.SELECT)
+    Orch->>CBS: GET /api/v1/cbs/accounts/ACC-001294/balance
+    CBS-->>Orch: HTTP 200 {availableBalance: 100000.00, ledgerBalance: 100000.00}
+
+    Note over Orch,Risk: Step 2: Two-Stage Risk Evaluation (< 2ms S2 Tabular + Laya NLP)
+    Orch->>Risk: POST /api/v1/risk/decision (Stage A: Gate 0 & S2 XGBoost, balanceDrainRatio: 0.15)
+    Risk-->>Orch: HTTP 200 {decision_id: "DEC-100234", action: "ALLOW", s2_score: 12, memo_check_required: true}
+
+    opt Memo Check Required (Customer Transfer Memo Present)
+        Orch->>Risk: POST /api/v1/risk/memo-check {decision_id: "DEC-100234", language: "en"}
+        Risk-->>Orch: HTTP 200 {decision_id: "DEC-100234", tier: "NONE", final_action: "ALLOW", typology: "none"}
+    end
 
     Note over Orch,UI: Mandatory Biometric Challenge (Required for ALL transfers)
     Orch->>Redis: SET chal:tx:{id} "PENDING_BIOMETRIC" EX 180
@@ -441,6 +453,9 @@ sequenceDiagram
     Note over Orch,Redis: State Transition: Authorized (Reason: BIOMETRIC_AUTH_VERIFIED)
     Orch->>Redis: SET tx:state:{id} "Authorized" EX 300
 
+    Note over Orch,Risk: Post-Decision Feedback & Model Re-Training Event (Async Fire-and-Forget)
+    Orch-)Risk: POST /api/v1/risk/events {decision_id: "DEC-100234", user_action: "continued", stepup_result: "success", final_action: "ALLOW"}
+
     Note over Orch,Redis: State Transition: Reserved (Reason: FUNDS_RESERVATION_EARMARKED)
     Orch->>Redis: SET tx:state:{id} "Reserved" EX 300
 
@@ -458,7 +473,7 @@ sequenceDiagram
     CBS->>MasterDB: COMMIT TRANSACTION
     MasterDB-->>CBS: Transaction Committed
 
-    Note over CBS,Kafka: Asynchronous Event Dispatch
+    Note over CBS,Kafka: Transactional Outbox Event Dispatch to Kafka Bus
     CBS->>Kafka: Publish TransferExecutedEvent & TransactionStatusChangedEvent
     CBS->>MasterDB: UPDATE outbox_events SET status = 'PUBLISHED'
 
@@ -468,14 +483,18 @@ sequenceDiagram
     GW-->>UI: HTTP 200 OK (Transfer Successful)
     UI-->>Customer: Displays Transfer Receipt Screen
 
-    par Asynchronous Processing
+    par Asynchronous Kafka Subscribers
+        Note over Kafka,AuditDB: CBS Self-Consumption for Immutable Audit Ledger
+        Kafka->>CBS: Consume TransferExecutedEvent & TransactionStatusChangedEvent (cbs-audit-workers)
+        CBS->>AuditDB: INSERT INTO ledger_mutation_audit (...) with SHA-256 Hash Chain
+        CBS->>AuditDB: INSERT INTO transaction_status_audit (...)
+        AuditDB-->>CBS: Audit Records Sealed & Offset Committed
+    and
         Kafka->>Notif: Consume TransferExecutedEvent
         Notif->>Customer: Send HTML Receipt via MailHog SMTP (:1025)
     and
         Kafka->>Comp: Consume TransferExecutedEvent & TransactionStatusChangedEvent
-        Comp->>Comp: Compute SHA-256 Hash Chains
-        Comp->>AuditDB: INSERT INTO ledger_mutation_audit (...)
-        Comp->>AuditDB: INSERT INTO transaction_status_audit (...)
+        Comp->>Comp: Update Reporting Metrics & Trigger AMLA CTR if Amount >= 500k
     end
 ```
 
@@ -490,6 +509,8 @@ sequenceDiagram
     participant Redis as Redis Cache (:6379)
     participant Acct as Account Service (:8081)
     participant Kafka as Kafka Broker (:9092)
+    participant CBS as T24 Mock CBS (:8085)
+    participant AuditDB as Postgres Audit Vault (:5432)
     participant Comp as Compliance Svc (:8086)
 
     Customer->>UI: Submits Transfer Details
@@ -519,8 +540,13 @@ sequenceDiagram
         UI->>Customer: Shows "Transfer Cancelled by User"
     end
 
-    Kafka->>Comp: Consume TransactionStatusChangedEvent
-    Comp->>Comp: Record in transaction_status_audit
+    par Asynchronous Audit & Telemetry Ingestion
+        Kafka->>CBS: Consume TransactionStatusChangedEvent
+        CBS->>AuditDB: INSERT INTO transaction_status_audit (to_status='Cancelled', sha256_hash...)
+    and
+        Kafka->>Comp: Consume TransactionStatusChangedEvent
+        Comp->>Comp: Update In-Memory Cancellation Telemetry Metrics
+    end
 ```
 
 #### 6.1.3 Alternate Flow B: High Fraud Risk Cutoff (Immediate Block)
@@ -532,19 +558,35 @@ sequenceDiagram
     participant Orch as Transfer Orchestrator (:8082)
     participant Risk as Python Risk Engine (:8084)
     participant Kafka as Kafka Broker (:9092)
+    participant CBS as T24 Mock CBS (:8085)
+    participant AuditDB as Postgres Audit Vault (:5432)
     participant Comp as Compliance Svc (:8086)
 
-    Customer->>Orch: POST /api/v1/transfers (Suspicious Pattern / Amount)
-    Orch->>Risk: POST /api/v1/risk/transfer
-    Risk-->>Orch: HTTP 200 {decision: "BLOCK", score: 0.94, reason: "IMPOSSIBLE_VELOCITY"}
+    Customer->>Orch: POST /api/v1/transfers (Singapore IP, Velocity > 1000 km/h)
+    Orch->>Risk: POST /api/v1/risk/decision (Stage A: Gate 0 Hard Rules & S2 XGBoost)
+    Note over Risk: Gate 0 trips IMPOSSIBLE_TRAVEL_VELOCITY (> 1,000 km/h)
+    Risk-->>Orch: HTTP 200 {decision_id: "DEC-100235", action: "BLOCK", s2_score: 100, primary_flag: "IMPOSSIBLE_TRAVEL_VELOCITY"}
 
     Note over Orch: Pre-CBS Circuit Cut (State: Cancelled, Reason: FRAUD_POLICY_CIRCUIT_CUT)
     Orch->>Kafka: Publish TransactionStatusChangedEvent (toStatus='Cancelled', reason='FRAUD_POLICY_CIRCUIT_CUT')
     Orch->>Kafka: Publish HighFraudRiskDetectedEvent to banking.risk.evaluations
-    Orch-->>Customer: HTTP 403 Forbidden {error: "SECURITY_POLICY_VIOLATION", status: "Cancelled", code: "TX_BLOCKED"}
 
-    Kafka->>Comp: Consume HighFraudRiskDetectedEvent & TransactionStatusChangedEvent
-    Comp->>Comp: Record in transaction_status_audit & Open AMLA STR Docket
+    par Fire-and-Forget Feedback & AMLC SAR Generation
+        Orch-)Risk: POST /api/v1/risk/events {decision_id: "DEC-100235", user_action: "blocked", final_action: "BLOCK"}
+        Note over Risk: trigger_sar_async auto-generates AMLC SAR Document (SAR-YYYYMMDD-TX100235)
+        Risk->>Risk: Enqueue case in /api/v1/analyst/cases
+    end
+
+    Note over Orch: Core Banking CBS is NEVER contacted. Zero row locks acquired, zero reversals needed.
+    Orch-->>Customer: HTTP 403 Forbidden {error: "SECURITY_POLICY_VIOLATION", status: "Cancelled", code: "TX_BLOCKED", message: "Transaction blocked by real-time risk controls. AMLA alert docket opened."}
+
+    par Asynchronous Audit & Compliance Ingestion
+        Kafka->>CBS: Consume TransactionStatusChangedEvent
+        CBS->>AuditDB: INSERT INTO transaction_status_audit (to_status='Cancelled', sha256_hash...)
+    and
+        Kafka->>Comp: Consume HighFraudRiskDetectedEvent & TransactionStatusChangedEvent
+        Comp->>Comp: Update STR Monitoring Metrics & Link to AMLA Register
+    end
 ```
 
 #### 6.1.4 Alternate Flow C: Insufficient Account Balance (CBS Solvency Failure)
@@ -605,23 +647,32 @@ sequenceDiagram
     participant Acct as Account Service (:8081)
     participant CBS as T24 Mock CBS (:8085)
 
-    Customer->>UI: Initiates Transfer with Suspicious Memo / Recipient Context
+    Customer->>UI: Initiates Transfer (₱48,500.00, Memo: "Release fee for prize claim")
     UI->>Orch: POST /api/v1/transfers (Payload)
     Note over Orch,Redis: State: Initiated (Reason: API_INGESTION)
 
-    Note over Orch,Risk: Real-Time ML & Neural LLM Analysis
-    Orch->>Risk: POST /api/v1/risk/transfer (Payload, Memo, Telemetry)
-    Risk->>Risk: XGBoost Feature Scoring + Qwen2.5 LLM NanoJev Inference
-    Risk-->>Orch: HTTP 200 {decision: "ADVISORY_WARNING", score: 0.68, warning: {category: "ADVANCE_FEE_SCAM", message: "Warning: Transfer notes specify 'release fee' for a newly created personal account. Legitimate banks and government agencies will NEVER ask you to send money to unlock prizes, loans, or funds.", allow_cool_off: true, cool_off_duration: 600}}
+    Note over Orch,CBS: CBS Authoritative Balance Inquiry (Read: OFS ENQUIRY.SELECT)
+    Orch->>CBS: GET /api/v1/cbs/accounts/ACC-001294/balance
+    CBS-->>Orch: HTTP 200 {availableBalance: 50000.00, ledgerBalance: 50000.00}
 
-    Note over Orch,UI: Challenge with LLM Anti-Scam Advisory
+    Note over Orch,Risk: Stage A: Tabular S2 Inference (Balance Drain = 48500 / 50000 = 0.97)
+    Orch->>Risk: POST /api/v1/risk/decision {amount: 48500, balanceDrainRatio: 0.97, memo: "Release fee..."}
+    Risk-->>Orch: HTTP 200 {decision_id: "DEC-100236", action: "ALLOW", s2_score: 35, memo_check_required: true}
+
+    Note over Orch,Risk: Stage B: Laya Typology & Mobile Threat Synthesis (< 0.10ms)
+    Orch->>Risk: POST /api/v1/risk/memo-check {decision_id: "DEC-100236", language: "en"}
+    Note over Risk: Laya detects ADVANCE_FEE scam typology & near-total balance drain
+    Risk-->>Orch: HTTP 200 {decision_id: "DEC-100236", typology: "advance_fee", tier: "HIGH", final_action: "ADVISORY_WARNING", warning_dialog: {threat_category: "ADVANCE_FEE", mandatory_read_delay_seconds: 3}}
+
+    Note over Orch,UI: Challenge with Contextual Anti-Scam Advisory
     Orch-->>UI: HTTP 202 Accepted {status: "WARNING_PRESENTED", challenge_id: "CHAL-SCAM-991", warning: {...}}
     UI->>Customer: Displays Interactive In-App Anti-Scam Advisory Modal
 
     alt User Chooses 10-Minute Cool-Off Period
         Customer->>UI: Clicks "Take 10-Minute Cool-Off"
-        UI->>Orch: POST /api/v1/transfers/TX-100234/cool-off {duration_seconds: 600}
-        Orch->>Redis: SET tx:cooloff:TX-100234 "ACTIVE" EX 600
+        UI->>Orch: POST /api/v1/transfers/TX-100236/cool-off {challengeId: "CHAL-SCAM-991"}
+        Orch->>Redis: SET tx:cooloff:TX-100236 "ACTIVE" EX 600
+        Orch-)Risk: POST /api/v1/risk/events {decision_id: "DEC-100236", user_action: "paused", final_action: "ADVISORY_WARNING"}
         Orch-->>UI: HTTP 200 OK {status: "COOLING_OFF_ACTIVE", remaining_seconds: 600}
         UI->>Customer: Shows In-App Countdown Banner ("09:59 remaining. Take time to verify.")
 
@@ -695,6 +746,7 @@ sequenceDiagram
     CBS->>MasterDB: UPDATE transactions SET status = 'PendingReversal' WHERE id = 'TX-100'
     CBS->>MasterDB: INSERT INTO transaction_status_history (transaction_id, from_status='Posted', to_status='PendingReversal', change_reason='MAKER_DISPUTE_FILED', reason_details='Wrong account dispute filed by teller', actor_id='USR-99', actor_type='TELLER_MAKER')
     CBS->>MasterDB: INSERT INTO outbox_events (TransactionStatusChangedEvent)
+    CBS->>AuditDB: INSERT INTO transaction_status_audit (transaction_id, from_status='Posted', to_status='PendingReversal', change_reason='MAKER_DISPUTE_FILED', actor_id='USR-99', sha256_hash...)
     CBS-->>Orch: Ticket REV-500 Created
     Orch-->>Maker: HTTP 201 Created {ticketId: "REV-500", transactionStatus: "PendingReversal"}
 
@@ -716,14 +768,21 @@ sequenceDiagram
     CBS->>MasterDB: INSERT INTO outbox_events (TransferReversedEvent & TransactionStatusChangedEvent)
     CBS->>MasterDB: COMMIT TRANSACTION
 
+    Note over CBS,Kafka: Transactional Outbox Event Dispatch to Kafka Bus
     CBS->>Kafka: Publish TransferReversedEvent & TransactionStatusChangedEvent to banking.transfers.events
     CBS-->>Orch: OFS ACK // FUNDS.TRANSFER,REVERSAL//SUCCESS
     Orch-->>Checker: HTTP 200 OK {status: "Reversed", reversalRef: "REV-500"}
 
-    par Asynchronous Audit Ingestion
+    par Asynchronous Kafka Subscribers
+        Note over Kafka,AuditDB: CBS Self-Consumption for Reversal Audit
+        Kafka->>CBS: Consume TransferReversedEvent & TransactionStatusChangedEvent (cbs-audit-workers)
+        CBS->>AuditDB: INSERT INTO reversal_audit (ticket_id, original_tx_id, maker_id, checker_id, reason, reversal_tx_id, timestamp)
+        CBS->>AuditDB: INSERT INTO ledger_mutation_audit (Compensating Journal Lines, sha256_hash...)
+        CBS->>AuditDB: INSERT INTO transaction_status_audit (from_status='PendingReversal', to_status='Reversed', change_reason='CHECKER_REVERSAL_APPROVED_SETTLED', sha256_hash...)
+        AuditDB-->>CBS: Reversal Audit Entries Sealed & Offset Committed
+    and
         Kafka->>Comp: Consume TransferReversedEvent & TransactionStatusChangedEvent
-        Comp->>AuditDB: INSERT INTO reversal_audit (ticket_id, maker_id, checker_id, timestamp)
-        Comp->>AuditDB: INSERT INTO transaction_status_audit (...)
+        Comp->>Comp: Update Reversal Metrics & Regulatory Dispute Dossier
     end
 ```
 
@@ -749,6 +808,7 @@ sequenceDiagram
     participant Orch as Transfer Orchestrator (:8082)
     participant CBS as T24 Mock CBS (:8085)
     participant MasterDB as Primary Master DB (:1433)
+    participant AuditDB as Postgres Audit Vault (:5432)
 
     Checker->>Orch: POST /api/v1/reversals/REV-500/reject {reason: "CUSTOMER_DISPUTE_INVALID"}
     Orch->>CBS: POST /api/v1/cbs/reversals/REV-500/reject
@@ -757,6 +817,7 @@ sequenceDiagram
     CBS->>MasterDB: UPDATE transactions SET status = 'Posted' WHERE id = 'TX-100'
     CBS->>MasterDB: INSERT INTO transaction_status_history (transaction_id, from_status='PendingReversal', to_status='Posted', change_reason='CHECKER_REVERSAL_REJECTED', reason_details='Customer dispute invalid - transaction restored to Posted', actor_id='MGR-02', actor_type='MANAGER_CHECKER')
     CBS->>MasterDB: INSERT INTO outbox_events (TransactionStatusChangedEvent)
+    CBS->>AuditDB: INSERT INTO transaction_status_audit (transaction_id, from_status='PendingReversal', to_status='Posted', change_reason='CHECKER_REVERSAL_REJECTED', actor_id='MGR-02', sha256_hash...)
     CBS-->>Orch: Ticket Marked REJECTED
     Orch-->>Checker: HTTP 200 OK {ticketId: "REV-500", status: "REJECTED", transactionStatus: "Posted"}
 ```
@@ -796,8 +857,8 @@ sequenceDiagram
     participant Orch as Transfer Orchestrator (:8082)
     participant CBS as T24 Mock CBS (:8085)
     participant Kafka as Kafka Broker (:9092)
-    participant Comp as Compliance Svc (:8086)
     participant AuditDB as Postgres Audit Vault (:5432)
+    participant Comp as Compliance Svc (:8086)
 
     Customer->>Orch: POST /api/v1/transfers (Payload)
     Note over Orch: CBS experiencing catastrophic outage / network partitions
@@ -809,8 +870,14 @@ sequenceDiagram
     Orch->>Kafka: Publish TransferFailedToDlqEvent to banking.transfers.dlq
     Orch-->>Customer: HTTP 503 Service Unavailable {error: "CBS_UNAVAILABLE", incidentId: "INC-8891"}
 
-    Kafka->>Comp: Consume TransferFailedToDlqEvent
-    Comp->>AuditDB: INSERT INTO failed_transaction_audit (incident_id, payload, replay_status='PENDING_REPLAY')
+    par Asynchronous DLQ Persistence & Ops Alerting
+        Kafka->>CBS: Consume TransferFailedToDlqEvent
+        CBS->>AuditDB: INSERT INTO failed_transaction_audit (incident_id, payload, replay_status='PENDING_REPLAY')
+        AuditDB-->>CBS: DLQ Failure Record Sealed
+    and
+        Kafka->>Comp: Consume TransferFailedToDlqEvent
+        Comp->>Comp: Update Ops Dashboard & Trigger DLQ Alert
+    end
 ```
 
 #### 6.3.2 Administrative DLQ Incident Inspection and Manual Replay Flow
@@ -820,23 +887,32 @@ sequenceDiagram
     autonumber
     actor Officer as Compliance / Ops Officer
     participant Comp as Compliance Svc (:8086)
-    participant AuditDB as Postgres Audit Vault (:5432)
     participant Orch as Transfer Orchestrator (:8082)
     participant CBS as T24 Mock CBS (:8085)
+    participant AuditDB as Postgres Audit Vault (:5432)
 
     Officer->>Comp: GET /api/v1/compliance/dlq/incidents?status=PENDING_REPLAY
-    Comp->>AuditDB: SELECT * FROM failed_transaction_audit WHERE replay_status = 'PENDING_REPLAY'
-    AuditDB-->>Comp: List of Failed DLQ Records
+    Note over Comp,CBS: Stateless Query Delegation to CBS Audit API
+    Comp->>CBS: GET /api/v1/cbs/audit/dlq/incidents?status=PENDING_REPLAY
+    CBS->>AuditDB: SELECT * FROM failed_transaction_audit WHERE replay_status = 'PENDING_REPLAY'
+    AuditDB-->>CBS: List of Failed DLQ Records
+    CBS-->>Comp: HTTP 200 OK (JSON List)
     Comp-->>Officer: JSON List [INC-8891, payload, failure_reason]
 
     Note over Officer,Comp: Trigger Manual Replay After CBS Recovery
     Officer->>Comp: POST /api/v1/compliance/dlq/replay/INC-8891
-    Comp->>AuditDB: SELECT payload_json FROM failed_transaction_audit WHERE incident_id = 'INC-8891'
+    Comp->>CBS: GET /api/v1/cbs/audit/dlq/incidents/INC-8891
+    CBS->>AuditDB: SELECT payload_json FROM failed_transaction_audit WHERE incident_id = 'INC-8891'
+    AuditDB-->>CBS: Payload JSON
+    CBS-->>Comp: HTTP 200 OK (Payload JSON)
     Comp->>Orch: POST /api/v1/transfers (Replay Ingestion)
     Orch->>CBS: POST /api/v1/cbs/transfers (OFS: FUNDS.TRANSFER...)
     CBS-->>Orch: OFS ACK // SUCCESS
     Orch-->>Comp: HTTP 200 OK (Settled)
-    Comp->>AuditDB: UPDATE failed_transaction_audit SET replay_status = 'REPLAYED', resolved_at = NOW()
+    Comp->>CBS: POST /api/v1/cbs/audit/dlq/resolve/INC-8891 {replayStatus: "REPLAYED"}
+    CBS->>AuditDB: UPDATE failed_transaction_audit SET replay_status = 'REPLAYED', resolved_at = NOW()
+    AuditDB-->>CBS: DLQ Record Resolved
+    CBS-->>Comp: HTTP 200 OK (Resolved)
     Comp-->>Officer: HTTP 200 OK {incidentId: "INC-8891", status: "REPLAYED"}
 ```
 
@@ -880,7 +956,11 @@ sequenceDiagram
     CBS->>Kafka: Publish EodCompletedEvent
     CBS-->>Scheduler: HTTP 200 OK (EOD Completed for Date T)
 
-    Note over Kafka,Comp: Asynchronous Report Generation & Filing
+    Note over CBS,AuditDB: Direct Audit Sealing of EOD Batch Closure
+    CBS->>AuditDB: INSERT INTO eod_reports_metadata (business_date, closing_snapshot_hash, status='COMPLETED')
+    AuditDB-->>CBS: EOD Audit Metadata Recorded
+
+    Note over Kafka,Comp: Asynchronous Document Generation & Filing (Zero Database Access)
     par Nightly Document Generation
         Kafka->>Comp: Consume BalanceSnapshotFrozenEvent & EodCompletedEvent
         Comp->>Comp: Generate Customer PDF E-Statements
@@ -888,7 +968,8 @@ sequenceDiagram
         Comp->>Comp: Generate BIR 20% Tax Certificates (Form 2306)
         Comp->>Comp: Compile AMLA Covered Transaction Report (CTR >= 500k)
         Comp->>Storage: Save generated files to /var/storage/reports/
-        Comp->>AuditDB: INSERT INTO eod_reports_metadata (SHA-256 hashes, URIs, counts)
+        Comp->>CBS: POST /api/v1/cbs/audit/eod/reports-metadata {file_uris, sha256_checksums}
+        CBS->>AuditDB: UPDATE eod_reports_metadata WITH generated file hashes
     end
 ```
 
@@ -931,6 +1012,79 @@ sequenceDiagram
 
 ---
 
+### 6.5 Feature 5: Real-Time Risk Engine Two-Stage Pipeline & Compliance Analyst Adjudication
+
+#### 6.5.1 Two-Stage Risk Evaluation (Stage A Tabular S2 -> Stage B Laya Typology & Escalate-Only Invariant)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Customer as Customer (Mobile App)
+    participant Orch as Transfer Orchestrator (:8082)
+    participant CBS as T24 Mock CBS (:8085)
+    participant Risk as Python Risk Engine (:8084)
+    participant Acct as Account Service (:8081)
+
+    Customer->>Orch: POST /api/v1/transfers (₱15,000.00, Memo: "Urgent hospital bail release")
+    
+    Note over Orch,CBS: Authoritative Account Balance Inquiry (Read: OFS ENQUIRY.SELECT)
+    Orch->>CBS: GET /api/v1/cbs/accounts/ACC-001294/balance
+    CBS-->>Orch: HTTP 200 {availableBalance: 20000.00, ledgerBalance: 20000.00}
+
+    Note over Orch,Risk: Stage A: Tabular S2 Screening (< 30ms, Balance Drain = 15k / 20k = 0.75)
+    Orch->>Risk: POST /api/v1/risk/decision {amount: 15000.00, balanceDrainRatio: 0.75, memo: "Urgent hospital..."}
+    Note over Risk: Gate 0 Passes, S2 XGBoost outputs p = 0.22 (Below TAU_2FA)
+    Risk-->>Orch: HTTP 200 {decision_id: "DEC-5091", action: "ALLOW", s2_score: 22, memo_present: true, memo_check_required: true}
+
+    Note over Orch,Risk: Stage B: Laya Typology Semantic Evaluation (< 0.10ms)
+    Orch->>Risk: POST /api/v1/risk/memo-check {decision_id: "DEC-5091", language: "en"}
+    Note over Risk: Laya detects IMPERSONATION emergency scam typology (p=0.91)
+    Note over Risk: Escalate-Only Invariant: Escalates ALLOW to ADVISORY_WARNING
+    Risk-->>Orch: HTTP 200 {decision_id: "DEC-5091", typology: "impersonation", tier: "HIGH", final_action: "ADVISORY_WARNING", warning_dialog: {...}}
+
+    Orch-->>Customer: HTTP 202 Accepted {status: "WARNING_PRESENTED", dialog: "Impersonation Alert: Verify family identity directly"}
+    Customer->>Customer: Contacts family member and discovers impersonation fraud
+    Customer->>Orch: POST /api/v1/transfers/TX-100237/cancel {reason: "USER_ADVISORY_ABORTED"}
+    
+    Orch-)Risk: POST /api/v1/risk/events {decision_id: "DEC-5091", user_action: "cancelled", final_action: "ADVISORY_WARNING"}
+    Note over Orch: Transaction Cancelled. Core Banking System was NEVER called.
+```
+
+#### 6.5.2 Compliance Analyst Case Investigation, Forensic Review & Adjudication Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Analyst as AML / Fraud Compliance Analyst
+    participant Portal as Compliance & Ops Portal
+    participant Risk as Python Risk Engine (:8084)
+    participant Comp as Compliance Service (:8086)
+    participant AuditDB as Postgres Audit Vault (:5432)
+
+    Note over Analyst,Portal: Daily Suspicious Activity & Escalated Case Triage
+    Analyst->>Portal: Opens Fraud & Scam Case Worklist
+    Portal->>Risk: GET /api/v1/analyst/cases
+    Risk-->>Portal: HTTP 200 OK [CaseCards: {case_id, transaction_id, scam_typology, s2_score, top_3_shap_features, sar_drafted}]
+
+    Portal-->>Analyst: Displays Forensic Case Cards with SHAP Explainability & AMLC SAR Draft
+    Analyst->>Portal: Reviews Telemetry (Device Rooting, Clipboard Paste, Voice Call Coercion)
+    Analyst->>Portal: Submits Case Adjudication (CONFIRM_FRAUD with Forensic Affidavit Notes)
+    Portal->>Risk: POST /api/v1/analyst/decision {case_id: "CASE-DEC-100235", decision: "CONFIRM_FRAUD", analyst_id: "ANALYST_01", notes: "Confirmed advance-fee impersonation"}
+    Risk-->>Portal: HTTP 200 OK {status: "SUCCESS", entry: {...}}
+
+    par Audit Mirroring & Regulatory Filing
+        Portal->>Comp: POST /api/v1/compliance/filings/amla/sar {caseId: "CASE-DEC-100235", status: "ADJUDICATED_FRAUD"}
+        Comp->>CBS: POST /api/v1/cbs/audit/filings {caseId: "CASE-DEC-100235", filing_type: "STR", amlc_reference: "AML-20261007-0091"}
+        CBS->>AuditDB: INSERT INTO compliance_filings (filing_type='STR', amlc_reference, filing_status='READY_FOR_SUBMISSION')
+        AuditDB-->>CBS: Filing Record Sealed
+        CBS-->>Comp: HTTP 201 Created
+        Comp-->>Portal: HTTP 201 Created (AMLA STR Docket Sealed)
+    end
+    Portal-->>Analyst: Confirmation: Case Closed & AMLA STR Docket Filed
+```
+
+---
+
 ## 7. Business Logic Flowcharts (Happy Paths & Alternate Cases)
 
 ### 7.1 Funds Transfer Processing Logic Flowchart
@@ -942,7 +1096,8 @@ flowchart TD
     ValidatePerimeter -- Yes --> CheckIdemp{Acquire Redis Lock<br/>tx:idemp:id?}
     CheckIdemp -- Collision --> Ret409[Return HTTP 409 Duplicate Transfer]
     CheckIdemp -- Acquired --> SetInit[State: Initiated<br/>Reason: API_INGESTION]
-    SetInit --> CallRisk[Invoke Python Risk Engine<br/>FastAPI / XGBoost]
+    SetInit --> InquireBal[CBS Balance Inquiry (Read)<br/>GET /api/v1/cbs/accounts/id/balance]
+    InquireBal --> CallRisk[Invoke Python Risk Engine<br/>FastAPI / XGBoost with Balance Drain Ratio]
 
     CallRisk --> EvalRisk{Risk Engine &<br/>LLM Analysis}
     EvalRisk -- Score > 0.85 --> BlockFraud[State: Cancelled<br/>Reason: FRAUD_POLICY_CIRCUIT_CUT<br/>Emit HighFraudRiskDetectedEvent<br/>Return HTTP 403 Forbidden]
@@ -982,8 +1137,9 @@ flowchart TD
     WriteOutbox --> CommitTx[Commit ACID Transaction]
     CommitTx --> PubKafka[Publish Domain Events to Kafka<br/>banking.transfers.events]
     PubKafka --> Ret200[Return HTTP 200 OK to Client<br/>status: Posted]
+    PubKafka --> AsyncCBSAudit[CBS Self-Consumes Event:<br/>Writes Hash Chains to Postgres]
     Ret200 --> AsyncNotif[Notification Svc Sends Email]
-    Ret200 --> AsyncAudit[Compliance Svc Writes Hash Chains]
+    Ret200 --> AsyncMetrics[Compliance Svc Updates Metrics]
 ```
 
 ---
@@ -1014,8 +1170,9 @@ flowchart TD
     MarkReversed --> OutboxRev[Write Outbox Events<br/>Reversed & StatusChanged]
     OutboxRev --> CommitRev[Commit Master DB Transaction]
     CommitRev --> KafkaRev[Publish to Kafka banking.transfers.events]
-    KafkaRev --> ArchiveRev[Compliance Svc Persists to<br/>reversal_audit & status_audit]
-    ArchiveRev --> EndAppr([Reversal Settled - HTTP 200<br/>status: Reversed])
+    KafkaRev --> AsyncRevAudit[CBS Self-Consumes Event:<br/>Writes reversal_audit & status_audit]
+    KafkaRev --> AsyncRevComp[Compliance Svc Monitors Dispute Dossier]
+    CommitRev --> EndAppr([Reversal Settled - HTTP 200<br/>status: Reversed])
 ```
 
 ---
@@ -1098,10 +1255,13 @@ To guarantee financial correctness and regulatory auditability, the implementati
 
 1. **Rule 1 (Temenos OFS Wire Serialization)**:
    * The Transfer Orchestrator (`:8082`) must translate all financial instructions into official Temenos OFS syntax strings (`FUNDS.TRANSFER,INITIATE`, `FUNDS.TRANSFER,REVERSAL`) prior to transmitting them to `t24-mock-cbs` (`:8085`).
-2. **Rule 2 (Exclusive Database Connection Boundary)**:
-   * Only `t24-mock-cbs` holds datasource credentials to the Master Database (`azure-sql-db` / `oracle-xe-master`).
-   * Only `compliance-service` holds datasource credentials to `postgres-audit-vault`.
-   * The `transfer-orchestrator` must possess **zero SQL datasource configurations or JDBC drivers**.
+2. **Rule 2 (Sole Dual-Database Custodianship by Core Banking & Asynchronous Audit Ledger Ingestion via Kafka Self-Consumption)**:
+   * **Sole Database Ownership by T24 CBS**: The Core Banking System (`t24-mock-cbs:8085`) has sole, exclusive ownership of **BOTH** database engines:
+     1. Primary Master Relational Database (`azure-sql-db` / `oracle-xe-master`:1433 / :1521)
+     2. Immutable Audit Vault (`postgres-audit-vault`:5432)
+     It is the ONLY microservice configured with SQL JDBC datasources (`primaryDataSource` and `auditDataSource`).
+   * **Asynchronous Audit Ledger Writes via Kafka Self-Consumption**: When executing financial transactions (`FUNDS.TRANSFER,INITIATE`), reversals (`FUNDS.TRANSFER,REVERSAL`), or status mutations, `t24-mock-cbs` commits the master transaction and emits domain events via the transactional outbox to Kafka (`banking.transfers.events`). In the background, `t24-mock-cbs` itself consumes its own published events under consumer group `cbs-audit-workers`, writes immutable audit records to `postgres-audit-vault` (`ledger_mutation_audit`, `reversal_audit`, `transaction_status_audit`), and computes sequential cryptographic SHA-256 hash chains. This completely decouples audit ledger persistence from the synchronous payment execution path, keeping the primary account lock and response latency strictly under 5 milliseconds.
+   * **Zero-DB Tier for Orchestrator and Compliance**: Neither `transfer-orchestrator:8082` nor `compliance-service:8086` holds direct SQL datasource configurations, JDBC drivers, or connection pool credentials to either database engine. All historical audit inquiries by compliance portals or external auditors are served via CBS REST audit query endpoints (`GET /api/v1/cbs/audit/**`).
 3. **Rule 3 (Transactional Outbox Atomicity)**:
    * Senders of events must record domain events into `outbox_events` in the primary database within the exact same ACID transaction as the financial ledger mutations. Events are streamed to Kafka only after the database transaction has committed.
 4. **Rule 4 (Zero-Deadlock Account Locking Order)**:
@@ -1119,6 +1279,20 @@ To guarantee financial correctness and regulatory auditability, the implementati
 
 10. **Rule 10 (Universal Mandatory Biometric Confirmation Invariant)**:
     * Every customer funds transfer transaction unconditionally mandates cryptographic biometric authentication (Face ID, Touch ID, or FIDO2/WebAuthn assertion) signed via the client device's secure enclave and validated by `account-service:8081`. This biometric verification is strictly non-bypassable: it executes regardless of the transfer amount (no de minimis or exemption threshold) and regardless of whether the risk engine classifies the transaction as clean, low-risk, or suspicious. Any attempt to transition a transaction to `Authorized` or dispatch an OFS instruction to CBS without an active, verified biometric assertion token must be rejected immediately with `HTTP 401 Unauthorized`.
+
+11. **Rule 11 (CBS Write Isolation & Pre-Posting Perimeter Guard Invariant)**:
+    * The Core Banking System (`t24-mock-cbs:8085`) operates as a strictly protected, authoritative financial ledger of record and must only receive financial mutation instructions (`FUNDS.TRANSFER,INITIATE` or `PAYMENT.ORDER`) after all upstream perimeter validations—including idempotency, read-only balance inquiry, ML fraud screening, and mandatory biometric verification—have completely succeeded.
+    * **Balance Inquiry Separation (Read)**: To calculate the real-time **Balance Drain Ratio** (`transfer_amount / current_balance`) for ML fraud scoring, the orchestrator invokes a lightweight, non-locking read enquiry (`GET /api/v1/cbs/accounts/{id}/balance`, OFS wire equivalent `ENQUIRY.SELECT`) *prior* to invoking `risk-service:8084`. The current balance and drain ratio are supplied directly in the risk evaluation payload.
+    * **Zero T24 Pollution on Blocks**: If a transaction is blocked (due to fraud score $> 0.85$, impossible velocity, or sanction violations), the orchestrator immediately terminates the transaction at the orchestration perimeter (`HTTP 403 Forbidden`, state `Cancelled`, reason `FRAUD_POLICY_CIRCUIT_CUT`). The Core Banking System (`t24-mock-cbs`) is never invoked, zero database connections or row-level locks are acquired in the Master Database, and absolutely no compensating reversals or debit rollbacks in T24 are ever required.
+    * **External Buffering of 10-Minute Hold (No `AC.LOCKED.EVENTS`)**: When an anti-scam warning triggers a 10-minute reflection window, the `transfer-orchestrator` buffers the transfer externally in the orchestration/Redis tier (`tx:cooloff:<txId>`, 600s TTL). T24 remains completely unaware of the holding state, intentionally avoiding the creation and overhead of complex Temenos `AC.LOCKED.EVENTS` inside the core banking engine. Only when the 10-minute timer expires and the customer completes mandatory biometric reconfirmation does the orchestrator dispatch the single, final `FUNDS.TRANSFER` write instruction to T24. If the customer cancels during the 10-minute window, the Redis buffer is discarded, the transaction status is marked `Cancelled`, and T24 remains completely untouched.
+
+12. **Rule 12 (Risk Engine Escalate-Only Safety Invariant & Zero-SMS Fallback)**:
+    * The Two-Stage Risk Engine enforces a strict mathematical safety monotonicity:
+      $$\text{RiskTier}(a_1) \ge \text{RiskTier}(a_0)$$
+      where action tiers are ordered: `ALLOW` (0) < `ADVISORY_WARNING` (1) < `REQUIRE_2FA` (2) < `BLOCK` (3).
+    * Downstream NLP analysis in Stage B (Laya / NanoJev) can escalate friction (e.g., escalating `ALLOW` to `ADVISORY_WARNING` or `REQUIRE_2FA`), but it can **NEVER downgrade** a Gate 0 or Stage A `BLOCK` or `REQUIRE_2FA`.
+    * **Safe Timeout & Error Fallback**: If Stage B times out ($> 1,500\text{ms}$) or throws a model execution error, the system must immediately and safely fall back to the Stage A baseline action $a_0$. A downstream AI failure must **NEVER cause payment execution failure**.
+    * **Zero SMS OTP Authorization Invariant**: All high-friction or step-up authentication channels (`REQUIRE_2FA` / `STEP_UP`) strictly mandate device-bound cryptographic biometrics (Face ID, Touch ID, FIDO2 WebAuthn) or secure mobile push notifications paired with MPIN. Delivering OTP codes over SMS or email for transaction authorization is strictly prohibited due to SIM-swapping, SS7 interception, and social engineering vulnerabilities.
 
 ---
 
@@ -1144,13 +1318,27 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 | **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/reversals/{ticketId}/reject` | `transfer-orchestrator` | Records dispute rejection and restores transaction status to `Posted` (Wire: Native JSON). |
 | **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/eod/trigger` | Scheduled Batch Job / Ops Admin | Triggers the 4-phase End-of-Day (EOD) batch processing pipeline (Wire: Native JSON). |
 | **`t24-mock-cbs`** | `:8085` | `GET` | `/api/v1/cbs/system-date` | Internal Services / Gateway | Queries current core banking business date, status, and posting window state (Wire: Native JSON). |
+| **`t24-mock-cbs`** | `:8085` | `GET` | `/api/v1/cbs/audit/transactions/{txId}` | `compliance-service` / Auditor Portal | Queries immutable audit record, status transitions, and SHA-256 hash chain from `postgres-audit-vault`. |
+| **`t24-mock-cbs`** | `:8085` | `GET` | `/api/v1/cbs/audit/dlq/incidents` | `compliance-service` / DevOps | Queries dead-lettered DLQ failure records from `failed_transaction_audit` in `postgres-audit-vault`. |
+| **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/audit/dlq/resolve/{id}` | `compliance-service` / DevOps | Updates DLQ incident resolution status in `failed_transaction_audit`. |
+| **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/audit/filings` | `compliance-service` / AMLA Portal | Persists formal AMLA CTR/STR filing records to `compliance_filings` in `postgres-audit-vault`. |
 | **`compliance-service`** | `:8086` | `GET` | `/api/v1/compliance/audit/transactions/{txId}` | Audit / Compliance Portal | Queries immutable audit trail, status transitions, and SHA-256 hash chains. |
 | **`compliance-service`** | `:8086` | `GET` | `/api/v1/compliance/dlq/incidents` | Operations / DevOps Portal | Queries dead-lettered failed transactions for inspection. |
 | **`compliance-service`** | `:8086` | `POST` | `/api/v1/compliance/dlq/replay/{incidentId}` | Operations / DevOps Portal | Triggers authorized manual replay of a DLQ incident through the orchestrator. |
 | **`compliance-service`** | `:8086` | `GET` | `/api/v1/compliance/reports/eod/{businessDate}` | Audit / Compliance Portal | Retrieves catalog and SHA-256 checksums of generated EOD artifacts. |
 | **`compliance-service`** | `:8086` | `GET` | `/api/v1/compliance/filings/amla` | AMLA Compliance Officer Portal | Queries AMLA Covered Transaction (CTR) and Suspicious Transaction (STR) filings. |
 | **`account-service`** | `:8081` | `POST` | `/api/v1/internal/users/{userId}/validate-biometric` | `transfer-orchestrator` (Internal) | Cryptographically verifies device biometric assertion against registered user public key. |
-| **`risk-service`** | `:8084` | `POST` | `/api/v1/risk/transfer` | `transfer-orchestrator` (Internal) | Real-time ML fraud scoring and local neural LLM anti-scam advisory generation. |
+| **`risk-service`** | `:8084` | `POST` | `/api/v1/risk/transfer` | `transfer-orchestrator` (Internal) | Unified synchronous Gate 0 + S2 XGBoost scoring, mobile threat synthesis, and async review queueing. |
+| **`risk-service`** | `:8084` | `POST` | `/api/v1/risk/decision` | `transfer-orchestrator` (Internal) | Stage A: Fast synchronous tabular risk assessment (&lt;30ms) via Gate 0 hard rules and S2 XGBoost. |
+| **`risk-service`** | `:8084` | `POST` | `/api/v1/risk/memo-check` | `transfer-orchestrator` (Internal) | Stage B: Real-time NLP scam typology scoring and warning modal synthesis (&lt;0.10ms via Laya). |
+| **`risk-service`** | `:8084` | `POST` | `/api/v1/risk/events` | `transfer-orchestrator` (Internal) | Asynchronous feedback event logger, automated AMLC SAR drafting, and analyst case triage. |
+| **`risk-service`** | `:8084` | `GET` | `/api/v1/analyst/cases` | Compliance Portal / Officers | Retrieves escalated fraud and scam case cards requiring human compliance adjudication. |
+| **`risk-service`** | `:8084` | `POST` | `/api/v1/analyst/decision` | Compliance Portal / Officers | Records human compliance officer adjudication verdict (`CONFIRM_FRAUD` / `DISMISS`) with forensic notes. |
+| **`risk-service`** | `:8084` | `GET` | `/api/v1/risk/transfers/{txId}` | Internal Services / Ops | Queries transfer risk evaluation status, tabular feature records, and second-look review outcome. |
+| **`risk-service`** | `:8084` | `GET` | `/api/v1/risk/metrics` | DevOps / Datadog APM | Reports reviewer queue depth, drop counts, timeouts, and p50/p95 inference latencies. |
+| **`risk-service`** | `:8084` | `GET` | `/api/v1/risk/customers/{id}` | Internal Services / Orchestrator | Retrieves customer baseline profile, registered coordinates, and 30-day transfer statistics. |
+| **`risk-service`** | `:8084` | `POST` | `/api/v1/risk/simulate/{scenario}`| QA / Test Automation | Simulates pre-configured test scenarios (`normal`, `impossible_travel`, `scam_memo`). |
+| **`risk-service`** | `:8084` | `GET` | `/health` | Kubernetes / Gateway / Ops | Microservice health check confirming active engine backend (`laya`/`nanojev`) and Datadog APM status. |
 
 > [!NOTE]
 > ### Architectural Note: Dedicated OFS Endpoints and Payload Protocols in `t24-mock-cbs`
@@ -1161,14 +1349,16 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 >   * `POST /api/v1/cbs/transfers` — Explicit intake for customer funds transfer initiation, balance mutations, and GL ledger updates.
 >   * `POST /api/v1/cbs/reversals/{ticketId}/execute` — Dedicated execution endpoint for compensating double-entry reversal accounting.
 >   * `GET /api/v1/cbs/accounts/{accountId}/balance` — Direct core inquiry endpoint for real-time ledger balance and solvency checks.
-> * **Operational & Dispute Workflow Endpoints**:
+> * **Operational, Dispute & Audit Workflow Endpoints**:
 >   * `POST /api/v1/cbs/reversals/ticket` and `POST /api/v1/cbs/reversals/{ticketId}/reject` — Manage multi-party Maker-Checker ticketing workflows and status auditing without invoking immediate balance movements.
+>   * `GET /api/v1/cbs/audit/transactions/{txId}` and `GET /api/v1/cbs/audit/dlq/incidents` — Query immutable ledger audit rows, status transitions, and dead-lettered DLQ records from `postgres-audit-vault` to power the Zero-DB compliance service and operational dashboards.
+>   * `POST /api/v1/cbs/audit/dlq/resolve/{id}` and `POST /api/v1/cbs/audit/filings` — Authorize resolution of DLQ incidents and commit sealed AMLA regulatory filings directly to the audit vault.
 > * **Batch Pipeline Administration**:
 >   * `POST /api/v1/cbs/eod/trigger` and `GET /api/v1/cbs/system-date` — Trigger the 4-phase End-of-Day (EOD) batch state machine and inspect calendar/posting window state.
 >
 > **2. Wire Payload Protocol Clarification (OFS vs. Native JSON Payloads)**:
 > * **OFS Endpoints (`/api/v1/cbs/transfers`, `/api/v1/cbs/reversals/{ticketId}/execute`, `/api/v1/cbs/accounts/{accountId}/balance`)**: Despite being presented with clean, human-readable JSON request and response payloads throughout this specification for schema clarity and documentation readability, **these endpoints still transmit in official Temenos OFS syntax over the wire** (e.g., `FUNDS.TRANSFER,INITIATE/...`, `FUNDS.TRANSFER,REVERSAL/...`, and `ENQUIRY.SELECT...`). The `transfer-orchestrator` serializes domain commands into OFS string streams before dispatching HTTP calls, and `t24-mock-cbs` deserializes them via its internal OFS parser.
-> * **Non-OFS Endpoints (`/api/v1/cbs/reversals/ticket`, `/api/v1/cbs/reversals/{ticketId}/reject`, `/api/v1/cbs/eod/trigger`, and `GET /api/v1/cbs/system-date`)**: These endpoints **genuinely use standard JSON payloads and native HTTP REST semantics** both in design and in runtime implementation. They do **NOT** use OFS wire syntax. They are modern RESTful administrative APIs designed for programmatic interoperability with Docker schedulers, management dashboards, and the orchestration tier.
+> * **Non-OFS Endpoints (`/api/v1/cbs/reversals/ticket`, `/api/v1/cbs/reversals/{ticketId}/reject`, `/api/v1/cbs/eod/trigger`, `GET /api/v1/cbs/system-date`, and `/api/v1/cbs/audit/**`)**: These endpoints **genuinely use standard JSON payloads and native HTTP REST semantics** both in design and in runtime implementation. They do **NOT** use OFS wire syntax. They are modern RESTful administrative APIs designed for programmatic interoperability with Docker schedulers, management dashboards, and the orchestration and compliance tiers.
 
 ---
 
@@ -1852,7 +2042,7 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 ---
 
 #### 9.4.2 `GET /api/v1/compliance/dlq/incidents` (Query Dead Letter Queue Failed Incidents)
-* **Purpose**: Queries paginated list of failed DLQ transaction incidents stored in `failed_transaction_audit` for operational and compliance review.
+* **Purpose**: Queries paginated list of failed DLQ transaction incidents stored in `failed_transaction_audit` for operational and compliance review (delegated to `t24-mock-cbs` via `GET /api/v1/cbs/audit/dlq/incidents`).
 * **Caller**: Operations / DevOps Portal.
 * **Query Parameters**: `?status=PENDING_REPLAY&page=0&size=20`.
 
@@ -1885,7 +2075,7 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 ---
 
 #### 9.4.3 `POST /api/v1/compliance/dlq/replay/{incidentId}` (Trigger Manual DLQ Incident Replay)
-* **Purpose**: Operations officer triggers manual authorized replay of a dead-lettered transaction payload back through `transfer-orchestrator`.
+* **Purpose**: Operations officer triggers manual authorized replay of a dead-lettered transaction payload back through `transfer-orchestrator`. Following successful settlement, `compliance-service` calls `t24-mock-cbs` (`POST /api/v1/cbs/audit/dlq/resolve/{id}`) to resolve the incident record in PostgreSQL.
 * **Caller**: Operations / DevOps Portal.
 * **Headers**:
   * `Authorization: Bearer <OpsOfficer-JWT>`
@@ -2023,27 +2213,150 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 
 ---
 
-#### 9.5.2 `POST /api/v1/risk/transfer` (`risk-service` :8084)
-* **Purpose**: Real-time fraud scoring (<2ms XGBoost model) and natural language scam warning generation (local Qwen2.5-0.5B-Instruct neural LLM).
+#### 9.5.2 `POST /api/v1/risk/transfer` (or `/api/v1/risk/analyze`) (Unified Real-Time Risk Analysis - Synchronous S2 + Threat Telemetry)
+* **Purpose**: Primary synchronous risk screening endpoint. Executes Gate 0 deterministic hard rules, S2 XGBoost tabular inference (evaluating 40+ features including `balance_drain_ratio` and `spike_ratio`), and contextual mobile threat analysis (detecting screen sharing, active voice call coercion, and clipboard paste). If a memo is present, it executes synchronous Laya memo analysis and enqueues second-look review.
 * **Caller**: `transfer-orchestrator:8082`.
 * **Headers**: `Content-Type: application/json`.
 
 **Request Payload**:
 ```json
 {
-  "transactionId": "TX-100236",
-  "userId": "USR-10928",
-  "sourceAccount": "ACC-001294",
-  "destinationAccount": "ACC-008541",
+  "transaction_id": "TX-100236",
+  "user_id": "USR-10928",
+  "account_id": "ACC-001294",
+  "target_account_id": "ACC-008541",
   "amount": 48500.00,
   "currency": "PHP",
-  "channel": "MOBILE_APP",
-  "ipAddress": "120.29.74.112",
-  "deviceFingerprint": "dev-fp-98a7c2e14",
-  "transferMemo": "Release fee for prize claim winning package",
-  "clientMetadata": {
-    "appVersion": "2.4.0",
-    "batteryLevel": 0.88
+  "memo": "Release fee for prize claim winning package",
+  "latitude": 14.5995,
+  "longitude": 120.9842,
+  "ip_address": "120.29.74.112",
+  "ip_latitude": 14.6010,
+  "ip_longitude": 120.9890,
+  "rooted": false,
+  "hooking": false,
+  "emulator": false,
+  "tampered": false,
+  "attestation_verdict": "PASS",
+  "mock_location": false,
+  "is_vpn": false,
+  "payee_age_days": 2.0,
+  "new_payee": true,
+  "is_primary_device": true,
+  "device_id": "dev-uuid-98a7c2e14",
+  "device_context": {
+    "device_id": "dev-uuid-98a7c2e14",
+    "is_primary_device": true,
+    "device_model": "iPhone 15 Pro",
+    "os_version": "iOS 18.1",
+    "active_accessibility_services": [],
+    "media_projection": {
+      "is_screen_sharing": false,
+      "virtual_display_count": 0
+    },
+    "telephony": {
+      "call_state": "CALL_STATE_OFFHOOK",
+      "call_duration_seconds": 340.0
+    },
+    "interaction": {
+      "account_input_mode": "PASTED_FROM_CLIPBOARD",
+      "clipboard_preview_snippet": "ACC-008541",
+      "time_spent_on_form_seconds": 8.5
+    }
+  },
+  "counterparty_context": {
+    "payee_account_type": "INDIVIDUAL_SAVINGS",
+    "payee_age_hours": 48.0,
+    "is_first_interaction": true,
+    "transfer_purpose": "PRIZE_RELEASE_FEE"
+  }
+}
+```
+
+**Response Payload: Success / Advisory Warning (HTTP 200 OK)**:
+```json
+{
+  "transaction_id": "TX-100236",
+  "decision": "ADVISORY_WARNING",
+  "fraud_score": 68,
+  "is_anomaly": true,
+  "anomaly_probability": 0.6845,
+  "primary_flag": "DEVICE_THREAT_LIVE_CALL_COERCION",
+  "all_flags": [
+    "MODERATE_XGBOOST_RISK",
+    "DEVICE_THREAT_LIVE_CALL_COERCION",
+    "CLIPBOARD_PASTE_NEW_PAYEE"
+  ],
+  "metrics": {
+    "distance_from_home_km": 1.25,
+    "distance_from_last_km": 0.80,
+    "elapsed_minutes": 45.0,
+    "velocity_kmh": 1.07,
+    "is_impossible_travel": false,
+    "is_high_speed_transit": false,
+    "ip_discrepancy_km": 0.55,
+    "is_vpn_detected": false,
+    "spike_ratio": 24.25
+  },
+  "customer_summary": {
+    "user_id": "USR-10928",
+    "full_name": "Juan Dela Cruz",
+    "average_transfer": 2000.00,
+    "home_location": "Manila, PH"
+  },
+  "evaluation_time_ms": 1.45,
+  "advisory_tier": "ADVISORY_WARNING",
+  "warning_dialog": {
+    "title": "Active Phone Call & Potential Coercion Detected",
+    "threat_category": "LIVE_CALL_COERCION",
+    "body_message": "You are currently on an active phone call while executing a high-value transfer to a new payee. Fraudsters frequently impersonate bank personnel or law enforcement and pressure victims to send money immediately. Bank employees will NEVER ask you to make a transfer over the phone.",
+    "checkbox_acknowledgment_text": "I confirm that no one on the phone is instructing or pressuring me to make this transfer.",
+    "recommended_action": "HANG_UP_CALL",
+    "mandatory_read_delay_seconds": 3
+  },
+  "threat_narrative": "High-value transfer (₱48,500.00, 24.2x baseline) executed during active voice call (340s) with account number pasted from external clipboard.",
+  "auth_method": "BIOMETRIC_PRIMARY",
+  "status": "ADVISORY_PENDING",
+  "review_enqueued": true,
+  "settlement_window_seconds": 60.0,
+  "memo_analysis": {
+    "typology": "advance_fee",
+    "typology_prob": 0.942,
+    "consistency": "HIGH_RISK"
+  }
+}
+```
+
+---
+
+#### 9.5.3 `POST /api/v1/risk/decision` (Stage A: Fast Synchronous Tabular Risk & Gate 0 Hard Rules)
+* **Purpose**: Stage A fast path execution (latency budget $< 30\text{ms}$). Evaluates Gate 0 deterministic filters and S2 XGBoost model. Does NOT execute heavy NLP or LLM inference. Stores intermediate decision in `DecisionStore` and returns `memo_check_required` flag indicating whether Stage B is necessary.
+* **Caller**: `transfer-orchestrator:8082`.
+* **Headers**: `Content-Type: application/json`.
+
+**Request Payload**:
+```json
+{
+  "transfer": {
+    "transaction_id": "TX-100236",
+    "user_id": "USR-10928",
+    "account_id": "ACC-001294",
+    "target_account_id": "ACC-008541",
+    "amount": 48500.00,
+    "memo": "Release fee for prize claim winning package",
+    "payee_age_days": 2.0,
+    "new_payee": true
+  },
+  "device_context": {
+    "latitude": 14.5995,
+    "longitude": 120.9842,
+    "velocity_kmh": 1.07,
+    "distance_from_home_km": 1.25,
+    "rooted": false,
+    "emulator": false,
+    "tampered": false,
+    "attestation_verdict": "PASS",
+    "is_primary_device": true
   }
 }
 ```
@@ -2051,15 +2364,204 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 **Response Payload: Success (HTTP 200 OK)**:
 ```json
 {
-  "decision": "ADVISORY_WARNING",
-  "riskScore": 0.68,
-  "inferenceLatencyMs": 1.4,
-  "warning": {
-    "category": "ADVANCE_FEE_SCAM",
-    "message": "Warning: The transfer notes specify 'release fee' for a newly created recipient account. Legitimate financial institutions and government agencies will NEVER ask you to send money to unlock prizes, loans, or funds.",
-    "allowCoolOff": true,
-    "coolOffDurationSeconds": 600
+  "decision_id": "DEC-4A89C102EF90",
+  "action": "ALLOW",
+  "display_action": "ALLOW",
+  "s2_score": 35,
+  "memo_present": true,
+  "memo_check_required": true,
+  "threat_check_required": true,
+  "advisory_tier": "NONE",
+  "warning_dialog": null,
+  "auth_method": "BIOMETRIC_PRIMARY",
+  "latency_ms": 1.15
+}
+```
+
+---
+
+#### 9.5.4 `POST /api/v1/risk/memo-check` (Stage B: Real-Time NLP Scam Typology Scoring & Warning Synthesis)
+* **Purpose**: Stage B sync-bounded NLP evaluation (latency budget $< 1,500\text{ms}$; typically $< 0.10\text{ms}$ with Laya). Scores transfer memo text against Philippine scam typologies (`advance_fee`, `investment_scam`, `impersonation`, `job_scam`, `marketplace_scam`, `coercion`). Enforces the **Escalate-Only Safety Invariant** ($\text{RiskTier}(a_1) \ge \text{RiskTier}(a_0)$).
+* **Caller**: `transfer-orchestrator:8082`.
+* **Headers**: `Content-Type: application/json`.
+
+**Request Payload**:
+```json
+{
+  "decision_id": "DEC-4A89C102EF90",
+  "language": "en"
+}
+```
+
+**Response Payload: Success / High-Tier Typology Detected (HTTP 200 OK)**:
+```json
+{
+  "decision_id": "DEC-4A89C102EF90",
+  "typology": "advance_fee",
+  "typology_prob": 0.942,
+  "tier": "HIGH",
+  "advisory_tier": "ADVISORY_WARNING",
+  "final_action": "ADVISORY_WARNING",
+  "display_action": "ADVISORY_WARNING",
+  "modal_template_id": "MODAL_ADVANCE_FEE",
+  "warning_text": "Warning: The transfer notes indicate a fee or deposit required to claim prize winnings or packages. Legitimate financial institutions and couriers will NEVER ask for upfront transfer fees to release funds.",
+  "warning_dialog": {
+    "title": "Suspected Advance-Fee Scam Detected",
+    "threat_category": "ADVANCE_FEE",
+    "body_message": "Warning: The recipient account was created recently and the payment memo specifies a 'release fee' for prize winnings. Legitimate financial institutions and government agencies will NEVER ask you to send money to unlock prizes or funds.",
+    "checkbox_acknowledgment_text": "I understand that legitimate organizations do not require advance transfer fees to claim funds.",
+    "recommended_action": "CANCEL_TRANSFER",
+    "mandatory_read_delay_seconds": 3
+  },
+  "threat_category": "advance_fee",
+  "language": "en",
+  "timed_out": false,
+  "cached": false,
+  "latency_ms": 0.08
+}
+```
+
+---
+
+#### 9.5.5 `POST /api/v1/risk/events` (Asynchronous Event Ingestion, Automated AMLC SAR Draft & Feedback Loop)
+* **Purpose**: Post-decision asynchronous fire-and-forget event reporter. Dispatched by the orchestrator upon user interaction (`continued`, `cancelled`, `paused`, or `blocked`). Automatically triggers background generation of official AMLC Suspicious Activity Reports (SAR / STR) via `hybrid_bench.sar_generator` for `BLOCK` or `HIGH` tier cases, enqueues cases in the Analyst Triage Queue, and appends records to `data/events.jsonl` for offline model re-training.
+* **Caller**: `transfer-orchestrator:8082` (Fire-and-forget).
+* **Headers**: `Content-Type: application/json`.
+
+**Request Payload: User Pauses Transfer for 10-Minute Cool-Off**:
+```json
+{
+  "decision_id": "DEC-4A89C102EF90",
+  "user_action": "paused",
+  "stepup_result": "skipped",
+  "final_action": "ADVISORY_WARNING"
+}
+```
+
+**Request Payload: Hard Fraud Block Triggering AMLC SAR**:
+```json
+{
+  "decision_id": "DEC-100235",
+  "user_action": "blocked",
+  "stepup_result": "skipped",
+  "final_action": "BLOCK"
+}
+```
+
+**Response Payload: Success (HTTP 200 OK)**:
+```json
+{
+  "status": "RECORDED",
+  "event_id": "EVT-8F91A002",
+  "sar_drafted": true,
+  "analyst_queued": true
+}
+```
+
+---
+
+#### 9.5.6 `GET /api/v1/analyst/cases` & `POST /api/v1/analyst/decision` (Compliance Analyst Case Desk & Adjudication)
+* **Purpose**: Regulatory compliance and fraud investigation portal endpoints. `GET /api/v1/analyst/cases` lists all escalated case cards pending human adjudication. `POST /api/v1/analyst/decision` records the final compliance officer determination (`CONFIRM_FRAUD` or `DISMISS`) with forensic notes into `data/analyst_decisions.jsonl`.
+* **Caller**: Compliance & Fraud Management Portal / `compliance-service:8086`.
+* **Headers**:
+  * `Authorization: Bearer <ComplianceOfficer-JWT>`
+  * `Content-Type: application/json`
+
+**`GET /api/v1/analyst/cases` Response Payload (HTTP 200 OK)**:
+```json
+[
+  {
+    "case_id": "CASE-DEC-100235",
+    "transaction_id": "TX-100235",
+    "user_id": "USR-10928",
+    "amount": 500000.00,
+    "memo": "Crypto wallet investment yield transfer",
+    "tier": "HIGH",
+    "scam_typology": "investment_scam",
+    "user_action": "blocked",
+    "s2_initial_action": "BLOCK",
+    "final_action": "BLOCK",
+    "s2_fraud_score": 96.5,
+    "top_3_shap_features": [
+      {"feature": "velocity_kmh", "importance": 0.42, "value": 1050.4},
+      {"feature": "balance_drain_ratio", "importance": 0.31, "value": 0.98},
+      {"feature": "spike_ratio", "importance": 0.22, "value": 250.0}
+    ],
+    "sar_file_path": "hybrid_bench/reports/sar_drafts/SAR-20261007-TX-100235.txt",
+    "enqueued_at": 1791249693.8
   }
+]
+```
+
+**`POST /api/v1/analyst/decision` Request Payload**:
+```json
+{
+  "case_id": "CASE-DEC-100235",
+  "transaction_id": "TX-100235",
+  "decision": "CONFIRM_FRAUD",
+  "analyst_id": "OFFICER-AML-04",
+  "notes": "Verified impossible travel velocity from Singapore IP. Counterparty identified as unverified overseas mule account. Retained on STR register."
+}
+```
+
+**`POST /api/v1/analyst/decision` Response Payload (HTTP 200 OK)**:
+```json
+{
+  "status": "SUCCESS",
+  "entry": {
+    "case_id": "CASE-DEC-100235",
+    "transaction_id": "TX-100235",
+    "decision": "CONFIRM_FRAUD",
+    "analyst_id": "OFFICER-AML-04",
+    "notes": "Verified impossible travel velocity from Singapore IP. Counterparty identified as unverified overseas mule account. Retained on STR register.",
+    "adjudicated_at": "2026-10-07T09:45:00.120Z"
+  }
+}
+```
+
+---
+
+#### 9.5.7 `GET /api/v1/risk/metrics` & `GET /api/v1/risk/transfers/{txId}` (Operational Telemetry & Inspection)
+* **Purpose**: Real-time observability and audit inspection. `GET /metrics` exports reviewer queue depth, drop counts, timeouts, and p50/p95 latency metrics for Datadog APM ingestion. `GET /transfers/{txId}` returns full evaluation and second-look review records.
+* **Caller**: DevOps Monitoring / Datadog Agent / Internal Services.
+
+**`GET /api/v1/risk/metrics` Response Payload (HTTP 200 OK)**:
+```json
+{
+  "queue_depth": 0,
+  "drops": 0,
+  "timeouts": 0,
+  "reviews_completed": 1420,
+  "escalations": 38,
+  "escalation_rate_pct": 2.68,
+  "time_to_review_p50_ms": 0.08,
+  "time_to_review_p95_ms": 0.15,
+  "inference_p50_ms": 0.05,
+  "inference_p95_ms": 0.12
+}
+```
+
+---
+
+#### 9.5.8 `GET /health` (Service Health & APM Tracing Diagnostic)
+* **Purpose**: Microservice health check confirming active engine state and Datadog APM tracing integration.
+* **Caller**: Kubernetes Liveness Probe / Gateway / Consul.
+
+**Response Payload (HTTP 200 OK)**:
+```json
+{
+  "status": "UP",
+  "service": "risk-service",
+  "architecture": "Two-Stage Tabular S2 + Laya ModernBERT NLP",
+  "version": "2.0.0",
+  "sync_engine": "Gate 0 + XGBoost (S2)",
+  "async_reviewer": {
+    "model": "laya-multilingual",
+    "model_loaded": true,
+    "intra_op_threads": 4,
+    "settlement_window_seconds": 60.0
+  },
+  "datadog_apm": true
 }
 ```
 
@@ -2071,25 +2573,27 @@ The transition from the existing codebase to Path B will be executed in three ph
 
 ```mermaid
 flowchart LR
-    M1["Phase 1: Module Scaffolding<br/>• Create compliance-service :8086<br/>• Migrate PostgresAuditDataSource<br/>• Implement Kafka Audit Consumer<br/>• Configure SHA-256 Hash Chaining"]
-    M2["Phase 2: Decouple CBS & Orchestrator<br/>• Create t24-mock-cbs :8085<br/>• Strip JDBC from orchestrator :8082<br/>• Implement Temenos OFS Parser<br/>• Implement Outbox Publisher"]
+    M1["Phase 1: Module Scaffolding & Zero-DB Orchestrator<br/>• Create compliance-service :8086 (Stateless Reporting)<br/>• Strip JDBC drivers from transfer-orchestrator :8082<br/>• Implement Temenos OFS Serializer"]
+    M2["Phase 2: Decouple CBS as Sole Dual-DB Custodian<br/>• Create t24-mock-cbs :8085 with dual datasources<br/>• Consolidate Azure SQL & Postgres into CBS<br/>• Configure CBS Async Audit Writes via Kafka Self-Consumption<br/>• Implement Outbox Publisher"]
     M3["Phase 3: Core Capabilities & Batch<br/>• Reversal Maker-Checker Engine<br/>• Resilience4j DLQ Pipeline<br/>• 4-Phase EOD Batch Pipeline<br/>• AMLA CTR & BIR Reports"]
 
     M1 --> M2 --> M3
 ```
 
 ### Phase 1: Compliance Decoupling (`compliance-service` :8086)
-1. Scaffold `backend/compliance-service` using Spring Boot 3.
-2. Relocate `PostgresAuditDataSourceConfig.java` and `LedgerMutationAudit.java` out of `ledger-mutation-engine` into `compliance-service`.
-3. Implement Kafka consumer listening to `banking.transfers.events` and `banking.transfers.dlq`.
-4. Deploy PostgreSQL anti-tamper triggers and sequential SHA-256 hash chaining.
+1. Scaffold `backend/compliance-service` using Spring Boot 3 as a Zero-DB stateless reporting engine.
+2. Implement PDF/Excel report generators (OpenPDF, Apache POI) for customer statements, GL trial balances, and BIR Form 2306 tax certificates.
+3. Implement Kafka consumers listening to `banking.transfers.events`, `banking.transfers.dlq`, and `banking.batch.events` for event-driven report triggering and AMLA CTR aggregation.
+4. Integrate with `t24-mock-cbs` REST audit APIs (`GET /api/v1/cbs/audit/**`) for audit trail lookups and DLQ incident inspection.
 
 ### Phase 2: Engine Decoupling (`transfer-orchestrator` & `t24-mock-cbs`)
 1. Refactor `backend/ledger-mutation-engine` into two isolated Maven modules:
-   * `backend/t24-mock-cbs` (Port `:8085`, master DB owner).
-   * `backend/transfer-orchestrator` (Port `:8082`, stateless Saga & OFS client).
-2. Implement the Temenos OFS syntax generator in `transfer-orchestrator` and the corresponding OFS command parser in `t24-mock-cbs`.
-3. Implement the transactional outbox relay in `t24-mock-cbs` for Kafka streaming.
+   * `backend/t24-mock-cbs` (Port `:8085`, sole custodian of Azure SQL Master and PostgreSQL Audit Vault).
+   * `backend/transfer-orchestrator` (Port `:8082`, stateless Saga & OFS client with Zero-DB footprint).
+2. Configure `t24-mock-cbs` with dual Spring Data JPA / JDBC DataSources (`primaryDataSource` for Azure SQL :1433 and `auditDataSource` for PostgreSQL :5432).
+3. Relocate `PostgresAuditDataSourceConfig.java` and `LedgerMutationAudit.java` into `t24-mock-cbs`, deploy PostgreSQL anti-tamper triggers, and implement Kafka consumer group `cbs-audit-workers` for asynchronous self-consumption of `TransferExecutedEvent` and `TransferReversedEvent` with sequential SHA-256 hash chaining.
+4. Implement the Temenos OFS syntax generator in `transfer-orchestrator` and the corresponding OFS command parser in `t24-mock-cbs`.
+5. Implement the transactional outbox relay in `t24-mock-cbs` for Kafka streaming.
 
 ### Phase 3: Core Features & EOD Batch Implementation
 1. Implement **Intra-Bank Reversals** with Maker-Checker dual control and segregation of duties.

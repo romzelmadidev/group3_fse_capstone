@@ -8,67 +8,49 @@ This document defines the formal division of responsibilities, operational bound
 
 The platform separates fast-path edge orchestration, real-time machine learning fraud screening, authoritative core banking ledger mutations, asynchronous customer communication, and immutable regulatory compliance archiving:
 
-```
-┌───────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ EDGE & PERIMETER TIER                                                                                 │
-│                                                                                                       │
-│ ┌──────────────────┐           HTTPS / JWT           ┌──────────────────┐     token sanity check      │
-│ │ Client Channels  │────────────────────────────────►│   API Gateway    │─────────────────────────┐   │
-│ │ React & Flutter  │                                 │Spring Cloud :8080│                         │   │
-│ └──────────────────┘                                 └────────┬─────────┘                         │   │
-│                                                               │ route request                     │   │
-│                                                               ▼                                   ▼   │
-│                                                   ┌────────────────────────┐   idemp lock   ┌─────────┴─────┐
-│                                                   │ Transfer Orchestrator  │───────────────►│  Redis Cache  │
-│                                                   │   Spring Boot :8082    │◄───────────────│     :6379     │
-│                                                   └───────────┬────────────┘ Biometrics / session └───────────────┘
-│                                                               │                                       │
-│                                      ┌────────────────────────┴──────────────────────┐                │
-│                                      │ sync risk check (< 2ms)                       │                │
-│                                      ▼                                               │                │
-│                           ┌──────────────────────┐                                   │                │
-│                           │ Python Risk Engine   │                                   │                │
-│                           │ FastAPI+XGBoost :8084│                                   │                │
-│                           └──────────┬───────────┘                                   │                │
-└──────────────────────────────────────┼───────────────────────────────────────────────┼────────────────┘
-                                       │ risk events                                   │
-                                       │                                               │ 1. Translate JSON to OFS
-                                       │                                               │ 2. Dispatch OFS Wire
-                                       ▼                                               ▼
-┌───────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ CORE BANKING & PERSISTENCE TIER                                                                       │
-│                                                                                                       │
-│ ┌──────────────────────┐                     ┌────────────────────────┐                               │
-│ │ Apache Kafka Broker  │◄─direct domain evts─│      T24 Mock CBS      │ (Core Financial Engine)       │
-│ │     KRaft :9092      │                     │   Spring Boot :8085    │                               │
-│ └──────────┬───────────┘                     └───────────┬────────────┘                               │
-│            │                                             │ ACID balance & outbox updates              │
-│            │                                             ▼                                            │
-│            │                                  ┌───────────────────────┐                               │
-│            │                                  │  Azure SQL / Oracle   │ [Primary Relational DB :1433] │
-│            │                                  │ Master Ledgers/Outbox │ • balance_master  • gl_ledger │
-│            │                                  │ (Exclusive Connection)│ • transactions    • outbox    │
-│            │                                  └───────────────────────┘                               │
-└────────────┼──────────────────────────────────────────────────────────────────────────────────────────┘
-             │
-             ├─────────────────────────────────────────────┐
-             ▼                                             ▼
-┌──────────────────────────────────────────┐  ┌─────────────────────────────────────────────────────────┐
-│ Notification Service (Spring Boot :8083) │  │ Compliance & Reporting Service (Spring Boot :8086)      │
-│                                          │  │                                                         │
-│ • HTML Customer Email Receipts           │  │ • AMLA Covered Transaction Reporting (CTR >= 500k PHP)  │
-│ • High-Risk Security Alert Notices       │  │ • Suspicious Transaction Reporting (STR Dockets)       │
-│ • Real-Time SSE Browser Toasts           │  │ • EOD Financial Report Generation (PDF/CSV Extracts)    │
-│ • MailHog SMTP (:1025) Integration       │  │ • Report File Persistence (S3 / Blob Storage Volume)    │
-│ • Cryptographic Hash Chaining & DLQ Replay Auditing     │
-│                                          │  │ • Custodian of Immutable PostgreSQL Audit Vault (:5432) │
-└──────────────────────────────────────────┘  └────────────────────────────┬────────────────────────────┘
-                                                                           │ append-only SQL inserts
-                                                                           ▼
-                                                              ┌─────────────────────────┐
-                                                              │ PostgreSQL Audit Vault  │ [:5432]
-                                                              │  ledger_mutation_audit  │ (Append-Only Trigger)
-                                                              └─────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph EdgePerimeterTier["Edge & Perimeter Tier"]
+        Clients["Client Channels<br/>(React & Flutter)"]
+        GW["API Gateway (:8080)<br/>Spring Cloud Gateway"]
+        Orch["Transfer Orchestrator (:8082)<br/>Stateless Saga / Zero-DB"]
+        Redis[("Redis Cache (:6379)<br/>Idempotency & Biometrics")]
+        Risk["Python Risk Engine (:8084)<br/>FastAPI / XGBoost / Laya"]
+
+        Clients -->|HTTPS / JWT| GW
+        GW -->|Route Request| Orch
+        GW -.->|Token Blacklist Check| Redis
+        Orch <-->|Idempotency & Session Locks| Redis
+        Orch -->|Sync Risk Decision <30ms| Risk
+    end
+
+    subgraph CoreBankingTier["Core Banking & Sole Dual-DB Custodianship Tier"]
+        CBS["T24 Mock CBS (:8085)<br/>Spring Boot / Dual DataSource Custodian"]
+        MasterDB[("Primary Master DB (:1433)<br/>Azure SQL / Oracle<br/>balance_master, gl_ledger, outbox")]
+        AuditDB[("PostgreSQL Audit Vault (:5432)<br/>Immutable Append-Only<br/>ledger_mutation_audit, reversal_audit")]
+
+        Orch -->|1. Translate JSON to OFS<br/>2. Dispatch OFS Wire| CBS
+        CBS -->|ACID Balance & GL Updates| MasterDB
+        CBS -->|Asynchronous Audit Writes & SHA-256 Hash Chains| AuditDB
+    end
+
+    subgraph EventStreamingTier["Event Streaming Bus"]
+        Kafka[["Apache Kafka Broker (:9092)<br/>KRaft Mode"]]
+        CBS -->|Publish Domain & Status Events| Kafka
+        Kafka -->|Self-Consumption: cbs-audit-workers<br/>TransferExecutedEvent| CBS
+        Risk -.->|Feedback Events| Kafka
+    end
+
+    subgraph AsyncReportingTier["Asynchronous Reporting Tier (Zero Database Access)"]
+        Notif["Notification Service (:8083)<br/>HTML Receipts & Alerts"]
+        Comp["Compliance & Reporting Service (:8086)<br/>Stateless PDF / Excel Generation & AMLA CTR/STR"]
+        ReportsVol[("Report File Storage<br/>/var/storage/reports/")]
+
+        Kafka -->|Receipts & Notices| Notif
+        Kafka -->|Audit Events & Batch Triggers| Comp
+        Comp -->|Persist PDF / Excel Artifacts| ReportsVol
+        Comp <-->|REST Audit Queries<br/>GET /api/v1/cbs/audit/**| CBS
+    end
 ```
 
 ---
@@ -142,27 +124,37 @@ The platform separates fast-path edge orchestration, real-time machine learning 
 ---
 
 ### 5. Decoupled Risk Engine (`risk-service`)
-* **Technology Stack**: Python 3.11, FastAPI, Uvicorn, XGBoost, NumPy, scikit-learn.
+* **Technology Stack**: Python 3.12+, FastAPI, Uvicorn, XGBoost, Scikit-Learn, Laya Non-Autoregressive Encoder (ModernBERT / mmBERT), Fallback NanoJev (Qwen2.5-0.5B INT8 ONNX Runtime), Datadog APM (`ddtrace`).
 * **Port**: `:8084`.
+* **Architecture**: **Two-Stage Multi-Model Risk Engine** (Synchronous Tabular S2 + Synchronous NLP Laya Encoder).
 * **Primary Responsibilities**:
-  1. **Assessing Risky Transactions (< 2ms SLA)**: Real-time ML inference evaluating transfer risk using an in-memory XGBoost binary classification model.
-  2. **Dynamic Feature Vector Extraction**:
-     * **Transaction Amount & Ratio**: Compares transaction amount against the customer's average 30-day transaction profile.
-     * **Velocity Burst Detection**: Calculates rolling transfer frequency per minute/hour.
-     * **Geographical & IP Anomaly**: Flags sudden logins from high-risk foreign IP subnets or impossible travel velocity.
-     * **Counterparty Risk**: Inspects beneficiary account flags and newly added payee age.
-  3. **Multi-Tier Risk Decision Engine**:
-     * **`ALLOW` (Score $\le 0.40$)**: Low risk. Authorizes straight-through processing (STP).
-     * **`ADVISORY_WARNING` ($0.40 < \text{Score} \le 0.85$)**: Elevated risk or scam pattern. Generates neural LLM anti-scam warnings with optional 10-minute cool-off, before proceeding to mandatory biometric confirmation.
-     * **`BLOCK` (Score $> 0.85$)**: High risk. Triggers automated pre-CBS circuit cut; blocks transaction before any ledger mutation can occur.
-  4. **Asynchronous Risk Telemetry Publishing**: Emits structured evaluation payloads to Kafka topic `banking.risk.evaluations` (`RiskEvaluatedEvent`, `HighFraudRiskDetectedEvent`).
-  5. **Asynchronous Case Review Queue**: Background thread pool feeding suspicious transactions into an internal queue for second-look human fraud analyst review.
-* **Data Ownership**: Local RAM feature store and serialized ML model (`xgb_fraud_model.onnx` / `.bin`). Zero direct SQL database connectivity.
+  1. **Stage A: Deterministic Rules & Tabular XGBoost S2 (< 30ms SLA)**:
+     * **Gate 0 Deterministic Hard Rules**: Immediate execution of non-bypassable perimeter filters (impossible travel velocity > 1,000 km/h, mock GPS, critical device tampering/emulator $\ge ₱50,000$, rooted device with new payee $\ge ₱10,000$) -> Instant `BLOCK` or `REQUIRE_2FA`.
+     * **S2 Tabular XGBoost Inference**: Evaluates 40+ behavioral, velocity, counterparty, and financial features calibrated via `TabularFeaturePipeline`.
+     * **Real-Time Balance Drain Ratio**: Directly consumes `currentBalance` fetched via orchestrator pre-scoring CBS inquiry (`amount / currentBalance`); drain ratios $\ge 0.90$ flag near-complete account depletion.
+     * **Mobile Threat Telemetry**: Detects active screen sharing (`MediaProjectionState.is_screen_sharing`), active voice call coercion (`TelephonyState.call_state == 'CALL_STATE_OFFHOOK'`), and account clipboard paste (`InteractionContext.account_input_mode`).
+  2. **Stage B: Synchronous NLP Threat & Memo Synthesis (< 0.10ms SLA via Laya)**:
+     * Powered by the **Laya** non-autoregressive encoder (ModernBERT / mmBERT, 10,000+ tx/s) with fallback to **NanoJev** (Qwen2.5-0.5B ONNX).
+     * Analyzes unstructured customer transfer memo text in real time against Philippine scam typologies (`advance_fee`, `investment_scam`, `impersonation`, `job_scam`, `marketplace_scam`, `coercion`, Tagalog/Taglish vernacular).
+     * Enforces the **Escalate-Only Safety Invariant**: $\text{RiskTier}(a_1) \ge \text{RiskTier}(a_0)$. Downstream NLP can escalate friction, but can NEVER downgrade a Stage A `BLOCK` or `REQUIRE_2FA`. Safe fallback on timeout (> 1500ms) defaults to Stage A $a_0$.
+  3. **Multi-Tier Customer Friction & Decision Model**:
+     * **`ALLOW`**: Low risk. Requires mandatory cryptographic biometric confirmation on registered primary device.
+     * **`ADVISORY_WARNING`**: In-app modal with mandatory 3-second read delay. User can Cancel, Pause for 10-Minute Cool-Off, or Proceed.
+     * **`REQUIRE_2FA` (Display: `STEP_UP`)**: High behavioral anomaly. Mandates biometric confirmation + MPIN (Zero SMS/Email OTP).
+     * **`BLOCK`**: Critical fraud or impossible velocity. Pre-CBS circuit cut (`HTTP 403 Forbidden`). Zero DB connections opened; T24 is never called.
+  4. **Compliance Automation & Event Feedback Loop (Fire-and-Forget)**:
+     * **Event Dispatch (`POST /api/v1/risk/events`)**: Records user choice (`continued`, `cancelled`, `paused`, `blocked`) to `data/events.jsonl` for continuous offline model fine-tuning.
+     * **Automated AMLC SAR Drafting**: `trigger_sar_async` in `hybrid_bench.sar_generator` automatically compiles formal Suspicious Activity Reports (SAR / STR) compliant with AMLC guidelines for `BLOCK` or `HIGH` tier cases.
+     * **Compliance Analyst Triage Desk**: Exposes `GET /api/v1/analyst/cases` and `POST /api/v1/analyst/decision` for compliance officers to inspect forensic case cards with SHAP feature explainability and log human verdicts into `data/analyst_decisions.jsonl`.
+  5. **Operational Telemetry & Observability**:
+     * Emits Datadog APM tracing spans (`risk.analyze`) with trace/span ID propagation.
+     * Provides queue depth, drop counts, timeouts, and latency distributions via `GET /api/v1/risk/metrics`.
+* **Data Ownership**: Append-only event store (`data/events.jsonl`, `data/analyst_decisions.jsonl`), in-memory `TransferStore` and `DecisionStore`, and serialized ML pipelines (`s2_xgb_model.joblib`, `s2_feature_pipeline.joblib`). Zero direct SQL database connections.
 
 ---
 
 ### 6. T24 Mock Core Banking System (`t24-mock-cbs`)
-* **Technology Stack**: Spring Boot 3, Java 17, Spring Data JPA, HikariCP, Spring Kafka Producer.
+* **Technology Stack**: Spring Boot 3, Java 17, Spring Data JPA, HikariCP (Dual DataSources: `primaryDataSource` + `auditDataSource`), Spring Kafka Producer & Consumer.
 * **Port**: `:8085` (REST/OFS endpoint) / `:9100` (TCP OFS Socket).
 * **Primary Responsibilities**:
   1. **Processing Bank Transactions (Authoritative Financial Core)**: System of record for customer deposits, double-entry general ledger postings, and account balances.
@@ -171,22 +163,25 @@ The platform separates fast-path edge orchestration, real-time machine learning 
   4. **Solvency & Overdraft Protection**: Validates that `(balance_amount - hold_amount) >= requested_amount`. Rejects overdrafts with OFS NACK: `ACCOUNT.BAL.LT.ZERO`.
   5. **Amount Holds & Reservations Management**: Freezes funds by incrementing `hold_amount` via `AC.LOCKED.EVENTS,INPUT` and releases holds upon settlement or cancellation via `AC.LOCKED.EVENTS,RELEASE`.
   6. **Compensating Reversal Settlement**: Executes dual-control authorized reversals via `FUNDS.TRANSFER,REVERSAL`, atomically debiting the beneficiary, crediting the original sender, releasing liens, and creating reversing GL journal entries.
-  7. **End-of-Day (EOD) Batch State Machine**:
-     * **Phase 0 (Posting Cutoff)**: Transitions `system_dates.status = 'EOD_CUTOFF'`; buffers daytime online traffic for $T+1$.
-     * **Phase 1 (Automated Fee Deductions)**: Deducts Below-Min ADB and Dormancy charges; logs uncollected amounts to `uncollected_fees` with zero-overdraft balance capping.
-     * **Phase 2 (Daily Interest & BIR Tax Accruals)**: Calculates daily interest accruals; month-end capitalizes net 80% to customer accounts and credits 20% to GL Tax Withholding Payable.
-     * **Phase 3 (Snapshot Freezing)**: Freezes closing balances into `eod_balance_snapshots`.
-     * **Phase 4 (Business Date Rollover)**: Advances `system_dates.business_date = T+1` and sets status back to `ONLINE`.
-  8. **3-Way General Ledger Reconciliation (Levels 1 & 2)**:
-     * **Level 1 (Horizontal Trial Balance)**: Verifies $\sum \text{debit\_amount} == \sum \text{credit\_amount}$ across `gl_ledger`. Halts EOD if variance $\ne 0.0000$.
-     * **Level 2 (Vertical Subledger Rollup)**: Reconciles $\sum \text{balance\_master} \equiv \text{GL-2100-CUST-LIAB}$ and active holds against subledgers.
-   9. **Transactional Outbox Event Publishing (Rule 3)**: Atomically writes domain events to `outbox_events` in Azure SQL within the same ACID transaction as balance mutations, commits, and directly publishes to Apache Kafka before setting `status = 'PUBLISHED'`.
-   10. **Transaction Status Lifecycle & Reason Tracking (Rule 9)**: Maintains the authoritative finite state machine (`Initiated`, `Authorized`, `Reserved`, `Processing`, `Posted`, `Failed`, `Cancelled`, `PendingReversal`, `Reversed`) in `transactions` and logs every state mutation into `transaction_status_history` with mandatory change reason code, narrative details, actor ID, and high-precision UTC timestamp.
-* **Data Ownership**: **Exclusive owner of the Master Database** (`azure-sql-db` / `oracle-xe-master`). Zero connectivity to PostgreSQL.
+  7. **Asynchronous Audit Vault Ingestion & Cryptographic Hash Chaining via Kafka Self-Consumption**: Asynchronously consumes its own published domain events (`TransferExecutedEvent`, `TransferReversedEvent`, `TransactionStatusChangedEvent`) under consumer group `cbs-audit-workers` to execute append-only SQL inserts into `ledger_mutation_audit`, `reversal_audit`, and `transaction_status_audit` in `postgres-audit-vault` with sequential SHA-256 hash chaining ($Hash_N = \text{SHA256}(Hash_{N-1} + TxPayload)$).
+  8. **Failed DLQ Incident Persistence**: Consumes `TransferFailedToDlqEvent` and persists failure payloads into `failed_transaction_audit` in `postgres-audit-vault`.
+  9. **CBS Audit Query & Filing REST Endpoints**: Exposes `GET /api/v1/cbs/audit/transactions/{txId}`, `GET /api/v1/cbs/audit/dlq/incidents`, `POST /api/v1/cbs/audit/dlq/resolve/{id}`, and `POST /api/v1/cbs/audit/filings` so `compliance-service` and operational dashboards query and update audit records without direct database connectivity.
+  10. **End-of-Day (EOD) Batch State Machine**:
+      * **Phase 0 (Posting Cutoff)**: Transitions `system_dates.status = 'EOD_CUTOFF'`; buffers daytime online traffic for $T+1$.
+      * **Phase 1 (Automated Fee Deductions)**: Deducts Below-Min ADB and Dormancy charges; logs uncollected amounts to `uncollected_fees` with zero-overdraft balance capping.
+      * **Phase 2 (Daily Interest & BIR Tax Accruals)**: Calculates daily interest accruals; month-end capitalizes net 80% to customer accounts and credits 20% to GL Tax Withholding Payable.
+      * **Phase 3 (Snapshot Freezing)**: Freezes closing balances into `eod_balance_snapshots`.
+      * **Phase 4 (Business Date Rollover)**: Advances `system_dates.business_date = T+1` and sets status back to `ONLINE`.
+  11. **3-Way General Ledger Reconciliation (Levels 1 & 2)**:
+      * **Level 1 (Horizontal Trial Balance)**: Verifies $\sum \text{debit\_amount} == \sum \text{credit\_amount}$ across `gl_ledger`. Halts EOD if variance $\ne 0.0000$.
+      * **Level 2 (Vertical Subledger Rollup)**: Reconciles $\sum \text{balance\_master} \equiv \text{GL-2100-CUST-LIAB}$ and active holds against subledgers.
+  12. **Transactional Outbox Event Publishing (Rule 3)**: Atomically writes domain events to `outbox_events` in Azure SQL within the same ACID transaction as balance mutations, commits, and directly publishes to Apache Kafka before setting `status = 'PUBLISHED'`.
+  13. **Transaction Status Lifecycle & Reason Tracking (Rule 9)**: Maintains the authoritative finite state machine (`Initiated`, `Authorized`, `Reserved`, `Processing`, `Posted`, `Failed`, `Cancelled`, `PendingReversal`, `Reversed`) in `transactions` and logs every state mutation into `transaction_status_history` with mandatory change reason code, narrative details, actor ID, and high-precision UTC timestamp.
+* **Data Ownership**: **Sole and Exclusive Custodian of BOTH Databases** (`azure-sql-db` / Primary Master DB :1433 AND `postgres-audit-vault` / Immutable Audit Vault :5432). Dual-datasource architecture with Zero direct database connectivity permitted for any other microservice.
 
 ---
 
-### 7. Notification & Alert Service (`notification-service`)
+### 7. Notification### 7. Notification & Alert Service (`notification-service`)
 * **Technology Stack**: Spring Boot 3, Java 17, Spring Kafka Consumer, Thymeleaf Template Engine, JavaMailSender.
 * **Port**: `:8083`.
 * **Primary Responsibilities**:
@@ -201,41 +196,29 @@ The platform separates fast-path edge orchestration, real-time machine learning 
 ---
 
 ### 8. Compliance & Reporting Service (`compliance-service`)
-* **Technology Stack**: Spring Boot 3, Java 17, Spring Data JPA, HikariCP, Spring Kafka Consumer, OpenPDF / Apache POI.
+* **Technology Stack**: Spring Boot 3, Java 17, Spring Kafka Consumer, OpenPDF / Apache POI, WebClient / RestTemplate. (Zero JDBC drivers, zero SQL datasources).
 * **Port**: `:8086`.
 * **Primary Responsibilities**:
-  1. **Custodian of the Immutable PostgreSQL Audit Vault**: Exclusively owns and manages connection pool `HikariPool-PostgresAudit` connecting to `postgres-audit-vault:5432`.
-  2. **Asynchronous Audit Event Ingestion**: Consumes from `banking.transfers.events`, `banking.batch.events`, and `banking.transfers.dlq` under consumer group `compliance-reporting-workers`.
-  3. **Idempotent Audit Persistence**: Executes append-only SQL inserts into `ledger_mutation_audit` with conflict handling:
-     ```sql
-     INSERT INTO ledger_mutation_audit (...) VALUES (...) 
-     ON CONFLICT (transaction_id) DO NOTHING;
-     ```
-  4. **Cryptographic Audit Hash Chaining**: Computes sequential SHA-256 hashes ($Hash_N = \text{SHA256}(Hash_{N-1} + TxPayload)$) linking audit rows to guarantee mathematical proof of immutability against database tampering.
-  5. **AMLA Regulatory Compliance (Republic Act No. 9160)**:
+  1. **Stateless Regulatory Reporting & Document Generation Engine**: Generates CPU-heavy compliance artifacts (PDF E-Statements, GL Trial Balance Excel/PDF, BIR Form 2306 tax certificates, AMLA CTR/STR files), offloading compute from the core banking engine.
+  2. **Asynchronous Event Ingestion**: Consumes from `banking.transfers.events`, `banking.batch.events`, and `banking.transfers.dlq` under consumer group `compliance-reporting-workers` to trigger document generation and aggregate in-memory reporting metrics.
+  3. **AMLA Regulatory Compliance (Republic Act No. 9160)**:
      * **Covered Transaction Reporting (CTR)**: Scans transfer events; automatically aggregates and compiles mandatory CTR regulatory files for single or aggregate transactions $\ge ₱500,000.00$.
      * **Suspicious Transaction Reporting (STR)**: Ingests high-fraud alerts from `banking.risk.evaluations` (score $> 0.85$ or structuring patterns) and creates STR investigation dockets for the bank's Compliance Officer.
-  6. **BSP Circular 808 IT Risk Audit Trail**: Records complete audit trails for all manual Maker-Checker dispute reversals, recording Maker ID, Checker ID, approval signatures, and timestamps.
-  7. **Status Audit Log Mirroring**: Consumes `TransactionStatusChangedEvent` from Kafka and records append-only records to `transaction_status_audit` with cryptographic SHA-256 hash chaining.
-  8. **File Generation (Offloading Core CBS)**:
-     * **Customer Electronic Account Statements (E-Statements)**: Generates monthly customer PDF account statements with transaction tables and opening/closing balances.
-     * **General Ledger Trial Balance Reports**: Generates formal trial balance balance sheet PDFs/Excels for internal and external auditors.
-     * **Daily Transaction Journals**: Compiles complete debit/credit transaction journals with sequence numbers.
-     * **BIR 20% Withholding Tax Certificates**: Computes and formats Bureau of Internal Revenue (BIR) tax withholding certificates for interest earnings.
-     * **AMLC CTR Electronic Submission Packages**: Formats official XML/JSON files adhering to Anti-Money Laundering Council reporting schemas.
-  8. **File Persistence & Storage Management**:
+     * **Filing Registration**: Formally registers completed CTR/STR filing records by calling `POST /api/v1/cbs/audit/filings` on `t24-mock-cbs`.
+  4. **BSP Circular 808 IT Risk Audit Trail Oversight**: Queries immutable audit trails for dispute investigations via `GET /api/v1/cbs/audit/transactions/{txId}` and exposes audit queries to compliance portals.
+  5. **File Generation & Storage Management**:
+     * Generates customer PDF e-statements, GL trial balance reports, daily transaction journals, and BIR 20% withholding tax certificates.
      * Writes generated PDF, CSV, and XML report files to secure object storage (e.g., Azure Blob Storage, AWS S3, or local Docker volume `/var/storage/reports/`).
-     * Records file metadata (file path, SHA-256 checksum, record count, generation date, retention expiry) in `eod_reports_metadata`.
-  9. **Dead Letter Queue (DLQ) Incident Ingestion & Replay API**:
-     * Ingests failed and circuit-breaker-tripped transactions from `banking.transfers.dlq` into `failed_transaction_history`.
-     * Exposes administrative APIs (`GET /api/v1/compliance/dlq/incidents`, `POST /api/v1/compliance/dlq/replay/{txId}`) for compliance officers to inspect poison pills and trigger reconciliation replays.
-  10. **Level 3 General Ledger Reconciliation Checksum**:
-      * Executes cross-store audit parity checks: proves that $\text{Count}(\text{Azure SQL `transactions`}) \equiv \text{Count}(\text{PostgreSQL `ledger_mutation_audit`})$ and flags exceptions.
-* **Data Ownership**: **Exclusive owner of the PostgreSQL Audit Vault** (`postgres-audit-vault:5432`) and the Report Storage Volume. Zero connectivity to Azure SQL / Oracle Master.
+     * Submits file metadata and SHA-256 checksums to `t24-mock-cbs` (`POST /api/v1/cbs/audit/eod/reports-metadata`) to be sealed into `eod_reports_metadata`.
+  6. **Dead Letter Queue (DLQ) Incident Ingestion & Replay API**:
+     * Exposes administrative APIs (`GET /api/v1/compliance/dlq/incidents`, `POST /api/v1/compliance/dlq/replay/{txId}`) for compliance and DevOps officers to inspect poison pills and trigger reconciliation replays.
+     * Delegates incident queries to `t24-mock-cbs` (`GET /api/v1/cbs/audit/dlq/incidents`), re-injects replayed payloads to `transfer-orchestrator`, and marks incidents resolved via `t24-mock-cbs` (`POST /api/v1/cbs/audit/dlq/resolve/{id}`).
+  7. **Zero Database Footprint (Zero-DB Architecture)**: Contains zero JDBC drivers, zero datasource pools, and zero direct SQL connections to Azure SQL or PostgreSQL.
+* **Data Ownership**: Report Storage Volume (`/var/storage/reports/`). **Zero direct SQL database connectivity.**
 
 ---
 
-### 9. Primary Master Relational Database (`azure-sql-db` / `oracle-xe-master`)
+### 9. Primary Master### 9. Primary Master Relational Database (`azure-sql-db` / `oracle-xe-master`)
 * **Technology Stack**: Azure SQL Database / Oracle Database Express Edition 21c.
 * **Port**: `:1433` (TDS) / `:1521` (TNS).
 * **Primary Responsibilities**:
@@ -255,7 +238,7 @@ The platform separates fast-path edge orchestration, real-time machine learning 
   1. **Immutable Compliance Storage**: Stores `ledger_mutation_audit`, `reversal_audit`, `amount_hold_audit`, `failed_transaction_history`, `compliance_filings`, `eod_reports_metadata`, and `reconciliation_exceptions_audit`.
   2. **Native Anti-Tamper Trigger Security**: Enforces database-level triggers (`trg_no_update_delete_mutation_audit`) that reject all `UPDATE` and `DELETE` SQL commands.
   3. **Sub-5ms Audit Query Performance**: Maintains specialized B-Tree composite indexes on `(account_id, created_at)` and `(operator_id)` to serve auditor queries instantly.
-* **Data Ownership**: Accessible **exclusively by `compliance-service`**.
+* **Data Ownership**: Accessible **exclusively by `t24-mock-cbs`** (Sole Custodian). All `compliance-service` queries access audit data via CBS REST audit query endpoints (`GET /api/v1/cbs/audit/**`).
 
 ---
 
@@ -266,7 +249,7 @@ The platform separates fast-path edge orchestration, real-time machine learning 
   1. **Decoupled Commit Log**: Buffers and routes asynchronous domain events across microservices with high throughput and configurable retention (7 days).
   2. **Partitioned Chronological Ordering**: Topics are partitioned by `account_id` or `transfer_id` (6 to 12 partitions) to guarantee strict chronological per-account execution.
   3. **Standard Event Catalog**:
-     * `banking.transfers.events`: Authoritative core transaction, hold, and reversal events emitted by T24 CBS.
+     * `banking.transfers.events`: Authoritative core transaction, hold, and reversal events emitted by T24 CBS. Consumed by `notification-service`, `compliance-service`, and self-consumed by `t24-mock-cbs` (`cbs-audit-workers`) for asynchronous audit vault archiving.
      * `banking.transfers.dlq`: Poison pills and circuit-breaker escalated failures emitted by Transfer Orchestrator.
      * `banking.risk.evaluations`: Fast-path fraud scores and security alerts emitted by Python Risk Engine.
      * `banking.batch.events`: Posting cutoff, fee deduction, interest capitalization, report ready, and rollover events emitted by T24 CBS.
@@ -292,12 +275,12 @@ The platform separates fast-path edge orchestration, real-time machine learning 
 | **Customer Email Receipts & Alerts** | `notification-service` (:8083) | `kafka-broker` | Thymeleaf HTML Engine, MailHog SMTP (:1025) |
 | **Real-Time Client Toasts** | `notification-service` (:8083) | `frontend` | Server-Sent Events (SSE) `/stream/{userId}` |
 | **File Generation (Statements & Reports)**| `compliance-service` (:8086) | `kafka-broker` | OpenPDF, Apache POI, XML Serializers |
-| **File Persistence & Hash Tracking** | `compliance-service` (:8086) | `postgres-audit-vault`| Storage Volume / S3, `eod_reports_metadata` |
+| **File Persistence & Hash Tracking** | `compliance-service` (:8086) | `t24-mock-cbs`, `postgres-audit-vault` | Storage Volume / S3, `POST /api/v1/cbs/audit/eod/reports-metadata` |
 | **AMLA Covered Transaction Reporting**| `compliance-service` (:8086) | `kafka-broker` | Automated CTR Aggregator ($\ge$ ₱500k PHP) |
-| **Immutable Audit Vault Archiving** | `compliance-service` (:8086) | `postgres-audit-vault`| Append-Only `ledger_mutation_audit`, Triggers |
-| **Cryptographic Hash Chaining** | `compliance-service` (:8086) | `postgres-audit-vault`| Sequential SHA-256 Hash Chain |
-| **DLQ Failure Ingestion & Replay API**| `compliance-service` (:8086) | `kafka-broker` | `failed_transaction_history`, Replay REST API |
-| **Audit Parity Check (Level 3 Recon)** | `compliance-service` (:8086) | `t24-mock-cbs`, `postgres`| Cross-Store Checksum ($\text{Count}_{\text{SQL}} == \text{Count}_{\text{PG}}$) |
+| **Immutable Audit Vault Archiving** | `t24-mock-cbs` (:8085) | `postgres-audit-vault`, `kafka-broker` | Append-Only `ledger_mutation_audit`, Triggers, Self-Consumption |
+| **Cryptographic Hash Chaining** | `t24-mock-cbs` (:8085) | `postgres-audit-vault`, `kafka-broker` | Sequential SHA-256 Hash Chain via `cbs-audit-workers` |
+| **DLQ Failure Ingestion & Replay API**| `compliance-service` (:8086) | `t24-mock-cbs`, `kafka-broker` | `failed_transaction_audit`, Replay REST API |
+| **Audit Parity Check (Level 3 Recon)** | `compliance-service` (:8086) | `t24-mock-cbs`, `postgres-audit-vault`| Cross-Store Checksum ($\text{Count}_{\text{SQL}} == \text{Count}_{\text{PG}}$) via CBS REST API |
 
 ---
 
@@ -305,29 +288,23 @@ The platform separates fast-path edge orchestration, real-time machine learning 
 
 ### A. What Files Are Generated and by Whom?
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ COMPLIANCE & REPORTING SERVICE (:8086)                                                │
-├──────────────────────────┬─────────────────────────────┬───────────────────────────────┤
-│ File Document Type       │ Format & Generator          │ Regulatory / Business Purpose │
-├──────────────────────────┼─────────────────────────────┼───────────────────────────────┤
-│ 1. Customer E-Statements │ PDF (OpenPDF / iText)       │ Monthly statement of accounts │
-│ 2. GL Trial Balance      │ PDF & Excel (Apache POI)    │ Internal and external audit   │
-│ 3. Transaction Journal   │ CSV & PDF                   │ Daily debit/credit audit trail│
-│ 4. BIR Tax Certificates  │ PDF (BIR Form 2306 template)│ 20% Final Withholding Tax cert│
-│ 5. AMLA CTR Submission   │ XML / JSON (AMLC Schema)    │ RA 9160 Covered Trans Filing  │
-│ 6. AMLA STR Case Dockets │ PDF & JSON                  │ RA 9160 Suspicious Tx Dossier │
-└──────────────────────────┴─────────────────────────────┴───────────────────────────────┘
+#### Compliance & Reporting Service (:8086)
 
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ NOTIFICATION SERVICE (:8083)                                                           │
-├──────────────────────────┬─────────────────────────────┬───────────────────────────────┤
-│ File Document Type       │ Format & Generator          │ Regulatory / Business Purpose │
-├──────────────────────────┼─────────────────────────────┼───────────────────────────────┤
-│ 1. Transaction Receipts  │ HTML (Thymeleaf Engine)     │ Instantaneous customer receipt│
-│ 2. Security Alerts       │ HTML (Thymeleaf Engine)     │ Security anomaly notification │
-└──────────────────────────┴─────────────────────────────┴───────────────────────────────┘
-```
+| File Document Type | Format & Generator | Regulatory / Business Purpose |
+| :--- | :--- | :--- |
+| **1. Customer E-Statements** | PDF (OpenPDF / iText) | Monthly statement of accounts |
+| **2. GL Trial Balance** | PDF & Excel (Apache POI) | Internal and external audit verification |
+| **3. Transaction Journal** | CSV & PDF | Daily debit/credit audit trail |
+| **4. BIR Tax Certificates** | PDF (BIR Form 2306 template) | 20% Final Withholding Tax certificate |
+| **5. AMLA CTR Submission** | XML / JSON (AMLC Schema) | RA 9160 Covered Transaction Filing ($\ge ₱500,000.00$) |
+| **6. AMLA STR Case Dockets** | PDF & JSON | RA 9160 Suspicious Transaction Dossier |
+
+#### Notification Service (:8083)
+
+| File Document Type | Format & Generator | Regulatory / Business Purpose |
+| :--- | :--- | :--- |
+| **1. Transaction Receipts** | HTML (Thymeleaf Engine) | Instantaneous customer transfer receipt |
+| **2. Security Alerts** | HTML (Thymeleaf Engine) | Security anomaly & device challenge notification |
 
 ### B. Where and How Are Files Persisted?
 
@@ -336,7 +313,7 @@ The platform separates fast-path edge orchestration, real-time machine learning 
      * **Cloud Target**: Azure Blob Storage Container / AWS S3 Bucket (`compliance-reports-vault/YYYY/MM/DD/`).
      * **Local / Docker Target**: Persistent Docker volume mounted at `/var/storage/banking-reports/`.
 2. **Metadata & Cryptographic Persistence (`postgres-audit-vault`)**:
-   * For every persisted file, `compliance-service` inserts an immutable metadata row into `eod_reports_metadata` and `compliance_filings`:
+   * For every persisted file, `compliance-service` submits file metadata and cryptographic hashes to `t24-mock-cbs` (`POST /api/v1/cbs/audit/eod/reports-metadata` and `POST /api/v1/cbs/audit/filings`), which persists them into `eod_reports_metadata` and `compliance_filings` in `postgres-audit-vault`:
      * `report_id` (Primary Key UUID)
      * `report_type` (`GL_TRIAL_BALANCE`, `CUSTOMER_STATEMENT`, `AMLA_CTR`, `BIR_TAX_2306`)
      * `file_uri` (Storage location URI)
@@ -351,7 +328,7 @@ The platform separates fast-path edge orchestration, real-time machine learning 
 
 ## 5. Summary: Why Path B is Structurally Sound
 
-1. **Zero Database Contention**: `T24 Mock CBS` never calls PostgreSQL; `transfer-orchestrator` never calls Azure SQL.
-2. **Elimination of Lock Extensions**: The primary database holds account row locks for sub-5ms because it does not make synchronous network calls to PostgreSQL during balance mutations.
+1. **Sole Dual-Database Custodianship & Zero-DB Microservices**: `t24-mock-cbs` has exclusive, authoritative control over both data stores (`azure-sql-db` Master and `postgres-audit-vault`); `transfer-orchestrator` and `compliance-service` are strictly Zero-DB microservices.
+2. **Elimination of Lock Extensions**: The primary database holds account row locks for sub-5ms because it does not make synchronous network calls to PostgreSQL during balance mutations; audit vault persistence is completely offloaded to asynchronous Kafka self-consumption.
 3. **Decoupled Heavy Operations**: PDF generation, CSV exports, AMLA reporting, and cryptographic hashing are completely offloaded from the transactional engine into `compliance-service`.
 4. **Complete Regulatory Coverage**: The architecture satisfies all legal mandates of the **Bangko Sentral ng Pilipinas (BSP)**, **Anti-Money Laundering Council (AMLC)**, and **Bureau of Internal Revenue (BIR)**.
