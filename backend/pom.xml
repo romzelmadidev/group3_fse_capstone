@@ -23,9 +23,11 @@
     <modules>
         <module>common-contracts</module>
         <module>notification-service</module>
-        <module>ledger-mutation-engine</module>
         <module>account-service</module>
         <module>gateway-service</module>
+        <module>t24-mock-cbs</module>
+        <module>transfer-orchestrator</module>
+        <module>compliance-service</module>
     </modules>
 
     <properties>
@@ -36,6 +38,10 @@
         <oracle.jdbc.version>23.5.0.24.07</oracle.jdbc.version>
         <postgresql.version>42.7.4</postgresql.version>
         <mssql.jdbc.version>12.6.1.jre11</mssql.jdbc.version>
+        <azure.storage.blob.version>12.35.0</azure.storage.blob.version>
+        <openpdf.version>3.0.5</openpdf.version>
+        <poi.version>5.5.1</poi.version>
+        <resilience4j.version>2.4.0</resilience4j.version>
     </properties>
 
     <dependencyManagement>
@@ -66,6 +72,39 @@
                 <groupId>org.postgresql</groupId>
                 <artifactId>postgresql</artifactId>
                 <version>${postgresql.version}</version>
+            </dependency>
+
+            <!-- Azure Blob Storage Client SDK (Azurite compatible) -->
+            <dependency>
+                <groupId>com.azure</groupId>
+                <artifactId>azure-storage-blob</artifactId>
+                <version>${azure.storage.blob.version}</version>
+            </dependency>
+
+            <!-- OpenPDF for PDF Document Generation -->
+            <dependency>
+                <groupId>com.github.librepdf</groupId>
+                <artifactId>openpdf</artifactId>
+                <version>${openpdf.version}</version>
+            </dependency>
+
+            <!-- Apache POI for Excel Generation -->
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi</artifactId>
+                <version>${poi.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi-ooxml</artifactId>
+                <version>${poi.version}</version>
+            </dependency>
+
+            <!-- Resilience4j Circuit Breaker -->
+            <dependency>
+                <groupId>io.github.resilience4j</groupId>
+                <artifactId>resilience4j-spring-boot3</artifactId>
+                <version>${resilience4j.version}</version>
             </dependency>
 
             <!-- Spring Cloud -->

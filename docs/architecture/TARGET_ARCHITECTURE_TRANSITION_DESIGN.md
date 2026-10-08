@@ -2,7 +2,7 @@
 
 This document is the comprehensive, authoritative design specification detailing the structural, architectural, and data model additions required to transition the core banking platform from its current implementation state to the target **Decoupled Event-Driven Core Banking Architecture (Path B)**.
 
-> **Scope Clarification**: Per current requirements, the **Amount Holds & Reservations** (`AC.LOCKED.EVENTS`) and **Three-Way General Ledger Reconciliation** features are deferred and excluded from this design phase. This document focuses strictly on **Intra-Bank Funds Transfers**, **Maker-Checker Dual Control Reversals**, **Resilience4j Circuit Breaking / DLQ Incident Management**, and the **4-Phase End-of-Day (EOD) Batch Pipeline**.
+> **Scope Clarification**: Per current requirements, the **Amount Holds & Reservations** (`AC.LOCKED.EVENTS`) and **Three-Way General Ledger Reconciliation** features are deferred and excluded from this design phase. This document focuses strictly on **Intra-Bank Funds Transfers**, **Maker-Checker Dual Control Reversals**, **Resilience4j Circuit Breaking / DLQ Incident Management**, and the **Close of Business (COB) & End-of-Day (EOD) Batch Lifecycle Pipeline** (Phases 0 through 4).
 
 ---
 
@@ -16,14 +16,14 @@ In the current repository implementation:
 1. **Synchronous Dual-Datasource Contention**: The existing `ledger-mutation-engine` manages two simultaneous HikariCP datasource pools (`oracleMasterDataSource` and `postgresAuditDataSource`). During fund transfers, it acquires pessimistic row-level locks on `balance_master` in the primary database and executes synchronous JDBC writes to PostgreSQL `ledger_mutation_audit` **while the primary database lock is still actively held**.
 2. **Blast Radius & Lock Hoarding**: Any latency spike, network blip, or connection pool exhaustion in PostgreSQL blocks primary account mutations, stalls the Oracle/Azure SQL connection pool, and cascades into global HTTP request timeouts.
 3. **Monolithic Responsibility Overload**: Financial validation, risk coordination, balance locking, audit vault archiving, and outbox relaying all reside within a single application process (`ledger-mutation-engine`), violating single-responsibility and regulatory air-gap principles.
-4. **Missing Production Capabilities**: Intra-bank transaction reversals, circuit breaking with dead letter queueing, multi-phase End-of-Day (EOD) batch accounting, and automated AMLA/BIR regulatory filings are currently unimplemented.
+4. **Missing Production Capabilities**: Intra-bank transaction reversals, circuit breaking with dead letter queueing, multi-phase Close of Business (COB) operational lifecycle governance and End-of-Day (EOD) batch accounting, and automated AMLA/BIR regulatory filings are currently unimplemented.
 
 ### 1.3 The Target State Solution (Path B)
 The target architecture introduces complete database custodianship isolation between the financial/audit core and peripheral services:
 * **Authoritative Financial & Audit Engine (`t24-mock-cbs` :8085)**: **Sole and exclusive custodian of BOTH database engines** (`azure-sql-db` / Primary Master DB and `postgres-audit-vault` / PostgreSQL 16). Acquires sub-5ms row-level locks on `balance_master`, mutates accounts, posts double-entry general ledger lines to `gl_ledger`, records domain events to `outbox_events` for Kafka streaming, and **directly writes immutable audit records to `ledger_mutation_audit`, `reversal_audit`, and `transaction_status_audit` in PostgreSQL with sequential SHA-256 hash chaining**. This guarantees immediate audit finality within CBS execution without relying on asynchronous message bus arrival for regulatory audit preservation.
 * **Stateless Perimeter Orchestrator (`transfer-orchestrator` :8082)**: Possesses **zero SQL datasource configurations or JDBC drivers**. Coordinates fraud evaluation, mandatory biometric confirmation (Face ID / Fingerprint), and behavioral 10-minute cool-off holds without tying up database locks, translating client JSON commands into Temenos Open Financial Services (OFS) syntax.
 * **Intelligent Anti-Scam Protection & Cognitive Cool-Off**: Leverages the two-stage risk pipeline (Gate 0 + S2 XGBoost, and Stage B Laya ModernBERT/mmBERT encoder with NanoJev fallback) within `risk-service:8084` to synthesize personalized anti-scam advisories. Empowers users to trigger a voluntary **10-minute cooling-off period** managed by `redis-cache`, enforcing a cognitive pause before funds can be settled.
-* **Stateless Compliance & Reporting Engine (`compliance-service` :8086)**: Possesses **zero SQL datasource configurations or direct database connections**. Decoupled completely from database access, it consumes Kafka events and queries CBS read-only audit APIs to compile AMLA reports (CTR $\ge 500\text{k}$, STR), manage DLQ incident inspections/replays, and offload CPU-heavy End-of-Day PDF/Excel customer statement and GL trial balance generation.
+* **Stateless Compliance & Reporting Engine (`compliance-service` :8086)**: Possesses **zero SQL datasource configurations or direct database connections**. Decoupled completely from database access, it consumes Kafka events and queries CBS read-only audit APIs to compile AMLA reports (CTR $\ge 500\text{k}$, STR), manage DLQ incident inspections/replays, and offload CPU-heavy Close of Business / End-of-Day PDF/Excel customer statement and GL trial balance generation.
 
 ---
 
@@ -32,7 +32,9 @@ The target architecture introduces complete database custodianship isolation bet
 ```mermaid
 flowchart TD
     subgraph Edge_Tier["Perimeter, Identity & Edge Tier"]
-        UI["Client Channels<br/>(React / Flutter)"]
+        UI["Client Channels<br/>(React / Flutter 24/7)"]
+        OPS_UI["Operations Admin Portal<br/>(Bank Manager / Ops UI)"]
+        CRON["Automated Batch Scheduler<br/>(Docker Cron / K8s CronJob)"]
         GW["API Gateway (:8080)<br/>(Spring Cloud Gateway)"]
         ACCT["Account Service (:8081)<br/>(Auth, JWT, KYC Profile &<br/>Biometric Assertion Validator)"]
         REDIS[("Redis Cache (:6379)<br/>Token Blacklist, Idempotency<br/>& 10-Min Cool-Off Locks")]
@@ -42,7 +44,7 @@ flowchart TD
 
     subgraph Core_Enclave["Authoritative Core Banking Enclave (Sole Database Custodian)"]
         CBS["T24 Mock CBS (:8085)<br/>(Authoritative Financial & Audit Engine<br/>Sole Custodian of Master & Audit DBs)"]
-        MASTER_DB[("Primary Master Database (:1433 / :1521)<br/>Azure SQL / Oracle Master<br/>- balance_master - gl_ledger<br/>- transactions - outbox_events")]
+        MASTER_DB[("Primary Master Database (:1433 / :1521)<br/>Azure SQL / Oracle Master<br/>- balance_master - gl_ledger<br/>- transactions - outbox_events<br/>- system_dates - cob_batch_log")]
         AUDIT_DB[("PostgreSQL Audit Vault (:5432)<br/>- ledger_mutation_audit (Hash Chained)<br/>- reversal_audit - status_audit")]
     end
 
@@ -57,9 +59,12 @@ flowchart TD
     end
 
     UI -->|HTTPS / JWT| GW
+    OPS_UI -->|Admin HTTPS / JWT| GW
+    CRON -->|Nightly 00:00 UTC Trigger<br/>POST /cbs/cob/trigger| CBS
     GW -->|Validate Token| REDIS
     GW -->|Route Auth, KYC & Users| ACCT
     GW -->|Route Transfers & Reversals| ORCH
+    GW -->|Route Admin Batch & Audit| CBS
     ACCT -->|Token Sessions & Blacklist| REDIS
     ORCH -->|Validate Biometric Signature| ACCT
     ORCH -->|Atomic Idempotency & Cool-Off Locks| REDIS
@@ -79,10 +84,12 @@ flowchart TD
 
 ### 2.1 Architectural Tier Breakdown & Component Roles
 * **Perimeter, Identity & Edge Tier**:
+  * **`Automated Batch Scheduler (Docker Cron / K8s CronJob)`**: Dedicated infrastructure scheduler daemon firing automated nightly batches at `00:00 UTC` by dispatching HTTP `POST /api/v1/cbs/cob/trigger` to `t24-mock-cbs`.
+  * **`Operations Admin Portal`**: Secure React management console used by bank operations managers and auditors to monitor real-time COB progress (`GET /api/v1/cbs/cob/status`), trigger manual batch overrides, perform modular calculations during recovery (`POST /api/v1/cbs/eod/trigger`), and adjudicate disputes.
   * **`API Gateway (:8080)`**: Central ingress point for all client requests; handles TLS termination, JWT sanity verification, token blacklist inspection against Redis, and URL routing.
   * **`Account Service (:8081)`**: Authoritative microservice for customer identity, user onboarding, KYC status tiers, credentials authentication, session JWT issuing, and mandatory cryptographic biometric assertion validation (`POST /api/v1/internal/users/{userId}/validate-biometric`).
   * **`Redis Cache (:6379)`**: Shared sub-millisecond in-memory cache for JWT blacklisting (`blacklist:jti`), distributed idempotency locks (`tx:idemp:<key>`), biometric attempt rate-limiting, and 10-minute anti-scam cooling-off timer locks (`tx:cooloff:<txId>`).
-  * **`Transfer Orchestrator (:8082)`**: Stateless Saga orchestrator decoupled from direct database drivers; manages perimeter validation, invokes `risk-service`, coordinates mandatory biometric confirmation challenges with `account-service`, enforces cool-off countdowns, and serializes requests to Temenos OFS syntax.
+  * **`Transfer Orchestrator (:8082)`**: Stateless Saga orchestrator decoupled from direct database drivers; manages perimeter validation, invokes `risk-service`, coordinates mandatory biometric confirmation challenges with `account-service`, enforces cool-off countdowns, buffers daytime traffic during cutoff (`HTTP 202 Accepted`), and serializes requests to Temenos OFS syntax.
   * **`Python Risk Engine (:8084)`**: Real-time FastAPI microservice executing sub-2ms XGBoost scoring and local neural LLM (`Qwen2.5-0.5B-Instruct` / NanoJev) inference to evaluate transfer risk and generate natural language anti-scam warning advisories.
 * **Authoritative Core Banking Enclave**:
   * **`T24 Mock CBS (:8085)`**: Isolated financial and audit core holding exclusive database connectivity to **BOTH** `azure-sql-db` and `postgres-audit-vault`. Executes atomic sub-5ms row-level locks and double-entry postings in Master DB, publishes domain events via the transactional outbox, and asynchronously consumes its own TransferExecutedEvent (and related events) from Kafka to write immutable audit records with SHA-256 hash chains to PostgreSQL.
@@ -146,8 +153,9 @@ flowchart TD
         M6["Added: uncollected_fees (Zero-Overdraft Arrears Tracking)"]
         M7["Added: interest_accruals (Daily Accrued Interest)"]
         M8["Added: eod_balance_snapshots (Closing State Freezes)"]
-        M9["Added: system_dates (Core Business Date & State Machine)"]
+        M9["Added: system_dates (Core Business Date & COB State Machine)"]
         M10["Added: transaction_status_history (Master Transition Log)"]
+        M11["Added: cob_batch_log (Master COB Operational Audit Log)"]
     end
 
     subgraph Audit_Vault["Dedicated Immutable Vault (PostgreSQL 16 :5432)"]
@@ -175,7 +183,8 @@ flowchart TD
 | **`uncollected_fees`** | Transactional | Zero-overdraft arrears ledger tracking uncollected below-min ADB fees. | `fee_id` (PK), `account_id` (FK), `fee_type`, `amount_due`, `amount_collected`, `is_settled` | `t24-mock-cbs` |
 | **`interest_accruals`** | Transactional | Daily interest accrual records calculated during EOD Phase 2 pending month-end capitalization. | `accrual_id` (PK), `account_id` (FK), `accrual_date`, `daily_rate`, `accrued_amount`, `is_capitalized` | `t24-mock-cbs` |
 | **`eod_balance_snapshots`**| Analytical | Daily immutable snapshot of closing customer balances frozen during EOD Phase 3. | `snapshot_id` (PK), `account_id` (FK), `business_date`, `closing_balance` | `t24-mock-cbs` |
-| **`system_dates`** | Control State | Core banking operational calendar and batch state machine coordinator. | `system_date_id` (PK), `business_date`, `status` (`ONLINE`, `EOD_CUTOFF`, `EOD_PROCESSING`), `is_eod_running` | `t24-mock-cbs` |
+| **`system_dates`** | Control State | Authoritative core banking operational calendar and master COB state machine coordinator. | `system_date_id` (PK), `business_date`, `status` (`ONLINE`, `EOD_CUTOFF`, `COB_PROCESSING`, `ROLLOVER`, `ERROR_HALTED`), `posting_window_open`, `last_cob_completed_at`, `updated_at` | `t24-mock-cbs` |
+| **`cob_batch_log`** | Operational Audit | Master COB operational execution audit log tracking phases, execution duration, metrics, and failure tripwires. | `batch_id` (PK), `business_date`, `started_at`, `completed_at`, `status` (`RUNNING`, `COMPLETED`, `FAILED`), `current_phase`, `accounts_processed`, `total_fees_collected`, `total_interest_accrued`, `total_tax_withheld`, `error_message` | `t24-mock-cbs` |
 | **`transaction_status_history`**| Master Audit | Chronological status change log capturing every state transition, actor ID, and mandatory change reason. | `history_id` (PK), `transaction_id` (FK), `from_status`, `to_status`, `change_reason`, `reason_details`, `actor_id`, `actor_type`, `changed_at`, `metadata_json` | `t24-mock-cbs` |
 
 ### 4.2 Dedicated Audit Vault Table Additions (`postgres-audit-vault`)
@@ -379,11 +388,11 @@ flowchart TD
 | `banking.transfers.dlq` | `TransferFailedToDlqEvent` | `transfer-orchestrator`| When Resilience4j circuit breaker trips or retries exhaust. | 1. `t24-mock-cbs`<br/>2. `compliance-service` | 1. Ingests payload into `failed_transaction_audit` for administrative review and replay.<br/>2. Alerts compliance and operations dashboard. |
 | `banking.risk.evaluations` | `RiskEvaluatedEvent` | `risk-service` | Upon completion of real-time ML fraud inference ($< 2\text{ms}$). | `compliance-service` | Stores scoring telemetry and feature vectors for auditability. |
 | `banking.risk.evaluations` | `HighFraudRiskDetectedEvent` | `risk-service` | When fraud probability score exceeds $0.85$ or structuring alert trips. | 1. `compliance-service`<br/>2. `notification-service` | 1. Creates AMLA Suspicious Transaction Report (STR) investigation docket.<br/>2. Alerts Branch Manager. |
-| `banking.batch.events` | `PostingCutoffInitiatedEvent` | `t24-mock-cbs` | When EOD Phase 0 starts and daytime online traffic is buffered for $T+1$. | `compliance-service` | Prepares reporting engines and queues nightly jobs. |
-| `banking.batch.events` | `FeeDeductedEvent` | `t24-mock-cbs` | During EOD Phase 1 when below-min ADB or dormancy fees are debited. | 1. `notification-service`<br/>2. `compliance-service` | 1. Dispatches fee deduction statement notice.<br/>2. Records fee collection audit. |
+| `banking.batch.events` | `PostingCutoffInitiatedEvent` | `t24-mock-cbs` | When master COB Phase 0 starts, locking posting for Date $T$ and buffering daytime online traffic for $T+1$. | `compliance-service` | Prepares reporting engines and queues nightly jobs. |
+| `banking.batch.events` | `FeeDeductedEvent` | `t24-mock-cbs` | During EOD Phase 1 when below-min ADB or dormancy fees are debited with zero-overdraft protection. | 1. `notification-service`<br/>2. `compliance-service` | 1. Dispatches fee deduction statement notice.<br/>2. Records fee collection audit. |
 | `banking.batch.events` | `InterestCapitalizedEvent` | `t24-mock-cbs` | During EOD Phase 2 when net 80% interest is capitalized and 20% BIR tax withheld. | 1. `notification-service`<br/>2. `compliance-service` | 1. Emails interest credited notification.<br/>2. Compiles BIR Form 2306 tax withholding documentation and certificates. |
 | `banking.batch.events` | `BalanceSnapshotFrozenEvent` | `t24-mock-cbs` | During EOD Phase 3 when closing balances are committed to `eod_balance_snapshots`. | `compliance-service` | Triggers E-Statement and Trial Balance generation routines. |
-| `banking.batch.events` | `EodCompletedEvent` | `t24-mock-cbs` | During EOD Phase 4 when business date advances to $T+1$ and status returns to `ONLINE`. | 1. `compliance-service`<br/>2. `gateway-service` | 1. Finalizes daily reporting packages.<br/>2. Unfreezes regular daytime transaction routing. |
+| `banking.batch.events` | `EodCompletedEvent` | `t24-mock-cbs` | During COB Phase 4 when business date advances to $T+1$, customer velocity limits reset, and system returns to `ONLINE`. | 1. `compliance-service`<br/>2. `gateway-service` | 1. Finalizes daily reporting packages.<br/>2. Unfreezes regular daytime transaction routing. |
 
 ---
 
@@ -578,7 +587,7 @@ sequenceDiagram
     end
 
     Note over Orch: Core Banking CBS is NEVER contacted. Zero row locks acquired, zero reversals needed.
-    Orch-->>Customer: HTTP 403 Forbidden {error: "SECURITY_POLICY_VIOLATION", status: "Cancelled", code: "TX_BLOCKED", message: "Transaction blocked by real-time risk controls. AMLA alert docket opened."}
+    Orch-->>Customer: HTTP 403 Forbidden {error: "TRANSACTION_DECLINED", status: "Cancelled", code: "TX_DECLINED_POLICY", message: "Transaction could not be processed. Please contact customer support."}
 
     par Asynchronous Audit & Compliance Ingestion
         Kafka->>CBS: Consume TransactionStatusChangedEvent
@@ -918,62 +927,154 @@ sequenceDiagram
 
 ---
 
-### 6.4 Feature 4: End-of-Day (EOD) Batch Pipeline Master Execution
+### 6.4 Feature 4: Close of Business (COB) & End-of-Day (EOD) Batch Pipeline Master Execution
 
-#### 6.4.1 Master EOD Execution (Phases 0 through 4)
+#### 6.4.1 Executive Architectural Distinction: COB vs. EOD
+
+In modern core banking architectures (specifically modeling Temenos T24 / Transact), **COB** and **EOD** represent two distinct architectural tiers of the daily financial closing cycle:
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│               CLOSE OF BUSINESS (COB) — MASTER OPERATIONAL STATE MACHINE               │
+│                                                                                        │
+│  [Phase 0: Pre-COB]      [Phases 1-3: Core EOD Batch]     [Phase 4: Post-COB / SOB]    │
+│  • Channel Drain         ┌──────────────────────────────┐ • Business Date Rollover     │
+│  • Cutoff Enforcement    │ End-of-Day (EOD) Accounting: │   (T ➔ T+1)                  │
+│  • T+1 Value-Date Tag    │ • Subfeature 4.2: Fees       │ • Reset Daily Limits         │
+│  • In-Flight Clearing    │ • Subfeature 4.3: Interest   │ • Re-open Online Processing  │
+│                          │ • Subfeature 4.1: Reports/GL │ • Unbuffer T+1 Queue         │
+│                          └──────────────────────────────┘                              │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### Architectural Comparison Matrix
+
+| Architectural Dimension | **End-of-Day (EOD)** | **Close of Business (COB)** |
+| :--- | :--- | :--- |
+| **Domain Scope** | **Financial Accounting & Ledger Computation** | **System Lifecycle & Operational State Machine** |
+| **Question It Answers** | *"What financial balances, fees, and interest must be calculated for Date $T$?"* | *"How does the core banking platform transition operationally from Date $T \to T+1$?"* |
+| **Hierarchy** | **Child Module / Computational Engine** (runs *inside* COB Phases 1–3). | **Parent Container / Master Orchestrator** (coordinates Phases 0 through 4). |
+| **Key Responsibilities** | • Calculate below-min ADB maintenance fees.<br>• Accrue daily deposit interest and 20% BIR withholding tax.<br>• Freeze closing balance snapshots (`eod_balance_snapshots`).<br>• Verify double-entry GL balance ($\sum \text{Debits} = \sum \text{Credits}$). | • Manage system state transitions (`ONLINE` ➔ `EOD_CUTOFF` ➔ `COB_PROCESSING` ➔ `ROLLOVER` ➔ `ONLINE`).<br>• Drain in-flight channel transfers and tag 24/7 intake to $T+1$.<br>• Sequence and execute the EOD accounting batch.<br>• Advance authoritative calendar date in `system_dates`.<br>• Reset daily customer velocity/transfer limits.<br>• Trigger Start-of-Business (SOB) re-opening. |
+| **Calendar Impact** | **NEVER changes the calendar date.** Balances and logs remain strictly for Date $T$. | **Advances the calendar date from $T \to T+1$** in `system_dates`. |
+| **Execution Nature** | Purely computational, idempotent, domain-level accounting. | Platform-level orchestration and state lifecycle governance. |
+
+##### Architectural Domain Ownership
+
+* **Belongs to COB (Close of Business) — Platform Operations & Lifecycle**:
+  * **Phase 0 (Pre-COB Cutoff)**: Locking the posting window for Date $T$, draining in-flight transactions, and tagging new 24/7 transfers to Date $T+1$.
+  * **Phase 4 (Post-COB Rollover / SOB)**: Advancing `system_dates` ($T \to T+1$), resetting daily customer velocity limits, recording `cob_batch_log`, and reopening the system (`ONLINE`).
+  * **State Machine Governance**: Enforces `ONLINE` ➔ `EOD_CUTOFF` ➔ `COB_PROCESSING` ➔ `ROLLOVER` ➔ `ONLINE`, with the `ERROR_HALTED` safety tripwire.
+  * **Master APIs**: `POST /api/v1/cbs/cob/trigger` (macro lifecycle), `GET /api/v1/cbs/cob/status` (progress monitoring), and `GET /api/v1/cbs/system-date` (authoritative date/window query).
+* **Belongs to EOD (End of Day) — Financial Accounting Engine**:
+  * **Phase 1 (Fees)**: Calculating below-minimum ADB fees with Zero-Overdraft Protection.
+  * **Phase 2 (Interest & Tax)**: Daily deposit interest accrual and month-end capitalization with 20% BIR withholding tax split.
+  * **Phase 3 (Snapshots & GL)**: Freezing daily balance snapshots (`eod_balance_snapshots`) and double-entry General Ledger balancing ($\sum \text{Debits} = \sum \text{Credits}$).
+  * **Modular APIs**: `POST /api/v1/cbs/eod/trigger` (executes pure accounting calculations on Date $T$ without rolling the calendar date).
+  * **Async Reporting**: `compliance-service` generating PDF E-Statements, GL Trial Balance sheets, BIR Form 2306 tax certificates, and AMLA CTR filings.
+
+---
+
+#### 6.4.2 Master COB Execution Sequence (Phases 0 through 4 Happy Path)
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Scheduler as Batch Scheduler (00:00 UTC)
-    participant CBS as T24 Mock CBS (:8085)
-    participant MasterDB as Primary Master DB (:1433)
+    actor Scheduler as Docker/Cron Scheduler (00:00 UTC)
+    participant COB as COB Controller (:8085)
+    participant EOD as EOD Calculation Engine
+    participant DB as Master DB (:1433)
     participant Kafka as Kafka Broker (:9092)
-    participant Comp as Compliance Svc (:8086)
+    participant Comp as Compliance Service (:8086)
     participant AuditDB as Postgres Audit Vault (:5432)
-    participant Storage as File Storage Volume
 
-    Scheduler->>CBS: POST /api/v1/cbs/eod/trigger
+    Scheduler->>COB: POST /api/v1/cbs/cob/trigger
+    activate COB
 
-    Note over CBS,MasterDB: Phase 0: Posting Cutoff
-    CBS->>MasterDB: UPDATE system_dates SET status = 'EOD_CUTOFF'
-    CBS->>Kafka: Publish PostingCutoffInitiatedEvent
+    Note over COB,DB: Phase 0: Pre-COB Cutoff & Drain
+    COB->>DB: UPDATE system_dates SET status = 'EOD_CUTOFF', posting_window_open = FALSE
+    COB->>DB: INSERT INTO cob_batch_log (business_date, status='RUNNING', current_phase='PHASE_0_POSTING_CUTOFF')
+    COB->>Kafka: Publish PostingCutoffInitiatedEvent
 
-    Note over CBS,MasterDB: Phase 1: Automated Fee Deductions
-    CBS->>MasterDB: Execute below-min ADB & dormancy charges (Zero-Overdraft Arrears)
-    CBS->>Kafka: Publish FeeDeductedEvent
+    Note over COB,EOD: Delegation to EOD Accounting Engine
+    COB->>DB: UPDATE system_dates SET status = 'COB_PROCESSING'
+    COB->>EOD: Execute EOD Calculations for Date T
+    activate EOD
 
-    Note over CBS,MasterDB: Phase 2: Daily Interest & 20% BIR Tax
-    CBS->>MasterDB: Accrue daily interest & capitalize month-end (80% Cust, 20% BIR GL)
-    CBS->>Kafka: Publish InterestCapitalizedEvent
+    Note over EOD,DB: Phase 1: Automated Fee Deductions
+    EOD->>DB: Deduct Below-Min ADB Fees (Zero-Overdraft Arrears to uncollected_fees)
+    EOD->>Kafka: Publish FeeDeductedEvent
 
-    Note over CBS,MasterDB: Phase 3: Snapshot Freezing
-    CBS->>MasterDB: INSERT INTO eod_balance_snapshots SELECT * FROM balance_master
-    CBS->>Kafka: Publish BalanceSnapshotFrozenEvent
+    Note over EOD,DB: Phase 2: Daily Interest & Tax
+    EOD->>DB: Accrue daily interest & apply 20% BIR withholding tax (80% Cust, 20% BIR GL)
+    EOD->>Kafka: Publish InterestCapitalizedEvent
 
-    Note over CBS,MasterDB: Phase 4: Business Date Rollover
-    CBS->>MasterDB: UPDATE system_dates SET business_date = business_date + 1, status = 'ONLINE'
-    CBS->>Kafka: Publish EodCompletedEvent
-    CBS-->>Scheduler: HTTP 200 OK (EOD Completed for Date T)
+    Note over EOD,DB: Phase 3: Balance Snapshots & GL Balancing
+    EOD->>DB: INSERT INTO eod_balance_snapshots SELECT * FROM balance_master
+    EOD->>DB: Validate SUM(Debits) == SUM(Credits) in gl_ledger
+    EOD->>Kafka: Publish BalanceSnapshotFrozenEvent
+    EOD-->>COB: Accounting Batch Completed (Success)
+    deactivate EOD
 
-    Note over CBS,AuditDB: Direct Audit Sealing of EOD Batch Closure
-    CBS->>AuditDB: INSERT INTO eod_reports_metadata (business_date, closing_snapshot_hash, status='COMPLETED')
-    AuditDB-->>CBS: EOD Audit Metadata Recorded
+    Note over COB,DB: Phase 4: Business Date Rollover & SOB Reopening
+    COB->>DB: UPDATE system_dates SET business_date = business_date + 1, status = 'ONLINE', posting_window_open = TRUE
+    COB->>DB: Reset daily velocity and withdrawal limit counters
+    COB->>DB: UPDATE cob_batch_log SET status = 'COMPLETED', completed_at = CURRENT_TIMESTAMP
+    COB->>Kafka: Publish EodCompletedEvent
 
-    Note over Kafka,Comp: Asynchronous Document Generation & Filing (Zero Database Access)
+    Note over COB,AuditDB: Direct Audit Sealing of COB Batch Closure
+    COB->>AuditDB: INSERT INTO eod_reports_metadata (business_date, closing_snapshot_hash, status='COMPLETED')
+    AuditDB-->>COB: EOD Audit Metadata Recorded
+
+    COB-->>Scheduler: HTTP 200 OK {status: "COMPLETED", newBusinessDate: "2026-10-08"}
+    deactivate COB
+
+    Note over Kafka,Comp: Asynchronous Nightly Artifact Generation (Zero DB Access)
     par Nightly Document Generation
         Kafka->>Comp: Consume BalanceSnapshotFrozenEvent & EodCompletedEvent
         Comp->>Comp: Generate Customer PDF E-Statements
         Comp->>Comp: Generate GL Trial Balance PDF & Excel via Apache POI
         Comp->>Comp: Generate BIR 20% Tax Certificates (Form 2306)
         Comp->>Comp: Compile AMLA Covered Transaction Report (CTR >= 500k)
-        Comp->>Storage: Save generated files to /var/storage/reports/
-        Comp->>CBS: POST /api/v1/cbs/audit/eod/reports-metadata {file_uris, sha256_checksums}
-        CBS->>AuditDB: UPDATE eod_reports_metadata WITH generated file hashes
+        Comp->>COB: POST /api/v1/cbs/audit/eod/reports-metadata {file_uris, sha256_checksums}
+        COB->>AuditDB: UPDATE eod_reports_metadata WITH generated file hashes
     end
 ```
 
-#### 6.4.2 Phase 0 Alternate Flow: Daytime Online Requests Buffered During Cutoff
+---
+
+#### 6.4.3 Alternate Flow: Error Recovery & Remediation (The ERROR_HALTED Tripwire)
+
+When a calculation failure occurs (e.g., transient database lock conflict during interest accrual or General Ledger imbalance), the state machine halts in `ERROR_HALTED` to protect financial integrity, **strictly blocking calendar rollover**:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Ops as Operations Admin (Portal)
+    participant COB as COB Controller (:8085)
+    participant EOD as EOD Engine (:8085)
+    participant DB as Master DB (:1433)
+
+    Ops->>COB: GET /api/v1/cbs/cob/status
+    COB-->>Ops: HTTP 200 OK {systemState: "ERROR_HALTED", failedPhase: "PHASE_2_INTEREST", dateRolled: false}
+
+    Note over Ops: Ops investigates lock conflict and clears blocking session
+
+    Note over Ops,EOD: Step 1: Retry Pure EOD Calculations (Calendar remains on Date T)
+    Ops->>EOD: POST /api/v1/cbs/eod/trigger {targetBusinessDate: "2026-10-07", targetModule: "INTEREST"}
+    EOD->>DB: Accrue interest & apply 20% BIR tax
+    EOD-->>Ops: HTTP 200 OK {status: "COMPLETED", modulesExecuted: ["DAILY_INTEREST_ACCRUALS"], dateRolled: false}
+
+    Note over Ops,COB: Step 2: Resume Master COB Rollover
+    Ops->>COB: POST /api/v1/cbs/cob/trigger {executionMode: "RESUME_AFTER_REPAIR"}
+    COB->>DB: UPDATE system_dates SET business_date = business_date + 1, status = 'ONLINE', posting_window_open = TRUE
+    COB-->>Ops: HTTP 200 OK {status: "COMPLETED", newBusinessDate: "2026-10-08", systemState: "ONLINE"}
+```
+
+---
+
+#### 6.4.4 Phase 0 Cutoff Flow: 24/7 Daytime Online Requests Buffered During Cutoff
+
+Customer mobile banking remains functional 24/7. Transactions submitted during the COB window are smoothly tagged with Value Date $T+1$:
 
 ```mermaid
 sequenceDiagram
@@ -981,18 +1082,26 @@ sequenceDiagram
     actor Customer as Daytime Customer App
     participant Orch as Transfer Orchestrator (:8082)
     participant CBS as T24 Mock CBS (:8085)
-    participant MasterDB as Primary Master DB (:1433)
+    participant DB as Master DB (:1433)
 
-    Customer->>Orch: POST /api/v1/transfers (Payload)
-    Orch->>CBS: POST /api/v1/cbs/transfers (OFS: FUNDS.TRANSFER...)
-    CBS->>MasterDB: SELECT status FROM system_dates
-    MasterDB-->>CBS: status = 'EOD_CUTOFF'
-    Note over CBS: Online Financial Posting Halted for Batch Run
-    CBS-->>Orch: OFS ACK // BUFFERED // POSTING_DATE = T+1
-    Orch-->>Customer: HTTP 202 Accepted {status: "QUEUED_FOR_T_PLUS_1", message: "Transaction queued for processing upon next business date opening."}
+    Customer->>Orch: POST /api/v1/transfers (₱5,000 to ACC-008541)
+    Orch->>CBS: GET /api/v1/cbs/system-date
+    CBS->>DB: SELECT status, business_date, posting_window_open FROM system_dates
+    DB-->>CBS: status = 'EOD_CUTOFF', business_date = '2026-10-07', posting_window_open = FALSE
+    CBS-->>Orch: {status: "EOD_CUTOFF", businessDate: "2026-10-07", postingWindowOpen: false}
+
+    Note over Orch: Core Posting Window Closed for Date T!
+    Note over Orch: Tag Transfer with Value Date = T+1 (2026-10-08)
+
+    Orch->>CBS: POST /api/v1/cbs/transfers (OFS: VALUE.DATE=20261008, QUEUE_MODE=BUFFERED)
+    CBS-->>Orch: OFS ACK // BUFFERED_FOR_T_PLUS_1 // QUEUED
+
+    Orch-->>Customer: HTTP 202 Accepted {status: "QUEUED_FOR_T_PLUS_1", message: "Transaction accepted and scheduled for value date tomorrow."}
 ```
 
-#### 6.4.3 Phase 1 Alternate Flow: Zero-Overdraft Arrears Capping for Insolvent Accounts
+---
+
+#### 6.4.5 Phase 1 Alternate Flow: Zero-Overdraft Arrears Capping for Insolvent Accounts
 
 ```mermaid
 sequenceDiagram
@@ -1214,13 +1323,66 @@ flowchart TD
 
 ---
 
-### 7.4 Master End-of-Day (EOD) Batch State Machine Pipeline Flowchart
+### 7.4 Master Close of Business (COB) & End-of-Day (EOD) State Machine & Pipeline Flowchart
+
+#### 7.4.1 Master Operational State Machine
+
+The authoritative state of the core banking platform is persisted in `system_dates.status`. All services coordinate around these lifecycle states:
+
+```mermaid
+stateDiagram-v2
+    [*] --> ONLINE: Initial Platform Boot / SOB Open
+
+    ONLINE --> EOD_CUTOFF: COB Triggered (00:00 UTC)<br/>POST /api/v1/cbs/cob/trigger
+    note right of EOD_CUTOFF
+        Phase 0: Pre-COB Cutoff
+        • In-flight transfers drained
+        • New daytime transfers tagged for Date T+1
+        • Posting window locked for Date T
+    end note
+
+    EOD_CUTOFF --> COB_PROCESSING: Draining Complete
+    note right of COB_PROCESSING
+        Phases 1-3: Core EOD Accounting Batch
+        • Automated Below-Min ADB fee deductions
+        • Daily deposit interest accrual & 20% BIR tax
+        • Balance snapshot freezing & GL reconciliation
+    end note
+
+    COB_PROCESSING --> ROLLOVER: EOD Accounting Balanced
+    note right of ROLLOVER
+        Phase 4: Platform Rollover
+        • business_date advanced (T ➔ T+1)
+        • Daily customer velocity limits reset
+        • EodCompletedEvent emitted to Kafka
+    end note
+
+    COB_PROCESSING --> ERROR_HALTED: Financial Imbalance or DB Lock Error
+    note left of ERROR_HALTED
+        Safety Tripwire:
+        • Calendar rollover BLOCKED
+        • Ops alerted
+        • Ops invokes modular POST /eod/trigger to remediate
+    end note
+
+    ERROR_HALTED --> COB_PROCESSING: Issue Resolved & EOD Retried
+
+    ROLLOVER --> ONLINE: Start-of-Business (SOB) Reopened
+    note right of ONLINE
+        • Posting window reopened for Date T+1
+        • Buffered T+1 transfers executed
+        • Regular 24/7 online trading resumes
+    end note
+```
+
+#### 7.4.2 Master COB & EOD Computational Pipeline Flowchart
 
 ```mermaid
 flowchart TD
-    Trigger([EOD Scheduler Fires 00:00 UTC]) --> Phase0[Phase 0: Posting Cutoff]
-    Phase0 --> SetCutoff[Update system_dates status = EOD_CUTOFF]
-    SetCutoff --> BufferTx[Route New Daytime Traffic to T+1 Buffer Queue]
+    Trigger([COB Scheduler Fires 00:00 UTC<br/>POST /api/v1/cbs/cob/trigger]) --> Phase0[Phase 0: Pre-COB Posting Cutoff]
+    Phase0 --> SetCutoff[Update system_dates status = EOD_CUTOFF &<br/>posting_window_open = false]
+    Phase0 --> LogCOB[Insert cob_batch_log with status = RUNNING]
+    SetCutoff --> BufferTx[Route New Daytime Traffic to T+1 Buffer Queue<br/>HTTP 202 Accepted]
     BufferTx --> Phase1[Phase 1: Automated Fee Deductions]
 
     Phase1 --> ScanADB[Identify Accounts Below Minimum ADB]
@@ -1234,15 +1396,20 @@ flowchart TD
     CalcDailyInt --> CheckMonthEnd{Is Today Last Day<br/>of Month?}
     CheckMonthEnd -- No --> AccrueOnly[Insert Accrued Interest to interest_accruals]
     CheckMonthEnd -- Yes --> CapitalizeInt[Capitalize: Credit 80% to Customer Account &<br/>Credit 20% to BIR Tax Withholding GL]
-    AccrueOnly --> Phase3[Phase 3: Snapshot Freezing]
+    AccrueOnly --> Phase3[Phase 3: Snapshot Freezing & GL Reconciliation]
     CapitalizeInt --> Phase3
 
     Phase3 --> FreezeSnap[Freeze Closing Balances into eod_balance_snapshots]
-    Phase3 --> Phase4[Phase 4: Business Date Rollover]
+    FreezeSnap --> ValidateGL{Validate GL Balanced?<br/>SUM Debits == SUM Credits}
+    ValidateGL -- Imbalanced / Error --> TripHalt[Tripwire: Update system_dates status = ERROR_HALTED &<br/>BLOCK Calendar Rollover]
+    TripHalt --> OpsAlert[Alert Ops / Remediate via POST /eod/trigger]
 
+    ValidateGL -- Balanced --> Phase4[Phase 4: Business Date Rollover & SOB]
     Phase4 --> AdvanceDate[Advance system_dates business_date to T+1]
-    AdvanceDate --> SetOnline[Update status = ONLINE]
-    SetOnline --> PubEODComp[Publish EodCompletedEvent to Kafka]
+    AdvanceDate --> SetOnline[Update system_dates status = ONLINE &<br/>posting_window_open = true]
+    SetOnline --> ResetLimits[Reset Daily Velocity & Withdrawal Limits]
+    ResetLimits --> UpdateBatchLog[Update cob_batch_log status = COMPLETED]
+    UpdateBatchLog --> PubEODComp[Publish EodCompletedEvent to Kafka]
     PubEODComp --> GenReports[Compliance Svc Generates Statements,<br/>Trial Balance & AMLA Filings]
     GenReports --> EndEOD([System Ready for Daytime T+1 Operations])
 ```
@@ -1294,6 +1461,18 @@ To guarantee financial correctness and regulatory auditability, the implementati
     * **Safe Timeout & Error Fallback**: If Stage B times out ($> 1,500\text{ms}$) or throws a model execution error, the system must immediately and safely fall back to the Stage A baseline action $a_0$. A downstream AI failure must **NEVER cause payment execution failure**.
     * **Zero SMS OTP Authorization Invariant**: All high-friction or step-up authentication channels (`REQUIRE_2FA` / `STEP_UP`) strictly mandate device-bound cryptographic biometrics (Face ID, Touch ID, FIDO2 WebAuthn) or secure mobile push notifications paired with MPIN. Delivering OTP codes over SMS or email for transaction authorization is strictly prohibited due to SIM-swapping, SS7 interception, and social engineering vulnerabilities.
 
+13. **Rule 13 (Inviolable Date Advancement Rule & ERROR_HALTED Tripwire)**:
+    * The authoritative calendar date in `system_dates` must **NEVER** advance to $T+1$ if any EOD calculation phase fails, if an unhandled exception occurs, or if the General Ledger does not balance ($\sum \text{Debits} \ne \sum \text{Credits}$). If a failure occurs, the platform must immediately transition to `ERROR_HALTED`, notify operations, and preserve Date $T$ until remediated.
+
+14. **Rule 14 (Zero-Overdraft Maintenance Fee Invariant)**:
+    * Deducting below-min ADB maintenance fees must never drive a customer account into an unarranged negative balance. If an account has $\text{Balance} < \text{Fee}$, the CBS deducts only available funds down to 0.00 and logs the unpaid balance to `uncollected_fees`.
+
+15. **Rule 15 (BIR 20% Withholding Tax Invariant)**:
+    * On month-end interest capitalization, the CBS must split gross interest: crediting exactly 80% to the customer liability balance and crediting 20% directly to the BIR Tax Withholding Payable General Ledger account (`GL-2401`).
+
+16. **Rule 16 (24/7 Channel Non-Disruption During COB Cutoff Window)**:
+    * Retail channels are never rejected with hard 500 errors during COB. Transfers arriving during `EOD_CUTOFF` receive `HTTP 202 Accepted` and are value-dated for next business day settlement ($T+1$).
+
 ---
 
 ## 9. Added Endpoints & Interface Payload Contracts
@@ -1316,7 +1495,9 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 | **`t24-mock-cbs`** | `:8085` | `GET` | `/api/v1/cbs/accounts/{accountId}/balance` | Internal Services / Orchestrator | Authoritative real-time balance and solvency enquiry from core ledger (Wire: OFS). |
 | **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/reversals/ticket` | `transfer-orchestrator` | Persists reversal ticket in Master DB and transitions status to `PendingReversal` (Wire: Native JSON). |
 | **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/reversals/{ticketId}/reject` | `transfer-orchestrator` | Records dispute rejection and restores transaction status to `Posted` (Wire: Native JSON). |
-| **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/eod/trigger` | Scheduled Batch Job / Ops Admin | Triggers the 4-phase End-of-Day (EOD) batch processing pipeline (Wire: Native JSON). |
+| **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/cob/trigger` | Scheduled Batch Job / Ops Admin | Triggers master Close of Business platform lifecycle (Phases 0–4) rolling date $T \to T+1$ (Wire: Native JSON). |
+| **`t24-mock-cbs`** | `:8085` | `GET` | `/api/v1/cbs/cob/status` | Ops Admin / Monitoring Tools | Polls real-time COB state machine, active phase, progress %, and error logs (Wire: Native JSON). |
+| **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/eod/trigger` | Scheduled Batch Job / Ops Admin | Triggers modular accounting calculations for Date $T$ without advancing calendar date (Wire: Native JSON). |
 | **`t24-mock-cbs`** | `:8085` | `GET` | `/api/v1/cbs/system-date` | Internal Services / Gateway | Queries current core banking business date, status, and posting window state (Wire: Native JSON). |
 | **`t24-mock-cbs`** | `:8085` | `GET` | `/api/v1/cbs/audit/transactions/{txId}` | `compliance-service` / Auditor Portal | Queries immutable audit record, status transitions, and SHA-256 hash chain from `postgres-audit-vault`. |
 | **`t24-mock-cbs`** | `:8085` | `GET` | `/api/v1/cbs/audit/dlq/incidents` | `compliance-service` / DevOps | Queries dead-lettered DLQ failure records from `failed_transaction_audit` in `postgres-audit-vault`. |
@@ -1354,7 +1535,9 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 >   * `GET /api/v1/cbs/audit/transactions/{txId}` and `GET /api/v1/cbs/audit/dlq/incidents` — Query immutable ledger audit rows, status transitions, and dead-lettered DLQ records from `postgres-audit-vault` to power the Zero-DB compliance service and operational dashboards.
 >   * `POST /api/v1/cbs/audit/dlq/resolve/{id}` and `POST /api/v1/cbs/audit/filings` — Authorize resolution of DLQ incidents and commit sealed AMLA regulatory filings directly to the audit vault.
 > * **Batch Pipeline Administration**:
->   * `POST /api/v1/cbs/eod/trigger` and `GET /api/v1/cbs/system-date` — Trigger the 4-phase End-of-Day (EOD) batch state machine and inspect calendar/posting window state.
+>   * `POST /api/v1/cbs/cob/trigger` and `GET /api/v1/cbs/cob/status` — Master Close of Business platform lifecycle orchestrator and live status monitor.
+>   * `POST /api/v1/cbs/eod/trigger` — Modular, idempotent financial accounting engine executing fee deductions, interest accruals, and snapshot freezing for Date $T$ without advancing the system calendar.
+>   * `GET /api/v1/cbs/system-date` — Authoritative operational calendar inquiry used by the orchestrator to enforce cutoff gating.
 >
 > **2. Wire Payload Protocol Clarification (OFS vs. Native JSON Payloads)**:
 > * **OFS Endpoints (`/api/v1/cbs/transfers`, `/api/v1/cbs/reversals/{ticketId}/execute`, `/api/v1/cbs/accounts/{accountId}/balance`)**: Despite being presented with clean, human-readable JSON request and response payloads throughout this specification for schema clarity and documentation readability, **these endpoints still transmit in official Temenos OFS syntax over the wire** (e.g., `FUNDS.TRANSFER,INITIATE/...`, `FUNDS.TRANSFER,REVERSAL/...`, and `ENQUIRY.SELECT...`). The `transfer-orchestrator` serializes domain commands into OFS string streams before dispatching HTTP calls, and `t24-mock-cbs` deserializes them via its internal OFS parser.
@@ -1452,11 +1635,10 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 **Response Payload: Security Policy Cutoff (HTTP 403 Forbidden)**:
 ```json
 {
-  "error": "SECURITY_POLICY_VIOLATION",
-  "code": "TX_BLOCKED",
+  "error": "TRANSACTION_DECLINED",
+  "code": "TX_DECLINED_POLICY",
   "status": "Cancelled",
-  "reason": "FRAUD_POLICY_CIRCUIT_CUT",
-  "detail": "Transfer blocked due to critical risk detection (Impossible Velocity).",
+  "message": "Transaction could not be processed at this time. Please contact customer support.",
   "timestampUtc": "2026-10-07T08:14:25Z"
 }
 ```
@@ -1910,8 +2092,8 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 
 ---
 
-#### 9.3.6 `POST /api/v1/cbs/eod/trigger` (4-Phase End-of-Day Batch Pipeline Invocation [Wire: Native JSON])
-* **Purpose**: Triggers the 4-phase sequential EOD batch processing: Phase 0 Posting Cutoff (`system_dates.status = EOD_CUTOFF`), Phase 1 Automated Fee Deductions (Zero-overdraft arrears to `uncollected_fees`), Phase 2 Daily Interest Accruals (with 20% BIR withholding on month-end), Phase 3 Balance Snapshot Freezing (`eod_balance_snapshots`), and Phase 4 Business Date Rollover to T+1 (`system_dates.status = ONLINE`).
+#### 9.3.6 `POST /api/v1/cbs/cob/trigger` (Master Close of Business Pipeline Invocation [Wire: Native JSON])
+* **Purpose**: Orchestrates the master Close of Business platform lifecycle from business date $T \to T+1$: Phase 0 Posting Cutoff (`system_dates.status = EOD_CUTOFF`), delegation to EOD accounting engine (Phases 1–3), Phase 4 Business Date Rollover to T+1 (`system_dates.status = ONLINE`, `posting_window_open = true`), and resets daily customer velocity counters.
 * **Caller**: Batch Scheduler (00:00 UTC) / Operations Admin.
 
 **Request Payload (JSON View for Readability)**:
@@ -1952,7 +2134,69 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 
 ---
 
-#### 9.3.7 `GET /api/v1/cbs/system-date` (Operational Core Business Date & State Query [Wire: Native JSON])
+#### 9.3.7 `GET /api/v1/cbs/cob/status` (Active COB State Machine & Progress Status [Wire: Native JSON])
+* **Purpose**: Real-time observability during long-running batch runs to poll active pipeline phase, progress percentage, lock state, and diagnostic error telemetry.
+* **Caller**: Operations Admin Portal, Monitoring Daemons, Datadog / Prometheus exporters.
+
+**Request**: None (HTTP GET).
+
+**Response Payload: Active Run (JSON View for Readability)**:
+```json
+{
+  "businessDate": "2026-10-07",
+  "systemState": "COB_PROCESSING",
+  "currentPhase": "PHASE_2_DAILY_INTEREST_ACCRUALS",
+  "progressPercent": 65,
+  "startedAtUtc": "2026-10-08T00:00:02Z",
+  "elapsedDurationMs": 2730,
+  "operatorId": "SYSTEM_SCHEDULER",
+  "isLocked": true,
+  "lastError": null
+}
+```
+
+---
+
+#### 9.3.8 `POST /api/v1/cbs/eod/trigger` (Modular EOD Accounting Calculation Trigger [Wire: Native JSON])
+* **Purpose**: Executes pure financial calculations (below-min ADB fees, daily interest accruals with 20% BIR withholding, closing snapshots) for Date $T$ **strictly without advancing the system calendar date** (`dateRolled: false`). Enables targeted testing and manual remediation when recovering from an `ERROR_HALTED` state.
+* **Caller**: Internal COB Controller / Operations Admin.
+
+**Request Payload (JSON View for Readability)**:
+```json
+{
+  "targetBusinessDate": "2026-10-07",
+  "targetModule": "ALL",
+  "operatorId": "OPS_BATCH_EXEC"
+}
+```
+
+**Response Payload: Success (JSON View for Readability)**:
+```json
+{
+  "status": "COMPLETED",
+  "businessDate": "2026-10-07",
+  "modulesExecuted": [
+    "AUTOMATED_FEE_DEDUCTIONS",
+    "DAILY_INTEREST_ACCRUALS",
+    "SNAPSHOT_FREEZING"
+  ],
+  "metrics": {
+    "accountsProcessed": 14500,
+    "totalFeesCollectedPhp": 85200.00,
+    "totalUncollectedFeesLoggedPhp": 3400.00,
+    "totalInterestAccruedPhp": 41250.00,
+    "totalTaxWithheldBirPhp": 8250.00,
+    "snapshotsFrozen": 14500
+  },
+  "dateRolled": false,
+  "executionDurationMs": 3150,
+  "completedAtUtc": "2026-10-08T00:03:15Z"
+}
+```
+
+---
+
+#### 9.3.9 `GET /api/v1/cbs/system-date` (Operational Core Business Date & State Query [Wire: Native JSON])
 * **Purpose**: Fetches the authoritative core banking business date, posting cutoff status, and batch pipeline state.
 * **Caller**: `transfer-orchestrator:8082`, `gateway-service:8080`, Admin Dashboards.
 
@@ -2575,7 +2819,7 @@ The transition from the existing codebase to Path B will be executed in three ph
 flowchart LR
     M1["Phase 1: Module Scaffolding & Zero-DB Orchestrator<br/>• Create compliance-service :8086 (Stateless Reporting)<br/>• Strip JDBC drivers from transfer-orchestrator :8082<br/>• Implement Temenos OFS Serializer"]
     M2["Phase 2: Decouple CBS as Sole Dual-DB Custodian<br/>• Create t24-mock-cbs :8085 with dual datasources<br/>• Consolidate Azure SQL & Postgres into CBS<br/>• Configure CBS Async Audit Writes via Kafka Self-Consumption<br/>• Implement Outbox Publisher"]
-    M3["Phase 3: Core Capabilities & Batch<br/>• Reversal Maker-Checker Engine<br/>• Resilience4j DLQ Pipeline<br/>• 4-Phase EOD Batch Pipeline<br/>• AMLA CTR & BIR Reports"]
+    M3["Phase 3: Core Capabilities & Batch<br/>• Reversal Maker-Checker Engine<br/>• Resilience4j DLQ Pipeline<br/>• Master COB Lifecycle & EOD Batch Engine<br/>• AMLA CTR & BIR Reports"]
 
     M1 --> M2 --> M3
 ```
@@ -2595,8 +2839,8 @@ flowchart LR
 4. Implement the Temenos OFS syntax generator in `transfer-orchestrator` and the corresponding OFS command parser in `t24-mock-cbs`.
 5. Implement the transactional outbox relay in `t24-mock-cbs` for Kafka streaming.
 
-### Phase 3: Core Features & EOD Batch Implementation
+### Phase 3: Core Features & COB / EOD Batch Implementation
 1. Implement **Intra-Bank Reversals** with Maker-Checker dual control and segregation of duties.
 2. Configure **Resilience4j Circuit Breaker** and DLQ incident routing to `banking.transfers.dlq` with administrative replay APIs in `compliance-service`.
-3. Implement the **EOD Batch Engine** (Posting Cutoff, Zero-Overdraft Fee Deductions, Daily Interest Accruals with 20% BIR Withholding, Snapshot Freezing, and Business Date Rollover).
-4. Build EOD report generators (PDF E-Statements, Excel Trial Balances, AMLA CTR filings) in `compliance-service`.
+3. Implement the **Master COB Operational Lifecycle & EOD Batch Engine** (Posting Cutoff, Zero-Overdraft Fee Deductions, Daily Interest Accruals with 20% BIR Withholding, Snapshot Freezing, GL Double-Entry Validation, ERROR_HALTED Tripwire, and Business Date Rollover).
+4. Build EOD/COB report generators (PDF E-Statements, Excel Trial Balances, AMLA CTR filings) in `compliance-service`.

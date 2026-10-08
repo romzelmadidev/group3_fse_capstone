@@ -125,7 +125,7 @@ services:
     image: provectuslabs/kafka-ui:latest
     restart: unless-stopped
     ports:
-      - "8085:8080"
+      - "8089:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: 'banking-kafka-cluster'
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: 'kafka-broker:29092'
@@ -226,45 +226,48 @@ services:
       - dd-agent
 
   # ============================================================================
-  # 9. Core Ledger & Balance Mutation Engine (Spring Boot :8082)
-  # Container Name: ledger-mutation-engine
-  # High-throughput balance mutations, pessimistic row locking & outbox events
   # ============================================================================
-  ledger-mutation-engine:
-    container_name: ledger-mutation-engine
+  # Microsoft Azure Storage Emulator (Azurite Blob Storage)
+  # Container Name: azurite-storage
+  # Local emulation of Azure Blob Storage for compliance reports, statements & filings
+  # ============================================================================
+  azurite:
+    container_name: azurite-storage
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    restart: unless-stopped
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
+    command: "azurite-blob --blobHost 0.0.0.0 --blobPort 10000 -l /data"
+    volumes:
+      - azurite_data:/data
+    networks:
+      - banking-net
+
+  # ============================================================================
+  # 9. T24 Mock Core Banking System (Spring Boot :8085)
+  # Container Name: t24-mock-cbs
+  # Sole custodian of Master DB & Postgres Audit Vault, row locking & EOD batch
+  # ============================================================================
+  t24-mock-cbs:
+    container_name: t24-mock-cbs
     build:
-      context: ../backend/ledger-mutation-engine
+      context: ../backend/t24-mock-cbs
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "8082:8082"
-    volumes:
-      - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
+      - "8085:8085"
     environment:
-      - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
-      - DD_AGENT_HOST=dd-agent
-      - DD_TRACE_AGENT_PORT=8126
-      - DD_SERVICE=ledger-mutation-engine
-      - DD_ENV=local
-      - DD_VERSION=1.0.0
-      - DD_LOGS_INJECTION=true
-      - DD_TRACE_SAMPLE_RATE=1.0
       - SPRING_DATASOURCE_ORACLE_URL=jdbc:oracle:thin:@oracle-xe-master:1521/XEPDB1
-      - SPRING_DATASOURCE_ORACLE_JDBC_URL=jdbc:oracle:thin:@oracle-xe-master:1521/XEPDB1
       - SPRING_DATASOURCE_ORACLE_USERNAME=fse_user
       - SPRING_DATASOURCE_ORACLE_PASSWORD=fse_password
       - SPRING_DATASOURCE_POSTGRES_URL=jdbc:postgresql://postgres-audit-vault:5432/banking_audit
-      - SPRING_DATASOURCE_POSTGRES_JDBC_URL=jdbc:postgresql://postgres-audit-vault:5432/banking_audit
       - SPRING_DATASOURCE_POSTGRES_USERNAME=audit_user
       - SPRING_DATASOURCE_POSTGRES_PASSWORD=audit_password
-      - POSTGRES_HOST=postgres-audit-vault
-      - POSTGRES_PORT=5432
       - SPRING_DATA_REDIS_HOST=redis-cache
       - SPRING_DATA_REDIS_PORT=6379
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka-broker:29092
-      - APP_RISK_SERVICE_URL=http://risk-service:8084
-    labels:
-      com.datadoghq.ad.logs: '[{"source": "java", "service": "ledger-mutation-engine"}]'
     networks:
       - banking-net
     depends_on:
@@ -272,8 +275,59 @@ services:
       - postgres-audit-vault
       - redis-cache
       - kafka-broker
+
+  # ============================================================================
+  # 9b. Stateless Transfer Orchestrator (Spring Boot :8082)
+  # Container Name: transfer-orchestrator
+  # Perimeter validation, risk scoring, biometric step-up, cool-off & Temenos OFS
+  # ============================================================================
+  transfer-orchestrator:
+    container_name: transfer-orchestrator
+    build:
+      context: ../backend/transfer-orchestrator
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_DATA_REDIS_HOST=redis-cache
+      - SPRING_DATA_REDIS_PORT=6379
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka-broker:29092
+      - APP_CBS_SERVICE_URL=http://t24-mock-cbs:8085
+      - APP_RISK_SERVICE_URL=http://risk-service:8084
+      - APP_ACCOUNT_SERVICE_URL=http://account-service:8081
+    networks:
+      - banking-net
+    depends_on:
+      - redis-cache
+      - kafka-broker
       - risk-service
-      - dd-agent
+      - t24-mock-cbs
+
+  # ============================================================================
+  # 9c. Compliance & Reporting Service (Spring Boot :8086)
+  # Container Name: compliance-service
+  # Zero-DB reporting engine, PDF/Excel generation, Azurite blob storage & DLQ replay
+  # ============================================================================
+  compliance-service:
+    container_name: compliance-service
+    build:
+      context: ../backend/compliance-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka-broker:29092
+      - APP_CBS_SERVICE_URL=http://t24-mock-cbs:8085
+      - APP_ORCHESTRATOR_SERVICE_URL=http://transfer-orchestrator:8082
+      - AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+    networks:
+      - banking-net
+    depends_on:
+      - kafka-broker
+      - azurite
+      - t24-mock-cbs
 
   # ============================================================================
   # 9b. Local NanoJev Risk Engine (FastAPI / Threaded Python :8084)
@@ -388,7 +442,9 @@ services:
       - REDIS_HOST=redis-cache
       - REDIS_PORT=6379
       - ACCOUNT_SERVICE_URI=http://account-service:8081
-      - LEDGER_ENGINE_URI=http://ledger-mutation-engine:8082
+      - TRANSFER_ORCHESTRATOR_URI=http://transfer-orchestrator:8082
+      - CBS_SERVICE_URI=http://t24-mock-cbs:8085
+      - COMPLIANCE_SERVICE_URI=http://compliance-service:8086
       - NOTIFICATION_SERVICE_URI=http://notification-service:8083
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "gateway-service"}]'
@@ -397,7 +453,7 @@ services:
     depends_on:
       - redis-cache
       - account-service
-      - ledger-mutation-engine
+      - transfer-orchestrator
       - notification-service
       - dd-agent
 
@@ -551,5 +607,6 @@ volumes:
   prometheus_data:
   grafana_data:
   redisinsight_data:
+  azurite_data:
 
 
