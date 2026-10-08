@@ -21,7 +21,7 @@ In the current repository implementation:
 ### 1.3 The Target State Solution (Path B)
 The target architecture introduces an **asynchronous, event-driven boundary** between transactional accounting and compliance auditing:
 * **Decoupled Financial Engine (`t24-mock-cbs` :8085)**: Exclusively owns the primary master database. Acquires sub-5ms row-level locks, mutates balances, writes double-entry general ledger journals, and records domain events to an ACID transactional `outbox_events` table before streaming them to Apache Kafka.
-* **Stateless Perimeter Orchestrator (`transfer-orchestrator` :8082)**: Coordinates fraud evaluation, in-app MPIN verification, and behavioral 10-minute cool-off holds without tying up database locks, translating client JSON commands into Temenos Open Financial Services (OFS) syntax.
+* **Stateless Perimeter Orchestrator (`transfer-orchestrator` :8082)**: Coordinates fraud evaluation, mandatory biometric confirmation (Face ID / Fingerprint), and behavioral 10-minute cool-off holds without tying up database locks, translating client JSON commands into Temenos Open Financial Services (OFS) syntax.
 * **Intelligent Anti-Scam Protection & Cognitive Cool-Off**: Leverages a local neural LLM (`Qwen2.5-0.5B-Instruct` / NanoJev) within `risk-service:8084` to synthesize personalized, natural language anti-scam advisories for high-risk transfer contexts (e.g. advance-fee prize claims, impersonation, phone call coercion). Empowers users to trigger a voluntary **10-minute cooling-off period** managed by `redis-cache`, enforcing a cognitive pause to break psychological social engineering before funds can be settled.
 * **Dedicated Compliance & Reporting Engine (`compliance-service` :8086)**: Ingests Kafka events asynchronously to write append-only audit records to the PostgreSQL Audit Vault, manages cryptographic SHA-256 hash chains, compiles AMLA reports, and offloads heavy End-of-Day PDF/Excel statement generation.
 
@@ -31,9 +31,10 @@ The target architecture introduces an **asynchronous, event-driven boundary** be
 
 ```mermaid
 flowchart TD
-    subgraph Edge_Tier["Perimeter & Edge Tier"]
+    subgraph Edge_Tier["Perimeter, Identity & Edge Tier"]
         UI["Client Channels<br/>(React / Flutter)"]
         GW["API Gateway (:8080)<br/>(Spring Cloud Gateway)"]
+        ACCT["Account Service (:8081)<br/>(Auth, JWT, KYC Profile &<br/>Biometric Assertion Validator)"]
         REDIS[("Redis Cache (:6379)<br/>Token Blacklist, Idempotency<br/>& 10-Min Cool-Off Locks")]
         ORCH["Transfer Orchestrator (:8082)<br/>(Stateless Saga, OFS Serializer<br/>& Cool-Off Coordinator)"]
         RISK["Python Risk Engine (:8084)<br/>(FastAPI, XGBoost<br/>& Qwen2.5 LLM Scam Warnings)"]
@@ -57,10 +58,13 @@ flowchart TD
 
     UI -->|HTTPS / JWT| GW
     GW -->|Validate Token| REDIS
-    GW -->|Route Request| ORCH
-    ORCH -->|Atomic Lock| REDIS
+    GW -->|Route Auth, KYC & Users| ACCT
+    GW -->|Route Transfers & Reversals| ORCH
+    ACCT -->|Token Sessions & Blacklist| REDIS
+    ORCH -->|Validate Biometric Signature| ACCT
+    ORCH -->|Atomic Idempotency & Cool-Off Locks| REDIS
     ORCH -->|Sync Risk Check < 2ms| RISK
-    ORCH -->|Temenos OFS Wire Command| CBS
+    ORCH -->|Temenos OFS Wire Commands| CBS
     CBS -->|ACID Balance & Outbox Mutations| MASTER_DB
     CBS -->|Publish Outbox Events| KAFKA
     KAFKA -->|banking.transfers.events| NOTIF
@@ -69,6 +73,21 @@ flowchart TD
     COMP -->|Append-Only SQL Inserts| AUDIT_DB
     COMP -->|Persist Statements & Filings| STORAGE
 ```
+
+### 2.1 Architectural Tier Breakdown & Component Roles
+* **Perimeter, Identity & Edge Tier**:
+  * **`API Gateway (:8080)`**: Central ingress point for all client requests; handles TLS termination, JWT sanity verification, token blacklist inspection against Redis, and URL routing.
+  * **`Account Service (:8081)`**: Authoritative microservice for customer identity, user onboarding, KYC status tiers, credentials authentication, session JWT issuing, and mandatory cryptographic biometric assertion validation (`POST /api/v1/internal/users/{userId}/validate-biometric`).
+  * **`Redis Cache (:6379)`**: Shared sub-millisecond in-memory cache for JWT blacklisting (`blacklist:jti`), distributed idempotency locks (`tx:idemp:<key>`), biometric attempt rate-limiting, and 10-minute anti-scam cooling-off timer locks (`tx:cooloff:<txId>`).
+  * **`Transfer Orchestrator (:8082)`**: Stateless Saga orchestrator decoupled from direct database drivers; manages perimeter validation, invokes `risk-service`, coordinates mandatory biometric confirmation challenges with `account-service`, enforces cool-off countdowns, and serializes requests to Temenos OFS syntax.
+  * **`Python Risk Engine (:8084)`**: Real-time FastAPI microservice executing sub-2ms XGBoost scoring and local neural LLM (`Qwen2.5-0.5B-Instruct` / NanoJev) inference to evaluate transfer risk and generate natural language anti-scam warning advisories.
+* **Authoritative Core Banking Enclave**:
+  * **`T24 Mock CBS (:8085)`**: Isolated financial accounting engine holding exclusive database connectivity to `balance_master`, `gl_ledger`, `gl_balances`, `transactions`, and `outbox_events`. Executes atomic sub-5ms row-level locks and double-entry postings.
+* **Event Log Streaming Tier**:
+  * **`Apache Kafka Bus (:9092)`**: High-throughput partitioned event broker in KRaft mode decoupling authoritative core banking mutations from asynchronous downstream subscribers.
+* **Asynchronous Downstream Tier**:
+  * **`Notification Service (:8083)`**: Consumes domain events from Kafka to deliver customer HTML transaction receipts and security alerts via SMTP.
+  * **`Compliance & Reporting Service (:8086)`**: Consumes domain and DLQ events to maintain the append-only PostgreSQL Audit Vault (`:5432`), calculate sequential SHA-256 hash chains, compile AMLA CTR/STR filings, provide DLQ incident inspection/replay, and generate heavy End-of-Day PDF/Excel reports.
 
 ---
 
@@ -98,12 +117,12 @@ flowchart LR
 
 | Service Name | Port | Transition Nature | Origin & Rationale for Addition / Split |
 | :--- | :--- | :--- | :--- |
-| **`transfer-orchestrator`** | `:8082` | **Split Service** | **Split from `ledger-mutation-engine`**.<br/>*Why Split*: Stripping database drivers and datasource configurations out of the intake tier prevents database connections from idling during perimeter validation, external risk scoring, or client MPIN input. It acts as a stateless Saga orchestrator, coordinates Resilience4j circuit breakers with DLQ routing, enforces 10-minute anti-scam cool-off locks in Redis, and serializes requests into Temenos OFS wire syntax. |
+| **`transfer-orchestrator`** | `:8082` | **Split Service** | **Split from `ledger-mutation-engine`**.<br/>*Why Split*: Stripping database drivers and datasource configurations out of the intake tier prevents database connections from idling during perimeter validation, external risk scoring, or mandatory biometric verification. It acts as a stateless Saga orchestrator, coordinates Resilience4j circuit breakers with DLQ routing, enforces 10-minute anti-scam cool-off locks in Redis, and serializes requests into Temenos OFS wire syntax. |
 | **`t24-mock-cbs`** | `:8085` | **Split Service** | **Split from `ledger-mutation-engine`**.<br/>*Why Split*: Isolates the Authoritative Core Banking System. It is the sole entity holding credentials to the Primary Master Database. Eliminating external HTTP and secondary database calls ensures account row-level locks are held strictly under 5 milliseconds. |
 | **`compliance-service`** | `:8086` | **Added Service** | **Newly Added Service (replaces legacy synchronous dual-write)**.<br/>*Why Added*: Decouples the PostgreSQL Audit Vault from the core transaction loop. Ingests Kafka events to execute idempotent append-only inserts, calculates cryptographic SHA-256 hash chains, compiles AMLA CTR/STR regulatory filings, provides DLQ inspection/replay endpoints, and generates CPU-heavy EOD PDF/Excel reports without impacting CBS throughput. |
 | **`gateway-service`** | `:8080` | Existing (Retained) | Updated routing rules to proxy `/api/v1/compliance/**` to port `:8086`, `/api/v1/transfers/**` and `/api/v1/reversals/**` to port `:8082`. |
-| **`account-service`** | `:8081` | Existing (Retained) | Manages user registration, authentication, JWT issuing, KYC tier levels, and Redis session stores. |
-| **`notification-service`**| `:8083` | Existing (Retained) | Consumes domain events from Kafka to generate customer HTML transaction receipts and deliver manager security alerts via MailHog SMTP (Transfer authorization is validated directly via in-app MPIN prompt popup). |
+| **`account-service`** | `:8081` | Existing (Retained) | Manages user registration, authentication, JWT issuing, KYC tier levels, Redis session stores, and public-key biometric credential validation. |
+| **`notification-service`**| `:8083` | Existing (Retained) | Consumes domain events from Kafka to generate customer HTML transaction receipts and deliver manager security alerts via MailHog SMTP (Transfer authorization is validated directly via mandatory device biometric confirmation). |
 | **`risk-service`** | `:8084` | Existing (Retained) | Real-time Python FastAPI microservice combining XGBoost classification with local neural LLM inference (Qwen2.5-0.5B-Instruct / NanoJev) to evaluate transfer risk and generate contextual natural language anti-scam advisories. |
 
 ---
@@ -178,12 +197,12 @@ The platform standardizes on seven core operational statuses, augmented by two d
 | Status Identifier | Lifecycle Category | State Description & Core Semantics | Typical Duration / TTL | Permitted Next States |
 | :--- | :--- | :--- | :--- | :--- |
 | **`Initiated`** | Ingestion | Request has been received and ingested by `transfer-orchestrator:8082` via API Gateway. Distributed idempotency lock is held in Redis (`tx:idemp:<id>`), payload schema constraints validated, and transaction tracking UUID assigned. Solvency and fraud scoring have not yet executed. | $< 100\text{ms}$ | `Authorized`, `Cancelled` |
-| **`Authorized`** | Verification | Security perimeter validation passed: Customer JWT claims verified, KYC daily limits checked, ML/XGBoost fraud classification passed (or anti-scam warning acknowledged + voluntary 10-minute cool-off elapsed), and secret in-app 6-digit MPIN verified against BCrypt hash in `account-service`. Customer intent is legally certified. | $< 500\text{ms}$ | `Reserved`, `Cancelled` |
+| **`Authorized`** | Verification | Security perimeter validation passed: Customer JWT claims verified, KYC daily limits checked, ML/XGBoost fraud classification passed (or anti-scam warning acknowledged + voluntary 10-minute cool-off elapsed), and mandatory device biometric confirmation (Face ID / Fingerprint) cryptographically verified by `account-service`. Customer intent is legally certified. | $< 500\text{ms}$ | `Reserved`, `Cancelled` |
 | **`Reserved`** | Pre-Settlement | Source account liquidity has been earmarked/reserved in pre-settlement controls to guarantee sufficient funds before dispatching to the core banking engine. Prevents concurrent double-spend race conditions while awaiting CBS lock acquisition. | $< 200\text{ms}$ | `Processing`, `Failed` |
 | **`Processing`** | Core Execution | The transaction instruction has been serialized into Temenos OFS syntax (`FUNDS.TRANSFER,INITIATE...`) and dispatched to `t24-mock-cbs:8085`. The core banking engine has initiated an ACID transaction and acquired pessimistic row-level locks (`UPDLOCK, ROWLOCK`) on `balance_master` in strict ascending ID order. Double-entry general ledger computations are actively executing. | $< 5\text{ms}$ | `Posted`, `Failed` |
 | **`Posted`** | Terminal Success | Authoritative final settlement committed. Account balances debited and credited in `balance_master`, double-entry journals committed to `gl_ledger`, transactional outbox event written to `outbox_events`, and ACID database commit completed. Transaction is financially immutable. | Permanent | `PendingReversal` (if disputed) |
 | **`Failed`** | Terminal Failure | Unrecoverable error occurred during core processing. Solvency deficit in CBS (`ACCOUNT.BAL.LT.ZERO`), account status inactive/closed, database deadlock timeout, or downstream circuit breaker exhaustion. No customer balance or general ledger mutations persist. | Permanent | None (Terminal) |
-| **`Cancelled`** | Terminal Abort | Transaction aborted prior to core financial processing. Triggered by automated hard fraud rejection (`risk_score > 0.85`), user cancellation upon reading the LLM anti-scam warning or during the 10-minute cool-off period, abandoned MPIN modal dialog, or 3 consecutive invalid MPIN attempts. | Permanent | None (Terminal) |
+| **`Cancelled`** | Terminal Abort | Transaction aborted prior to core financial processing. Triggered by automated hard fraud rejection (`risk_score > 0.85`), user cancellation upon reading the LLM anti-scam warning or during the 10-minute cool-off period, cancelled biometric prompt, or 3 consecutive failed biometric attempts. | Permanent | None (Terminal) |
 | **`PendingReversal`** | Dual-Control Escrow | Operational dispute ticket filed by a Branch Teller (Maker) against an existing `Posted` transaction (`reversal_requests`). The transaction is placed under dual-control managerial escrow awaiting Operations Manager (Checker) adjudication. | 24–72 hours | `Reversed`, `Posted` |
 | **`Reversed`** | Post-Terminal Settlement | Reversal dispute approved by Operations Manager (Checker). Authoritative compensating double-entry accounting lines committed to `gl_ledger`, customer funds restored in `balance_master`, and reversal audit trail cryptographically sealed in `reversal_audit`. | Permanent | None (Terminal) |
 
@@ -193,8 +212,8 @@ The platform standardizes on seven core operational statuses, augmented by two d
 stateDiagram-v2
     [*] --> Initiated: API_INGESTION
 
-    Initiated --> Cancelled: FRAUD_POLICY_CIRCUIT_CUT / USER_ABORTED
-    Initiated --> Authorized: AUTH_PERIMETER_CLEARED / IN_APP_MPIN_VERIFIED
+    Initiated --> Cancelled: FRAUD_POLICY_CIRCUIT_CUT / BIOMETRIC_AUTH_FAILED / USER_CANCELLED_BIOMETRIC
+    Initiated --> Authorized: BIOMETRIC_AUTH_VERIFIED
 
     Authorized --> Cancelled: USER_COOL_OFF_CANCELLED / SESSION_EXPIRED
     Authorized --> Reserved: FUNDS_RESERVATION_EARMARKED
@@ -222,12 +241,11 @@ Every state transition must carry an authorized **Reason Code**, a descriptive e
 | From Status | To Status | Triggering Event / API | Standardized Reason Code | Reason Narrative & Context | Enforced Invariant & Business Rule | Responsible Actor & Service |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `[*]` | `Initiated` | `POST /api/v1/transfers` | `API_INGESTION` | Transfer request ingested by Gateway and Orchestrator; idempotency key locked. | Lock `tx:idemp:<key>` acquired with 60s TTL in Redis. Prevents concurrent duplicates. | `CUSTOMER`<br/>`transfer-orchestrator` |
-| `Initiated` | `Authorized` | Perimeter & ML Check Passed | `AUTH_PERIMETER_CLEARED` | JWT valid, KYC limit ok, ML fraud score $\le 0.40$; perimeter passed. | Low-risk transaction eligible for direct execution. | `SYSTEM_RISK`<br/>`transfer-orchestrator` |
-| `Initiated` | `Authorized` | `POST /verify-mpin` | `IN_APP_MPIN_VERIFIED` | Customer completed step-up challenge by entering 6-digit MPIN into popup keypad. | BCrypt verification against `UserEntity.pin_hash` succeeded within 3 attempts. | `CUSTOMER`<br/>`account-service` |
-| `Initiated` | `Authorized` | Cool-off Reconfirmation | `SCAM_ADVISORY_CONFIRMED_MPIN_VERIFIED` | Customer completed 10-minute cool-off after scam warning and re-confirmed with MPIN. | Cool-off lock `tx:cooloff:<id>` expired (600s); explicit customer reconfirmation. | `CUSTOMER`<br/>`transfer-orchestrator` |
+| `Initiated` | `Authorized` | `POST /verify-biometric` | `BIOMETRIC_AUTH_VERIFIED` | Customer completed mandatory biometric confirmation (Face ID / Fingerprint) via device secure enclave. | Cryptographic signature verified against user credential in `account-service`. Mandatory for ALL transfers regardless of amount or risk level. | `CUSTOMER`<br/>`account-service` |
+| `Initiated` | `Authorized` | Cool-off Reconfirmation | `SCAM_ADVISORY_CONFIRMED_BIOMETRIC_VERIFIED` | Customer completed 10-minute cool-off after scam warning and authorized transfer via mandatory biometrics. | Cool-off lock `tx:cooloff:<id>` expired (600s); explicit customer reconfirmation and biometric signature match. | `CUSTOMER`<br/>`transfer-orchestrator` |
 | `Initiated` | `Cancelled` | Risk Score $> 0.85$ | `FRAUD_POLICY_CIRCUIT_CUT` | Real-time ML inference classified transaction as high fraud risk; execution blocked. | Hard fraud circuit cut. Zero DB connections opened; opens AMLA STR docket. | `SYSTEM_RISK`<br/>`risk-service` |
-| `Initiated` | `Cancelled` | MPIN 3 Fails | `MPIN_ATTEMPTS_EXCEEDED` | Customer entered invalid MPIN 3 consecutive times; transaction aborted. | Redis counter `mpin:attempts:<userId>` reached 3; user locked for 15 minutes. | `CUSTOMER`<br/>`account-service` |
-| `Initiated` | `Cancelled` | User Modal Dismiss | `USER_ABORTED_TRANSFER` | Customer closed in-app MPIN prompt dialog without submitting credentials. | Challenge TTL expires; distributed idempotency lock released in Redis. | `CUSTOMER`<br/>`transfer-orchestrator` |
+| `Initiated` | `Cancelled` | Biometrics 3 Fails | `BIOMETRIC_ATTEMPTS_EXCEEDED` | Customer failed biometric authentication 3 consecutive times; transaction aborted. | Redis counter `biometric:attempts:<userId>` reached 3; user locked from initiating transfers for 15 minutes. | `CUSTOMER`<br/>`account-service` |
+| `Initiated` | `Cancelled` | User Prompt Dismiss | `USER_CANCELLED_BIOMETRIC` | Customer dismissed or cancelled native biometric authentication dialog. | Challenge TTL expires; distributed idempotency lock released in Redis. | `CUSTOMER`<br/>`transfer-orchestrator` |
 | `Authorized` | `Reserved` | Internal Liquidity Earmark | `FUNDS_RESERVATION_EARMARKED` | Source account funds earmarked to guarantee solvency during CBS transit. | Internal balance earmark applied prior to dispatching wire to core banking engine. | `SYSTEM_ORCH`<br/>`transfer-orchestrator` |
 | `Authorized` | `Cancelled` | Cool-off Cancellation | `USER_COOL_OFF_CANCELLED` | Customer reviewed anti-scam warning during 10-minute pause and chose to cancel. | Social engineering coercion broken; Redis cool-off key deleted; locks freed. | `CUSTOMER`<br/>`transfer-orchestrator` |
 | `Authorized` | `Cancelled` | Challenge Timeout | `SESSION_TIMEOUT_ABANDONED` | Challenge authorization window (180s) expired without client submission. | Challenge key `chal:tx:<id>` expired in Redis. | `SYSTEM_ORCH`<br/>`transfer-orchestrator` |
@@ -370,16 +388,18 @@ flowchart TD
 
 ### 6.1 Feature 1: Intra-Bank Funds Transfer
 
-#### 6.1.1 Happy Path: Straight-Through Processing (STP)
+#### 6.1.1 Happy Path: Intra-Bank Funds Transfer with Mandatory Biometric Confirmation
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Customer as Customer (Web/Mobile)
+    participant UI as Client App (React / Flutter)
     participant GW as API Gateway (:8080)
     participant Redis as Redis Cache (:6379)
     participant Orch as Transfer Orchestrator (:8082)
     participant Risk as Python Risk Engine (:8084)
+    participant Acct as Account Service (:8081)
     participant CBS as T24 Mock CBS (:8085)
     participant MasterDB as Primary Master DB (:1433)
     participant Kafka as Kafka Broker (:9092)
@@ -387,7 +407,8 @@ sequenceDiagram
     participant Comp as Compliance Svc (:8086)
     participant AuditDB as Postgres Audit Vault (:5432)
 
-    Customer->>GW: POST /api/v1/transfers (Bearer JWT, Payload)
+    Customer->>UI: Submits Transfer Details (Amount, Recipient)
+    UI->>GW: POST /api/v1/transfers (Bearer JWT, Payload)
     GW->>Redis: Check Token Blacklist (blacklist:jti)
     Redis-->>GW: OK (Token Valid)
     GW->>Orch: Proxy POST /api/v1/transfers
@@ -397,20 +418,34 @@ sequenceDiagram
     Orch->>Redis: SET tx:idemp:{id} "PROCESSING" NX EX 60
     Redis-->>Orch: OK (Lock Acquired)
 
-    Note over Orch,Risk: Real-Time Fraud Screening (< 2ms)
+    Note over Orch,Risk: Real-Time Background Fraud Screening (< 2ms)
     Orch->>Risk: POST /api/v1/risk/transfer (Context)
     Risk-->>Orch: HTTP 200 {decision: "ALLOW", score: 0.12}
 
-    Note over Orch,Redis: State Transition: Authorized (Reason: AUTH_PERIMETER_CLEARED)
+    Note over Orch,UI: Mandatory Biometric Challenge (Required for ALL transfers)
+    Orch->>Redis: SET chal:tx:{id} "PENDING_BIOMETRIC" EX 180
+    Orch-->>GW: HTTP 202 Accepted {status: "REQUIRE_BIOMETRIC", challengeId: "{id}", method: "NATIVE_BIOMETRIC", prompt: "Authenticate via Face ID or Fingerprint"}
+    GW-->>UI: HTTP 202 Accepted (Mount Native Biometric Sensor Prompt)
+
+    UI->>Customer: Displays Native Biometric Prompt (Face ID / Fingerprint)
+    Customer->>UI: Authenticates with Biometric Sensor
+    Note over UI: Device Secure Enclave Cryptographically Signs Assertion
+    UI->>Orch: POST /api/v1/transfers/{id}/verify-biometric {challengeId: "{id}", biometricSignature: "...", credentialId: "..."}
+
+    Note over Orch,Acct: Cryptographic Biometric Assertion Validation
+    Orch->>Acct: POST /api/v1/internal/users/{userId}/validate-biometric {signature, credentialId}
+    Acct->>Acct: Verify signature against registered FIDO2/WebAuthn public key
+    Acct-->>Orch: HTTP 200 {valid: true}
+    Orch->>Redis: DEL chal:tx:{id}
+
+    Note over Orch,Redis: State Transition: Authorized (Reason: BIOMETRIC_AUTH_VERIFIED)
     Orch->>Redis: SET tx:state:{id} "Authorized" EX 300
 
     Note over Orch,Redis: State Transition: Reserved (Reason: FUNDS_RESERVATION_EARMARKED)
     Orch->>Redis: SET tx:state:{id} "Reserved" EX 300
 
     Note over Orch,CBS: Serialize JSON to Temenos OFS Wire Syntax (State: Processing)
-    Orch->>CBS: POST /api/v1/cbs/ofs (FUNDS.TRANSFER,INITIATE...)
-
-    Note over CBS,MasterDB: Atomic ACID Transaction Execution (State: Processing to Posted)
+    Orch->>CBS: POST /api/v1/cbs/transfers (OFS: FUNDS.TRANSFER,INITIATE...)
     CBS->>MasterDB: BEGIN TRANSACTION
     CBS->>MasterDB: SELECT balance_amount FROM balance_master WITH (UPDLOCK, ROWLOCK) WHERE account_id IN (src, dst) ORDER BY account_id ASC
     MasterDB-->>CBS: Balances Locked (Sufficient Solvency)
@@ -430,7 +465,8 @@ sequenceDiagram
     CBS-->>Orch: OFS ACK // FUNDS.TRANSFER//1/TX100234//SUCCESS
     Orch->>Redis: SET tx:idemp:{id} "SUCCESS" EX 86400
     Orch-->>GW: HTTP 200 OK {status: "Posted", txId: "TX100234"}
-    GW-->>Customer: HTTP 200 OK (Transfer Successful)
+    GW-->>UI: HTTP 200 OK (Transfer Successful)
+    UI-->>Customer: Displays Transfer Receipt Screen
 
     par Asynchronous Processing
         Kafka->>Notif: Consume TransferExecutedEvent
@@ -443,7 +479,7 @@ sequenceDiagram
     end
 ```
 
-#### 6.1.2 Alternate Flow A: Medium Fraud Risk (In-App Popup / Prompt MPIN Verification)
+#### 6.1.2 Alternate Flow A: Biometric Authentication Failure & Cancellation
 
 ```mermaid
 sequenceDiagram
@@ -451,47 +487,40 @@ sequenceDiagram
     actor Customer as Customer (User)
     participant UI as Client App (React / Flutter)
     participant Orch as Transfer Orchestrator (:8082)
-    participant Risk as Python Risk Engine (:8084)
     participant Redis as Redis Cache (:6379)
     participant Acct as Account Service (:8081)
-    participant CBS as T24 Mock CBS (:8085)
+    participant Kafka as Kafka Broker (:9092)
+    participant Comp as Compliance Svc (:8086)
 
-    Customer->>UI: Initiates Transfer (Amount > ₱50k or Elevated Risk)
+    Customer->>UI: Submits Transfer Details
     UI->>Orch: POST /api/v1/transfers (Payload)
     Note over Orch,Redis: State: Initiated (Reason: API_INGESTION)
-    Orch->>Risk: POST /api/v1/risk/transfer
-    Risk-->>Orch: HTTP 200 {decision: "REQUIRE_2FA", score: 0.65}
+    Orch-->>UI: HTTP 202 Accepted {challengeId: "CHAL-BIO-01", method: "NATIVE_BIOMETRIC"}
+    UI->>Customer: Mounts Native Biometric Sensor Prompt
 
-    Note over Orch,Redis: Step-Up Challenge Registered (In-App MPIN)
-    Orch->>Redis: SET chal:tx:{id} "PENDING_MPIN" EX 180
-    Orch-->>UI: HTTP 202 Accepted {status: "REQUIRE_MPIN", challenge_id: "{id}", method: "IN_APP_POPUP", prompt: "Enter 6-digit MPIN to authorize transfer", expires_in: 180}
+    alt Customer Fails Biometric Verification (Mismatch)
+        Customer->>UI: Sensor Fails Recognition (Unrecognized Finger / Face)
+        UI->>Orch: POST /api/v1/transfers/{id}/verify-biometric {signature: "INVALID"}
+        Orch->>Acct: POST /api/v1/internal/users/{userId}/validate-biometric
+        Acct-->>Orch: HTTP 200 {valid: false, errorCode: "SIGNATURE_MISMATCH"}
+        Orch->>Redis: INCR biometric:attempts:{userId}
+        Redis-->>Orch: 3 (Threshold Reached: Max 3 Attempts)
+        Note over Orch: State Transition: Cancelled (Reason: BIOMETRIC_ATTEMPTS_EXCEEDED)
+        Orch->>Kafka: Publish TransactionStatusChangedEvent (toStatus='Cancelled', reason='BIOMETRIC_ATTEMPTS_EXCEEDED')
+        Orch-->>UI: HTTP 401 Unauthorized {error: "BIOMETRIC_ATTEMPTS_EXCEEDED", status: "Cancelled"}
+        UI->>Customer: Shows "Authentication Failed. Maximum attempts reached. Transfer cancelled."
+    else Customer Cancels / Dismisses Biometric Prompt
+        Customer->>UI: Clicks "Cancel" on Native Biometric Dialog
+        UI->>Orch: POST /api/v1/transfers/{id}/cancel {cancellationReason: "USER_CANCELLED_BIOMETRIC"}
+        Note over Orch: State Transition: Cancelled (Reason: USER_CANCELLED_BIOMETRIC)
+        Orch->>Kafka: Publish TransactionStatusChangedEvent (toStatus='Cancelled', reason='USER_CANCELLED_BIOMETRIC')
+        Orch->>Redis: DEL tx:idemp:{id}, chal:tx:{id}
+        Orch-->>UI: HTTP 200 OK {status: "Cancelled", reason: "USER_CANCELLED_BIOMETRIC"}
+        UI->>Customer: Shows "Transfer Cancelled by User"
+    end
 
-    Note over UI,Customer: Mount In-App MPIN Keypad Dialog on Screen
-    UI->>Customer: Displays Interactive In-App MPIN Popup Prompt
-    Customer->>UI: Enters 6-digit secret MPIN into Secure Keypad
-    UI->>Orch: POST /api/v1/transfers/{id}/verify-mpin {challenge_id: "{id}", mpin: "******"}
-
-    Note over Orch,Redis: Rate-Limit Check in Redis (Max 3 Attempts)
-    Orch->>Redis: INCR mpin:attempts:{userId}
-    Redis-->>Orch: 1 (Within limit)
-
-    Note over Orch,Acct: Cryptographic MPIN Verification
-    Orch->>Acct: POST /api/v1/internal/users/{userId}/validate-mpin {mpin: "******"}
-    Acct->>Acct: Verify against BCrypt pin_hash in UserEntity
-    Acct-->>Orch: HTTP 200 {valid: true}
-    Orch->>Redis: DEL mpin:attempts:{userId}, chal:tx:{id}
-
-    Note over Orch,Redis: State Transition: Authorized (Reason: IN_APP_MPIN_VERIFIED)
-    Orch->>Redis: SET tx:state:{id} "Authorized" EX 300
-
-    Note over Orch,Redis: State Transition: Reserved (Reason: FUNDS_RESERVATION_EARMARKED)
-    Orch->>Redis: SET tx:state:{id} "Reserved" EX 300
-
-    Note over Orch,CBS: Proceed to CBS OFS Dispatch (State: Processing to Posted)
-    Orch->>CBS: POST /api/v1/cbs/ofs (FUNDS.TRANSFER,INITIATE...)
-    CBS-->>Orch: OFS ACK // FUNDS.TRANSFER//SUCCESS
-    Orch-->>UI: HTTP 200 OK {status: "Posted", txId: "TX100234"}
-    UI->>Customer: Shows In-App Success Confirmation & Closes Popup
+    Kafka->>Comp: Consume TransactionStatusChangedEvent
+    Comp->>Comp: Record in transaction_status_audit
 ```
 
 #### 6.1.3 Alternate Flow B: High Fraud Risk Cutoff (Immediate Block)
@@ -530,7 +559,7 @@ sequenceDiagram
     participant Redis as Redis Cache (:6379)
 
     Customer->>Orch: POST /api/v1/transfers (Amount: 50,000.00)
-    Orch->>CBS: POST /api/v1/cbs/ofs (FUNDS.TRANSFER,INITIATE...)
+    Orch->>CBS: POST /api/v1/cbs/transfers (OFS: FUNDS.TRANSFER,INITIATE...)
 
     CBS->>MasterDB: BEGIN TRANSACTION
     CBS->>MasterDB: SELECT balance_amount FROM balance_master WITH (UPDLOCK) WHERE account_id = 'ACC-01'
@@ -598,7 +627,7 @@ sequenceDiagram
 
         opt Premature Confirmation Blocked
             Customer->>UI: Attempts Early Confirmation
-            UI->>Orch: POST /api/v1/transfers/TX-100234/verify-mpin {mpin: "******"}
+            UI->>Orch: POST /api/v1/transfers/TX-100234/verify-biometric {credentialId: "...", biometricSignature: "..."}
             Orch->>Redis: EXISTS tx:cooloff:TX-100234
             Redis-->>Orch: 1 (Cool-Off Active)
             Orch-->>UI: HTTP 425 Too Early {error: "COOL_OFF_ACTIVE", remaining_seconds: 412}
@@ -613,28 +642,28 @@ sequenceDiagram
             Note over Orch: State Transition: Cancelled (Reason: USER_COOL_OFF_CANCELLED)
             Orch-->>UI: HTTP 200 OK {status: "Cancelled", reason: "USER_COOL_OFF_CANCELLED"}
         else User Confirms to Proceed
-            Customer->>UI: Confirms & Enters 6-Digit MPIN into Keypad
-            UI->>Orch: POST /api/v1/transfers/TX-100234/verify-mpin {mpin: "******"}
+            Customer->>UI: Confirms & Authenticates via Device Biometric Sensor (Face ID / Fingerprint)
+            UI->>Orch: POST /api/v1/transfers/TX-100234/verify-biometric {credentialId: "...", biometricSignature: "..."}
             Orch->>Redis: Check Cool-Off Inactive (EXISTS == 0)
-            Orch->>Acct: Validate MPIN against UserEntity pin_hash
+            Orch->>Acct: Validate Biometric Signature against User Biometric Credential
             Acct-->>Orch: HTTP 200 {valid: true}
-            Note over Orch,Redis: State Transition: Authorized (Reason: SCAM_ADVISORY_CONFIRMED_MPIN_VERIFIED)
+            Note over Orch,Redis: State Transition: Authorized (Reason: SCAM_ADVISORY_CONFIRMED_BIOMETRIC_VERIFIED)
             Note over Orch,Redis: State Transition: Reserved (Reason: FUNDS_RESERVATION_EARMARKED)
-            Orch->>CBS: POST /api/v1/cbs/ofs (FUNDS.TRANSFER,INITIATE...)
+            Orch->>CBS: POST /api/v1/cbs/transfers (OFS: FUNDS.TRANSFER,INITIATE...)
             CBS-->>Orch: OFS ACK // FUNDS.TRANSFER//SUCCESS
             Orch-->>UI: HTTP 200 OK {status: "Posted", txId: "TX100234"}
             UI->>Customer: Displays Transfer Receipt Screen
         end
     else User Acknowledges Immediately
         Customer->>UI: Clicks "I Understand the Risk & Wish to Proceed"
-        UI->>Customer: Displays In-App MPIN Keypad Prompt
-        Customer->>UI: Enters 6-Digit MPIN into Keypad
-        UI->>Orch: POST /api/v1/transfers/TX-100234/verify-mpin {mpin: "******"}
-        Orch->>Acct: Validate MPIN against UserEntity pin_hash
+        UI->>Customer: Displays Native Biometric Prompt (Face ID / Fingerprint)
+        Customer->>UI: Authenticates with Biometric Sensor
+        UI->>Orch: POST /api/v1/transfers/TX-100234/verify-biometric {credentialId: "...", biometricSignature: "..."}
+        Orch->>Acct: Validate Biometric Signature against User Biometric Credential
         Acct-->>Orch: HTTP 200 {valid: true}
-        Note over Orch,Redis: State Transition: Authorized (Reason: IN_APP_MPIN_VERIFIED)
+        Note over Orch,Redis: State Transition: Authorized (Reason: BIOMETRIC_AUTH_VERIFIED)
         Note over Orch,Redis: State Transition: Reserved (Reason: FUNDS_RESERVATION_EARMARKED)
-        Orch->>CBS: POST /api/v1/cbs/ofs (FUNDS.TRANSFER,INITIATE...)
+        Orch->>CBS: POST /api/v1/cbs/transfers (OFS: FUNDS.TRANSFER,INITIATE...)
         CBS-->>Orch: OFS ACK // FUNDS.TRANSFER//SUCCESS
         Orch-->>UI: HTTP 200 OK {status: "Posted", txId: "TX100234"}
         UI->>Customer: Displays Transfer Receipt Screen
@@ -672,7 +701,7 @@ sequenceDiagram
     Note over Checker,Orch: Phase 2: Checker Review & Dual Authorization
     Checker->>Orch: POST /api/v1/reversals/REV-500/approve (Manager JWT)
     Note over Orch: Validate Segregation of Duties: checker_id != maker_id
-    Orch->>CBS: POST /api/v1/cbs/ofs (FUNDS.TRANSFER,REVERSAL/REV-500)
+    Orch->>CBS: POST /api/v1/cbs/reversals/REV-500/execute (OFS: FUNDS.TRANSFER,REVERSAL)
 
     Note over CBS,MasterDB: Phase 3: Compensating Double-Entry Settlement (State: PendingReversal to Reversed)
     CBS->>MasterDB: BEGIN TRANSACTION
@@ -743,7 +772,7 @@ sequenceDiagram
     participant MasterDB as Primary Master DB (:1433)
 
     Checker->>Orch: POST /api/v1/reversals/REV-500/approve
-    Orch->>CBS: POST /api/v1/cbs/ofs (FUNDS.TRANSFER,REVERSAL/REV-500)
+    Orch->>CBS: POST /api/v1/cbs/reversals/REV-500/execute (OFS: FUNDS.TRANSFER,REVERSAL)
     CBS->>MasterDB: BEGIN TRANSACTION
     CBS->>MasterDB: SELECT balance_amount FROM balance_master WITH (UPDLOCK) WHERE account_id = beneficiary
     MasterDB-->>CBS: balance_amount = 500.00 (Reversal Amount is 10,000.00)
@@ -772,9 +801,9 @@ sequenceDiagram
 
     Customer->>Orch: POST /api/v1/transfers (Payload)
     Note over Orch: CBS experiencing catastrophic outage / network partitions
-    Orch->>CBS: POST /api/v1/cbs/ofs (Attempt 1 - Timeout 500ms)
-    Orch->>CBS: POST /api/v1/cbs/ofs (Attempt 2 - Timeout 500ms)
-    Orch->>CBS: POST /api/v1/cbs/ofs (Attempt 3 - Timeout 500ms)
+    Orch->>CBS: POST /api/v1/cbs/transfers (Attempt 1 - Timeout 500ms)
+    Orch->>CBS: POST /api/v1/cbs/transfers (Attempt 2 - Timeout 500ms)
+    Orch->>CBS: POST /api/v1/cbs/transfers (Attempt 3 - Timeout 500ms)
 
     Note over Orch: Resilience4j Circuit Breaker Trips OPEN
     Orch->>Kafka: Publish TransferFailedToDlqEvent to banking.transfers.dlq
@@ -804,7 +833,7 @@ sequenceDiagram
     Officer->>Comp: POST /api/v1/compliance/dlq/replay/INC-8891
     Comp->>AuditDB: SELECT payload_json FROM failed_transaction_audit WHERE incident_id = 'INC-8891'
     Comp->>Orch: POST /api/v1/transfers (Replay Ingestion)
-    Orch->>CBS: POST /api/v1/cbs/ofs (FUNDS.TRANSFER...)
+    Orch->>CBS: POST /api/v1/cbs/transfers (OFS: FUNDS.TRANSFER...)
     CBS-->>Orch: OFS ACK // SUCCESS
     Orch-->>Comp: HTTP 200 OK (Settled)
     Comp->>AuditDB: UPDATE failed_transaction_audit SET replay_status = 'REPLAYED', resolved_at = NOW()
@@ -874,7 +903,7 @@ sequenceDiagram
     participant MasterDB as Primary Master DB (:1433)
 
     Customer->>Orch: POST /api/v1/transfers (Payload)
-    Orch->>CBS: POST /api/v1/cbs/ofs (FUNDS.TRANSFER...)
+    Orch->>CBS: POST /api/v1/cbs/transfers (OFS: FUNDS.TRANSFER...)
     CBS->>MasterDB: SELECT status FROM system_dates
     MasterDB-->>CBS: status = 'EOD_CUTOFF'
     Note over CBS: Online Financial Posting Halted for Batch Run
@@ -926,18 +955,18 @@ flowchart TD
     CoolOffTimer -- Premature Attempt --> RejectEarly[Reject: Return HTTP 425 Too Early]
     CoolOffTimer -- Timer Finished --> PromptReconfirm{Customer Confirms<br/>Wish to Proceed?}
     PromptReconfirm -- No / Abort --> AbortCoolOff[State: Cancelled<br/>Reason: USER_COOL_OFF_CANCELLED<br/>Return HTTP 200 Cancelled]
-    PromptReconfirm -- Yes --> ReqMPIN[Trigger In-App MPIN Popup Prompt<br/>Return HTTP 202 Accepted]
-    UserAdvisoryAction -- Acknowledge Immediately --> ReqMPIN
-    ReqMPIN --> AwaitMPIN{Validate Customer<br/>In-App MPIN Input?}
-    AwaitMPIN -- Invalid MPIN / Lockout --> Ret401[State: Cancelled<br/>Reason: MPIN_ATTEMPTS_EXCEEDED<br/>Return HTTP 401 Unauthorized]
-    AwaitMPIN -- Valid Match --> SetAuthMPIN[State: Authorized<br/>Reason: IN_APP_MPIN_VERIFIED]
-    EvalRisk -- Score <= 0.40 Clean --> SetAuthClean[State: Authorized<br/>Reason: AUTH_PERIMETER_CLEARED]
+    PromptReconfirm -- Yes --> ReqBio[Mandatory Biometric Confirmation<br/>Trigger Native Face ID / Fingerprint Prompt]
+    UserAdvisoryAction -- Acknowledge Immediately --> ReqBio
+    EvalRisk -- Score <= 0.40 Clean --> ReqBio
 
-    SetAuthMPIN --> SetReserved[State: Reserved<br/>Reason: FUNDS_RESERVATION_EARMARKED]
-    SetAuthClean --> SetReserved
+    ReqBio --> AwaitBio{Validate Customer<br/>Biometric Signature?}
+    AwaitBio -- Invalid / Sensor Fail / Cancelled --> RetBioFail[State: Cancelled<br/>Reason: BIOMETRIC_AUTH_FAILED<br/>Return HTTP 401 Unauthorized]
+    AwaitBio -- Valid Cryptographic Match --> SetAuthBio[State: Authorized<br/>Reason: BIOMETRIC_AUTH_VERIFIED]
+
+    SetAuthBio --> SetReserved[State: Reserved<br/>Reason: FUNDS_RESERVATION_EARMARKED]
     SetReserved --> TranslateOFS[Translate Request into<br/>Temenos OFS Wire Syntax]
 
-    TranslateOFS --> DispatchCBS[Transmit OFS Command to<br/>T24 Mock CBS :8085]
+    TranslateOFS --> DispatchCBS[Transmit OFS Command to<br/>T24 Mock CBS POST /api/v1/cbs/transfers]
     DispatchCBS --> CheckCBSStatus{CBS System Date<br/>Status?}
     CheckCBSStatus -- EOD_CUTOFF --> BufferT1[Queue Transaction for T+1 &<br/>Return HTTP 202 Accepted]
     CheckCBSStatus -- ONLINE --> BeginTx[CBS Begins ACID Transaction<br/>State: Processing]
@@ -1078,15 +1107,18 @@ To guarantee financial correctness and regulatory auditability, the implementati
 4. **Rule 4 (Zero-Deadlock Account Locking Order)**:
    * Pessimistic row-level locks on `balance_master` must always be acquired in strict ascending alphabetical order of account IDs (`min(account_A, account_B)` followed by `max(account_A, account_B)`).
 5. **Rule 5 (Sub-5 Millisecond Primary Lock Budget)**:
-   * The primary database lock must never be held across network boundaries. All risk evaluations, in-app MPIN prompt verifications, and Kafka streaming must occur before lock acquisition or after transaction commit.
+   * The primary database lock must never be held across network boundaries. All risk evaluations, mandatory cryptographic biometric verifications, and Kafka streaming must occur before lock acquisition or after transaction commit.
 6. **Rule 6 (Maker-Checker Segregation of Duties)**:
    * In any intra-bank reversal, the approving user (`checker_id`) must not match the initiating user (`maker_id`). Reversals attempted by the same user must be rejected immediately with `HTTP 403 Forbidden`.
 7. **Rule 7 (Immutable Audit Vault Anti-Tamper Triggers)**:
    * The PostgreSQL Audit Vault must enforce database-level trigger rules prohibiting any `UPDATE` or `DELETE` SQL operations on `ledger_mutation_audit`, `reversal_audit`, and `transaction_status_audit`.
 8. **Rule 8 (Anti-Scam Cool-Off Window Invariant)**:
-   * When a customer opts into the 10-minute behavioral cool-off period upon receiving an LLM anti-scam warning, the orchestrator sets an atomic lock in Redis (`tx:cooloff:<txId>`) with a 600-second TTL. Any attempt to confirm or settle the transaction prior to the expiration of the timer must be rejected immediately with `HTTP 425 Too Early`. Upon timer expiration, the transaction requires explicit customer re-confirmation and in-app MPIN verification before an OFS settlement command can be dispatched to CBS.
+   * When a customer opts into the 10-minute behavioral cool-off period upon receiving an LLM anti-scam warning, the orchestrator sets an atomic lock in Redis (`tx:cooloff:<txId>`) with a 600-second TTL. Any attempt to confirm or settle the transaction prior to the expiration of the timer must be rejected immediately with `HTTP 425 Too Early`. Upon timer expiration, the transaction requires explicit customer re-confirmation and mandatory biometric verification before an OFS settlement command can be dispatched to CBS.
 9. **Rule 9 (Transaction Status Lifecycle Immutability & Mandatory Reason Logging Invariant)**:
    * Every transaction status mutation across the canonical lifecycle (`Initiated` -> `Authorized` -> `Reserved` -> `Processing` -> `Posted`, terminal states `Failed` and `Cancelled`, and governance states `PendingReversal` and `Reversed`) must be accompanied by an atomic insert into `transaction_status_history` in the Master Database and an asynchronous mirror into `transaction_status_audit` in the PostgreSQL Audit Vault. Every status change record must capture an explicit machine-readable `change_reason` code, an explanatory `reason_details` narrative, the originating `actor_id` and `actor_type`, and a high-precision UTC timestamp. Unlogged direct mutations of `transactions.status` are strictly prohibited by database-level constraints and domain service validation.
+
+10. **Rule 10 (Universal Mandatory Biometric Confirmation Invariant)**:
+    * Every customer funds transfer transaction unconditionally mandates cryptographic biometric authentication (Face ID, Touch ID, or FIDO2/WebAuthn assertion) signed via the client device's secure enclave and validated by `account-service:8081`. This biometric verification is strictly non-bypassable: it executes regardless of the transfer amount (no de minimis or exemption threshold) and regardless of whether the risk engine classifies the transaction as clean, low-risk, or suspicious. Any attempt to transition a transaction to `Authorized` or dispatch an OFS instruction to CBS without an active, verified biometric assertion token must be rejected immediately with `HTTP 401 Unauthorized`.
 
 ---
 
@@ -1098,47 +1130,52 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 
 | Microservice | Port | HTTP Method | Endpoint Path | Caller / Consumer | Purpose & Scope |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`transfer-orchestrator`** | `:8082` | `POST` | `/api/v1/transfers` | Client Channels / Gateway | Ingests transfer, coordinates fraud evaluation, triggers MPIN / advisory challenges, or initiates settlement. |
-| **`transfer-orchestrator`** | `:8082` | `POST` | `/api/v1/transfers/{id}/verify-mpin` | Client Channels (In-App Popup) | Submits customer 6-digit MPIN to authorize an initiated transfer. |
+| **`transfer-orchestrator`** | `:8082` | `POST` | `/api/v1/transfers` | Client Channels / Gateway | Ingests transfer, coordinates fraud evaluation, issues mandatory biometric confirmation challenges (and anti-scam advisory if flagged). |
+| **`transfer-orchestrator`** | `:8082` | `POST` | `/api/v1/transfers/{id}/verify-biometric` | Client Channels (Native Biometrics) | Submits device-signed cryptographic biometric assertion (Face ID / Fingerprint) to authorize an initiated transfer. |
 | **`transfer-orchestrator`** | `:8082` | `POST` | `/api/v1/transfers/{id}/cool-off` | Client Channels (Advisory UI) | Activates voluntary 10-minute anti-scam cooling-off lock in Redis. |
 | **`transfer-orchestrator`** | `:8082` | `POST` | `/api/v1/transfers/{id}/cancel` | Client Channels (Advisory UI) | Explicitly aborts a transfer during advisory warning or cooling-off period. |
 | **`transfer-orchestrator`** | `:8082` | `POST` | `/api/v1/reversals/request` | Branch Teller (Maker UI) | Files an intra-bank transaction dispute reversal ticket. |
 | **`transfer-orchestrator`** | `:8082` | `POST` | `/api/v1/reversals/{ticketId}/approve` | Operations Manager (Checker UI) | Approves reversal ticket and dispatches compensating reversal to CBS. |
 | **`transfer-orchestrator`** | `:8082` | `POST` | `/api/v1/reversals/{ticketId}/reject` | Operations Manager (Checker UI) | Rejects reversal ticket and restores transaction state to Posted. |
-| **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/ofs` | `transfer-orchestrator` | Core banking execution: funds transfer initiation, balance locking, and posting. |
-| **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/reversals/ticket` | `transfer-orchestrator` | Persists reversal ticket in Master DB and transitions status to `PendingReversal`. |
-| **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/reversals/{ticketId}/execute` | `transfer-orchestrator` | Executes compensating double-entry journal reversal and marks status `Reversed`. |
-| **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/reversals/{ticketId}/reject` | `transfer-orchestrator` | Records dispute rejection and restores transaction status to `Posted`. |
-| **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/eod/trigger` | Scheduled Batch Job / Ops Admin | Triggers the 4-phase End-of-Day (EOD) batch processing pipeline. |
-| **`t24-mock-cbs`** | `:8085` | `GET` | `/api/v1/cbs/system-date` | Internal Services / Gateway | Queries current core banking business date, status, and posting window state. |
+| **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/transfers` | `transfer-orchestrator` | Core funds transfer execution: balance locking, solvency check, and GL posting (Wire: OFS). |
+| **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/reversals/{ticketId}/execute` | `transfer-orchestrator` | Executes compensating double-entry journal reversal and marks status `Reversed` (Wire: OFS). |
+| **`t24-mock-cbs`** | `:8085` | `GET` | `/api/v1/cbs/accounts/{accountId}/balance` | Internal Services / Orchestrator | Authoritative real-time balance and solvency enquiry from core ledger (Wire: OFS). |
+| **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/reversals/ticket` | `transfer-orchestrator` | Persists reversal ticket in Master DB and transitions status to `PendingReversal` (Wire: Native JSON). |
+| **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/reversals/{ticketId}/reject` | `transfer-orchestrator` | Records dispute rejection and restores transaction status to `Posted` (Wire: Native JSON). |
+| **`t24-mock-cbs`** | `:8085` | `POST` | `/api/v1/cbs/eod/trigger` | Scheduled Batch Job / Ops Admin | Triggers the 4-phase End-of-Day (EOD) batch processing pipeline (Wire: Native JSON). |
+| **`t24-mock-cbs`** | `:8085` | `GET` | `/api/v1/cbs/system-date` | Internal Services / Gateway | Queries current core banking business date, status, and posting window state (Wire: Native JSON). |
 | **`compliance-service`** | `:8086` | `GET` | `/api/v1/compliance/audit/transactions/{txId}` | Audit / Compliance Portal | Queries immutable audit trail, status transitions, and SHA-256 hash chains. |
 | **`compliance-service`** | `:8086` | `GET` | `/api/v1/compliance/dlq/incidents` | Operations / DevOps Portal | Queries dead-lettered failed transactions for inspection. |
 | **`compliance-service`** | `:8086` | `POST` | `/api/v1/compliance/dlq/replay/{incidentId}` | Operations / DevOps Portal | Triggers authorized manual replay of a DLQ incident through the orchestrator. |
 | **`compliance-service`** | `:8086` | `GET` | `/api/v1/compliance/reports/eod/{businessDate}` | Audit / Compliance Portal | Retrieves catalog and SHA-256 checksums of generated EOD artifacts. |
 | **`compliance-service`** | `:8086` | `GET` | `/api/v1/compliance/filings/amla` | AMLA Compliance Officer Portal | Queries AMLA Covered Transaction (CTR) and Suspicious Transaction (STR) filings. |
-| **`account-service`** | `:8081` | `POST` | `/api/v1/internal/users/{userId}/validate-mpin` | `transfer-orchestrator` (Internal) | Cryptographically verifies 6-digit MPIN against BCrypt hash in `users` store. |
+| **`account-service`** | `:8081` | `POST` | `/api/v1/internal/users/{userId}/validate-biometric` | `transfer-orchestrator` (Internal) | Cryptographically verifies device biometric assertion against registered user public key. |
 | **`risk-service`** | `:8084` | `POST` | `/api/v1/risk/transfer` | `transfer-orchestrator` (Internal) | Real-time ML fraud scoring and local neural LLM anti-scam advisory generation. |
 
 > [!NOTE]
-> ### Architectural Note: Endpoint Segregation and Payload Protocols in `t24-mock-cbs`
+> ### Architectural Note: Dedicated OFS Endpoints and Payload Protocols in `t24-mock-cbs`
 >
-> **1. Why `t24-mock-cbs` Exposes Multiple Endpoints Instead of a Single OFS Ingress**:
-> In a production core banking deployment, Temenos T24 provides a centralized Open Financial Services (OFS) message broker (`OFS.SOURCE` / `OFS.BULK.MANAGER`) for high-throughput financial transactions. However, in our decoupled architecture, `t24-mock-cbs` (:8085) intentionally exposes multiple distinct REST endpoints to maintain a strict separation of concerns between **financial ledger execution**, **administrative batch controls**, and **operational dispute workflows**:
-> * **Transactional Financial Ingress (`POST /api/v1/cbs/ofs`)**: Dedicated strictly to atomic, row-locking financial ledger mutations (`FUNDS.TRANSFER,INITIATE` and `FUNDS.TRANSFER,REVERSAL`). Isolating financial execution on a dedicated route ensures that connection pooling, circuit breaking, and sub-5ms row-level locks on `balance_master` are never delayed by administrative traffic.
-> * **Dispute Workflow Management (`POST /api/v1/cbs/reversals/ticket` and `POST /api/v1/cbs/reversals/{ticketId}/reject`)**: Manages the multi-party Maker-Checker ticketing lifecycle (persisting tickets in `reversal_requests`, status tracking in `transaction_status_history`) without invoking financial ledger calculations. In enterprise core banking, operational dispute workflows are handled via middleware workflow engines or branch management APIs rather than standard transaction OFS queues.
-> * **Batch Pipeline Administration (`POST /api/v1/cbs/eod/trigger`)**: Triggers the 4-phase End-of-Day (EOD) batch state machine (posting cutoff, automated fee deductions, daily interest accruals with 20% BIR withholding, snapshot freezing, and business date rollover). This mirrors Temenos Close of Business (COB) / TSM batch control routines, which are triggered via administrative schedulers rather than customer-facing OFS channels.
-> * **Operational State Inquiry (`GET /api/v1/cbs/system-date`)**: Lightweight, read-only inquiry enabling perimeter services (`transfer-orchestrator`, `gateway-service`) to inspect active business dates and posting window state without incurring OFS message parsing overhead.
+> **1. Multi-Endpoint Architecture (Lifting Single Consolidated OFS Ingress Restriction)**:
+> While legacy core banking prototypes often funnel all traffic through a single generic message queue (e.g. `POST /api/v1/cbs/ofs`), such multiplexing creates severe API ambiguity, breaks RESTful resource routing, and hinders perimeter observability. In this target architecture, the restriction requiring a single consolidated OFS endpoint is lifted. `t24-mock-cbs` (:8085) exposes **clear, dedicated, and semantic REST endpoints** for distinct financial, administrative, and batch operations:
+> * **Dedicated OFS Financial Endpoints**:
+>   * `POST /api/v1/cbs/transfers` — Explicit intake for customer funds transfer initiation, balance mutations, and GL ledger updates.
+>   * `POST /api/v1/cbs/reversals/{ticketId}/execute` — Dedicated execution endpoint for compensating double-entry reversal accounting.
+>   * `GET /api/v1/cbs/accounts/{accountId}/balance` — Direct core inquiry endpoint for real-time ledger balance and solvency checks.
+> * **Operational & Dispute Workflow Endpoints**:
+>   * `POST /api/v1/cbs/reversals/ticket` and `POST /api/v1/cbs/reversals/{ticketId}/reject` — Manage multi-party Maker-Checker ticketing workflows and status auditing without invoking immediate balance movements.
+> * **Batch Pipeline Administration**:
+>   * `POST /api/v1/cbs/eod/trigger` and `GET /api/v1/cbs/system-date` — Trigger the 4-phase End-of-Day (EOD) batch state machine and inspect calendar/posting window state.
 >
 > **2. Wire Payload Protocol Clarification (OFS vs. Native JSON Payloads)**:
-> * **OFS Ingress (`POST /api/v1/cbs/ofs`)**: In actual runtime execution, this endpoint accepts and returns **raw Temenos OFS syntax strings** over the wire (e.g. `FUNDS.TRANSFER,INITIATE/I/PROCESS/...` requests and `1/TX100234//SUCCESS` or `-1//ACCOUNT.BAL.LT.ZERO` responses). The JSON representations documented in Section 9.3.1 for `/api/v1/cbs/ofs` are provided solely for visual readability and schema clarity in this specification.
-> * **Non-OFS Endpoints (`/api/v1/cbs/reversals/ticket`, `/api/v1/cbs/reversals/{ticketId}/reject`, `/api/v1/cbs/eod/trigger`, and `GET /api/v1/cbs/system-date`)**: These endpoints **genuinely use standard JSON payloads and native HTTP REST semantics** both in design and in runtime implementation. They do **NOT** use OFS wire syntax. They are modern RESTful administrative and operational APIs designed for programmatic interoperability with Docker schedulers, management dashboards, and the orchestration tier.
+> * **OFS Endpoints (`/api/v1/cbs/transfers`, `/api/v1/cbs/reversals/{ticketId}/execute`, `/api/v1/cbs/accounts/{accountId}/balance`)**: Despite being presented with clean, human-readable JSON request and response payloads throughout this specification for schema clarity and documentation readability, **these endpoints still transmit in official Temenos OFS syntax over the wire** (e.g., `FUNDS.TRANSFER,INITIATE/...`, `FUNDS.TRANSFER,REVERSAL/...`, and `ENQUIRY.SELECT...`). The `transfer-orchestrator` serializes domain commands into OFS string streams before dispatching HTTP calls, and `t24-mock-cbs` deserializes them via its internal OFS parser.
+> * **Non-OFS Endpoints (`/api/v1/cbs/reversals/ticket`, `/api/v1/cbs/reversals/{ticketId}/reject`, `/api/v1/cbs/eod/trigger`, and `GET /api/v1/cbs/system-date`)**: These endpoints **genuinely use standard JSON payloads and native HTTP REST semantics** both in design and in runtime implementation. They do **NOT** use OFS wire syntax. They are modern RESTful administrative APIs designed for programmatic interoperability with Docker schedulers, management dashboards, and the orchestration tier.
 
 ---
 
 ### 9.2 Perimeter Orchestration Layer: `transfer-orchestrator` (:8082)
 
 #### 9.2.1 `POST /api/v1/transfers` (Initiate Transfer / Challenge Evaluation)
-* **Purpose**: Primary intake endpoint for customer fund transfers. Coordinates perimeter validation, Redis idempotency locking, and real-time fraud scoring via `risk-service`. If low risk, transitions status `Initiated` -> `Authorized` -> `Reserved` -> `Processing` -> `Posted` via CBS. If elevated risk or step-up threshold is met, returns an HTTP `202 Accepted` challenge (In-App MPIN keypad prompt or Anti-Scam Advisory modal).
+* **Purpose**: Primary intake endpoint for customer fund transfers. Coordinates perimeter validation, Redis idempotency locking, and real-time fraud scoring via `risk-service`. Coordinates perimeter validation, Redis idempotency locking, and real-time fraud scoring via `risk-service`. Regardless of the transfer amount or risk score, every transfer returns an HTTP `202 Accepted` challenge requiring mandatory device biometric confirmation (Face ID / Fingerprint) before funds can move. If an anti-scam pattern is flagged, the challenge also mounts the natural language advisory modal.
 * **Caller**: Client App (React / Flutter) via `gateway-service:8080`.
 * **Headers**:
   * `Authorization: Bearer <Customer-JWT>`
@@ -1179,19 +1216,21 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 }
 ```
 
-**Response Payload: Step-Up Challenge (In-App MPIN Required - HTTP 202 Accepted)**:
+**Response Payload: Mandatory Biometric Confirmation Challenge (Required for ALL transfers - HTTP 202 Accepted)**:
 ```json
 {
-  "transactionId": "TX-100235",
+  "transactionId": "TX-100234",
   "status": "Initiated",
   "challenge": {
-    "challengeId": "CHAL-MPIN-4891",
-    "challengeType": "IN_APP_MPIN",
-    "prompt": "Enter your 6-digit MPIN in the secure popup keypad to authorize this transfer.",
+    "challengeId": "CHAL-BIO-9012",
+    "challengeType": "BIOMETRIC_CONFIRMATION",
+    "prompt": "Authenticate via Face ID or Fingerprint to confirm this transfer.",
+    "biometricPromptTitle": "Authorize Funds Transfer",
+    "biometricPromptSubtitle": "Transfer ₱15,000.00 to ACC-008541",
     "expiresInSeconds": 180,
     "maxAttempts": 3
   },
-  "message": "Step-up authorization required for transfer amount exceeding ₱50,000.00."
+  "message": "Mandatory biometric authorization required to execute transfer."
 }
 ```
 
@@ -1212,7 +1251,7 @@ This section defines the API specifications, HTTP routes, headers, and request/r
     },
     "availableActions": [
       "TAKE_COOL_OFF",
-      "PROCEED_WITH_MPIN",
+      "PROCEED_WITH_BIOMETRICS",
       "CANCEL"
     ]
   },
@@ -1258,8 +1297,8 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 
 ---
 
-#### 9.2.2 `POST /api/v1/transfers/{id}/verify-mpin` (Submit In-App MPIN Verification)
-* **Purpose**: Submits the customer's secret 6-digit MPIN entered into the secure in-app keypad dialog. Enforces Redis rate limiting (<3 failed attempts), verifies hash via `account-service`, and upon success advances status to `Authorized` and dispatches to CBS for posting.
+#### 9.2.2 `POST /api/v1/transfers/{id}/verify-biometric` (Submit Mandatory Biometric Confirmation)
+* **Purpose**: Submits the device-signed cryptographic biometric assertion (Face ID / Fingerprint / WebAuthn) generated via the client's secure hardware enclave. Enforces Redis rate limiting (<3 failed attempts), verifies assertion signature via `account-service`, advances status to `Authorized` (`BIOMETRIC_AUTH_VERIFIED`), and proceeds to CBS settlement.
 * **Caller**: Client App (React / Flutter) via `gateway-service:8080`.
 * **Headers**:
   * `Authorization: Bearer <Customer-JWT>`
@@ -1268,33 +1307,37 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 **Request Payload**:
 ```json
 {
-  "challengeId": "CHAL-MPIN-4891",
-  "mpin": "729401"
+  "challengeId": "CHAL-BIO-9012",
+  "credentialId": "cred-fido2-7a89b0",
+  "biometricSignature": "MEQCIC8xQ49s8kL2mWz89...3j9wIjP",
+  "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4...02A==",
+  "clientDataJson": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiQ0hBTC1CSU8tOTAxMiJ9"
 }
 ```
 
 **Response Payload: Success (HTTP 200 OK)**:
 ```json
 {
-  "transactionId": "TX-100235",
-  "referenceNumber": "REF-20261007-0092",
+  "transactionId": "TX-100234",
+  "referenceNumber": "REF-20261007-0091",
   "status": "Posted",
   "sourceAccountId": "ACC-001294",
   "destinationAccountId": "ACC-008541",
-  "amount": 60000.00,
-  "settledAtUtc": "2026-10-07T08:15:02.411Z",
-  "cbsExecutionRef": "FT2628000100235",
-  "message": "In-app MPIN verified successfully. Transaction posted to core ledger."
+  "amount": 15000.00,
+  "currency": "PHP",
+  "settledAtUtc": "2026-10-07T08:14:22.108Z",
+  "cbsExecutionRef": "FT2628000100234",
+  "message": "Biometric authentication verified successfully. Transaction posted to core banking ledger."
 }
 ```
 
-**Response Payload: Invalid MPIN (HTTP 401 Unauthorized)**:
+**Response Payload: Biometric Verification Failed (HTTP 401 Unauthorized)**:
 ```json
 {
-  "error": "INVALID_MPIN",
+  "error": "BIOMETRIC_VERIFICATION_FAILED",
   "attemptsRemaining": 2,
-  "challengeId": "CHAL-MPIN-4891",
-  "detail": "Incorrect MPIN entered. Account transfer privileges will be temporarily locked after 3 failed attempts."
+  "challengeId": "CHAL-BIO-9012",
+  "detail": "Cryptographic biometric signature verification failed. Please try again."
 }
 ```
 
@@ -1486,10 +1529,10 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 ### 9.3 Core Banking Layer: `t24-mock-cbs` (:8085)
 
 > [!IMPORTANT]
-> **Architectural Note on T24 Mock Core Banking System Payloads**:
-> The request and response payloads documented below for `t24-mock-cbs` (`:8085`) are presented in JSON format for easy viewing, schema documentation, and human readability only. In practice and actual runtime wire transmission, all financial commands transmitted between `transfer-orchestrator` and `t24-mock-cbs` are serialized into and parsed from standard Temenos Open Financial Services (OFS) syntax strings over HTTP/TCP wire protocols (e.g., `FUNDS.TRANSFER,INITIATE/I/PROCESS//...,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=...,CREDIT.ACCT.NO=...,AMOUNT=...` and OFS ACK/NACK responses such as `1/TX100234//SUCCESS` or `-1//ACCOUNT.BAL.LT.ZERO`).
+> **Architectural Note on T24 Mock Core Banking System Payloads & OFS Wire Behavior**:
+> The endpoints in this section are structured into dedicated, readable REST routes for each core banking capability. For the financial transaction and enquiry endpoints (`POST /api/v1/cbs/transfers`, `POST /api/v1/cbs/reversals/{ticketId}/execute`, and `GET /api/v1/cbs/accounts/{accountId}/balance`), the request and response schemas are displayed below in JSON format for easy viewing, schema documentation, and human readability only. In runtime practice, all network transmissions for these endpoints are serialized to and parsed from standard Temenos Open Financial Services (OFS) syntax strings over HTTP/TCP wire protocols (e.g., `FUNDS.TRANSFER,INITIATE/I/PROCESS/...`, `FUNDS.TRANSFER,REVERSAL/I/PROCESS/...`, and `ENQUIRY.SELECT...`). Conversely, non-OFS operational endpoints (`/api/v1/cbs/reversals/ticket`, `/api/v1/cbs/reversals/{ticketId}/reject`, `/api/v1/cbs/eod/trigger`, `GET /api/v1/cbs/system-date`) operate natively with standard JSON payloads.
 
-#### 9.3.1 `POST /api/v1/cbs/ofs` (Core Financial Transaction Execution - Funds Transfer)
+#### 9.3.1 `POST /api/v1/cbs/transfers` (Core Financial Transaction Execution - Funds Transfer [Wire: OFS])
 * **Purpose**: Core banking funds transfer execution. Acquires pessimistic row-level locks on `balance_master` in canonical ascending account order, evaluates solvency, mutates balances, posts double-entry lines in `gl_ledger`, updates `transactions` (to `Posted` or `Failed`), inserts `transaction_status_history`, and records events to `outbox_events`.
 * **Caller**: `transfer-orchestrator:8082`.
 * **OFS Wire Syntax Equivalent**:
@@ -1543,7 +1586,7 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 
 ---
 
-#### 9.3.2 `POST /api/v1/cbs/reversals/ticket` (Dispute Ticket Initialization & Status Transition)
+#### 9.3.2 `POST /api/v1/cbs/reversals/ticket` (Dispute Ticket Initialization & Status Transition [Wire: Native JSON])
 * **Purpose**: Records a new dispute ticket in `reversal_requests`, sets `transactions.status` to `PendingReversal`, logs reason `MAKER_DISPUTE_FILED` in `transaction_status_history`, and writes `TransactionStatusChangedEvent` to `outbox_events`.
 * **Caller**: `transfer-orchestrator:8082`.
 
@@ -1571,7 +1614,7 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 
 ---
 
-#### 9.3.3 `POST /api/v1/cbs/reversals/{ticketId}/execute` (Compensating Reversal Settlement)
+#### 9.3.3 `POST /api/v1/cbs/reversals/{ticketId}/execute` (Compensating Reversal Settlement [Wire: OFS])
 * **Purpose**: Executes dual-control approved reversal. Acquires pessimistic locks, swaps debit and credit accounts, verifies beneficiary solvency, posts inverted double-entry entries to `gl_ledger`, marks ticket `APPROVED`, sets `transactions.status = 'Reversed'`, and writes domain events to `outbox_events`.
 * **Caller**: `transfer-orchestrator:8082`.
 * **OFS Wire Syntax Equivalent**:
@@ -1621,7 +1664,7 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 
 ---
 
-#### 9.3.4 `POST /api/v1/cbs/reversals/{ticketId}/reject` (Dispute Rejection & Status Restoration)
+#### 9.3.4 `POST /api/v1/cbs/reversals/{ticketId}/reject` (Dispute Rejection & Status Restoration [Wire: Native JSON])
 * **Purpose**: Records dispute rejection in `reversal_requests`, restores `transactions.status` from `PendingReversal` back to `Posted`, logs reason `CHECKER_REVERSAL_REJECTED` in `transaction_status_history`, and writes `TransactionStatusChangedEvent` to `outbox_events`.
 * **Caller**: `transfer-orchestrator:8082`.
 
@@ -1648,7 +1691,36 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 
 ---
 
-#### 9.3.5 `POST /api/v1/cbs/eod/trigger` (4-Phase End-of-Day Batch Pipeline Invocation)
+#### 9.3.5 `GET /api/v1/cbs/accounts/{accountId}/balance` (Core Balance & Solvency Enquiry [Wire: OFS])
+* **Purpose**: Authoritative real-time balance and solvency enquiry directly against `balance_master`. Enables the orchestrator or internal services to verify ledger balances without polling cached copies.
+* **Caller**: `transfer-orchestrator:8082`, Internal Microservices.
+* **OFS Wire Syntax Equivalent**:
+  ```text
+  ENQUIRY.SELECT,,USER01/123456,ACCOUNT.NUMBER:EQ=ACC-001294
+  ```
+* **OFS Response Wire Equivalent**:
+  ```text
+  1/ACC-001294//SUCCESS,CURRENT.BALANCE:1:1=85000.00,AVAILABLE.BALANCE:1:1=85000.00,CURRENCY:1:1=PHP
+  ```
+
+**Request**: None (HTTP GET with `accountId` path parameter).
+
+**Response Payload: Success (JSON View for Readability)**:
+```json
+{
+  "ofsStatus": "1",
+  "accountId": "ACC-001294",
+  "currency": "PHP",
+  "ledgerBalance": 85000.00,
+  "availableBalance": 85000.00,
+  "accountStatus": "ACTIVE",
+  "asOfUtc": "2026-10-07T08:14:22Z"
+}
+```
+
+---
+
+#### 9.3.6 `POST /api/v1/cbs/eod/trigger` (4-Phase End-of-Day Batch Pipeline Invocation [Wire: Native JSON])
 * **Purpose**: Triggers the 4-phase sequential EOD batch processing: Phase 0 Posting Cutoff (`system_dates.status = EOD_CUTOFF`), Phase 1 Automated Fee Deductions (Zero-overdraft arrears to `uncollected_fees`), Phase 2 Daily Interest Accruals (with 20% BIR withholding on month-end), Phase 3 Balance Snapshot Freezing (`eod_balance_snapshots`), and Phase 4 Business Date Rollover to T+1 (`system_dates.status = ONLINE`).
 * **Caller**: Batch Scheduler (00:00 UTC) / Operations Admin.
 
@@ -1690,7 +1762,7 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 
 ---
 
-#### 9.3.6 `GET /api/v1/cbs/system-date` (Operational Core Business Date & State Query)
+#### 9.3.7 `GET /api/v1/cbs/system-date` (Operational Core Business Date & State Query [Wire: Native JSON])
 * **Purpose**: Fetches the authoritative core banking business date, posting cutoff status, and batch pipeline state.
 * **Caller**: `transfer-orchestrator:8082`, `gateway-service:8080`, Admin Dashboards.
 
@@ -1913,33 +1985,39 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 
 ### 9.5 Internal Support Service Interfaces
 
-#### 9.5.1 `POST /api/v1/internal/users/{userId}/validate-mpin` (`account-service` :8081)
-* **Purpose**: Internal synchronous endpoint called by `transfer-orchestrator` to verify entered 6-digit MPIN against BCrypt hash stored in `users.pin_hash`.
+#### 9.5.1 `POST /api/v1/internal/users/{userId}/validate-biometric` (`account-service` :8081)
+* **Purpose**: Internal synchronous endpoint called by `transfer-orchestrator` to verify the client device's cryptographic biometric assertion signature against the public key registered in `account-service` (FIDO2 / WebAuthn credential).
 * **Caller**: `transfer-orchestrator:8082`.
 * **Headers**: `Content-Type: application/json`.
 
 **Request Payload**:
 ```json
 {
-  "mpin": "729401"
+  "credentialId": "cred-fido2-7a89b0",
+  "biometricSignature": "MEQCIC8xQ49s8kL2mWz89...3j9wIjP",
+  "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4...02A==",
+  "clientDataJson": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiQ0hBTC1CSU8tOTAxMiJ9"
 }
 ```
 
-**Response Payload: Valid MPIN (HTTP 200 OK)**:
+**Response Payload: Valid Biometric Signature (HTTP 200 OK)**:
 ```json
 {
   "valid": true,
   "userId": "USR-10928",
-  "validatedAtUtc": "2026-10-07T08:15:02Z"
+  "credentialId": "cred-fido2-7a89b0",
+  "biometricType": "FINGERPRINT_FACE_ID",
+  "validatedAtUtc": "2026-10-07T08:14:21Z"
 }
 ```
 
-**Response Payload: Invalid MPIN (HTTP 200 OK)**:
+**Response Payload: Invalid Biometric Signature (HTTP 200 OK)**:
 ```json
 {
   "valid": false,
   "userId": "USR-10928",
-  "errorCode": "HASH_MISMATCH"
+  "errorCode": "SIGNATURE_VERIFICATION_FAILED",
+  "detail": "Public key signature check failed against registered credential."
 }
 ```
 

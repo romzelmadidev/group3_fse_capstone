@@ -21,7 +21,7 @@ The platform separates fast-path edge orchestration, real-time machine learning 
 │                                                   ┌────────────────────────┐   idemp lock   ┌─────────┴─────┐
 │                                                   │ Transfer Orchestrator  │───────────────►│  Redis Cache  │
 │                                                   │   Spring Boot :8082    │◄───────────────│     :6379     │
-│                                                   └───────────┬────────────┘ MPIN / session └───────────────┘
+│                                                   └───────────┬────────────┘ Biometrics / session └───────────────┘
 │                                                               │                                       │
 │                                      ┌────────────────────────┴──────────────────────┐                │
 │                                      │ sync risk check (< 2ms)                       │                │
@@ -80,7 +80,7 @@ The platform separates fast-path edge orchestration, real-time machine learning 
 * **Port**: Public Host Browser (:3000).
 * **Primary Responsibilities**:
   1. **Customer Self-Service Interface**: Interactive balance cards, preset transfer buttons, 4-decimal transfer inputs, recipient account selection, and live transaction ledger view.
-  2. **Security Step-Up Challenge UX**: Renders responsive in-app modal popup prompts to capture and verify 6-digit in-app MPIN authorization codes when transfers exceed ₱50,000.00 or trip fraud policy thresholds.
+  2. **Mandatory Biometric Confirmation UX**: Interacts with client device hardware sensors (Face ID / Fingerprint / WebAuthn) to generate cryptographic biometric authentication assertions for all funds transfer transactions, regardless of amount or risk score.
   3. **Operations & Admin Portal**: System telemetry grid, real-time circuit breaker status, and the **Maker-Checker Dispute Resolution Console** (allows Tellers to file reversals and Branch Managers to review and approve/reject claims).
   4. **Merchant POS Simulator**: Simulates merchant card pre-authorizations (hotel/car rental holds), capture settlements, and voids/releases.
   5. **Real-Time Push Notifications**: Listens on Server-Sent Events (SSE) connections from `notification-service` to display instantaneous success/failure toast alerts.
@@ -112,7 +112,7 @@ The platform separates fast-path edge orchestration, real-time machine learning 
 * **Port**: `:6379`.
 * **Primary Responsibilities**:
   1. **Distributed Idempotency Locks**: Atomic key-value locking (`SET tx:idemp:<id> "PROCESSING" NX EX 60`) preventing concurrent double-click debits from executing in parallel.
-  2. **MPIN Brute-Force Rate Limiting & Challenge Store**: Stores sliding-window failed MPIN attempt counters (`mpin:attempts:<userId>`, max 3 tries before 15-minute lockout) and active transfer challenge references.
+  2. **Biometric Rate Limiting & Challenge Store**: Stores sliding-window failed biometric attempt counters (`biometric:attempts:<userId>`, max 3 tries before 15-minute lockout), active transfer challenge tokens, and 10-minute cool-off locks.
   3. **Token Revocation Blacklist**: Stores blacklisted JWT identifiers (`blacklist:jti:<jti>`) matching the remaining lifetime of revoked access tokens.
   4. **Refresh Token Rotation (RTR) Family Store**: Maintains session metadata hashes and token sets (`token_family:<sessionId>`) to detect token replay breaches and trigger instant family-wide session invalidation.
   5. **Stale Balance Read Cache**: Caches current customer balances for mobile UI rendering (`account:balance:<id>`, 30s TTL). Evicted immediately (`DEL`) upon any ledger mutation.
@@ -127,7 +127,7 @@ The platform separates fast-path edge orchestration, real-time machine learning 
   1. **Saga Workflow Coordination**: Orchestrates the multi-step transaction lifecycle across perimeter security, risk scoring, customer step-up verification, and core CBS dispatch **without holding database locks**.
   2. **Financial Perimeter Validation**: Enforces `@Digits(integer=14, fraction=4)` currency precision, ISO currency rules (`PHP`), positive amounts, and distinct source/destination accounts. Returns RFC-7807 Problem Details on invalid requests.
   3. **Synchronous Fast-Path Risk Client**: Dispatches transfer context to `risk-service:8084` (`POST /api/v1/risk/transfer`) over non-blocking WebClient with a strict 200ms timeout SLA.
-  4. **Step-Up MPIN Challenge Management**: Intercepts transfers requiring verification (amount $> ₱50,000.00$ or fraud engine flags), returns `HTTP 202 Accepted` in-app MPIN popup prompt challenges to the client channel, and verifies submitted MPIN against cryptographic BCrypt `pin_hash` in `account-service`.
+  4. **Universal Mandatory Biometric Confirmation Management**: Enforces mandatory biometric verification across ALL funds transfers regardless of amount or risk classification; returns `HTTP 202 Accepted` biometric challenges to the client channel, and validates cryptographic assertions against user credentials in `account-service`.
   5. **Temenos OFS Wire Serialization (Rule 1)**: Translates validated high-level JSON transfer instructions into official Temenos OFS syntax strings:
      * `FUNDS.TRANSFER,INITIATE`
      * `AC.LOCKED.EVENTS,INPUT` (Amount holds / liens)
@@ -153,7 +153,7 @@ The platform separates fast-path edge orchestration, real-time machine learning 
      * **Counterparty Risk**: Inspects beneficiary account flags and newly added payee age.
   3. **Multi-Tier Risk Decision Engine**:
      * **`ALLOW` (Score $\le 0.40$)**: Low risk. Authorizes straight-through processing (STP).
-     * **`REQUIRE_2FA` ($0.40 < \text{Score} \le 0.85$)**: Medium risk. Mandates in-app popup/prompt MPIN verification regardless of transfer amount.
+     * **`ADVISORY_WARNING` ($0.40 < \text{Score} \le 0.85$)**: Elevated risk or scam pattern. Generates neural LLM anti-scam warnings with optional 10-minute cool-off, before proceeding to mandatory biometric confirmation.
      * **`BLOCK` (Score $> 0.85$)**: High risk. Triggers automated pre-CBS circuit cut; blocks transaction before any ledger mutation can occur.
   4. **Asynchronous Risk Telemetry Publishing**: Emits structured evaluation payloads to Kafka topic `banking.risk.evaluations` (`RiskEvaluatedEvent`, `HighFraudRiskDetectedEvent`).
   5. **Asynchronous Case Review Queue**: Background thread pool feeding suspicious transactions into an internal queue for second-look human fraud analyst review.
