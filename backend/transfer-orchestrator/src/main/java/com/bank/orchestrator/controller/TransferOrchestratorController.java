@@ -38,6 +38,22 @@ public class TransferOrchestratorController {
         this.cbsService = cbsService;
         this.objectMapper = objectMapper;
     }
+    
+    @GetMapping({"/accounts/{accountId}/transactions", "/transactions"})
+    public ResponseEntity<List<AccountTransactionDto>> getAccountTransactions(
+            @PathVariable(value = "accountId", required = false) String pathAccountId,
+            @RequestParam(value = "accountId", required = false) String queryAccountId,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size) {
+        String accountId = (pathAccountId != null && !pathAccountId.isBlank()) ? pathAccountId : queryAccountId;
+        if (accountId == null || accountId.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        List<AccountTransactionDto> transactions = cbsService.getAccountTransactions(accountId, safePage, safeSize);
+        return ResponseEntity.ok(transactions);
+    }
 
     @PostMapping
     public ResponseEntity<TransferInitiationResponse> initiateTransfer(

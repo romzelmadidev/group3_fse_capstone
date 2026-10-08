@@ -1,6 +1,8 @@
 package com.bank.orchestrator.service;
 
+import com.bank.ledger.contracts.dto.AccountTransactionDto;
 import com.bank.ledger.contracts.dto.events.TransferFailedToDlqEvent;
+import com.bank.ledger.contracts.ofs.OfsMessageUtil;
 import com.bank.orchestrator.dto.TransferInitiationRequest;
 import com.bank.orchestrator.dto.TransferInitiationResponse;
 import com.bank.ledger.contracts.enums.TransactionStatus;
@@ -9,7 +11,9 @@ import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -18,6 +22,8 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -86,6 +92,54 @@ public class CbsClientService {
         } catch (Exception e) {
             log.error("Failed to release CBS hold for txId={}: {}", txId, e.getMessage());
         }
+    }
+
+    public List<AccountTransactionDto> getAccountTransactions(String accountId, int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        log.info("Querying CBS past transactions for accountId={} (page={}, size={}) via OFS protocol", accountId, safePage, safeSize);
+        try {
+            String ofsEnquiry = OfsMessageUtil.buildTransactionEnquiry(accountId, safePage, safeSize);
+            String ofsResponse = webClient.post()
+                    .uri("/api/v1/cbs/ofs")
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
+                    .bodyValue(ofsEnquiry)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofMillis(3000))
+                    .block();
+
+            List<AccountTransactionDto> parsed = OfsMessageUtil.parseTransactionEnquiryResponse(ofsResponse);
+            if (!parsed.isEmpty()) {
+                log.info("Retrieved {} past transactions via OFS for accountId={}", parsed.size(), accountId);
+                return parsed;
+            }
+        } catch (Exception e) {
+            log.warn("OFS enquiry failed for accountId={}, falling back to REST endpoint: {}", accountId, e.getMessage());
+        }
+
+        // Option B REST Fallback
+        try {
+            List<AccountTransactionDto> restList = webClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/api/v1/cbs/accounts/{accountId}/transactions")
+                            .queryParam("page", safePage)
+                            .queryParam("size", safeSize)
+                            .build(accountId))
+                    .retrieve()
+                    .bodyToFlux(AccountTransactionDto.class)
+                    .collectList()
+                    .timeout(Duration.ofMillis(3000))
+                    .block();
+            return restList != null ? restList : Collections.emptyList();
+        } catch (Exception e) {
+            log.error("Failed to query CBS transactions for accountId={}: {}", accountId, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    public List<AccountTransactionDto> getAccountTransactions(String accountId) {
+        return getAccountTransactions(accountId, 0, 20);
     }
 
     public TransferInitiationResponse postToCbs(TransferInitiationRequest request, String txId) {
