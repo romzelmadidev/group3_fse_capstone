@@ -88,6 +88,42 @@ public class AzuriteBlobStorageService {
         }
     }
 
+    public record BlobItemDto(
+            String blobName,
+            String storageUri,
+            long sizeBytes,
+            String contentType,
+            java.time.Instant lastModified
+    ) {}
+
+    public java.util.List<BlobItemDto> listArtifacts() {
+        ensureContainerExists();
+        java.util.List<BlobItemDto> list = new java.util.ArrayList<>();
+        try {
+            containerClient.listBlobs().forEach(item -> {
+                long size = item.getProperties() != null && item.getProperties().getContentLength() != null
+                        ? item.getProperties().getContentLength()
+                        : 0L;
+                String ctype = item.getProperties() != null && item.getProperties().getContentType() != null
+                        ? item.getProperties().getContentType()
+                        : (item.getName().endsWith(".pdf") ? "application/pdf" : (item.getName().endsWith(".xlsx") ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/octet-stream"));
+                java.time.Instant mod = item.getProperties() != null && item.getProperties().getLastModified() != null
+                        ? item.getProperties().getLastModified().toInstant()
+                        : java.time.Instant.now();
+                list.add(new BlobItemDto(
+                        item.getName(),
+                        "azure-blob://" + containerName + "/" + item.getName(),
+                        size,
+                        ctype,
+                        mod
+                ));
+            });
+        } catch (Exception e) {
+            log.warn("Could not list blobs from Azurite container {}: {}", containerName, e.getMessage());
+        }
+        return list;
+    }
+
     public static String computeSha256(byte[] data) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -98,3 +134,4 @@ public class AzuriteBlobStorageService {
         }
     }
 }
+

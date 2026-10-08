@@ -6,6 +6,7 @@ import com.bank.orchestrator.dto.TransferInitiationResponse;
 import com.bank.ledger.contracts.enums.TransactionStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -40,8 +41,10 @@ public class CbsClientService {
         this.objectMapper = objectMapper;
     }
 
+    @Retry(name = "cbsService")
     @CircuitBreaker(name = "cbsService", fallbackMethod = "cbsPostingFallback")
     public TransferInitiationResponse postToCbs(TransferInitiationRequest request, String txId) {
+
         log.info("Sending funds transfer request to CBS: txId={}, amount={}", txId, request.amount());
 
         Map<String, Object> payload = Map.of(

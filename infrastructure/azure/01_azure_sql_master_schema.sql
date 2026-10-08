@@ -202,6 +202,28 @@ CREATE NONCLUSTERED INDEX idx_rev_orig_tx ON dbo.reversal_requests(original_tx_i
 CREATE NONCLUSTERED INDEX idx_rev_status ON dbo.reversal_requests(status);
 
 -- ==============================================================================
+-- 10B. Table: amount_holds (Temenos AC.LOCKED.EVENTS Reservations)
+-- ==============================================================================
+CREATE TABLE dbo.amount_holds (
+    hold_id            NVARCHAR(64) NOT NULL PRIMARY KEY,
+    account_id         NVARCHAR(64) NOT NULL,
+    hold_amount        DECIMAL(18, 4) NOT NULL,
+    reason             NVARCHAR(100) NOT NULL,
+    status             NVARCHAR(20) DEFAULT 'ACTIVE' NOT NULL,
+    t24_lock_reference NVARCHAR(64) NULL,
+    external_reference NVARCHAR(100) NULL,
+    expires_at         DATETIMEOFFSET NULL,
+    created_at         DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
+    released_at        DATETIMEOFFSET NULL,
+    CONSTRAINT fk_hold_acc FOREIGN KEY (account_id) REFERENCES dbo.accounts(account_id),
+    CONSTRAINT chk_hold_amt CHECK (hold_amount > 0),
+    CONSTRAINT chk_hold_status CHECK (status IN ('ACTIVE', 'RELEASED', 'CAPTURED'))
+);
+
+CREATE NONCLUSTERED INDEX idx_hold_acc ON dbo.amount_holds(account_id, status);
+
+
+-- ==============================================================================
 -- 11. Table: uncollected_fees (Zero-Overdraft Arrears Tracking)
 -- ==============================================================================
 CREATE TABLE dbo.uncollected_fees (

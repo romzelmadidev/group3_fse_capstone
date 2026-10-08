@@ -5,6 +5,8 @@ import Navbar from './components/Navbar';
 import Login from './components/Login';
 import CustomerPortal from './components/CustomerPortal';
 import AdminPortal from './components/AdminPortal';
+import T24TestConsole from './components/T24TestConsole';
+import AzuriteDrive from './components/AzuriteDrive';
 import Toast from './components/Toast';
 import LiveNotices from './components/LiveNotices';
 import apiClient, { mockState } from './services/api';
@@ -189,6 +191,9 @@ function MainApp() {
               (user.role === 'ROLE_ADMIN' || user.role === 'ADMIN') ? <AdminPortal /> : <Navigate to={home} replace />
             }
           />
+
+          <Route path="/t24-test" element={<T24TestConsole />} />
+          <Route path="/azurite-drive" element={<AzuriteDrive />} />
 
           <Route path="/manager" element={<Navigate to={home} replace />} />
           <Route path="/teller" element={<Navigate to={home} replace />} />

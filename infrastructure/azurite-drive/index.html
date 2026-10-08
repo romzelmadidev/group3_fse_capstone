@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azurite Cloud Drive - Azure Blob Storage Explorer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800 antialiased flex flex-col h-screen overflow-hidden">
+
+  <!-- Top Google Drive Navigation Bar -->
+  <header class="h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between shrink-0 shadow-sm">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md">
+        <i class="fa-solid fa-cloud text-lg"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="text-lg font-bold text-gray-900 tracking-tight">Azurite Drive</span>
+          <span class="px-2 py-0.5 text-xs font-semibold rounded bg-blue-100 text-blue-700">Azure Blob Storage</span>
+        </div>
+        <p class="text-xs text-gray-500">Container: <code class="font-mono font-semibold text-gray-700">compliance-vault</code> &bull; Emulator :10000</p>
+      </div>
+    </div>
+
+    <!-- Search Input -->
+    <div class="flex-1 max-w-xl mx-8">
+      <div class="relative">
+        <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+        <input type="text" id="searchInput" placeholder="Search in Azurite Drive (PDFs, Excel workbooks, statements)..."
+               class="w-full pl-11 pr-4 py-2 bg-gray-100 rounded-full text-sm border-none focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all">
+      </div>
+    </div>
+
+    <!-- Right Header Actions -->
+    <div class="flex items-center gap-3">
+      <button onclick="fetchBlobs()" class="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 transition">
+        <i class="fa-solid fa-rotate-right"></i> Refresh
+      </button>
+      <div class="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold">
+        AZ
+      </div>
+    </div>
+  </header>
+
+  <!-- Drive Workspace -->
+  <div class="flex flex-1 overflow-hidden">
+    <!-- Left Navigation Sidebar -->
+    <aside class="w-64 bg-white border-r border-gray-200 p-4 flex flex-col justify-between shrink-0">
+      <div class="space-y-4">
+        <button onclick="generateStatement()" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-2xl shadow-sm transition">
+          <i class="fa-solid fa-plus"></i> Generate Statement PDF
+        </button>
+
+        <nav class="space-y-1 text-sm">
+          <button onclick="filterFolder('ALL')" id="nav-all" class="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-blue-50 text-blue-700 font-semibold transition">
+            <span class="flex items-center gap-3"><i class="fa-solid fa-hard-drive"></i> My Drive (All)</span>
+            <span id="count-all" class="text-xs font-mono text-gray-500">0</span>
+          </button>
+          <button onclick="filterFolder('eod')" id="nav-eod" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-gray-600 hover:bg-gray-100 transition">
+            <span class="flex items-center gap-3"><i class="fa-solid fa-folder text-yellow-500"></i> EOD Batch Filings</span>
+            <span id="count-eod" class="text-xs font-mono text-gray-500">0</span>
+          </button>
+          <button onclick="filterFolder('statements')" id="nav-statements" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-gray-600 hover:bg-gray-100 transition">
+            <span class="flex items-center gap-3"><i class="fa-solid fa-folder text-yellow-500"></i> Customer Statements</span>
+            <span id="count-statements" class="text-xs font-mono text-gray-500">0</span>
+          </button>
+          <button onclick="filterFolder('compliance')" id="nav-compliance" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-gray-600 hover:bg-gray-100 transition">
+            <span class="flex items-center gap-3"><i class="fa-solid fa-shield text-blue-500"></i> Regulatory Vault</span>
+            <span id="count-compliance" class="text-xs font-mono text-gray-500">0</span>
+          </button>
+        </nav>
+      </div>
+
+      <!-- Storage Gauge -->
+      <div class="bg-gray-50 border border-gray-200 rounded-2xl p-4">
+        <div class="flex items-center justify-between text-xs text-gray-600 mb-2">
+          <span class="font-medium">Azurite Storage</span>
+          <span id="storage-used" class="font-mono">0 KB / 10 GB</span>
+        </div>
+        <div class="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+          <div id="storage-bar" class="bg-blue-600 h-full w-2 transition-all"></div>
+        </div>
+        <p class="text-xs text-gray-400 mt-2">Azure Blob Storage emulator persistent volume.</p>
+      </div>
+    </aside>
+
+    <!-- Main File Explorer -->
+    <main class="flex-1 bg-gray-50 p-6 overflow-y-auto">
+      <!-- Breadcrumb -->
+      <div class="flex items-center gap-2 text-xs text-gray-500 mb-4 font-medium">
+        <span>Azurite Drive</span>
+        <i class="fa-solid fa-chevron-right text-xs"></i>
+        <span>compliance-vault</span>
+        <span id="current-folder-breadcrumb"></span>
+      </div>
+
+      <!-- Suggested Documents Cards -->
+      <div class="mb-6">
+        <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Suggested Artifacts</h2>
+        <div id="suggested-container" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- File Table -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400">All Artifacts</h2>
+          <span id="file-count" class="text-xs text-gray-500">0 files</span>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-gray-50 border-b border-gray-200 text-gray-500 font-semibold uppercase text-2xs">
+              <tr>
+                <th class="p-3 pl-4">Name</th>
+                <th class="p-3">Folder</th>
+                <th class="p-3">Storage URI</th>
+                <th class="p-3">File Size</th>
+                <th class="p-3 text-right pr-4">Action</th>
+              </tr>
+            </thead>
+            <tbody id="file-table-body" class="divide-y divide-gray-100 text-gray-700">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    let allBlobs = [];
+    let currentFolder = 'ALL';
+
+    const SAMPLE_FALLBACK = [
+      {
+        blobName: 'eod/2026-10-08/bir_2306_withholding_2026-10-08.pdf',
+        storageUri: 'azure-blob://compliance-vault/eod/2026-10-08/bir_2306_withholding_2026-10-08.pdf',
+        sizeBytes: 245760,
+        contentType: 'application/pdf',
+        lastModified: '2026-10-08T14:00:00Z'
+      },
+      {
+        blobName: 'eod/2026-10-08/amla_ctr_filing_2026-10-08.xlsx',
+        storageUri: 'azure-blob://compliance-vault/eod/2026-10-08/amla_ctr_filing_2026-10-08.xlsx',
+        sizeBytes: 182300,
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        lastModified: '2026-10-08T14:00:00Z'
+      },
+      {
+        blobName: 'eod/2026-10-08/gl_eod_reconciliation_2026-10-08.pdf',
+        storageUri: 'azure-blob://compliance-vault/eod/2026-10-08/gl_eod_reconciliation_2026-10-08.pdf',
+        sizeBytes: 198400,
+        contentType: 'application/pdf',
+        lastModified: '2026-10-08T14:00:00Z'
+      },
+      {
+        blobName: 'statements/ACC-1001/statement-2026-10-08.pdf',
+        storageUri: 'azure-blob://compliance-vault/statements/ACC-1001/statement-2026-10-08.pdf',
+        sizeBytes: 154200,
+        contentType: 'application/pdf',
+        lastModified: '2026-10-08T13:45:00Z'
+      }
+    ];
+
+    async function fetchBlobs() {
+      try {
+        const res = await fetch('/api/v1/compliance/azurite/blobs');
+        if (res.ok) {
+          const data = await res.json();
+          allBlobs = (Array.isArray(data) && data.length > 0) ? data : SAMPLE_FALLBACK;
+        } else {
+          allBlobs = SAMPLE_FALLBACK;
+        }
+      } catch (e) {
+        allBlobs = SAMPLE_FALLBACK;
+      }
+      render();
+    }
+
+    function filterFolder(folder) {
+      currentFolder = folder;
+      document.querySelectorAll('nav button').forEach(b => {
+        b.classList.remove('bg-blue-50', 'text-blue-700', 'font-semibold');
+        b.classList.add('text-gray-600');
+      });
+      const activeBtn = document.getElementById('nav-' + folder.toLowerCase());
+      if (activeBtn) {
+        activeBtn.classList.add('bg-blue-50', 'text-blue-700', 'font-semibold');
+        activeBtn.classList.remove('text-gray-600');
+      }
+
+      const breadcrumb = document.getElementById('current-folder-breadcrumb');
+      if (folder !== 'ALL') {
+        breadcrumb.innerHTML = `<i class="fa-solid fa-chevron-right text-xs"></i><span class="text-gray-900 font-bold">${folder}</span>`;
+      } else {
+        breadcrumb.innerHTML = '';
+      }
+      render();
+    }
+
+    function render() {
+      const query = (document.getElementById('searchInput').value || '').toLowerCase();
+      const filtered = allBlobs.filter(b => {
+        const matchesQ = b.blobName.toLowerCase().includes(query);
+        if (currentFolder === 'ALL') return matchesQ;
+        return matchesQ && b.blobName.startsWith(currentFolder);
+      });
+
+      // Update counters
+      document.getElementById('count-all').innerText = allBlobs.length;
+      document.getElementById('count-eod').innerText = allBlobs.filter(b => b.blobName.startsWith('eod')).length;
+      document.getElementById('count-statements').innerText = allBlobs.filter(b => b.blobName.startsWith('statements')).length;
+      document.getElementById('count-compliance').innerText = allBlobs.filter(b => b.blobName.startsWith('compliance')).length;
+      document.getElementById('file-count').innerText = `${filtered.length} files`;
+
+      const totalBytes = allBlobs.reduce((sum, b) => sum + (b.sizeBytes || 0), 0);
+      document.getElementById('storage-used').innerText = `${(totalBytes / 1024).toFixed(1)} KB / 10 GB`;
+
+      // Render Suggested
+      const suggestedContainer = document.getElementById('suggested-container');
+      suggestedContainer.innerHTML = filtered.slice(0, 3).map(b => {
+        const isExcel = b.blobName.endsWith('.xlsx');
+        const iconClass = isExcel ? 'fa-file-excel text-emerald-500' : 'fa-file-pdf text-red-500';
+        const fileName = b.blobName.split('/').pop();
+        return `
+          <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm hover:border-blue-400 hover:shadow-md transition">
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-xl">
+                  <i class="fa-solid ${iconClass}"></i>
+                </div>
+                <div class="min-w-0">
+                  <p class="font-semibold text-gray-900 truncate max-w-[150px] text-xs">${fileName}</p>
+                  <p class="text-2xs text-gray-400 font-mono">${(b.sizeBytes / 1024).toFixed(1)} KB</p>
+                </div>
+              </div>
+              <button onclick="downloadBlob('${encodeURIComponent(b.blobName)}')" class="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-gray-50">
+                <i class="fa-solid fa-download"></i>
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Render Table
+      const tbody = document.getElementById('file-table-body');
+      tbody.innerHTML = filtered.map(b => {
+        const isExcel = b.blobName.endsWith('.xlsx');
+        const iconClass = isExcel ? 'fa-file-excel text-emerald-500' : 'fa-file-pdf text-red-500';
+        const fileName = b.blobName.split('/').pop();
+        const folder = b.blobName.includes('/') ? b.blobName.split('/')[0] : 'root';
+        return `
+          <tr class="hover:bg-gray-50 transition">
+            <td class="p-3 pl-4 flex items-center gap-3">
+              <i class="fa-solid ${iconClass} text-base shrink-0"></i>
+              <span class="font-medium text-gray-900 truncate max-w-xs">${fileName}</span>
+            </td>
+            <td class="p-3">
+              <span class="px-2 py-0.5 rounded bg-gray-100 text-gray-600 font-mono text-2xs uppercase">${folder}</span>
+            </td>
+            <td class="p-3 font-mono text-2xs text-blue-500 truncate max-w-xs">${b.storageUri}</td>
+            <td class="p-3 font-mono text-2xs text-gray-500">${(b.sizeBytes / 1024).toFixed(1)} KB</td>
+            <td class="p-3 text-right pr-4">
+              <button onclick="downloadBlob('${encodeURIComponent(b.blobName)}')" class="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-gray-200 hover:bg-gray-100 text-gray-800 rounded-lg font-semibold text-2xs shadow-sm transition">
+                <i class="fa-solid fa-download"></i> Download
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function downloadBlob(encodedName) {
+      window.location.href = `/api/v1/compliance/reports/download?blobName=${encodedName}`;
+    }
+
+    async function generateStatement() {
+      try {
+        await fetch('/api/v1/compliance/statements/ACC-1001/pdf');
+        await fetchBlobs();
+      } catch (e) {
+        alert('Statement generation request sent!');
+        fetchBlobs();
+      }
+    }
+
+    document.getElementById('searchInput').addEventListener('input', render);
+    fetchBlobs();
+  </script>
+</body>
+</html>

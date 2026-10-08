@@ -93,9 +93,43 @@ export default function Navbar({ onRefreshBalance, isLiveConnected }) {
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface">
       <div className="mx-auto flex h-14 max-w-shell items-center justify-between gap-4 px-4 sm:px-6">
-        <Brand />
+        <div className="flex items-center gap-4">
+          <Brand />
+          <div className="hidden items-center gap-1.5 md:flex">
+            <button
+              type="button"
+              onClick={() => navigate('/t24-test')}
+              className="flex items-center gap-1.5 border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-2xs font-semibold uppercase tracking-wider text-cyan-400 hover:bg-cyan-500/20"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              T24 Test Lab
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/azurite-drive')}
+              className="flex items-center gap-1.5 border border-blue-500/30 bg-blue-500/10 px-2.5 py-1 text-2xs font-semibold uppercase tracking-wider text-blue-400 hover:bg-blue-500/20"
+            >
+              Azurite Drive
+            </button>
+          </div>
+        </div>
 
         <div className="flex items-center gap-2">
+          {/* Mobile buttons */}
+          <button
+            type="button"
+            onClick={() => navigate('/t24-test')}
+            className="flex items-center gap-1 border border-cyan-500/30 bg-cyan-500/10 px-2 py-1 text-2xs font-semibold text-cyan-400 md:hidden"
+          >
+            T24 Lab
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/azurite-drive')}
+            className="flex items-center gap-1 border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-2xs font-semibold text-blue-400 md:hidden"
+          >
+            Drive
+          </button>
           <ThemeToggle className="hidden sm:inline-flex" />
 
           <div className="relative" ref={menuRef}>

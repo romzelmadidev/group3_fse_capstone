@@ -36,6 +36,32 @@ public final class OfsMessageUtil {
     }
 
     /**
+     * Builds an OFS message string for placing an amount hold (AC.LOCKED.EVENTS).
+     */
+    public static String buildAmountHold(String externalRef, String userId, String accountId,
+                                        BigDecimal amount, String reason, String fromDate, String toDate) {
+        String user = (userId != null && !userId.isBlank()) ? userId : "USER01";
+        String cleanFrom = (fromDate != null) ? fromDate.replace("-", "") : "20261008";
+        String cleanTo = (toDate != null) ? toDate.replace("-", "") : "20261009";
+        String ref = (externalRef != null && !externalRef.isBlank()) ? externalRef : "HLD" + System.currentTimeMillis();
+        return String.format(
+                "AC.LOCKED.EVENTS,INPUT/I/PROCESS/0/1,%s/123456,,ACCOUNT.NUMBER=%s,FROM.DATE=%s,TO.DATE=%s,LOCKED.AMOUNT=%s,HOLD.REASON=%s,EXT.REF=%s",
+                user, accountId, cleanFrom, cleanTo, amount.toPlainString(), reason != null ? reason : "MAKER_CHECKER_HOLD", ref
+        );
+    }
+
+    /**
+     * Builds an OFS message string for releasing an amount hold (AC.LOCKED.EVENTS,REVERSE).
+     */
+    public static String buildAmountRelease(String holdId, String userId, String accountId) {
+        String user = (userId != null && !userId.isBlank()) ? userId : "USER01";
+        return String.format(
+                "AC.LOCKED.EVENTS,REVERSE/I/PROCESS/0/1,%s/123456,,HOLD.REF=%s,ACCOUNT.NUMBER=%s",
+                user, holdId, accountId != null ? accountId : ""
+        );
+    }
+
+    /**
      * Builds an OFS balance enquiry string.
      */
     public static String buildBalanceEnquiry(String accountId) {
@@ -43,7 +69,7 @@ public final class OfsMessageUtil {
     }
 
     /**
-     * Parses key-value pairs from an OFS payload segment.
+     * Parses key-value pairs and operation metadata from an OFS protocol message string.
      */
     public static Map<String, String> parseOfsFields(String ofsMessage) {
         Map<String, String> fields = new HashMap<>();
@@ -51,7 +77,37 @@ public final class OfsMessageUtil {
             return fields;
         }
 
-        String[] parts = ofsMessage.split(",");
+        String cleanMessage = ofsMessage.trim();
+
+        // 1. Detect operation type from OFS command header
+        if (cleanMessage.startsWith("FUNDS.TRANSFER,REVERSAL") || cleanMessage.contains("FUNDS.TRANSFER,REVERSAL")) {
+            fields.put("OPERATION", "FUNDS.TRANSFER,REVERSAL");
+        } else if (cleanMessage.startsWith("FUNDS.TRANSFER,INITIATE") || cleanMessage.contains("FUNDS.TRANSFER,INITIATE")) {
+            fields.put("OPERATION", "FUNDS.TRANSFER,INITIATE");
+        } else if (cleanMessage.startsWith("AC.LOCKED.EVENTS,REVERSE") || cleanMessage.contains("AC.LOCKED.EVENTS,REVERSE")) {
+            fields.put("OPERATION", "AC.LOCKED.EVENTS,REVERSE");
+        } else if (cleanMessage.startsWith("AC.LOCKED.EVENTS,INPUT") || cleanMessage.contains("AC.LOCKED.EVENTS,INPUT") || cleanMessage.contains("AC.LOCKED.EVENTS")) {
+            fields.put("OPERATION", "AC.LOCKED.EVENTS,INPUT");
+        } else if (cleanMessage.startsWith("ENQUIRY.SELECT") || cleanMessage.contains("ENQUIRY.SELECT")) {
+            fields.put("OPERATION", "ENQUIRY.SELECT");
+        }
+
+        // 2. Extract transaction reference embedded in GTS control header (//<ref>,)
+        int gtsDoubleSlash = cleanMessage.indexOf("//");
+        if (gtsDoubleSlash > 0) {
+            int gtsComma = cleanMessage.indexOf(",", gtsDoubleSlash);
+            if (gtsComma > gtsDoubleSlash + 2) {
+                String headerRef = cleanMessage.substring(gtsDoubleSlash + 2, gtsComma).trim();
+                if (!headerRef.isEmpty() && !headerRef.contains("/")) {
+                    fields.put("HEADER.REF", headerRef);
+                    fields.putIfAbsent("TXN.ID", headerRef);
+                    fields.putIfAbsent("TICKET.ID", headerRef);
+                }
+            }
+        }
+
+        // 3. Parse comma-separated fields
+        String[] parts = cleanMessage.split(",");
         for (String part : parts) {
             int eqIdx = part.indexOf('=');
             if (eqIdx > 0) {
@@ -64,9 +120,17 @@ public final class OfsMessageUtil {
                     String key = part.substring(0, colonEqIdx).trim();
                     String val = part.substring(colonEqIdx + 4).trim();
                     fields.put(key, val);
+                } else {
+                    int colonIdx = part.indexOf(":1:1=");
+                    if (colonIdx > 0) {
+                        String key = part.substring(0, colonIdx).trim();
+                        String val = part.substring(colonIdx + 5).trim();
+                        fields.put(key, val);
+                    }
                 }
             }
         }
+
         return fields;
     }
 
@@ -80,4 +144,32 @@ public final class OfsMessageUtil {
             return String.format("//-1,FAILURE,ERROR=%s,MESSAGE=%s", reference, message);
         }
     }
+
+    /**
+     * Builds an OFS response string for amount hold (AC.LOCKED.EVENTS).
+     */
+    public static String buildOfsLockedEventResponse(String lockReference, String accountId, BigDecimal amount, String holdRef) {
+        return String.format(
+                "%s//1/SUCCESS,ACCOUNT.NUMBER:1:1=%s,LOCKED.AMOUNT:1:1=%s,HOLD.REF:1:1=%s",
+                lockReference, accountId, amount.toPlainString(), holdRef
+        );
+    }
+
+    /**
+     * Builds an OFS response string for amount hold release (AC.LOCKED.EVENTS,REVERSE).
+     */
+    public static String buildOfsLockedEventReleaseResponse(String lockReference, String holdRef) {
+        return String.format("%s//1/SUCCESS,HOLD.REF:1:1=%s,MESSAGE=HOLD_RELEASED", lockReference, holdRef);
+    }
+
+    /**
+     * Builds an OFS response string for amount hold capture into settlement (FUNDS.TRANSFER,AUTH with HOLD.REF).
+     */
+    public static String buildOfsLockedEventCaptureResponse(String txId, String holdRef, BigDecimal amount, String sourceAcc, String targetAcc) {
+        return String.format(
+                "%s//1/SUCCESS,HOLD.REF:1:1=%s,AMOUNT:1:1=%s,DEBIT.ACCT.NO:1:1=%s,CREDIT.ACCT.NO:1:1=%s,STATUS=CAPTURED",
+                txId, holdRef, amount.toPlainString(), sourceAcc, targetAcc
+        );
+    }
 }
+
