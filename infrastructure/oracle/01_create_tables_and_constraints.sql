@@ -191,12 +191,13 @@ CREATE INDEX idx_gl_ledger_date ON gl_ledger(posting_date, gl_code);
 -- 9. GL_BALANCES TABLE (Real-Time Debit/Credit Accumulators)
 -- ------------------------------------------------------------------------------
 CREATE TABLE gl_balances (
-    gl_code       VARCHAR2(32) PRIMARY KEY,
+    gl_code       VARCHAR2(32) NOT NULL,
     fiscal_period VARCHAR2(20) NOT NULL,
     total_debit   NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
     total_credit  NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
     net_balance   NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
     updated_at    TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT pk_gl_balances PRIMARY KEY (gl_code, fiscal_period),
     CONSTRAINT fk_glb_account FOREIGN KEY (gl_code) REFERENCES gl_accounts(gl_code)
 );
 
@@ -253,7 +254,11 @@ CREATE TABLE uncollected_fees (
     amount_collected NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
     is_settled       NUMBER(1) DEFAULT 0 NOT NULL CHECK (is_settled IN (0, 1)),
     created_at       TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT fk_uncol_acc FOREIGN KEY (account_id) REFERENCES accounts(account_id)
+    CONSTRAINT fk_uncol_acc FOREIGN KEY (account_id) REFERENCES accounts(account_id),
+    CONSTRAINT chk_settled_integrity CHECK (
+        (is_settled = 1 AND amount_collected >= amount_due) OR
+        (is_settled = 0 AND amount_collected < amount_due)
+    )
 );
 
 CREATE INDEX idx_uncollected_acc ON uncollected_fees(account_id, is_settled);
@@ -271,7 +276,8 @@ CREATE TABLE interest_accruals (
     net_accrual    NUMBER(18, 4) NOT NULL,
     is_capitalized NUMBER(1) DEFAULT 0 NOT NULL CHECK (is_capitalized IN (0, 1)),
     created_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT fk_int_acc FOREIGN KEY (account_id) REFERENCES accounts(account_id)
+    CONSTRAINT fk_int_acc FOREIGN KEY (account_id) REFERENCES accounts(account_id),
+    CONSTRAINT chk_net_accrual CHECK (net_accrual = accrued_amount - tax_withheld)
 );
 
 CREATE INDEX idx_int_acc_date ON interest_accruals(account_id, accrual_date);

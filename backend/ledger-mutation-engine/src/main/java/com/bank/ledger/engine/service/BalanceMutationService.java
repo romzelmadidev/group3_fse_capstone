@@ -286,11 +286,11 @@ public class BalanceMutationService {
                 .build();
         transactionRepository.save(committedTx);
 
-        // Immutable Postgres Audit & Kafka Audit Stream
+        // Immutable Postgres Audit & Kafka Audit Stream (Normalized 2-legged double entry)
         LedgerMutationAudit audit = LedgerMutationAudit.builder()
-                .transactionId(request.getTransactionId() + "-DR")
+                .transactionId(request.getTransactionId())
                 .accountId(sourceId)
-                .mutationType("TRANSFER")
+                .mutationType("DEBIT")
                 .mutationAmount(amount)
                 .beforeBalance(senderBefore)
                 .afterBalance(senderAfter)
@@ -302,9 +302,9 @@ public class BalanceMutationService {
         auditRepository.save(audit);
 
         LedgerMutationAudit auditCredit = LedgerMutationAudit.builder()
-                .transactionId(request.getTransactionId() + "-CR")
+                .transactionId(request.getTransactionId())
                 .accountId(targetId)
-                .mutationType("TRANSFER")
+                .mutationType("CREDIT")
                 .mutationAmount(amount)
                 .beforeBalance(receiverBefore)
                 .afterBalance(receiverAfter)

@@ -209,12 +209,13 @@ CREATE NONCLUSTERED INDEX idx_gl_ledger_date ON core.gl_ledger(posting_date, gl_
 -- 9. Table: core.gl_balances (Real-Time Debit/Credit Accumulators)
 -- ==============================================================================
 CREATE TABLE core.gl_balances (
-    gl_code       NVARCHAR(32) NOT NULL PRIMARY KEY,
+    gl_code       NVARCHAR(32) NOT NULL,
     fiscal_period NVARCHAR(20) NOT NULL,
     total_debit   DECIMAL(18, 4) DEFAULT 0.0000 NOT NULL,
     total_credit  DECIMAL(18, 4) DEFAULT 0.0000 NOT NULL,
     net_balance   DECIMAL(18, 4) DEFAULT 0.0000 NOT NULL,
     updated_at    DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
+    CONSTRAINT pk_gl_balances PRIMARY KEY (gl_code, fiscal_period),
     CONSTRAINT fk_glb_account FOREIGN KEY (gl_code) REFERENCES core.gl_accounts(gl_code)
 );
 
@@ -273,7 +274,11 @@ CREATE TABLE core.uncollected_fees (
     amount_collected DECIMAL(18, 4) DEFAULT 0.0000 NOT NULL,
     is_settled       BIT DEFAULT 0 NOT NULL,
     created_at       DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
-    CONSTRAINT fk_uncol_acc FOREIGN KEY (account_id) REFERENCES core.accounts(account_id)
+    CONSTRAINT fk_uncol_acc FOREIGN KEY (account_id) REFERENCES core.accounts(account_id),
+    CONSTRAINT chk_settled_integrity CHECK (
+        (is_settled = 1 AND amount_collected >= amount_due) OR
+        (is_settled = 0 AND amount_collected < amount_due)
+    )
 );
 
 CREATE NONCLUSTERED INDEX idx_uncollected_acc ON core.uncollected_fees(account_id, is_settled);
@@ -291,7 +296,8 @@ CREATE TABLE core.interest_accruals (
     net_accrual    DECIMAL(18, 4) NOT NULL,
     is_capitalized BIT DEFAULT 0 NOT NULL,
     created_at     DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
-    CONSTRAINT fk_int_acc FOREIGN KEY (account_id) REFERENCES core.accounts(account_id)
+    CONSTRAINT fk_int_acc FOREIGN KEY (account_id) REFERENCES core.accounts(account_id),
+    CONSTRAINT chk_net_accrual CHECK (net_accrual = accrued_amount - tax_withheld)
 );
 
 CREATE NONCLUSTERED INDEX idx_int_acc_date ON core.interest_accruals(account_id, accrual_date);

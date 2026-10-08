@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS ledger_mutation_audit (
 
     audit_id BIGSERIAL PRIMARY KEY,
 
-    transaction_id VARCHAR(64) NOT NULL UNIQUE,
+    transaction_id VARCHAR(64) NOT NULL,
 
     account_id VARCHAR(36) NOT NULL,
 
@@ -35,6 +35,9 @@ CREATE TABLE IF NOT EXISTS ledger_mutation_audit (
     sha256_hash VARCHAR(64),
 
     prev_hash VARCHAR(64),
+
+    CONSTRAINT uq_audit_tx_leg
+    UNIQUE (transaction_id, account_id, mutation_type),
 
     CONSTRAINT ledger_mutation_audit_mutation_amount_check
     CHECK (mutation_amount > 0),
@@ -255,5 +258,5 @@ VALUES (
            'GENESIS_0000000000000000000000000000000000000000000000000000000000000000',
            '4e7c1f8a29b40c812739481239841029348102934810293481029348102933b9'
        )
-    ON CONFLICT (transaction_id) DO NOTHING;
+    ON CONFLICT (transaction_id, account_id, mutation_type) DO NOTHING;
 

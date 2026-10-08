@@ -11,6 +11,9 @@ import java.util.Optional;
 public interface LedgerMutationAuditRepository extends JpaRepository<LedgerMutationAudit, Long> {
     List<LedgerMutationAudit> findByAccountIdOrderByCreatedAtAsc(String accountId);
     Optional<LedgerMutationAudit> findByTransactionId(String transactionId);
+    Optional<LedgerMutationAudit> findFirstByTransactionId(String transactionId);
+    Optional<LedgerMutationAudit> findByTransactionIdAndMutationType(String transactionId, String mutationType);
+    List<LedgerMutationAudit> findAllByTransactionId(String transactionId);
     Optional<LedgerMutationAudit> findTopByOrderByAuditIdDesc();
     List<LedgerMutationAudit> findByAuditIdBetweenOrderByAuditIdAsc(Long startAuditId, Long endAuditId);
     List<LedgerMutationAudit> findByAuditIdGreaterThanOrderByAuditIdAsc(Long lastAuditId);

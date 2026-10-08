@@ -8,6 +8,7 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "gl_balances", schema = "core")
+@IdClass(GlBalanceId.class)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -19,6 +20,7 @@ public class GlBalanceMaster {
     @Column(name = "gl_code", length = 32)
     private String glCode;
 
+    @Id
     @Column(name = "fiscal_period", nullable = false, length = 20)
     private String fiscalPeriod;
 

@@ -284,10 +284,11 @@ public class CbsFundsTransferService {
     }
 
     private void updateGlBalance(String glCode, BigDecimal debitAdd, BigDecimal creditAdd) {
-        GlBalanceMaster balance = glBalanceRepository.findById(glCode)
+        String period = "2026-M10";
+        GlBalanceMaster balance = glBalanceRepository.findByGlCodeAndFiscalPeriod(glCode, period)
                 .orElseGet(() -> GlBalanceMaster.builder()
                         .glCode(glCode)
-                        .fiscalPeriod("2026-M10")
+                        .fiscalPeriod(period)
                         .totalDebit(BigDecimal.ZERO)
                         .totalCredit(BigDecimal.ZERO)
                         .netBalance(BigDecimal.ZERO)
