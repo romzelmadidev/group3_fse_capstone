@@ -12,4 +12,5 @@ import java.util.Optional;
 public interface EodBalanceSnapshotMasterRepository extends JpaRepository<EodBalanceSnapshotMaster, String> {
     List<EodBalanceSnapshotMaster> findByBusinessDate(LocalDate businessDate);
     Optional<EodBalanceSnapshotMaster> findByAccountIdAndBusinessDate(String accountId, LocalDate businessDate);
+    List<EodBalanceSnapshotMaster> findByAccountIdAndBusinessDateBetween(String accountId, LocalDate startDate, LocalDate endDate);
 }

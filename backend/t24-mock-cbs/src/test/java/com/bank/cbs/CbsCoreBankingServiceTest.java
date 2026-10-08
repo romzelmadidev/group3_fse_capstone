@@ -402,4 +402,89 @@ class CbsCoreBankingServiceTest {
         verify(transactionRepository, times(1)).save(any());
         verify(glLedgerRepository, times(2)).save(any());
     }
+
+    @Test
+    void testCobBatch_ClearedAdbInterest_ExcludesHoldAmount() {
+        LocalDate cobDate = LocalDate.of(2026, 10, 8);
+        SystemDateMaster sysDate = SystemDateMaster.builder()
+                .systemDateId("SYS-1")
+                .businessDate(cobDate)
+                .status("ONLINE")
+                .postingWindowOpen(true)
+                .build();
+        when(systemDateRepository.findTopByOrderBySystemDateIdAsc()).thenReturn(Optional.of(sysDate));
+
+        // Account has 100,000 balance with 40,000 on hold (cleared = 60,000)
+        BalanceMaster bal = BalanceMaster.builder()
+                .accountId("ACC-CLEARED-TEST")
+                .balanceAmount(new BigDecimal("100000.00"))
+                .holdAmount(new BigDecimal("40000.00"))
+                .availableBalance(new BigDecimal("60000.00"))
+                .build();
+
+        when(balanceRepository.findAll()).thenReturn(List.of(bal));
+        when(glLedgerRepository.sumTotalDebitsForDate(cobDate)).thenReturn(BigDecimal.ZERO);
+        when(glLedgerRepository.sumTotalCreditsForDate(cobDate)).thenReturn(BigDecimal.ZERO);
+
+        cobBatchService.runCobBatch();
+
+        // Capture interest accrual to verify calculated on cleared 60,000 (not 100,000)
+        org.mockito.ArgumentCaptor<InterestAccrualMaster> captor =
+                org.mockito.ArgumentCaptor.forClass(InterestAccrualMaster.class);
+        verify(interestAccrualRepository, times(1)).save(captor.capture());
+
+        InterestAccrualMaster savedAccrual = captor.getValue();
+        // Daily rate: 0.005 / 365 = ~0.0000136986
+        // Gross on 60,000 = 60,000 * (0.005 / 365) = 0.8219
+        // Gross on 100,000 would have been 1.3699
+        BigDecimal expectedGross = new BigDecimal("60000.00")
+                .multiply(new BigDecimal("0.005").divide(BigDecimal.valueOf(365), 10, java.math.RoundingMode.HALF_UP))
+                .setScale(4, java.math.RoundingMode.HALF_UP);
+
+        assertEquals(expectedGross, savedAccrual.getAccruedAmount());
+    }
+
+    @Test
+    void testCobBatch_AutomatedArrearsSweep_RecoversPendingFee() {
+        LocalDate cobDate = LocalDate.of(2026, 10, 8);
+        SystemDateMaster sysDate = SystemDateMaster.builder()
+                .systemDateId("SYS-1")
+                .businessDate(cobDate)
+                .status("ONLINE")
+                .postingWindowOpen(true)
+                .build();
+        when(systemDateRepository.findTopByOrderBySystemDateIdAsc()).thenReturn(Optional.of(sysDate));
+
+        // Account has 500.00 balance (above 0, can pay arrears)
+        BalanceMaster bal = BalanceMaster.builder()
+                .accountId("ACC-ARREARS-TEST")
+                .balanceAmount(new BigDecimal("500.00"))
+                .holdAmount(BigDecimal.ZERO)
+                .availableBalance(new BigDecimal("500.00"))
+                .build();
+
+        // Unsettled fee of 50.00 with 0.00 collected so far
+        UncollectedFeeMaster pendingFee = UncollectedFeeMaster.builder()
+                .feeId("FEE-1")
+                .accountId("ACC-ARREARS-TEST")
+                .feeType("BELOW_MIN_ADB")
+                .amountDue(new BigDecimal("50.00"))
+                .amountCollected(BigDecimal.ZERO)
+                .isSettled(false)
+                .build();
+
+        when(balanceRepository.findAll()).thenReturn(List.of(bal));
+        when(balanceRepository.findById("ACC-ARREARS-TEST")).thenReturn(Optional.of(bal));
+        when(uncollectedFeeRepository.findByIsSettledFalse()).thenReturn(List.of(pendingFee));
+        when(glLedgerRepository.sumTotalDebitsForDate(cobDate)).thenReturn(BigDecimal.ZERO);
+        when(glLedgerRepository.sumTotalCreditsForDate(cobDate)).thenReturn(BigDecimal.ZERO);
+
+        cobBatchService.runCobBatch();
+
+        // Arrears sweep should recover 50.00: balance 500 - 50 = 450.00
+        assertEquals(new BigDecimal("400.00"), bal.getBalanceAmount()); // 50 from below-min fee + 50 from arrears sweep = 100 total
+        assertTrue(pendingFee.getIsSettled());
+        assertEquals(new BigDecimal("50.00"), pendingFee.getAmountCollected());
+        verify(uncollectedFeeRepository, atLeastOnce()).save(pendingFee);
+    }
 }
