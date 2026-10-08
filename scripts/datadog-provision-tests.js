@@ -102,6 +102,81 @@ const testsToCreate = [
     },
     message: 'WARNING: Notification & Alert Service is UNHEALTHY',
     tags: ['service:notification-service', 'tier:support', 'env:local']
+  },
+  {
+    name: 'T24 Mock Core Banking System - Ledger & Audit Vault Probe',
+    type: 'api',
+    subtype: 'http',
+    status: 'live',
+    locations: [location],
+    config: {
+      request: {
+        method: 'GET',
+        url: 'http://t24-mock-cbs:8085/actuator/health',
+        timeout: 5
+      },
+      assertions: [
+        { type: 'statusCode', operator: 'is', target: 200 },
+        { type: 'responseTime', operator: 'lessThan', target: 150 }
+      ]
+    },
+    options: {
+      tick_every: 60,
+      min_failure_duration: 0,
+      min_location_failed: 1
+    },
+    message: 'CRITICAL: T24 Mock Core Banking System is UNHEALTHY',
+    tags: ['service:t24-mock-cbs', 'tier:core', 'env:local']
+  },
+  {
+    name: 'Stateless Transfer Orchestrator - Perimeter & OFS Probe',
+    type: 'api',
+    subtype: 'http',
+    status: 'live',
+    locations: [location],
+    config: {
+      request: {
+        method: 'GET',
+        url: 'http://transfer-orchestrator:8082/actuator/health',
+        timeout: 5
+      },
+      assertions: [
+        { type: 'statusCode', operator: 'is', target: 200 },
+        { type: 'responseTime', operator: 'lessThan', target: 100 }
+      ]
+    },
+    options: {
+      tick_every: 60,
+      min_failure_duration: 0,
+      min_location_failed: 1
+    },
+    message: 'CRITICAL: Transfer Orchestrator Perimeter is UNHEALTHY',
+    tags: ['service:transfer-orchestrator', 'tier:perimeter', 'env:local']
+  },
+  {
+    name: 'Compliance & Regulatory Engine - Azurite Storage Probe',
+    type: 'api',
+    subtype: 'http',
+    status: 'live',
+    locations: [location],
+    config: {
+      request: {
+        method: 'GET',
+        url: 'http://compliance-service:8086/actuator/health',
+        timeout: 5
+      },
+      assertions: [
+        { type: 'statusCode', operator: 'is', target: 200 },
+        { type: 'responseTime', operator: 'lessThan', target: 150 }
+      ]
+    },
+    options: {
+      tick_every: 60,
+      min_failure_duration: 0,
+      min_location_failed: 1
+    },
+    message: 'WARNING: Compliance & Regulatory Service is UNHEALTHY',
+    tags: ['service:compliance-service', 'tier:regulatory', 'env:local']
   }
 ];
 

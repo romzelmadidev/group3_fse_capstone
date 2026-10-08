@@ -8,7 +8,7 @@ import java.time.LocalDate;
 import java.time.Instant;
 
 @Entity
-@Table(name = "gl_ledger")
+@Table(name = "gl_ledger", schema = "core")
 @Getter
 @Setter
 @NoArgsConstructor

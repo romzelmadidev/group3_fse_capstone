@@ -94,7 +94,12 @@ public class TransferOrchestrationService {
             // 3. Biometric Verification Challenge (High Value or Moderate Risk)
             boolean requiresBiometric = request.amount().compareTo(BIOMETRIC_THRESHOLD) >= 0 || riskResp.score() >= 60;
             if (requiresBiometric && (request.biometricSignature() == null || request.biometricSignature().isBlank())) {
-                String challenge = biometricService.generateChallenge(txId);
+                String challenge = biometricService.generateChallenge(
+                        txId,
+                        request.destinationAccountId(),
+                        request.amount(),
+                        request.currency() != null ? request.currency() : "PHP"
+                );
                 log.info("Transfer {} requires biometric authentication challenge", txId);
                 return new TransferInitiationResponse(
                         txId,
@@ -113,10 +118,14 @@ public class TransferOrchestrationService {
             }
 
             // 4. Anti-Scam Cooling-off Period (Threshold >= ₱250,000)
-            if (request.amount().compareTo(COOL_OFF_THRESHOLD) >= 0 && !coolOffService.isInCoolOff(txId)) {
+            boolean inCoolOff = coolOffService.isInCoolOff(txId);
+            if (request.amount().compareTo(COOL_OFF_THRESHOLD) >= 0 && !inCoolOff) {
+                // Authoritative CBS fund reservation (hold)
+                cbsService.placeHold(request.sourceAccountId(), request.amount(), txId);
+
                 String payloadJson = objectMapper.writeValueAsString(request);
                 coolOffService.putInCoolOff(txId, payloadJson);
-                log.info("Transfer {} queued into 10-minute cooling-off period", txId);
+                log.info("Transfer {} queued into 10-minute cooling-off period with authoritative CBS hold", txId);
                 return new TransferInitiationResponse(
                         txId,
                         TransactionStatus.Reserved,
@@ -124,7 +133,7 @@ public class TransferOrchestrationService {
                         request.currency() != null ? request.currency() : "PHP",
                         request.sourceAccountId(),
                         request.destinationAccountId(),
-                        "COOLING_OFF_PERIOD_INITIATED: High-value transaction locked for 10 minutes to protect against fraud.",
+                        "COOLING_OFF_PERIOD_INITIATED: High-value transaction locked for 10 minutes to protect against fraud. Authoritative fund hold placed in CBS.",
                         true,
                         600L,
                         false,
@@ -134,7 +143,7 @@ public class TransferOrchestrationService {
             }
 
             // 5. Post to CBS
-            return cbsService.postToCbs(request, txId);
+            return cbsService.postToCbs(request, txId, inCoolOff);
 
         } catch (ResponseStatusException rse) {
             throw rse;

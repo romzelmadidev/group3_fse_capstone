@@ -8,7 +8,7 @@ import java.time.LocalDate;
 import java.time.Instant;
 
 @Entity
-@Table(name = "cob_batch_log")
+@Table(name = "cob_batch_log", schema = "core")
 @Getter
 @Setter
 @NoArgsConstructor

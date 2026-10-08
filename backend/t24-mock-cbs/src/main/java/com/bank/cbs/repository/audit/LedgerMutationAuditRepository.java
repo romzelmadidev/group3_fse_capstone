@@ -12,4 +12,7 @@ public interface LedgerMutationAuditRepository extends JpaRepository<LedgerMutat
     List<LedgerMutationAudit> findByAccountIdOrderByCreatedAtAsc(String accountId);
     Optional<LedgerMutationAudit> findByTransactionId(String transactionId);
     Optional<LedgerMutationAudit> findTopByOrderByAuditIdDesc();
+    List<LedgerMutationAudit> findByAuditIdBetweenOrderByAuditIdAsc(Long startAuditId, Long endAuditId);
+    List<LedgerMutationAudit> findByAuditIdGreaterThanOrderByAuditIdAsc(Long lastAuditId);
+    List<LedgerMutationAudit> findAllByOrderByAuditIdAsc();
 }

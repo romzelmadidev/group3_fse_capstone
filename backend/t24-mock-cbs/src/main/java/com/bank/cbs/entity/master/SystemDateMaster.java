@@ -7,7 +7,7 @@ import java.time.LocalDate;
 import java.time.Instant;
 
 @Entity
-@Table(name = "system_dates")
+@Table(name = "system_dates", schema = "core")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -36,4 +36,8 @@ public class SystemDateMaster {
     @Column(name = "updated_at", nullable = false)
     @Builder.Default
     private Instant updatedAt = Instant.now();
+
+    public boolean isPostingWindowOpen() {
+        return Boolean.TRUE.equals(postingWindowOpen);
+    }
 }

@@ -1,5 +1,6 @@
 package com.bank.orchestrator.controller;
 
+import com.bank.ledger.contracts.dto.AccountTransactionDto;
 import com.bank.orchestrator.dto.*;
 import com.bank.orchestrator.service.BiometricChallengeService;
 import com.bank.orchestrator.service.CoolOffService;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -21,17 +23,52 @@ public class TransferOrchestratorController {
     private final TransferOrchestrationService orchestrationService;
     private final BiometricChallengeService biometricService;
     private final CoolOffService coolOffService;
+    private final com.bank.orchestrator.service.CbsClientService cbsService;
     private final ObjectMapper objectMapper;
 
     public TransferOrchestratorController(
             TransferOrchestrationService orchestrationService,
             BiometricChallengeService biometricService,
             CoolOffService coolOffService,
+            com.bank.orchestrator.service.CbsClientService cbsService,
             ObjectMapper objectMapper) {
         this.orchestrationService = orchestrationService;
         this.biometricService = biometricService;
         this.coolOffService = coolOffService;
+        this.cbsService = cbsService;
         this.objectMapper = objectMapper;
+    }
+    
+    @GetMapping({"/accounts/{accountId}/transactions", "/transactions"})
+    public ResponseEntity<List<AccountTransactionDto>> getAccountTransactions(
+            @PathVariable(value = "accountId", required = false) String pathAccountId,
+            @RequestParam(value = "accountId", required = false) String queryAccountId,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size) {
+        String accountId = (pathAccountId != null && !pathAccountId.isBlank()) ? pathAccountId : queryAccountId;
+        if (accountId == null || accountId.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        List<AccountTransactionDto> transactions = cbsService.getAccountTransactions(accountId, safePage, safeSize);
+        return ResponseEntity.ok(transactions);
+    }
+
+    @GetMapping("/accounts/{accountId}/balance")
+    public ResponseEntity<Map<String, String>> getAccountBalance(@PathVariable String accountId) {
+        Map<String, String> balance = cbsService.getAccountBalance(accountId);
+        return ResponseEntity.ok(balance);
+    }
+
+    @GetMapping("/system-date")
+    public ResponseEntity<Map<String, String>> getSystemDate() {
+        return ResponseEntity.ok(cbsService.getSystemDate());
+    }
+
+    @PostMapping("/cob/run")
+    public ResponseEntity<Map<String, String>> runCob() {
+        return ResponseEntity.ok(cbsService.triggerCob());
     }
 
     @PostMapping
@@ -44,8 +81,30 @@ public class TransferOrchestratorController {
     @PostMapping("/verify-biometric")
     public ResponseEntity<TransferInitiationResponse> verifyBiometric(
             @Valid @RequestBody BiometricVerificationRequest request) {
+
+        String destAccount = request.destinationAccountId();
+        java.math.BigDecimal amount = request.amount();
+
+        // Retrieve stored transfer from cooloff if available to bind context
+        String payloadJson = coolOffService.getCoolOffPayload(request.transactionId());
+        TransferInitiationRequest origReq = null;
+        if (payloadJson != null) {
+            try {
+                origReq = objectMapper.readValue(payloadJson, TransferInitiationRequest.class);
+                if (destAccount == null) {
+                    destAccount = origReq.destinationAccountId();
+                }
+                if (amount == null) {
+                    amount = origReq.amount();
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
         boolean verified = biometricService.verifyChallenge(
                 request.transactionId(),
+                destAccount,
+                amount,
                 request.challengeToken(),
                 request.assertionSignature(),
                 request.deviceId()
@@ -67,17 +126,10 @@ public class TransferOrchestratorController {
                     java.time.Instant.now()
             ));
         }
-
-        // Retrieve stored transfer from cooloff or execute
-        String payloadJson = coolOffService.getCoolOffPayload(request.transactionId());
-        if (payloadJson != null) {
-            try {
-                TransferInitiationRequest origReq = objectMapper.readValue(payloadJson, TransferInitiationRequest.class);
-                TransferInitiationResponse resp = orchestrationService.initiateTransfer(origReq);
-                return ResponseEntity.ok(resp);
-            } catch (Exception e) {
-                return ResponseEntity.internalServerError().build();
-            }
+        // If original request was cached, execute the transfer now that biometrics passed
+        if (origReq != null) {
+            TransferInitiationResponse resp = orchestrationService.initiateTransfer(origReq);
+            return ResponseEntity.ok(resp);
         }
 
         return ResponseEntity.ok(new TransferInitiationResponse(
@@ -110,11 +162,19 @@ public class TransferOrchestratorController {
     @PostMapping("/cancel")
     public ResponseEntity<Map<String, Object>> cancelTransferDuringCoolOff(
             @Valid @RequestBody CoolOffCancelRequest request) {
+        String payloadJson = coolOffService.getCoolOffPayload(request.transactionId());
+        if (payloadJson != null) {
+            try {
+                TransferInitiationRequest origReq = objectMapper.readValue(payloadJson, TransferInitiationRequest.class);
+                cbsService.releaseHold(origReq.sourceAccountId(), origReq.amount(), request.transactionId());
+            } catch (Exception ignored) {
+            }
+        }
         boolean cancelled = coolOffService.cancelCoolOff(request.transactionId());
         return ResponseEntity.ok(Map.of(
                 "transactionId", request.transactionId(),
                 "cancelled", cancelled,
-                "message", cancelled ? "Transfer cancelled successfully during cooling-off window" : "Cooling-off window expired or not found"
+                "message", cancelled ? "Transfer cancelled successfully during cooling-off window. Funds hold released." : "Cooling-off window expired or not found"
         ));
     }
 

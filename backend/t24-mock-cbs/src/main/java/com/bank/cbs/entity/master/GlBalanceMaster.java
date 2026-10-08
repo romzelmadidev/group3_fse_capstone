@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 @Entity
-@Table(name = "gl_balances")
+@Table(name = "gl_balances", schema = "core")
 @Getter
 @Setter
 @NoArgsConstructor

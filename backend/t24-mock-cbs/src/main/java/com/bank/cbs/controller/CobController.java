@@ -4,6 +4,8 @@ import com.bank.cbs.dto.CobExecutionResponseDto;
 import com.bank.cbs.entity.master.SystemDateMaster;
 import com.bank.cbs.repository.master.SystemDateMasterRepository;
 import com.bank.cbs.service.CbsCobBatchService;
+import com.bank.ledger.contracts.ofs.OfsMessageUtil;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,13 +23,22 @@ public class CobController {
         this.systemDateRepository = systemDateRepository;
     }
 
-    @PostMapping("/cob/run")
-    public ResponseEntity<CobExecutionResponseDto> runCob() {
-        return ResponseEntity.ok(cobBatchService.runCobBatch());
+    @PostMapping(value = "/cob/run", produces = MediaType.TEXT_PLAIN_VALUE)
+    public ResponseEntity<String> runCob() {
+        try {
+            CobExecutionResponseDto resp = cobBatchService.runCobBatch();
+            return ResponseEntity.ok(OfsMessageUtil.buildCobRunResponse(
+                    true, resp.batchId(), resp.accountsProcessed(), resp.totalFeesCollected(), resp.totalInterestAccrued(), resp.status(), "COB batch execution completed"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(OfsMessageUtil.buildCobRunResponse(
+                    false, "ERR", 0, java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, "FAILED", e.getMessage()
+            ));
+        }
     }
 
-    @GetMapping("/system-date")
-    public ResponseEntity<SystemDateMaster> getSystemDate() {
+    @GetMapping(value = "/system-date", produces = MediaType.TEXT_PLAIN_VALUE)
+    public ResponseEntity<String> getSystemDate() {
         SystemDateMaster sysDate = systemDateRepository.findTopByOrderBySystemDateIdAsc()
                 .orElseGet(() -> {
                     SystemDateMaster d = new SystemDateMaster();
@@ -37,6 +48,11 @@ public class CobController {
                     d.setPostingWindowOpen(true);
                     return d;
                 });
-        return ResponseEntity.ok(sysDate);
+        return ResponseEntity.ok(OfsMessageUtil.buildSystemDateResponse(
+                sysDate.getSystemDateId(),
+                sysDate.getBusinessDate().toString(),
+                sysDate.getStatus(),
+                sysDate.isPostingWindowOpen()
+        ));
     }
 }

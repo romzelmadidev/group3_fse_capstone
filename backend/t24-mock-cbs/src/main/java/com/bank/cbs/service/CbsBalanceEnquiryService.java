@@ -3,20 +3,42 @@ package com.bank.cbs.service;
 import com.bank.cbs.dto.BalanceEnquiryResponseDto;
 import com.bank.cbs.entity.master.AccountMaster;
 import com.bank.cbs.entity.master.BalanceMaster;
+import com.bank.cbs.entity.master.TransactionMaster;
 import com.bank.cbs.repository.master.AccountMasterRepository;
 import com.bank.cbs.repository.master.BalanceMasterRepository;
+import com.bank.cbs.repository.master.TransactionMasterRepository;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 @Service
 public class CbsBalanceEnquiryService {
 
     private final BalanceMasterRepository balanceRepository;
     private final AccountMasterRepository accountRepository;
+    private final TransactionMasterRepository transactionRepository;
 
-    public CbsBalanceEnquiryService(BalanceMasterRepository balanceRepository, AccountMasterRepository accountRepository) {
+    public CbsBalanceEnquiryService(BalanceMasterRepository balanceRepository,
+                                   AccountMasterRepository accountRepository,
+                                   TransactionMasterRepository transactionRepository) {
         this.balanceRepository = balanceRepository;
         this.accountRepository = accountRepository;
+        this.transactionRepository = transactionRepository;
+    }
+
+    @Transactional(value = "masterTransactionManager", readOnly = true)
+    public List<TransactionMaster> getTransactionsByAccountId(String accountId, int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        return transactionRepository.findBySourceAccountIdOrTargetAccountIdOrderByCreatedAtDesc(
+                accountId, accountId, PageRequest.of(safePage, safeSize));
+    }
+
+    @Transactional(value = "masterTransactionManager", readOnly = true)
+    public List<TransactionMaster> getTransactionsByAccountId(String accountId) {
+        return getTransactionsByAccountId(accountId, 0, 20);
     }
 
     @Transactional(value = "masterTransactionManager", readOnly = true)

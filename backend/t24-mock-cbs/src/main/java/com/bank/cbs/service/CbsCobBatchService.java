@@ -18,6 +18,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -118,7 +119,7 @@ public class CbsCobBatchService {
     }
 
     private void phase1FeeDeduction(LocalDate cobDate, List<CobExecutionResponseDto.CobPhaseResultDto> phaseResults) {
-        log.info("Phase 1: Evaluating below-min ADB fees");
+        log.info("Phase 1: Evaluating below-min ADB fees and automated arrears sweep");
         List<BalanceMaster> allBalances = balanceRepository.findAll();
         int feesApplied = 0;
         int zeroOverdraftProtected = 0;
@@ -126,7 +127,8 @@ public class CbsCobBatchService {
         Instant now = Instant.now();
 
         for (BalanceMaster balance : allBalances) {
-            if (balance.getBalanceAmount().compareTo(MIN_ADB_THRESHOLD) < 0 && balance.getBalanceAmount().compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal adb = calculateClearedAdb(balance.getAccountId(), cobDate, balance);
+            if (adb.compareTo(MIN_ADB_THRESHOLD) < 0 && balance.getBalanceAmount().compareTo(BigDecimal.ZERO) > 0) {
                 BigDecimal balanceAmount = balance.getBalanceAmount();
                 if (balanceAmount.compareTo(MONTHLY_FEE_AMOUNT) >= 0) {
                     balance.setBalanceAmount(balanceAmount.subtract(MONTHLY_FEE_AMOUNT));
@@ -161,23 +163,95 @@ public class CbsCobBatchService {
             }
         }
 
-        String details = String.format("Fees applied: %d, Zero-overdraft protected: %d, Total collected: %s", feesApplied, zeroOverdraftProtected, totalFees);
-        logCobPhase(cobDate, "Phase 1 - Below-Min ADB Fee", "COMPLETED", details);
+        // Automated Arrears Sweep for delinquent uncollected fees
+        int arrearsSwept = 0;
+        BigDecimal totalArrearsRecovered = BigDecimal.ZERO;
+        List<UncollectedFeeMaster> unsettledFees = uncollectedFeeRepository.findByIsSettledFalse();
+        if (unsettledFees != null) {
+            for (UncollectedFeeMaster fee : unsettledFees) {
+                Optional<BalanceMaster> balOpt = balanceRepository.findById(fee.getAccountId());
+                if (balOpt.isEmpty()) continue;
+
+                BalanceMaster bal = balOpt.get();
+                BigDecimal available = bal.getAvailableBalance();
+                if (available == null) {
+                    available = bal.getBalanceAmount().subtract(bal.getHoldAmount() != null ? bal.getHoldAmount() : BigDecimal.ZERO);
+                }
+
+                BigDecimal remainingDue = fee.getAmountDue().subtract(
+                        fee.getAmountCollected() != null ? fee.getAmountCollected() : BigDecimal.ZERO
+                );
+
+                if (available.compareTo(BigDecimal.ZERO) > 0 && remainingDue.compareTo(BigDecimal.ZERO) > 0) {
+                    BigDecimal sweepAmount = available.min(remainingDue);
+                    bal.setBalanceAmount(bal.getBalanceAmount().subtract(sweepAmount));
+                    BigDecimal hold = bal.getHoldAmount() != null ? bal.getHoldAmount() : BigDecimal.ZERO;
+                    bal.setAvailableBalance(bal.getBalanceAmount().subtract(hold));
+                    bal.setUpdatedAt(now);
+                    balanceRepository.save(bal);
+
+                    BigDecimal newCollected = (fee.getAmountCollected() != null ? fee.getAmountCollected() : BigDecimal.ZERO).add(sweepAmount);
+                    fee.setAmountCollected(newCollected);
+                    if (newCollected.compareTo(fee.getAmountDue()) >= 0) {
+                        fee.setIsSettled(true);
+                    }
+                    uncollectedFeeRepository.save(fee);
+
+                    arrearsSwept++;
+                    totalArrearsRecovered = totalArrearsRecovered.add(sweepAmount);
+                }
+            }
+        }
+
+        String details = String.format("Fees applied: %d, Zero-overdraft protected: %d, Arrears swept: %d (Recovered: %s), Total collected: %s",
+                feesApplied, zeroOverdraftProtected, arrearsSwept, totalArrearsRecovered, totalFees.add(totalArrearsRecovered));
+        logCobPhase(cobDate, "Phase 1 - Below-Min ADB Fee & Arrears Sweep", "COMPLETED", details);
         phaseResults.add(new CobExecutionResponseDto.CobPhaseResultDto(1, "Below-Min ADB Fee Deductions", "COMPLETED", details));
     }
 
+    public BigDecimal calculateClearedAdb(String accountId, LocalDate cobDate, BalanceMaster balance) {
+        BigDecimal todayCleared = balance.getBalanceAmount().subtract(
+                balance.getHoldAmount() != null ? balance.getHoldAmount() : BigDecimal.ZERO
+        );
+
+        LocalDate cycleStart = cobDate.withDayOfMonth(1);
+        List<EodBalanceSnapshotMaster> snapshots = eodSnapshotRepository.findByAccountIdAndBusinessDateBetween(
+                accountId, cycleStart, cobDate
+        );
+
+        if (snapshots == null || snapshots.isEmpty()) {
+            return todayCleared;
+        }
+
+        BigDecimal sum = snapshots.stream()
+                .map(EodBalanceSnapshotMaster::getClosingBalance)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        sum = sum.add(todayCleared);
+
+        int totalDays = snapshots.size() + 1;
+        return sum.divide(BigDecimal.valueOf(totalDays), 4, RoundingMode.HALF_UP);
+    }
+
     private void phase2InterestAccrual(LocalDate cobDate, List<CobExecutionResponseDto.CobPhaseResultDto> phaseResults) {
-        log.info("Phase 2: Calculating daily interest accrual and tax withholding");
+        log.info("Phase 2: Calculating daily interest accrual and tax withholding (Actual/Actual day count & Cleared Balance)");
         List<BalanceMaster> allBalances = balanceRepository.findAll();
         int interestAccounts = 0;
         BigDecimal totalGross = BigDecimal.ZERO;
         BigDecimal totalTax = BigDecimal.ZERO;
         Instant now = Instant.now();
 
+        // Support leap-year day-count convention (Actual/Actual: 366 in leap year, 365 otherwise)
+        int daysInYear = cobDate.lengthOfYear();
+        BigDecimal dailyRate = ANNUAL_INTEREST_RATE.divide(BigDecimal.valueOf(daysInYear), 10, RoundingMode.HALF_UP);
+
         for (BalanceMaster balance : allBalances) {
-            if (balance.getBalanceAmount().compareTo(BigDecimal.ZERO) > 0) {
-                BigDecimal dailyRate = ANNUAL_INTEREST_RATE.divide(new BigDecimal("365"), 10, RoundingMode.HALF_UP);
-                BigDecimal grossInterest = balance.getBalanceAmount().multiply(dailyRate).setScale(4, RoundingMode.HALF_UP);
+            // Base daily interest strictly on cleared balance (cleared available balance, excluding uncollected holds)
+            BigDecimal clearedBalance = balance.getBalanceAmount().subtract(
+                    balance.getHoldAmount() != null ? balance.getHoldAmount() : BigDecimal.ZERO
+            );
+
+            if (clearedBalance.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal grossInterest = clearedBalance.multiply(dailyRate).setScale(4, RoundingMode.HALF_UP);
                 BigDecimal withholdingTax = grossInterest.multiply(TAX_WITHHOLDING_RATE).setScale(4, RoundingMode.HALF_UP);
                 BigDecimal netInterest = grossInterest.subtract(withholdingTax);
 
@@ -202,7 +276,8 @@ public class CbsCobBatchService {
             }
         }
 
-        String details = String.format("Accrued interest for %d accounts. Gross: %s, Tax: %s", interestAccounts, totalGross, totalTax);
+        String details = String.format("Accrued interest for %d accounts (Days in year: %d). Gross: %s, Tax: %s",
+                interestAccounts, daysInYear, totalGross, totalTax);
         logCobPhase(cobDate, "Phase 2 - Interest Accrual", "COMPLETED", details);
         phaseResults.add(new CobExecutionResponseDto.CobPhaseResultDto(2, "Daily Interest Accrual", "COMPLETED", details));
     }

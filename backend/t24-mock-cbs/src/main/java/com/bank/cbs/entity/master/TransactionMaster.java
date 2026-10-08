@@ -10,7 +10,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 @Entity
-@Table(name = "transactions")
+@Table(name = "transactions", schema = "core")
 @Getter
 @Setter
 @NoArgsConstructor

@@ -41,18 +41,21 @@ public class CbsAuditSelfConsumptionService {
     private final TransactionStatusAuditRepository transactionStatusAuditRepository;
     private final FailedTransactionAuditRepository failedTransactionAuditRepository;
     private final ObjectMapper objectMapper;
+    private final MerkleTreeService merkleTreeService;
 
     public CbsAuditSelfConsumptionService(
             LedgerMutationAuditRepository ledgerMutationAuditRepository,
             ReversalAuditRepository reversalAuditRepository,
             TransactionStatusAuditRepository transactionStatusAuditRepository,
             FailedTransactionAuditRepository failedTransactionAuditRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            MerkleTreeService merkleTreeService) {
         this.ledgerMutationAuditRepository = ledgerMutationAuditRepository;
         this.reversalAuditRepository = reversalAuditRepository;
         this.transactionStatusAuditRepository = transactionStatusAuditRepository;
         this.failedTransactionAuditRepository = failedTransactionAuditRepository;
         this.objectMapper = objectMapper;
+        this.merkleTreeService = merkleTreeService;
     }
 
     @KafkaListener(topics = KafkaConfig.TOPIC_TRANSFERS_EVENTS, groupId = "cbs-audit-workers")
@@ -113,16 +116,14 @@ public class CbsAuditSelfConsumptionService {
             return;
         }
 
-        log.info("Auditing TransferExecutedEvent into PostgreSQL audit vault: txId={}", txId);
-
-        Optional<LedgerMutationAudit> lastAudit = ledgerMutationAuditRepository.findTopByOrderByAuditIdDesc();
-        String prevHash = lastAudit.map(LedgerMutationAudit::getSha256Hash).orElse(GENESIS_HASH);
+        log.info("Auditing TransferExecutedEvent into PostgreSQL audit vault via Merkle leaf: txId={}", txId);
 
         Instant eventTime = event.getExecutedAtUtc() != null ? event.getExecutedAtUtc() : Instant.now();
 
-        // Debit side record
+        // Debit side record (concurrently calculated leaf hash with zero table locking)
         BigDecimal debitBefore = event.getSourceBalanceAfter().add(event.getAmount());
-        String debitHash = calculateSha256(prevHash + "|" + txId + "|DEBIT|" + event.getAmount() + "|" + eventTime);
+        String debitPayload = txId + "-DR|" + event.getSourceAccountId() + "|DEBIT|" + event.getAmount() + "|" + debitBefore + "|" + event.getSourceBalanceAfter() + "|" + eventTime;
+        String debitHash = merkleTreeService.calculateSha256(debitPayload);
 
         LedgerMutationAudit debitAudit = LedgerMutationAudit.builder()
                 .transactionId(txId + "-DR")
@@ -133,15 +134,16 @@ public class CbsAuditSelfConsumptionService {
                 .afterBalance(event.getSourceBalanceAfter())
                 .initiatorUserId("SYSTEM")
                 .status("COMMITTED")
-                .prevHash(prevHash)
+                .prevHash("MERKLE_LEAF")
                 .sha256Hash(debitHash)
                 .createdAt(eventTime)
                 .build();
         ledgerMutationAuditRepository.save(debitAudit);
 
-        // Credit side record
+        // Credit side record (concurrently calculated leaf hash with zero table locking)
         BigDecimal creditBefore = event.getDestinationBalanceAfter().subtract(event.getAmount());
-        String creditHash = calculateSha256(debitHash + "|" + txId + "|CREDIT|" + event.getAmount() + "|" + eventTime);
+        String creditPayload = txId + "-CR|" + event.getDestinationAccountId() + "|CREDIT|" + event.getAmount() + "|" + creditBefore + "|" + event.getDestinationBalanceAfter() + "|" + eventTime;
+        String creditHash = merkleTreeService.calculateSha256(creditPayload);
 
         LedgerMutationAudit creditAudit = LedgerMutationAudit.builder()
                 .transactionId(txId + "-CR")
@@ -152,7 +154,7 @@ public class CbsAuditSelfConsumptionService {
                 .afterBalance(event.getDestinationBalanceAfter())
                 .initiatorUserId("SYSTEM")
                 .status("COMMITTED")
-                .prevHash(debitHash)
+                .prevHash("MERKLE_LEAF")
                 .sha256Hash(creditHash)
                 .createdAt(eventTime)
                 .build();
@@ -181,11 +183,9 @@ public class CbsAuditSelfConsumptionService {
     }
 
     private void handleStatusChanged(TransactionStatusChangedEvent event) {
-        Optional<TransactionStatusAudit> lastAudit = transactionStatusAuditRepository.findTopByOrderByAuditIdDesc();
-        String prevHash = lastAudit.map(TransactionStatusAudit::getSha256Hash).orElse(GENESIS_HASH);
-
         Instant changeTime = event.getChangedAt() != null ? event.getChangedAt() : Instant.now();
-        String hash = calculateSha256(prevHash + "|" + event.getTransactionId() + "|" + event.getToStatus() + "|" + changeTime);
+        String payload = event.getTransactionId() + "|" + event.getToStatus() + "|" + event.getChangeReason() + "|" + changeTime;
+        String hash = merkleTreeService.calculateSha256(payload);
 
         TransactionStatusAudit audit = TransactionStatusAudit.builder()
                 .transactionId(event.getTransactionId())
@@ -196,19 +196,13 @@ public class CbsAuditSelfConsumptionService {
                 .changeReason(event.getChangeReason() != null ? event.getChangeReason() : "STATUS_UPDATE")
                 .reasonDetails(event.getReasonDetails())
                 .changedAt(changeTime)
-                .prevHash(prevHash)
+                .prevHash("MERKLE_LEAF")
                 .sha256Hash(hash)
                 .build();
         transactionStatusAuditRepository.save(audit);
     }
 
     private String calculateSha256(String input) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] encodedhash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(encodedhash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 algorithm not available", e);
-        }
+        return merkleTreeService.calculateSha256(input);
     }
 }

@@ -20,7 +20,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "users")
+@Table(name = "users", schema = "auth_identity")
 @Getter
 @Setter
 @Builder

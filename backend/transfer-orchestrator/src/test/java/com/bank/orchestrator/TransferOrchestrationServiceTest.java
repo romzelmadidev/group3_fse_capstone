@@ -68,7 +68,7 @@ class TransferOrchestrationServiceTest {
         when(riskService.evaluateRisk(any(RiskScoreRequest.class)))
                 .thenReturn(new RiskScoreResponse("TXN-101", 10, "ALLOW", "Low risk"));
 
-        when(cbsService.postToCbs(eq(request), eq("TXN-101")))
+        when(cbsService.postToCbs(eq(request), eq("TXN-101"), eq(false)))
                 .thenReturn(new TransferInitiationResponse(
                         "TXN-101", TransactionStatus.Posted, new BigDecimal("5000.00"),
                         "PHP", "ACC-SOURCE", "ACC-DEST", "Success", false, 0L, false, null, Instant.now()
@@ -80,7 +80,7 @@ class TransferOrchestrationServiceTest {
         assertEquals(TransactionStatus.Posted, response.status());
         assertFalse(response.biometricRequired());
         assertFalse(response.coolingOffRequired());
-        verify(cbsService, times(1)).postToCbs(any(), anyString());
+        verify(cbsService, times(1)).postToCbs(any(), anyString(), eq(false));
     }
 
     @Test
@@ -95,7 +95,7 @@ class TransferOrchestrationServiceTest {
                 .thenReturn(new RiskScoreResponse("TXN-BLOCK", 95, "BLOCK", "Known fraudulent beneficiary account"));
 
         assertThrows(ResponseStatusException.class, () -> orchestrationService.initiateTransfer(request));
-        verify(cbsService, never()).postToCbs(any(), anyString());
+        verify(cbsService, never()).postToCbs(any(), anyString(), anyBoolean());
     }
 
     @Test
@@ -108,7 +108,7 @@ class TransferOrchestrationServiceTest {
 
         when(riskService.evaluateRisk(any(RiskScoreRequest.class)))
                 .thenReturn(new RiskScoreResponse("TXN-BIO", 20, "ALLOW", "Normal risk"));
-        when(biometricService.generateChallenge("TXN-BIO"))
+        when(biometricService.generateChallenge(eq("TXN-BIO"), eq("ACC-DEST"), eq(new BigDecimal("75000.00")), eq("PHP")))
                 .thenReturn("CHALLENGE-TOKEN-XYZ");
 
         TransferInitiationResponse response = orchestrationService.initiateTransfer(request);
@@ -117,7 +117,7 @@ class TransferOrchestrationServiceTest {
         assertTrue(response.biometricRequired());
         assertEquals("CHALLENGE-TOKEN-XYZ", response.biometricChallenge());
         assertEquals(TransactionStatus.Authorized, response.status());
-        verify(cbsService, never()).postToCbs(any(), anyString());
+        verify(cbsService, never()).postToCbs(any(), anyString(), anyBoolean());
     }
 
     @Test
@@ -138,7 +138,8 @@ class TransferOrchestrationServiceTest {
         assertTrue(response.coolingOffRequired());
         assertEquals(600L, response.coolingOffExpiresInSeconds());
         assertEquals(TransactionStatus.Reserved, response.status());
+        verify(cbsService, times(1)).placeHold(eq("ACC-SOURCE"), eq(new BigDecimal("300000.00")), eq("TXN-COOL"));
         verify(coolOffService, times(1)).putInCoolOff(eq("TXN-COOL"), anyString());
-        verify(cbsService, never()).postToCbs(any(), anyString());
+        verify(cbsService, never()).postToCbs(any(), anyString(), anyBoolean());
     }
 }

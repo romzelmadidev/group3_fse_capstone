@@ -48,10 +48,10 @@ spring:
                 redis-rate-limiter.burstCapacity: 40
                 key-resolver: "#{@userKeyResolver}"
 
-        - id: t24-mock-cbs
+        - id: t24-mock-cbs-audit
           uri: ${CBS_SERVICE_URI:http://localhost:8085}
           predicates:
-            - Path=/api/v1/cbs/**, /api/v1/t24/**, /api/t24/**, /api/transactions/**, /api/v1/transactions/**, /api/v1/ledger/**
+            - Path=/api/v1/cbs/audit/**
           filters:
             - name: RequestRateLimiter
               args:
