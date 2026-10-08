@@ -65,6 +65,31 @@ public class CbsFundsTransferService {
         log.info("Processing CBS funds transfer: amount={} source={} dest={}",
                 request.amount(), request.sourceAccountId(), request.destinationAccountId());
 
+        // 0. Idempotency pre-check (Prevents double-mutations on retry / DLQ replay)
+        if (request.idempotencyKey() != null && !request.idempotencyKey().isBlank()) {
+            var existingTxOpt = transactionRepository.findByIdempotencyKey(request.idempotencyKey());
+            if (existingTxOpt.isPresent()) {
+                TransactionMaster existingTx = existingTxOpt.get();
+                log.info("Idempotent duplicate detected for key {}. Replaying existing transaction {} without mutating balances.",
+                        request.idempotencyKey(), existingTx.getTransactionId());
+                BalanceMaster src = balanceRepository.findById(existingTx.getSourceAccountId()).orElse(null);
+                BalanceMaster dst = balanceRepository.findById(existingTx.getTargetAccountId()).orElse(null);
+                String ofsResp = OfsMessageUtil.buildOfsResponse(true, existingTx.getTransactionId(), "POSTED_SUCCESSFULLY_IDEMPOTENT_REPLAY");
+                return new TransferResponseDto(
+                        existingTx.getTransactionId(),
+                        existingTx.getStatus(),
+                        existingTx.getAmount(),
+                        existingTx.getCurrency(),
+                        existingTx.getSourceAccountId(),
+                        existingTx.getTargetAccountId(),
+                        src != null ? src.getBalanceAmount() : null,
+                        dst != null ? dst.getBalanceAmount() : null,
+                        ofsResp,
+                        existingTx.getCreatedAt()
+                );
+            }
+        }
+
         // 1. Posting window check
         SystemDateMaster systemDate = systemDateRepository.findTopByOrderBySystemDateIdAsc()
                 .orElseGet(() -> {
@@ -154,6 +179,7 @@ public class CbsFundsTransferService {
         // 6. Record transaction master
         TransactionMaster tx = TransactionMaster.builder()
                 .transactionId(txId)
+                .idempotencyKey(request.idempotencyKey())
                 .sourceAccountId(sourceId)
                 .targetAccountId(destId)
                 .amount(request.amount())

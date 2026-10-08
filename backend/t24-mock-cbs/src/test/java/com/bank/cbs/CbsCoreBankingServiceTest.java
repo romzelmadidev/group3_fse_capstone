@@ -131,6 +131,46 @@ class CbsCoreBankingServiceTest {
     }
 
     @Test
+    void testFundsTransfer_IdempotentReplay_BypassesBalanceMutation() {
+        TransactionMaster existingTx = TransactionMaster.builder()
+                .transactionId("TXN-ORIGINAL")
+                .idempotencyKey("IDEMP-EXISTING")
+                .sourceAccountId("ACC-1")
+                .targetAccountId("ACC-2")
+                .amount(new BigDecimal("3000.00"))
+                .currency("PHP")
+                .status(TransactionStatus.Posted.name())
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build();
+
+        when(transactionRepository.findByIdempotencyKey("IDEMP-EXISTING")).thenReturn(Optional.of(existingTx));
+
+        BalanceMaster sourceBal = BalanceMaster.builder().accountId("ACC-1").balanceAmount(new BigDecimal("7000.00")).build();
+        BalanceMaster destBal = BalanceMaster.builder().accountId("ACC-2").balanceAmount(new BigDecimal("5000.00")).build();
+        when(balanceRepository.findById("ACC-1")).thenReturn(Optional.of(sourceBal));
+        when(balanceRepository.findById("ACC-2")).thenReturn(Optional.of(destBal));
+
+        TransferRequestDto request = new TransferRequestDto(
+                "TXN-NEW", "ACC-1", "ACC-2",
+                new BigDecimal("3000.00"), "PHP", "Replayed Transfer", "WEB", "IDEMP-EXISTING"
+        );
+
+        TransferResponseDto response = transferService.executeTransfer(request);
+
+        assertNotNull(response);
+        assertEquals("TXN-ORIGINAL", response.transactionId());
+        assertEquals(TransactionStatus.Posted.name(), response.status());
+        assertEquals(new BigDecimal("3000.00"), response.amount());
+        assertTrue(response.ofsResponse().contains("IDEMPOTENT_REPLAY"));
+
+        // Verify that balances were NOT locked or mutated again
+        verify(balanceRepository, never()).findByAccountIdForUpdate(anyString());
+        verify(glLedgerRepository, never()).save(any());
+        verify(transactionRepository, never()).save(any());
+    }
+
+    @Test
     void testFundsTransfer_InsufficientFunds_ThrowsException() {
         SystemDateMaster sysDate = SystemDateMaster.builder()
                 .systemDateId("SYS-1")

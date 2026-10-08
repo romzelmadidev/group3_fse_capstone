@@ -88,6 +88,7 @@ CREATE TABLE dbo.transactions (
     requires_maker_checker BIT DEFAULT 0 NOT NULL,
     approved_by            NVARCHAR(64) NULL,
     memo                   NVARCHAR(255) NULL,
+    idempotency_key        NVARCHAR(64) NULL,
     created_at             DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     updated_at             DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT fk_tx_source FOREIGN KEY (source_account_id) REFERENCES dbo.accounts(account_id),
@@ -132,6 +133,7 @@ CREATE TABLE dbo.notifications (
 CREATE NONCLUSTERED INDEX idx_acc_user_id ON dbo.accounts(user_id);
 CREATE NONCLUSTERED INDEX idx_tx_source ON dbo.transactions(source_account_id, created_at DESC);
 CREATE NONCLUSTERED INDEX idx_tx_target ON dbo.transactions(target_account_id, created_at DESC);
+CREATE UNIQUE NONCLUSTERED INDEX uq_tx_idempotency_key ON dbo.transactions(idempotency_key) WHERE idempotency_key IS NOT NULL;
 CREATE NONCLUSTERED INDEX idx_outbox_status ON dbo.outbox_events(status, created_at) WHERE status = 'PENDING';
 
 -- ==============================================================================

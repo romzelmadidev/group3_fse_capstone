@@ -22,6 +22,9 @@ public class TransactionMaster {
     @Column(name = "transaction_id", length = 64)
     private String transactionId;
 
+    @Column(name = "idempotency_key", length = 64, unique = true)
+    private String idempotencyKey;
+
     @Column(name = "source_account_id", length = 64)
     private String sourceAccountId;
 
