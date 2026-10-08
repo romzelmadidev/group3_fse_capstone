@@ -170,20 +170,23 @@ Every container attaches to the internal bridge network `banking-net`. Only peri
 
 | Service / Container | Container Name | Host Port | Internal Port | Protocol | Purpose & Architectural Role |
 | :--- | :--- | :---: | :---: | :--- | :--- |
-| **Flutter Web Client** | `flutter-web-portal` | `3000` | `80` | HTTP | CanvasKit/Wasm web portal with 100% UI parity with mobile client |
+| **Retail Banking Web SPA** | `banking-frontend` | `3000` | `80` | HTTP | React / Vite SPA with CanvasKit/Wasm portal parity (profile: frontend) |
 | **API Gateway** | `gateway-service` | `8080` | `8080` | HTTP / REST | Single perimeter entry, token-bucket rate limiter, JWT validation |
-| **Account Service** | `account-service` | *Internal* | `8081` | HTTP / REST | KYC onboarding, user profiles, JWT issuance, Refresh Token Rotation |
-| **Orchestration Engine** | `ledger-mutation-engine`| *Internal* | `8082` | HTTP / REST | Transaction orchestration, row locks, soft holds, outbox relay |
-| **Notification Service** | `notification-service` | *Internal* | `8083` | HTTP / REST | Kafka event listener, email receipts, 2FA OTP generation and dispatch |
-| **Fraud Risk Engine** | `risk-service` | *Internal* | `8084` | HTTP / REST | Two-stage S2 XGBoost (Stage A) + Laya threat synthesis & synchronous memo analysis (Stage B) |
+| **Account Service** | `account-service` | `8081` | `8081` | HTTP / REST | KYC onboarding, user profiles, JWT issuance, Refresh Token Rotation |
+| **Transfer Orchestrator** | `transfer-orchestrator`| `8082` | `8082` | HTTP / REST | Stateless perimeter saga orchestrator, OFS serializer & cool-off |
+| **Notification Service** | `notification-service` | `8083` | `8083` | HTTP / REST | Kafka event listener, email receipts, 2FA OTP generation and dispatch |
+| **Fraud Risk Engine** | `risk-service` | `8084` | `8084` | HTTP / REST | Two-stage S2 XGBoost (Stage A) + Laya threat synthesis & memo analysis |
+| **T24 Mock Core Banking** | `t24-mock-cbs` | `8085` | `8085` | HTTP / REST | Sole custodian of Master DB & Audit Vault, OFS processing & EOD batch |
+| **Compliance Service** | `compliance-service` | `8086` | `8086` | HTTP / REST | Zero-DB reporting engine, PDF/Excel generation, Azurite blob storage |
 | **Redis Cache** | `redis-cache` | `6379` | `6379` | RESP / TCP | RTR token families, JWT blacklist, 5-minute OTP, rate limiting |
 | **Redis Insight** | `redis-insight` | `5540` | `5540` | HTTP | Web management dashboard for inspecting Redis keys, memory, and TTLs |
 | **Oracle Database XE** | `oracle-xe-master` | `1521` | `1521` | Oracle TNS | Operational relational state (`XEPDB1`), row locks, outbox events |
 | **PostgreSQL Audit** | `postgres-audit-vault`| `5433` | `5432` | PostgreSQL | Write-once append-only compliance audit journal (`banking_audit`) |
 | **Apache Kafka** | `kafka-broker` | `9092` | `9092` | PLAINTEXT | KRaft cluster event commit log (`banking.transfers.events`) |
-| **Kafka Web Console** | `kafka-ui` | `8085` | `8080` | HTTP | Web console for topics, consumer groups, and message inspection |
+| **Kafka Web Console** | `kafka-ui` | `8089` | `8080` | HTTP | Web console for topics, consumer groups, and message inspection |
 | **MailHog SMTP** | `mailhog-smtp` | `8025` / `1025` | `8025` / `1025` | HTTP / SMTP | Mock email testing inbox UI (`:8025`) and SMTP receiver (`:1025`) |
 | **Adminer Web GUI** | `db-adminer` | `8088` | `8080` | HTTP | Web SQL console for Oracle XE and PostgreSQL databases |
+| **Azurite Storage & Drive** | `azurite-storage` / `azurite-drive` | `10000` / `10005` | `10000` / `80` | HTTP / Blob | Azure Blob storage emulation & web drive browser UI |
 | **Datadog Agent** | `dd-agent` | `8126` / `8125` | `8126` / `8125` | HTTP / UDP | APM trace waterfalls (`:8126`), DogStatsD metrics (`:8125`), container logs |
 
 *Note: In the hardened production profile, host ports for internal backend microservices (`8081`, `8082`, `8083`, `8084`) are omitted, ensuring all external traffic enters via Gateway port `8080`.*
@@ -268,23 +271,81 @@ Day 9: Final Comprehensive Examination & Project Sign-Off
 
 ### Launching the Platform via Docker Compose
 
+The platform can be built and launched directly from the repository root using Docker Compose:
+
+#### 1. Compile Backend Microservices
+Package all Spring Boot JARs with the bundled Maven wrapper:
+
 ```powershell
-# 1. Package backend microservice artifacts
+# Windows (PowerShell / Command Prompt)
 cd backend
 .\mvnw.cmd clean package -DskipTests
 cd ..
-
-# 2. Build and launch all 14 containerized services
-docker compose -f infrastructure/docker-compose.yml up -d --build
 ```
 
-### Local Development Workflow (Running Services Locally)
+```bash
+# macOS / Linux
+cd backend
+./mvnw clean package -DskipTests
+cd ..
+```
+
+#### 2. Launch Container Stack
+Start all backend services, databases, messaging brokers, and telemetry collectors:
+
+```powershell
+# Launch all core backend services in detached mode
+docker compose up -d --build
+```
+
+*(Note: You can run `docker compose up -d --build` directly from the project root, or alternatively use `docker compose -f infrastructure/docker-compose.yml up -d --build`.)*
+
+#### 3. Optional Profiles
+* **Retail Banking Web SPA (React / Vite / Nginx on port 3000):**
+  ```powershell
+  docker compose --profile frontend up -d --build
+  ```
+* **Datadog Synthetics Worker (requires Datadog location credentials):**
+  ```powershell
+  docker compose --profile synthetics up -d
+  ```
+
+#### 4. Verify Container Health
+Check the status of all active containers:
+
+```powershell
+docker compose ps
+```
+
+Verify the health check endpoints:
+* **API Gateway:** `http://localhost:8080/actuator/health`
+* **Account Service:** `http://localhost:8081/actuator/health`
+* **Transfer Orchestrator:** `http://localhost:8082/actuator/health`
+* **Notification Service:** `http://localhost:8083/actuator/health`
+* **Fraud Risk Engine:** `http://localhost:8084/health`
+* **T24 Mock Core Banking System:** `http://localhost:8085/actuator/health`
+* **Compliance & Reporting Service:** `http://localhost:8086/actuator/health`
+
+#### 5. Stop and Tear Down
+To stop running containers:
+
+```powershell
+docker compose down
+```
+
+To stop containers and reset persistent volumes (Oracle, Postgres, Redis, Prometheus):
+
+```powershell
+docker compose down -v
+```
+
+### Local Development Workflow (Running Services Locally on Host)
 
 If you prefer developing with live reload on host machines:
 
 ```powershell
 # Step 1: Start backing infrastructure containers
-docker compose -f infrastructure/docker-compose.yml up -d oracle-xe-master postgres-audit-vault redis-cache kafka-broker mailhog kafka-ui adminer dd-agent
+docker compose up -d oracle-xe-master postgres-audit-vault redis-cache kafka-broker mailhog kafka-ui adminer dd-agent
 
 # Step 2: Start microservices (in separate terminals)
 # Terminal 1: API Gateway (:8080)
@@ -293,18 +354,26 @@ cd backend/gateway-service && ..\mvnw.cmd spring-boot:run
 # Terminal 2: Account & Identity Service (:8081)
 cd backend/account-service && ..\mvnw.cmd spring-boot:run
 
-# Terminal 3: Orchestration & Ledger Engine (:8082)
-cd backend/ledger-mutation-engine && ..\mvnw.cmd spring-boot:run
+# Terminal 3: T24 Mock Core Banking System (:8085)
+cd backend/t24-mock-cbs && ..\mvnw.cmd spring-boot:run
 
-# Terminal 4: Notification Service (:8083)
+# Terminal 4: Transfer Orchestrator (:8082)
+cd backend/transfer-orchestrator && ..\mvnw.cmd spring-boot:run
+
+# Terminal 5: Notification Service (:8083)
 cd backend/notification-service && ..\mvnw.cmd spring-boot:run
 
-# Terminal 5: Python Risk Engine (:8084)
+# Terminal 6: Compliance & Reporting Service (:8086)
+cd backend/compliance-service && ..\mvnw.cmd spring-boot:run
+
+# Terminal 7: Python Risk Engine (:8084)
 cd backend/risk-service && python -m app.server
 
-# Step 3: Run Flutter Web Portal
-cd flutter_client
-flutter run -d chrome --web-port 3000
+# Step 3: Run Flutter Web Portal or React SPA
+cd frontend
+npm run dev
+# or for Flutter:
+# cd flutter_client && flutter run -d chrome --web-port 3000
 ```
 
 ### Database Web Console (Adminer Credentials)

@@ -640,6 +640,7 @@ services:
   # ============================================================================
   datadog-synthetics-worker:
     container_name: datadog-synthetics-worker
+    profiles: ["synthetics"]
     image: registry.datadoghq.com/synthetics-private-location-worker:latest
     restart: unless-stopped
     environment:
