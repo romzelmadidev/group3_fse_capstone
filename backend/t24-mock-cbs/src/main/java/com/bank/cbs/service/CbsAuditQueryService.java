@@ -3,6 +3,7 @@ package com.bank.cbs.service;
 import com.bank.cbs.dto.*;
 import com.bank.cbs.entity.audit.*;
 import com.bank.cbs.repository.audit.*;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,8 +37,16 @@ public class CbsAuditQueryService {
     }
 
     @Transactional(value = "auditTransactionManager", readOnly = true)
+    public List<LedgerMutationAudit> getLedgerMutationsByAccount(String accountId, int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        return ledgerMutationAuditRepository.findByAccountIdOrderByCreatedAtAsc(
+                accountId, PageRequest.of(safePage, safeSize));
+    }
+
+    @Transactional(value = "auditTransactionManager", readOnly = true)
     public List<LedgerMutationAudit> getLedgerMutationsByAccount(String accountId) {
-        return ledgerMutationAuditRepository.findByAccountIdOrderByCreatedAtAsc(accountId);
+        return getLedgerMutationsByAccount(accountId, 0, 50);
     }
 
     @Transactional(value = "auditTransactionManager", readOnly = true)
@@ -53,8 +62,16 @@ public class CbsAuditQueryService {
     }
 
     @Transactional(value = "auditTransactionManager", readOnly = true)
+    public List<FailedTransactionAudit> getUnresolvedFailedTransactions(int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        return failedTransactionAuditRepository.findByReplayStatusOrderByFailureTimestampDesc(
+                "PENDING_REPLAY", PageRequest.of(safePage, safeSize));
+    }
+
+    @Transactional(value = "auditTransactionManager", readOnly = true)
     public List<FailedTransactionAudit> getUnresolvedFailedTransactions() {
-        return failedTransactionAuditRepository.findByReplayStatus("PENDING_REPLAY");
+        return getUnresolvedFailedTransactions(0, 20);
     }
 
     @Transactional("auditTransactionManager")

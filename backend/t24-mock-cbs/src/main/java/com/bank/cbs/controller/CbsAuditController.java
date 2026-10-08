@@ -27,13 +27,18 @@ public class CbsAuditController {
     }
 
     @GetMapping("/accounts/{accountId}/mutations")
-    public ResponseEntity<List<LedgerMutationAudit>> getLedgerMutations(@PathVariable String accountId) {
-        return ResponseEntity.ok(auditQueryService.getLedgerMutationsByAccount(accountId));
+    public ResponseEntity<List<LedgerMutationAudit>> getLedgerMutations(
+            @PathVariable String accountId,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "50") int size) {
+        return ResponseEntity.ok(auditQueryService.getLedgerMutationsByAccount(accountId, page, size));
     }
 
     @GetMapping("/failed-transactions")
-    public ResponseEntity<List<FailedTransactionAudit>> getFailedTransactions() {
-        return ResponseEntity.ok(auditQueryService.getUnresolvedFailedTransactions());
+    public ResponseEntity<List<FailedTransactionAudit>> getFailedTransactions(
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size) {
+        return ResponseEntity.ok(auditQueryService.getUnresolvedFailedTransactions(page, size));
     }
 
     @PostMapping("/failed-transactions/{transferId}/resolve")

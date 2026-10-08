@@ -84,7 +84,10 @@ public class ComplianceController {
                 : BigDecimal.ZERO;
 
         List<?> mutations = cbsWebClient.get()
-                .uri("/api/v1/cbs/audit/accounts/" + accountId + "/mutations")
+                .uri(uriBuilder -> uriBuilder.path("/api/v1/cbs/audit/accounts/" + accountId + "/mutations")
+                        .queryParam("page", 0)
+                        .queryParam("size", 100)
+                        .build())
                 .retrieve()
                 .bodyToMono(List.class)
                 .timeout(Duration.ofSeconds(3))
@@ -108,9 +111,14 @@ public class ComplianceController {
     }
 
     @GetMapping("/dlq/incidents")
-    public ResponseEntity<List<?>> getDlqIncidents() {
+    public ResponseEntity<List<?>> getDlqIncidents(
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size) {
         List<?> incidents = cbsWebClient.get()
-                .uri("/api/v1/cbs/audit/failed-transactions")
+                .uri(uriBuilder -> uriBuilder.path("/api/v1/cbs/audit/failed-transactions")
+                        .queryParam("page", page)
+                        .queryParam("size", size)
+                        .build())
                 .retrieve()
                 .bodyToMono(List.class)
                 .timeout(Duration.ofSeconds(3))
