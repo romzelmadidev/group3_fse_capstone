@@ -198,6 +198,32 @@ FOR EACH ROW
 EXECUTE FUNCTION enforce_audit_immutability();
 
 -- ============================================================
+-- TABLE: audit_block_anchor
+-- Merkle-Tree Block Anchors for High-Throughput Verification
+-- ============================================================
+CREATE TABLE IF NOT EXISTS audit_block_anchor (
+    block_id BIGSERIAL PRIMARY KEY,
+    block_number BIGINT NOT NULL UNIQUE,
+    start_audit_id BIGINT NOT NULL,
+    end_audit_id BIGINT NOT NULL,
+    record_count INT NOT NULL,
+    merkle_root VARCHAR(64) NOT NULL,
+    prev_block_root VARCHAR(64) NOT NULL,
+    block_hash VARCHAR(64) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_block_number ON audit_block_anchor(block_number);
+CREATE INDEX IF NOT EXISTS idx_audit_block_range ON audit_block_anchor(start_audit_id, end_audit_id);
+
+DROP TRIGGER IF EXISTS trg_immutable_audit_block ON audit_block_anchor;
+CREATE TRIGGER trg_immutable_audit_block
+    BEFORE UPDATE OR DELETE
+ON audit_block_anchor
+FOR EACH ROW
+EXECUTE FUNCTION enforce_audit_immutability();
+
+-- ============================================================
 -- SAMPLE SEED DATA
 -- ============================================================
 

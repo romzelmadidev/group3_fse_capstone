@@ -1,5 +1,6 @@
 package com.bank.cbs.controller;
 
+import com.bank.cbs.dto.*;
 import com.bank.cbs.entity.audit.*;
 import com.bank.cbs.service.CbsAuditQueryService;
 import org.springframework.http.ResponseEntity;
@@ -67,5 +68,35 @@ public class CbsAuditController {
     @PostMapping("/compliance-filings")
     public ResponseEntity<ComplianceFiling> registerComplianceFiling(@RequestBody ComplianceFiling filing) {
         return ResponseEntity.ok(auditQueryService.registerComplianceFiling(filing));
+    }
+
+    @PostMapping("/blocks/anchor")
+    public ResponseEntity<?> anchorBlock() {
+        return auditQueryService.anchorCurrentBlock()
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.noContent().build());
+    }
+
+    @GetMapping("/blocks")
+    public ResponseEntity<List<AuditBlockAnchor>> getAuditBlocks() {
+        return ResponseEntity.ok(auditQueryService.getAllAuditBlocks());
+    }
+
+    @GetMapping("/blocks/{blockNumber}")
+    public ResponseEntity<AuditBlockAnchor> getAuditBlock(@PathVariable Long blockNumber) {
+        return auditQueryService.getAuditBlockByNumber(blockNumber)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/transactions/{transactionId}/merkle-proof")
+    public ResponseEntity<MerkleProofDto> getMerkleProof(@PathVariable String transactionId) {
+        return ResponseEntity.ok(auditQueryService.getMerkleProof(transactionId));
+    }
+
+    @PostMapping("/merkle-proof/verify")
+    public ResponseEntity<MerkleVerificationResponseDto> verifyMerkleProof(
+            @RequestBody MerkleVerificationRequestDto request) {
+        return ResponseEntity.ok(auditQueryService.verifyMerkleProof(request));
     }
 }

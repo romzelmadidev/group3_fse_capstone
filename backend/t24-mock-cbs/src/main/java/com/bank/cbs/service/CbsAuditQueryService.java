@@ -1,5 +1,6 @@
 package com.bank.cbs.service;
 
+import com.bank.cbs.dto.*;
 import com.bank.cbs.entity.audit.*;
 import com.bank.cbs.repository.audit.*;
 import org.springframework.stereotype.Service;
@@ -18,6 +19,7 @@ public class CbsAuditQueryService {
     private final FailedTransactionAuditRepository failedTransactionAuditRepository;
     private final EodReportsMetadataRepository eodReportsMetadataRepository;
     private final ComplianceFilingRepository complianceFilingRepository;
+    private final CbsAuditAnchoringService auditAnchoringService;
 
     public CbsAuditQueryService(
             LedgerMutationAuditRepository ledgerMutationAuditRepository,
@@ -25,13 +27,15 @@ public class CbsAuditQueryService {
             TransactionStatusAuditRepository transactionStatusAuditRepository,
             FailedTransactionAuditRepository failedTransactionAuditRepository,
             EodReportsMetadataRepository eodReportsMetadataRepository,
-            ComplianceFilingRepository complianceFilingRepository) {
+            ComplianceFilingRepository complianceFilingRepository,
+            CbsAuditAnchoringService auditAnchoringService) {
         this.ledgerMutationAuditRepository = ledgerMutationAuditRepository;
         this.reversalAuditRepository = reversalAuditRepository;
         this.transactionStatusAuditRepository = transactionStatusAuditRepository;
         this.failedTransactionAuditRepository = failedTransactionAuditRepository;
         this.eodReportsMetadataRepository = eodReportsMetadataRepository;
         this.complianceFilingRepository = complianceFilingRepository;
+        this.auditAnchoringService = auditAnchoringService;
     }
 
     @Transactional(value = "auditTransactionManager", readOnly = true)
@@ -82,5 +86,29 @@ public class CbsAuditQueryService {
     @Transactional("auditTransactionManager")
     public ComplianceFiling registerComplianceFiling(ComplianceFiling filing) {
         return complianceFilingRepository.save(filing);
+    }
+
+    @Transactional(value = "auditTransactionManager", readOnly = true)
+    public List<AuditBlockAnchor> getAllAuditBlocks() {
+        return auditAnchoringService.getAllBlocks();
+    }
+
+    @Transactional(value = "auditTransactionManager", readOnly = true)
+    public Optional<AuditBlockAnchor> getAuditBlockByNumber(Long blockNumber) {
+        return auditAnchoringService.getBlockByNumber(blockNumber);
+    }
+
+    @Transactional("auditTransactionManager")
+    public Optional<AuditBlockAnchor> anchorCurrentBlock() {
+        return auditAnchoringService.anchorCurrentBlock();
+    }
+
+    @Transactional(value = "auditTransactionManager", readOnly = true)
+    public MerkleProofDto getMerkleProof(String transactionId) {
+        return auditAnchoringService.generateProofForTransaction(transactionId);
+    }
+
+    public MerkleVerificationResponseDto verifyMerkleProof(MerkleVerificationRequestDto request) {
+        return auditAnchoringService.verifyProof(request);
     }
 }
