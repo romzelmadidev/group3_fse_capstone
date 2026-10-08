@@ -100,9 +100,9 @@ class CbsAccountTransactionEnquiryTest {
     }
 
     @Test
-    @DisplayName("OFS Enquiry: POST /api/v1/cbs/ofs handles transaction enquiry and formats OFS response")
+    @DisplayName("OFS Enquiry: GET /api/v1/cbs/accounts/{accountId}/transactions formats pure OFS response")
     void testGetAccountTransactionsOfs() {
-        CbsPostingController controller = new CbsPostingController(transferService, reversalService, balanceEnquiryService);
+        CbsBalanceController controller = new CbsBalanceController(balanceEnquiryService);
 
         TransactionMaster tx1 = TransactionMaster.builder()
                 .transactionId("TXN-201")
@@ -117,9 +117,7 @@ class CbsAccountTransactionEnquiryTest {
 
         when(balanceEnquiryService.getTransactionsByAccountId("ACC-100001", 0, 20)).thenReturn(List.of(tx1));
 
-        String ofsQuery = OfsMessageUtil.buildTransactionEnquiry("ACC-100001");
-        ResponseEntity<String> response = controller.executeOfs(ofsQuery);
-        System.out.println("DEBUG OFS Response: " + response.getBody());
+        ResponseEntity<String> response = controller.getAccountTransactions("ACC-100001", 0, 20);
 
         assertNotNull(response.getBody());
         assertTrue(response.getBody().startsWith("//1,SUCCESS"), "Response should start with //1,SUCCESS but was: " + response.getBody());

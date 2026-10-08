@@ -120,12 +120,9 @@ public class TransferOrchestrationService {
             // 4. Anti-Scam Cooling-off Period (Threshold >= ₱250,000)
             boolean inCoolOff = coolOffService.isInCoolOff(txId);
             if (request.amount().compareTo(COOL_OFF_THRESHOLD) >= 0 && !inCoolOff) {
-                // Authoritative CBS fund reservation (hold)
-                cbsService.placeHold(request.sourceAccountId(), request.amount(), txId);
-
                 String payloadJson = objectMapper.writeValueAsString(request);
                 coolOffService.putInCoolOff(txId, payloadJson);
-                log.info("Transfer {} queued into 10-minute cooling-off period with authoritative CBS hold", txId);
+                log.info("Transfer {} queued into 10-minute cooling-off period", txId);
                 return new TransferInitiationResponse(
                         txId,
                         TransactionStatus.Reserved,
@@ -133,7 +130,7 @@ public class TransferOrchestrationService {
                         request.currency() != null ? request.currency() : "PHP",
                         request.sourceAccountId(),
                         request.destinationAccountId(),
-                        "COOLING_OFF_PERIOD_INITIATED: High-value transaction locked for 10 minutes to protect against fraud. Authoritative fund hold placed in CBS.",
+                        "COOLING_OFF_PERIOD_INITIATED: High-value transaction locked for 10 minutes to protect against fraud.",
                         true,
                         600L,
                         false,

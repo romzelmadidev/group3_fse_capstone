@@ -11,6 +11,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * Dedicated Balance and Transaction Enquiry Controller.
+ * Exposes canonical read endpoints returning pure Temenos OFS syntax:
+ * 1. Balance Enquiry (GET /api/v1/cbs/accounts/{accountId}/balance)
+ * 2. Transaction Enquiry (GET /api/v1/cbs/accounts/{accountId}/transactions)
+ */
 @RestController
 @RequestMapping("/api/v1/cbs/accounts")
 public class CbsBalanceController {
@@ -24,15 +30,6 @@ public class CbsBalanceController {
     @GetMapping(value = "/{accountId}/balance", produces = MediaType.TEXT_PLAIN_VALUE)
     public ResponseEntity<String> getBalanceById(@PathVariable String accountId) {
         BalanceEnquiryResponseDto dto = balanceEnquiryService.getBalanceByAccountId(accountId);
-        String ofs = OfsMessageUtil.buildBalanceEnquiryResponse(
-                dto.accountId(), dto.accountNumber(), dto.currentBalance(), dto.availableBalance(), dto.holdBalance(), dto.currency()
-        );
-        return ResponseEntity.ok(ofs);
-    }
-
-    @GetMapping(value = "/by-number/{accountNumber}/balance", produces = MediaType.TEXT_PLAIN_VALUE)
-    public ResponseEntity<String> getBalanceByNumber(@PathVariable String accountNumber) {
-        BalanceEnquiryResponseDto dto = balanceEnquiryService.getBalanceByAccountNumber(accountNumber);
         String ofs = OfsMessageUtil.buildBalanceEnquiryResponse(
                 dto.accountId(), dto.accountNumber(), dto.currentBalance(), dto.availableBalance(), dto.holdBalance(), dto.currency()
         );

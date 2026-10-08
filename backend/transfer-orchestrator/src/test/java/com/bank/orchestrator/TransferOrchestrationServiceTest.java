@@ -138,7 +138,6 @@ class TransferOrchestrationServiceTest {
         assertTrue(response.coolingOffRequired());
         assertEquals(600L, response.coolingOffExpiresInSeconds());
         assertEquals(TransactionStatus.Reserved, response.status());
-        verify(cbsService, times(1)).placeHold(eq("ACC-SOURCE"), eq(new BigDecimal("300000.00")), eq("TXN-COOL"));
         verify(coolOffService, times(1)).putInCoolOff(eq("TXN-COOL"), anyString());
         verify(cbsService, never()).postToCbs(any(), anyString(), anyBoolean());
     }

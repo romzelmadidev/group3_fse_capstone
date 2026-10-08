@@ -5,41 +5,47 @@ import com.bank.cbs.dto.ReversalRequestDto;
 import com.bank.cbs.entity.master.ReversalRequestMaster;
 import com.bank.cbs.service.CbsReversalService;
 import com.bank.ledger.contracts.ofs.OfsMessageUtil;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
+/**
+ * Dedicated Dual-Control Reversal Workflow Controller.
+ * Exposes teller maker-checker four-eyes approval endpoints strictly using OFS syntax:
+ * 1. Request Reversal (POST /api/v1/cbs/reversals/request)
+ * 2. Approve Reversal (POST /api/v1/cbs/reversals/approve)
+ * 3. Reject Reversal (POST /api/v1/cbs/reversals/reject)
+ */
 @RestController
 @RequestMapping("/api/v1/cbs/reversals")
 public class CbsReversalController {
 
     private final CbsReversalService reversalService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public CbsReversalController(CbsReversalService reversalService) {
         this.reversalService = reversalService;
     }
 
-    @PostMapping(value = "/request", produces = MediaType.TEXT_PLAIN_VALUE)
+    @PostMapping(value = "/request", consumes = MediaType.TEXT_PLAIN_VALUE, produces = MediaType.TEXT_PLAIN_VALUE)
     public ResponseEntity<String> requestReversal(@RequestBody String ofsMessage) {
+        if (ofsMessage == null || ofsMessage.trim().isEmpty() || ofsMessage.trim().startsWith("{")) {
+            return ResponseEntity.badRequest().body(OfsMessageUtil.buildOfsResponse(false, "INVALID_FORMAT", "Payload must be plain-text Temenos OFS syntax"));
+        }
+
         String originalTxId = "UNKNOWN";
         try {
-            ReversalRequestDto dto;
-            if (ofsMessage.trim().startsWith("{")) {
-                dto = objectMapper.readValue(ofsMessage, ReversalRequestDto.class);
-            } else {
-                Map<String, String> fields = OfsMessageUtil.parseOfsFields(ofsMessage);
-                originalTxId = fields.getOrDefault("ORIGINAL.FT.NO",
-                        fields.getOrDefault("ORIGINAL.TX.ID", fields.getOrDefault("TRANSACTION.ID", "UNKNOWN")));
-                String makerId = fields.getOrDefault("MAKER", fields.getOrDefault("MAKER.ID", "MAKER01"));
-                String reason = fields.getOrDefault("REASON", fields.getOrDefault("DISPUTE.REASON", "DISPUTE"));
-                String notes = fields.getOrDefault("NOTES", fields.getOrDefault("MAKER.NOTES", reason));
-                dto = new ReversalRequestDto(originalTxId, makerId, reason, notes);
-            }
+            Map<String, String> fields = OfsMessageUtil.parseOfsFields(ofsMessage);
+            originalTxId = fields.getOrDefault("ORIGINAL.FT.NO",
+                    fields.getOrDefault("ORIGINAL.TX.ID", fields.getOrDefault("TRANSACTION.ID", "UNKNOWN")));
+            String makerId = fields.getOrDefault("MAKER", fields.getOrDefault("MAKER.ID", "MAKER01"));
+            String reason = fields.getOrDefault("REASON", fields.getOrDefault("DISPUTE.REASON", "DISPUTE"));
+            String notes = fields.getOrDefault("NOTES", fields.getOrDefault("MAKER.NOTES", reason));
+
+            ReversalRequestDto dto = new ReversalRequestDto(originalTxId, makerId, reason, notes);
             ReversalRequestMaster result = reversalService.requestReversal(dto);
+
             return ResponseEntity.ok(OfsMessageUtil.buildReversalResponseMessage(
                     true, result.getTicketId(), result.getStatus(), result.getOriginalTxId(), result.getReversalTxId(), "Reversal request registered"
             ));
@@ -50,21 +56,22 @@ public class CbsReversalController {
         }
     }
 
-    @PostMapping(value = "/approve", produces = MediaType.TEXT_PLAIN_VALUE)
+    @PostMapping(value = "/approve", consumes = MediaType.TEXT_PLAIN_VALUE, produces = MediaType.TEXT_PLAIN_VALUE)
     public ResponseEntity<String> approveReversal(@RequestBody String ofsMessage) {
+        if (ofsMessage == null || ofsMessage.trim().isEmpty() || ofsMessage.trim().startsWith("{")) {
+            return ResponseEntity.badRequest().body(OfsMessageUtil.buildOfsResponse(false, "INVALID_FORMAT", "Payload must be plain-text Temenos OFS syntax"));
+        }
+
         String ticketId = "UNKNOWN";
         try {
-            ReversalActionDto action;
-            if (ofsMessage.trim().startsWith("{")) {
-                action = objectMapper.readValue(ofsMessage, ReversalActionDto.class);
-            } else {
-                Map<String, String> fields = OfsMessageUtil.parseOfsFields(ofsMessage);
-                ticketId = fields.getOrDefault("TICKET.ID", fields.getOrDefault("REVERSAL.REQUEST.ID", "UNKNOWN"));
-                String checkerId = fields.getOrDefault("CHECKER", fields.getOrDefault("CHECKER.ID", "MGR02"));
-                String notes = fields.getOrDefault("NOTES", fields.getOrDefault("CHECKER.NOTES", "Approved by checker"));
-                action = new ReversalActionDto(ticketId, checkerId, null, notes);
-            }
+            Map<String, String> fields = OfsMessageUtil.parseOfsFields(ofsMessage);
+            ticketId = fields.getOrDefault("TICKET.ID", fields.getOrDefault("REVERSAL.REQUEST.ID", "UNKNOWN"));
+            String checkerId = fields.getOrDefault("CHECKER", fields.getOrDefault("CHECKER.ID", "MGR02"));
+            String notes = fields.getOrDefault("NOTES", fields.getOrDefault("CHECKER.NOTES", "Approved by checker"));
+
+            ReversalActionDto action = new ReversalActionDto(ticketId, checkerId, null, notes);
             ReversalRequestMaster result = reversalService.approveReversal(action);
+
             return ResponseEntity.ok(OfsMessageUtil.buildReversalResponseMessage(
                     true, result.getTicketId(), result.getStatus(), result.getOriginalTxId(), result.getReversalTxId(), "Reversal executed successfully"
             ));
@@ -75,22 +82,23 @@ public class CbsReversalController {
         }
     }
 
-    @PostMapping(value = "/reject", produces = MediaType.TEXT_PLAIN_VALUE)
+    @PostMapping(value = "/reject", consumes = MediaType.TEXT_PLAIN_VALUE, produces = MediaType.TEXT_PLAIN_VALUE)
     public ResponseEntity<String> rejectReversal(@RequestBody String ofsMessage) {
+        if (ofsMessage == null || ofsMessage.trim().isEmpty() || ofsMessage.trim().startsWith("{")) {
+            return ResponseEntity.badRequest().body(OfsMessageUtil.buildOfsResponse(false, "INVALID_FORMAT", "Payload must be plain-text Temenos OFS syntax"));
+        }
+
         String ticketId = "UNKNOWN";
         try {
-            ReversalActionDto action;
-            if (ofsMessage.trim().startsWith("{")) {
-                action = objectMapper.readValue(ofsMessage, ReversalActionDto.class);
-            } else {
-                Map<String, String> fields = OfsMessageUtil.parseOfsFields(ofsMessage);
-                ticketId = fields.getOrDefault("TICKET.ID", fields.getOrDefault("REVERSAL.REQUEST.ID", "UNKNOWN"));
-                String checkerId = fields.getOrDefault("CHECKER", fields.getOrDefault("CHECKER.ID", "MGR02"));
-                String reason = fields.getOrDefault("REASON", fields.getOrDefault("REJECTION.REASON", "Rejected by checker"));
-                String notes = fields.getOrDefault("NOTES", fields.getOrDefault("CHECKER.NOTES", reason));
-                action = new ReversalActionDto(ticketId, checkerId, reason, notes);
-            }
+            Map<String, String> fields = OfsMessageUtil.parseOfsFields(ofsMessage);
+            ticketId = fields.getOrDefault("TICKET.ID", fields.getOrDefault("REVERSAL.REQUEST.ID", "UNKNOWN"));
+            String checkerId = fields.getOrDefault("CHECKER", fields.getOrDefault("CHECKER.ID", "MGR02"));
+            String reason = fields.getOrDefault("REASON", fields.getOrDefault("REJECTION.REASON", "Rejected by checker"));
+            String notes = fields.getOrDefault("NOTES", fields.getOrDefault("CHECKER.NOTES", reason));
+
+            ReversalActionDto action = new ReversalActionDto(ticketId, checkerId, reason, notes);
             ReversalRequestMaster result = reversalService.rejectReversal(action);
+
             return ResponseEntity.ok(OfsMessageUtil.buildReversalResponseMessage(
                     true, result.getTicketId(), result.getStatus(), result.getOriginalTxId(), result.getReversalTxId(), "Reversal rejected"
             ));

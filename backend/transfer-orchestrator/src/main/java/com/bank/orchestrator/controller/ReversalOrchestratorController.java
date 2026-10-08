@@ -79,13 +79,21 @@ public class ReversalOrchestratorController {
 
     @PostMapping({"/direct", "/compensate"})
     public ResponseEntity<Map<?, ?>> directReversal(@RequestBody Map<String, Object> request) {
-        Map<?, ?> response = cbsWebClient.post()
-                .uri("/t24/reversal")
-                .bodyValue(request)
+        String origTx = String.valueOf(request.getOrDefault("originalTransactionId", request.getOrDefault("originalFtNo", request.get("originalTxId"))));
+        String reason = String.valueOf(request.getOrDefault("reason", request.getOrDefault("reversalReason", "SAGA_COMPENSATION")));
+        String maker = String.valueOf(request.getOrDefault("makerId", "SAGA_COORDINATOR"));
+        String checker = String.valueOf(request.getOrDefault("checkerId", "SYSTEM_SAGA"));
+        String ofsMsg = String.format("FUNDS.TRANSFER,REVERSAL/I/PROCESS//%s,%s/123456,ORIGINAL.FT.NO=%s,REASON=%s,CHECKER.ID=%s,MAKER.ID=%s",
+                origTx, maker, origTx, reason, checker, maker);
+
+        String response = cbsWebClient.post()
+                .uri("/api/v1/cbs/reversal")
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
+                .bodyValue(ofsMsg)
                 .retrieve()
-                .bodyToMono(Map.class)
+                .bodyToMono(String.class)
                 .timeout(Duration.ofMillis(3000))
                 .block();
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(OfsMessageUtil.parseOfsFields(response));
     }
 }

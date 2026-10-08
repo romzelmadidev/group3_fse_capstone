@@ -222,27 +222,6 @@ CREATE INDEX idx_rev_orig_tx ON reversal_requests(original_tx_id);
 CREATE INDEX idx_rev_status ON reversal_requests(status);
 
 -- ------------------------------------------------------------------------------
--- 10B. AMOUNT_HOLDS TABLE (Temenos AC.LOCKED.EVENTS Reservations)
--- ------------------------------------------------------------------------------
-CREATE TABLE amount_holds (
-    hold_id            VARCHAR2(64) PRIMARY KEY,
-    account_id         VARCHAR2(64) NOT NULL,
-    hold_amount        NUMBER(18, 4) NOT NULL,
-    reason             VARCHAR2(100) NOT NULL,
-    status             VARCHAR2(20) DEFAULT 'ACTIVE' NOT NULL CHECK (status IN ('ACTIVE', 'RELEASED', 'CAPTURED')),
-    t24_lock_reference VARCHAR2(64),
-    external_reference VARCHAR2(100),
-    expires_at         TIMESTAMP WITH TIME ZONE,
-    created_at         TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    released_at        TIMESTAMP WITH TIME ZONE,
-    CONSTRAINT fk_hold_acc FOREIGN KEY (account_id) REFERENCES accounts(account_id),
-    CONSTRAINT chk_hold_amt CHECK (hold_amount > 0)
-);
-
-CREATE INDEX idx_hold_acc ON amount_holds(account_id, status);
-
-
--- ------------------------------------------------------------------------------
 -- 11. UNCOLLECTED_FEES TABLE (Zero-Overdraft Arrears Tracking)
 -- ------------------------------------------------------------------------------
 CREATE TABLE uncollected_fees (

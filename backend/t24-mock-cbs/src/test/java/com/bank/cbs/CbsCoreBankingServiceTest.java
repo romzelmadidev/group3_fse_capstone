@@ -61,18 +61,14 @@ class CbsCoreBankingServiceTest {
     @Mock
     private EodBalanceSnapshotMasterRepository eodSnapshotRepository;
     @Mock
-    private AmountHoldMasterRepository holdRepository;
-    @Mock
     private KafkaTemplate<String, Object> kafkaTemplate;
 
     private ObjectMapper objectMapper;
     private CbsFundsTransferService transferService;
     private CbsReversalService reversalService;
     private CbsCobBatchService cobBatchService;
-    private com.bank.cbs.service.CbsAmountHoldService amountHoldService;
     private CbsHoldService holdService;
     private com.bank.cbs.controller.CbsPostingController postingController;
-    private com.bank.cbs.controller.CbsT24EndpointController t24EndpointController;
 
     @BeforeEach
     void setUp() {
@@ -98,12 +94,7 @@ class CbsCoreBankingServiceTest {
                 glLedgerRepository, kafkaTemplate
         );
 
-        amountHoldService = new com.bank.cbs.service.CbsAmountHoldService(holdRepository, balanceRepository);
         postingController = new com.bank.cbs.controller.CbsPostingController(
-                transferService, reversalService, amountHoldService, balanceRepository,
-                new com.bank.cbs.service.CbsBalanceEnquiryService(balanceRepository, mock(AccountMasterRepository.class), transactionRepository)
-        );
-        t24EndpointController = new com.bank.cbs.controller.CbsT24EndpointController(
                 transferService, reversalService
         );
     }
@@ -332,128 +323,6 @@ class CbsCoreBankingServiceTest {
     }
 
     @Test
-    void testAmountHold_SuccessfulCreation() {
-        BalanceMaster accBal = BalanceMaster.builder()
-                .accountId("ACC-HOLD-1")
-                .balanceAmount(new BigDecimal("10000.00"))
-                .holdAmount(BigDecimal.ZERO)
-                .availableBalance(new BigDecimal("10000.00"))
-                .build();
-        when(balanceRepository.findByAccountIdForUpdate("ACC-HOLD-1")).thenReturn(Optional.of(accBal));
-
-        com.bank.ledger.contracts.dto.AmountHoldRequestDto request = com.bank.ledger.contracts.dto.AmountHoldRequestDto.builder()
-                .accountId("ACC-HOLD-1")
-                .holdAmount(new BigDecimal("3000.00"))
-                .reason("CARD_PREAUTH")
-                .expiryHours(48)
-                .externalReference("AUTH-999")
-                .build();
-
-        var response = amountHoldService.createHold(request);
-
-        assertNotNull(response);
-        assertEquals("ACTIVE", response.getStatus());
-        assertEquals("ACC-HOLD-1", response.getAccountId());
-        assertEquals(new BigDecimal("3000.00"), response.getHoldAmount());
-        assertEquals(new BigDecimal("3000.00"), accBal.getHoldAmount());
-        assertEquals(new BigDecimal("7000.00"), accBal.getAvailableBalance());
-        assertEquals(new BigDecimal("10000.00"), accBal.getBalanceAmount()); // Ledger balance untouched!
-        assertTrue(response.getOfsResponse().contains("ACLK"));
-        verify(holdRepository, times(1)).save(any());
-    }
-
-    @Test
-    void testAmountHold_InsufficientAvailableFunds_ThrowsException() {
-        BalanceMaster accBal = BalanceMaster.builder()
-                .accountId("ACC-HOLD-2")
-                .balanceAmount(new BigDecimal("5000.00"))
-                .holdAmount(new BigDecimal("4000.00"))
-                .availableBalance(new BigDecimal("1000.00"))
-                .build();
-        when(balanceRepository.findByAccountIdForUpdate("ACC-HOLD-2")).thenReturn(Optional.of(accBal));
-
-        com.bank.ledger.contracts.dto.AmountHoldRequestDto request = com.bank.ledger.contracts.dto.AmountHoldRequestDto.builder()
-                .accountId("ACC-HOLD-2")
-                .holdAmount(new BigDecimal("2000.00")) // Exceeds available 1000.00
-                .build();
-
-        assertThrows(IllegalArgumentException.class, () -> amountHoldService.createHold(request));
-    }
-
-    @Test
-    void testAmountHold_ReleaseHold_RestoresAvailableBalance() {
-        AmountHoldMaster hold = AmountHoldMaster.builder()
-                .holdId("HLD-100")
-                .accountId("ACC-HOLD-3")
-                .holdAmount(new BigDecimal("2500.00"))
-                .status("ACTIVE")
-                .t24LockReference("ACLK100")
-                .build();
-
-        BalanceMaster accBal = BalanceMaster.builder()
-                .accountId("ACC-HOLD-3")
-                .balanceAmount(new BigDecimal("10000.00"))
-                .holdAmount(new BigDecimal("2500.00"))
-                .availableBalance(new BigDecimal("7500.00"))
-                .build();
-
-        when(holdRepository.findById("HLD-100")).thenReturn(Optional.of(hold));
-        when(balanceRepository.findByAccountIdForUpdate("ACC-HOLD-3")).thenReturn(Optional.of(accBal));
-
-        var releaseResponse = amountHoldService.releaseHold("HLD-100");
-
-        assertNotNull(releaseResponse);
-        assertEquals("RELEASED", releaseResponse.getStatus());
-        assertEquals(new BigDecimal("2500.00"), releaseResponse.getReleasedAmount());
-        assertEquals(0, BigDecimal.ZERO.compareTo(accBal.getHoldAmount()));
-        assertEquals(new BigDecimal("10000.00"), accBal.getAvailableBalance());
-        assertTrue(releaseResponse.getOfsResponse().contains("HOLD_RELEASED"));
-    }
-
-    @Test
-    void testOfsExecution_AmountHoldAndRelease() {
-        BalanceMaster accBal = BalanceMaster.builder()
-                .accountId("ACC-OFS-1")
-                .balanceAmount(new BigDecimal("15000.00"))
-                .holdAmount(BigDecimal.ZERO)
-                .availableBalance(new BigDecimal("15000.00"))
-                .build();
-        when(balanceRepository.findByAccountIdForUpdate("ACC-OFS-1")).thenReturn(Optional.of(accBal));
-
-        // 1. OFS AC.LOCKED.EVENTS,INPUT
-        String ofsHoldRequest = "AC.LOCKED.EVENTS,INPUT/I/PROCESS/0/1,USER01/123456,,ACCOUNT.NUMBER=ACC-OFS-1,FROM.DATE=20261008,TO.DATE=20261009,LOCKED.AMOUNT=5000.00,HOLD.REASON=COURT_ORDER_FREEZE,EXT.REF=COURT-77";
-        var holdRespEntity = postingController.executeOfs(ofsHoldRequest);
-
-        assertEquals(200, holdRespEntity.getStatusCode().value());
-        assertTrue(holdRespEntity.getBody().contains("LOCKED.AMOUNT:1:1=5000.00"));
-        assertTrue(holdRespEntity.getBody().contains("HOLD.REF:1:1=HLD-"));
-        assertEquals(new BigDecimal("5000.00"), accBal.getHoldAmount());
-        assertEquals(new BigDecimal("10000.00"), accBal.getAvailableBalance());
-
-        // Extract hold ID from response
-        String respBody = holdRespEntity.getBody();
-        String holdId = respBody.substring(respBody.indexOf("HOLD.REF:1:1=") + 13).trim();
-
-        AmountHoldMaster holdRecord = AmountHoldMaster.builder()
-                .holdId(holdId)
-                .accountId("ACC-OFS-1")
-                .holdAmount(new BigDecimal("5000.00"))
-                .status("ACTIVE")
-                .t24LockReference("ACLK-TEST")
-                .build();
-        when(holdRepository.findById(holdId)).thenReturn(Optional.of(holdRecord));
-
-        // 2. OFS AC.LOCKED.EVENTS,REVERSE
-        String ofsReleaseRequest = "AC.LOCKED.EVENTS,REVERSE/I/PROCESS/0/1,USER01/123456,,HOLD.REF=" + holdId + ",ACCOUNT.NUMBER=ACC-OFS-1";
-        var releaseRespEntity = postingController.executeOfs(ofsReleaseRequest);
-
-        assertEquals(200, releaseRespEntity.getStatusCode().value());
-        assertTrue(releaseRespEntity.getBody().contains("HOLD_RELEASED"));
-        assertEquals(0, BigDecimal.ZERO.compareTo(accBal.getHoldAmount()));
-        assertEquals(new BigDecimal("15000.00"), accBal.getAvailableBalance());
-    }
-
-    @Test
     void testOfsExecution_Reversal() {
         TransactionMaster origTx = TransactionMaster.builder()
                 .transactionId("TXN-OFS-REV")
@@ -490,7 +359,7 @@ class CbsCoreBankingServiceTest {
         when(balanceRepository.findByAccountIdForUpdate("ACC-2")).thenReturn(Optional.of(beneficiaryBal));
 
         String ofsRevRequest = "FUNDS.TRANSFER,REVERSAL/I/PROCESS//REV-TICKET-1,MGR02/123456,ORIGINAL.FT.NO=TXN-OFS-REV";
-        var revRespEntity = postingController.executeOfs(ofsRevRequest);
+        var revRespEntity = postingController.executeReversal(ofsRevRequest);
 
         assertEquals(200, revRespEntity.getStatusCode().value());
         assertTrue(revRespEntity.getBody().contains("REVERSAL_APPROVED_AND_SETTLED"));
@@ -500,7 +369,7 @@ class CbsCoreBankingServiceTest {
     }
 
     @Test
-    void testDualEndpoint1_FundsTransfer() {
+    void testDedicatedEndpoint1_FundsTransfer() {
         SystemDateMaster sysDate = SystemDateMaster.builder()
                 .systemDateId("SYS-1")
                 .businessDate(LocalDate.now())
@@ -526,27 +395,20 @@ class CbsCoreBankingServiceTest {
         when(balanceRepository.findByAccountIdForUpdate("ACC-1")).thenReturn(Optional.of(sourceBal));
         when(balanceRepository.findByAccountIdForUpdate("ACC-2")).thenReturn(Optional.of(destBal));
 
-        java.util.Map<String, Object> req = java.util.Map.of(
-                "transaction_reference", "FT-DUAL-100",
-                "debit_account_id", "ACC-1",
-                "credit_account_id", "ACC-2",
-                "amount", new BigDecimal("2500.00"),
-                "currency", "PHP",
-                "description", "Dual Endpoint 1 Transfer"
-        );
+        String ofsMsg = "FUNDS.TRANSFER,INITIATE/I/PROCESS//FT-DUAL-100,USER01/123456," +
+                "DEBIT.ACCT.NO=ACC-1,CREDIT.ACCT.NO=ACC-2,AMOUNT=2500.00,CURRENCY=PHP";
 
-        var resp = t24EndpointController.fundsTransfer(req);
+        var resp = postingController.executeFundsTransfer(ofsMsg);
 
         assertEquals(200, resp.getStatusCode().value());
         assertNotNull(resp.getBody());
-        assertEquals("COMMITTED", resp.getBody().getStatus());
-        assertEquals(new BigDecimal("7500.00"), resp.getBody().getDebitBalanceAfter());
-        assertEquals(new BigDecimal("4500.00"), resp.getBody().getCreditBalanceAfter());
-        assertTrue(resp.getBody().getOfsResponse().contains("FUNDS.TRANSFER//1"));
+        assertTrue(resp.getBody().contains("//1,SUCCESS"));
+        assertEquals(new BigDecimal("7500.00"), sourceBal.getBalanceAmount());
+        assertEquals(new BigDecimal("4500.00"), destBal.getBalanceAmount());
     }
 
     @Test
-    void testDualEndpoint2_CompensatingReversal() {
+    void testDedicatedEndpoint2_CompensatingReversal() {
         TransactionMaster origTx = TransactionMaster.builder()
                 .transactionId("FT-ORIG-999")
                 .sourceAccountId("ACC-SENDER")
@@ -569,26 +431,28 @@ class CbsCoreBankingServiceTest {
                 .build();
 
         when(transactionRepository.findById("FT-ORIG-999")).thenReturn(Optional.of(origTx));
+        when(reversalRequestRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(reversalRequestRepository.findById(any())).thenAnswer(invocation -> Optional.of(
+                ReversalRequestMaster.builder()
+                        .ticketId(invocation.getArgument(0))
+                        .originalTxId("FT-ORIG-999")
+                        .makerId("SAGA_COORDINATOR")
+                        .status("PENDING")
+                        .build()
+        ));
         when(balanceRepository.findByAccountIdForUpdate("ACC-SENDER")).thenReturn(Optional.of(senderBal));
         when(balanceRepository.findByAccountIdForUpdate("ACC-BENEFICIARY")).thenReturn(Optional.of(benBal));
 
-        java.util.Map<String, Object> req = java.util.Map.of(
-                "original_transaction_id", "FT-ORIG-999",
-                "reversal_reason", "SAGA_COMPENSATION_DOWNSTREAM_TIMEOUT",
-                "maker_id", "SAGA_COORDINATOR",
-                "checker_id", "SYSTEM_SAGA"
-        );
+        String ofsRevMsg = "FUNDS.TRANSFER,REVERSAL/I/PROCESS//REV-SAGA-999,MGR02/123456,ORIGINAL.FT.NO=FT-ORIG-999,REASON=SAGA_COMPENSATION";
 
-        var resp = t24EndpointController.reversal(req);
+        var resp = postingController.executeReversal(ofsRevMsg);
 
         assertEquals(200, resp.getStatusCode().value());
         assertNotNull(resp.getBody());
-        assertEquals("REVERSED", resp.getBody().getStatus());
+        assertTrue(resp.getBody().contains("REVERSAL_APPROVED_AND_SETTLED"));
         assertEquals(new BigDecimal("10000.00"), senderBal.getBalanceAmount());
         assertEquals(new BigDecimal("3500.00"), benBal.getBalanceAmount());
         assertEquals(TransactionStatus.Reversed.name(), origTx.getStatus());
-        assertTrue(resp.getBody().getReversalReference().startsWith("REV-"));
-        assertTrue(resp.getBody().getOfsResponse().contains("REVERSED"));
     }
 
     @Test

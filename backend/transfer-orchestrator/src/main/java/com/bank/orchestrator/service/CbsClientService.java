@@ -49,71 +49,17 @@ public class CbsClientService {
     }
 
     public void placeHold(String accountId, BigDecimal amount, String txId) {
-        log.info("Requesting CBS hold via OFS: accountId={}, amount={}, txId={}", accountId, amount, txId);
-        String ofsHoldReq = OfsMessageUtil.buildHoldFundsRequest(txId, accountId, amount, "PHP", "ANTI_SCAM_COOLING_OFF_HOLD");
-        try {
-            String ofsResp = webClient.post()
-                    .uri("/api/v1/cbs/holds")
-                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
-                    .bodyValue(ofsHoldReq)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .timeout(Duration.ofMillis(3000))
-                    .block();
-            Map<String, String> fields = OfsMessageUtil.parseOfsFields(ofsResp);
-            if ("FAILURE".equalsIgnoreCase(fields.get("STATUS")) || "-1".equals(fields.get("STATUS_CODE"))) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Hold failed in CBS: " + fields.get("ERROR"));
-            }
-            log.info("Authoritative hold successfully placed in CBS for txId={}: {}", txId, ofsResp);
-        } catch (Exception e) {
-            log.error("Failed to place authoritative CBS hold for txId={}: {}", txId, e.getMessage());
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unable to reserve funds on core banking system: " + e.getMessage(), e);
-        }
+        log.info("Core banking hold endpoints decommissioned; 1-step atomic transfer enforced. No-op for txId={}", txId);
     }
 
     public void releaseHold(String accountId, BigDecimal amount, String txId) {
-        log.info("Requesting CBS hold release via OFS: accountId={}, amount={}, txId={}", accountId, amount, txId);
-        String ofsReleaseReq = OfsMessageUtil.buildHoldReleaseRequest(txId, accountId, amount, "PHP", "COOLING_OFF_CANCELLED_OR_EXPIRED");
-        try {
-            String ofsResp = webClient.post()
-                    .uri("/api/v1/cbs/holds/release")
-                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
-                    .bodyValue(ofsReleaseReq)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .timeout(Duration.ofMillis(3000))
-                    .block();
-            log.info("Authoritative hold successfully released in CBS for txId={}: {}", txId, ofsResp);
-        } catch (Exception e) {
-            log.error("Failed to release CBS hold for txId={}: {}", txId, e.getMessage());
-        }
+        log.info("Core banking hold endpoints decommissioned; 1-step atomic transfer enforced. No-op for txId={}", txId);
     }
 
     public List<AccountTransactionDto> getAccountTransactions(String accountId, int page, int size) {
         int safePage = Math.max(0, page);
         int safeSize = Math.min(Math.max(1, size), 100);
-        log.info("Querying CBS past transactions for accountId={} (page={}, size={}) via OFS protocol", accountId, safePage, safeSize);
-        try {
-            String ofsEnquiry = OfsMessageUtil.buildTransactionEnquiry(accountId, safePage, safeSize);
-            String ofsResponse = webClient.post()
-                    .uri("/api/v1/cbs/ofs")
-                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
-                    .bodyValue(ofsEnquiry)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .timeout(Duration.ofMillis(3000))
-                    .block();
-
-            List<AccountTransactionDto> parsed = OfsMessageUtil.parseTransactionEnquiryResponse(ofsResponse);
-            if (!parsed.isEmpty()) {
-                log.info("Retrieved {} past transactions via OFS for accountId={}", parsed.size(), accountId);
-                return parsed;
-            }
-        } catch (Exception e) {
-            log.warn("OFS enquiry failed for accountId={}, falling back to REST endpoint: {}", accountId, e.getMessage());
-        }
-
-        // Option B REST Fallback (produces OFS format string)
+        log.info("Querying CBS past transactions for accountId={} (page={}, size={})", accountId, safePage, safeSize);
         try {
             String restResp = webClient.get()
                     .uri(uriBuilder -> uriBuilder
@@ -152,7 +98,7 @@ public class CbsClientService {
         );
 
         String ofsResponse = webClient.post()
-                .uri("/api/v1/cbs/postings/transfer")
+                .uri("/api/v1/cbs/funds-transfer")
                 .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
                 .bodyValue(ofsPostingReq)
                 .retrieve()
@@ -225,25 +171,7 @@ public class CbsClientService {
     }
 
     public Map<String, String> getAccountBalance(String accountId) {
-        log.info("Querying CBS balance for accountId={} via OFS protocol", accountId);
-        String ofsEnquiry = OfsMessageUtil.buildBalanceEnquiry(accountId);
-        try {
-            String ofsResponse = webClient.post()
-                    .uri("/api/v1/cbs/ofs")
-                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
-                    .bodyValue(ofsEnquiry)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .timeout(Duration.ofMillis(3000))
-                    .block();
-            Map<String, String> parsed = OfsMessageUtil.parseBalanceEnquiryResponse(ofsResponse);
-            if (!parsed.isEmpty()) {
-                return parsed;
-            }
-        } catch (Exception e) {
-            log.warn("OFS balance enquiry failed via /ofs for accountId={}, trying direct balance endpoint: {}", accountId, e.getMessage());
-        }
-
+        log.info("Querying CBS balance for accountId={}", accountId);
         try {
             String ofsResponse = webClient.get()
                     .uri("/api/v1/cbs/accounts/{accountId}/balance", accountId)

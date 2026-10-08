@@ -1,7 +1,9 @@
 package com.bank.cbs.controller;
 
-import com.bank.cbs.dto.*;
-import com.bank.cbs.entity.audit.*;
+import com.bank.cbs.entity.audit.ComplianceFiling;
+import com.bank.cbs.entity.audit.EodReportsMetadata;
+import com.bank.cbs.entity.audit.FailedTransactionAudit;
+import com.bank.cbs.entity.audit.LedgerMutationAudit;
 import com.bank.cbs.service.CbsAuditQueryService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -9,6 +11,11 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Dedicated Regulatory Compliance & Audit Controller.
+ * Interacts exclusively with the PostgreSQL Immutable Audit Vault.
+ * Exposes canonical JSON endpoints consumed by compliance-service and DLQ replay tools.
+ */
 @RestController
 @RequestMapping("/api/v1/cbs/audit")
 public class CbsAuditController {
@@ -22,20 +29,6 @@ public class CbsAuditController {
     @GetMapping("/accounts/{accountId}/mutations")
     public ResponseEntity<List<LedgerMutationAudit>> getLedgerMutations(@PathVariable String accountId) {
         return ResponseEntity.ok(auditQueryService.getLedgerMutationsByAccount(accountId));
-    }
-
-    @GetMapping("/transactions/{transactionId}/status-history")
-    public ResponseEntity<List<TransactionStatusAudit>> getStatusHistory(@PathVariable String transactionId) {
-        return ResponseEntity.ok(auditQueryService.getStatusHistory(transactionId));
-    }
-
-    @GetMapping("/reversals/{transactionId}")
-    public ResponseEntity<List<LedgerMutationAudit>> getReversalAudit(@PathVariable String transactionId) {
-        List<LedgerMutationAudit> reversals = auditQueryService.getReversalByOriginalTx(transactionId);
-        if (reversals.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-        return ResponseEntity.ok(reversals);
     }
 
     @GetMapping("/failed-transactions")
@@ -72,43 +65,8 @@ public class CbsAuditController {
         return ResponseEntity.ok(auditQueryService.registerEodReportMetadata(metadata));
     }
 
-    @GetMapping("/compliance-filings")
-    public ResponseEntity<List<ComplianceFiling>> getComplianceFilings(@RequestParam("type") String filingType) {
-        return ResponseEntity.ok(auditQueryService.getComplianceFilings(filingType));
-    }
-
     @PostMapping("/compliance-filings")
     public ResponseEntity<ComplianceFiling> registerComplianceFiling(@RequestBody ComplianceFiling filing) {
         return ResponseEntity.ok(auditQueryService.registerComplianceFiling(filing));
-    }
-
-    @PostMapping("/blocks/anchor")
-    public ResponseEntity<?> anchorBlock() {
-        return auditQueryService.anchorCurrentBlock()
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.noContent().build());
-    }
-
-    @GetMapping("/blocks")
-    public ResponseEntity<List<AuditBlockAnchor>> getAuditBlocks() {
-        return ResponseEntity.ok(auditQueryService.getAllAuditBlocks());
-    }
-
-    @GetMapping("/blocks/{blockNumber}")
-    public ResponseEntity<AuditBlockAnchor> getAuditBlock(@PathVariable Long blockNumber) {
-        return auditQueryService.getAuditBlockByNumber(blockNumber)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    @GetMapping("/transactions/{transactionId}/merkle-proof")
-    public ResponseEntity<MerkleProofDto> getMerkleProof(@PathVariable String transactionId) {
-        return ResponseEntity.ok(auditQueryService.getMerkleProof(transactionId));
-    }
-
-    @PostMapping("/merkle-proof/verify")
-    public ResponseEntity<MerkleVerificationResponseDto> verifyMerkleProof(
-            @RequestBody MerkleVerificationRequestDto request) {
-        return ResponseEntity.ok(auditQueryService.verifyMerkleProof(request));
     }
 }
