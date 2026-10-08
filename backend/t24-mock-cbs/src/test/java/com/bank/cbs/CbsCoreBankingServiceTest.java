@@ -68,6 +68,7 @@ class CbsCoreBankingServiceTest {
     private CbsCobBatchService cobBatchService;
     private com.bank.cbs.service.CbsAmountHoldService holdService;
     private com.bank.cbs.controller.CbsPostingController postingController;
+    private com.bank.cbs.controller.CbsT24EndpointController t24EndpointController;
 
     @BeforeEach
     void setUp() {
@@ -94,6 +95,9 @@ class CbsCoreBankingServiceTest {
         holdService = new com.bank.cbs.service.CbsAmountHoldService(holdRepository, balanceRepository);
         postingController = new com.bank.cbs.controller.CbsPostingController(
                 transferService, reversalService, holdService, balanceRepository
+        );
+        t24EndpointController = new com.bank.cbs.controller.CbsT24EndpointController(
+                transferService, reversalService
         );
     }
 
@@ -486,6 +490,98 @@ class CbsCoreBankingServiceTest {
         assertEquals(new BigDecimal("6000.00"), senderBal.getBalanceAmount());
         assertEquals(new BigDecimal("3000.00"), beneficiaryBal.getBalanceAmount());
         assertEquals(TransactionStatus.Reversed.name(), origTx.getStatus());
+    }
+
+    @Test
+    void testDualEndpoint1_FundsTransfer() {
+        SystemDateMaster sysDate = SystemDateMaster.builder()
+                .systemDateId("SYS-1")
+                .businessDate(LocalDate.now())
+                .status("ONLINE")
+                .postingWindowOpen(true)
+                .build();
+        when(systemDateRepository.findTopByOrderBySystemDateIdAsc()).thenReturn(Optional.of(sysDate));
+
+        BalanceMaster sourceBal = BalanceMaster.builder()
+                .accountId("ACC-1")
+                .balanceAmount(new BigDecimal("10000.00"))
+                .holdAmount(BigDecimal.ZERO)
+                .availableBalance(new BigDecimal("10000.00"))
+                .build();
+
+        BalanceMaster destBal = BalanceMaster.builder()
+                .accountId("ACC-2")
+                .balanceAmount(new BigDecimal("2000.00"))
+                .holdAmount(BigDecimal.ZERO)
+                .availableBalance(new BigDecimal("2000.00"))
+                .build();
+
+        when(balanceRepository.findByAccountIdForUpdate("ACC-1")).thenReturn(Optional.of(sourceBal));
+        when(balanceRepository.findByAccountIdForUpdate("ACC-2")).thenReturn(Optional.of(destBal));
+
+        java.util.Map<String, Object> req = java.util.Map.of(
+                "transaction_reference", "FT-DUAL-100",
+                "debit_account_id", "ACC-1",
+                "credit_account_id", "ACC-2",
+                "amount", new BigDecimal("2500.00"),
+                "currency", "PHP",
+                "description", "Dual Endpoint 1 Transfer"
+        );
+
+        var resp = t24EndpointController.fundsTransfer(req);
+
+        assertEquals(200, resp.getStatusCode().value());
+        assertNotNull(resp.getBody());
+        assertEquals("COMMITTED", resp.getBody().getStatus());
+        assertEquals(new BigDecimal("7500.00"), resp.getBody().getDebitBalanceAfter());
+        assertEquals(new BigDecimal("4500.00"), resp.getBody().getCreditBalanceAfter());
+        assertTrue(resp.getBody().getOfsResponse().contains("FUNDS.TRANSFER//1"));
+    }
+
+    @Test
+    void testDualEndpoint2_CompensatingReversal() {
+        TransactionMaster origTx = TransactionMaster.builder()
+                .transactionId("FT-ORIG-999")
+                .sourceAccountId("ACC-SENDER")
+                .targetAccountId("ACC-BENEFICIARY")
+                .amount(new BigDecimal("1500.00"))
+                .currency("PHP")
+                .status(TransactionStatus.Posted.name())
+                .build();
+
+        BalanceMaster senderBal = BalanceMaster.builder()
+                .accountId("ACC-SENDER")
+                .balanceAmount(new BigDecimal("8500.00"))
+                .availableBalance(new BigDecimal("8500.00"))
+                .build();
+
+        BalanceMaster benBal = BalanceMaster.builder()
+                .accountId("ACC-BENEFICIARY")
+                .balanceAmount(new BigDecimal("5000.00"))
+                .availableBalance(new BigDecimal("5000.00"))
+                .build();
+
+        when(transactionRepository.findById("FT-ORIG-999")).thenReturn(Optional.of(origTx));
+        when(balanceRepository.findByAccountIdForUpdate("ACC-SENDER")).thenReturn(Optional.of(senderBal));
+        when(balanceRepository.findByAccountIdForUpdate("ACC-BENEFICIARY")).thenReturn(Optional.of(benBal));
+
+        java.util.Map<String, Object> req = java.util.Map.of(
+                "original_transaction_id", "FT-ORIG-999",
+                "reversal_reason", "SAGA_COMPENSATION_DOWNSTREAM_TIMEOUT",
+                "maker_id", "SAGA_COORDINATOR",
+                "checker_id", "SYSTEM_SAGA"
+        );
+
+        var resp = t24EndpointController.reversal(req);
+
+        assertEquals(200, resp.getStatusCode().value());
+        assertNotNull(resp.getBody());
+        assertEquals("REVERSED", resp.getBody().getStatus());
+        assertEquals(new BigDecimal("10000.00"), senderBal.getBalanceAmount());
+        assertEquals(new BigDecimal("3500.00"), benBal.getBalanceAmount());
+        assertEquals(TransactionStatus.Reversed.name(), origTx.getStatus());
+        assertTrue(resp.getBody().getReversalReference().startsWith("REV-"));
+        assertTrue(resp.getBody().getOfsResponse().contains("REVERSED"));
     }
 }
 

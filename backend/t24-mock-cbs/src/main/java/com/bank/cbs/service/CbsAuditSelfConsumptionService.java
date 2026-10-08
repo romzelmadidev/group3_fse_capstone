@@ -57,8 +57,11 @@ public class CbsAuditSelfConsumptionService {
 
     @KafkaListener(topics = KafkaConfig.TOPIC_TRANSFERS_EVENTS, groupId = "cbs-audit-workers")
     @Transactional("auditTransactionManager")
-    public void consumeTransfersEvent(String messagePayload) {
+    public void consumeTransfersEvent(org.apache.kafka.clients.consumer.ConsumerRecord<String, Object> record) {
         try {
+            Object raw = record != null ? record.value() : null;
+            if (raw == null) return;
+            String messagePayload = raw instanceof String str ? str : objectMapper.writeValueAsString(raw);
             JsonNode root = objectMapper.readTree(messagePayload);
             if (root.has("sourceBalanceAfter")) {
                 TransferExecutedEvent event = objectMapper.treeToValue(root, TransferExecutedEvent.class);
@@ -104,12 +107,17 @@ public class CbsAuditSelfConsumptionService {
     }
 
     private void handleTransferExecuted(TransferExecutedEvent event) {
-        log.info("Auditing TransferExecutedEvent into PostgreSQL audit vault: txId={}", event.getTransactionId());
+        String txId = event.getTransactionId();
+        if (txId != null && ledgerMutationAuditRepository.findByTransactionId(txId + "-DR").isPresent()) {
+            log.info("Ledger mutation audit for txId {} already processed, skipping duplicate event", txId);
+            return;
+        }
+
+        log.info("Auditing TransferExecutedEvent into PostgreSQL audit vault: txId={}", txId);
 
         Optional<LedgerMutationAudit> lastAudit = ledgerMutationAuditRepository.findTopByOrderByAuditIdDesc();
         String prevHash = lastAudit.map(LedgerMutationAudit::getSha256Hash).orElse(GENESIS_HASH);
 
-        String txId = event.getTransactionId();
         Instant eventTime = event.getExecutedAtUtc() != null ? event.getExecutedAtUtc() : Instant.now();
 
         // Debit side record
@@ -152,6 +160,11 @@ public class CbsAuditSelfConsumptionService {
     }
 
     private void handleTransferReversed(TransferReversedEvent event) {
+        if (event.getReversalTransactionId() != null && reversalAuditRepository.findByReversalTxId(event.getReversalTransactionId()).isPresent()) {
+            log.info("Reversal audit for revTxId {} already processed, skipping duplicate event", event.getReversalTransactionId());
+            return;
+        }
+
         log.info("Auditing TransferReversedEvent into PostgreSQL audit vault: origTxId={}, revTxId={}",
                 event.getOriginalTransactionId(), event.getReversalTransactionId());
 

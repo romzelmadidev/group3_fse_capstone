@@ -126,16 +126,15 @@ COMMENT ON COLUMN transactions.requires_maker_checker IS 'Flag (1=True, 0=False)
 -- ------------------------------------------------------------------------------
 CREATE TABLE outbox_events (
     event_id       VARCHAR2(64) PRIMARY KEY,
-    aggregate_type VARCHAR2(50) NOT NULL CHECK (aggregate_type IN ('TRANSACTION', 'CUSTOMER_VERIFICATION', 'MAKER_CHECKER', 'BALANCE_MUTATION')),
+    aggregate_type VARCHAR2(50) NOT NULL,
     aggregate_id   VARCHAR2(64) NOT NULL,
-    event_type     VARCHAR2(50) NOT NULL CHECK (event_type IN ('VERIFICATION_PENDING', 'VERIFICATION_CONFIRMED', 'MAKER_PENDING', 'CHECKER_APPROVED', 'MUTATION_COMMITTED', 'TRANSFER_PENDING_APPROVAL', 'TRANSFER_EXECUTED', 'TRANSFER_REVERSED')),
+    event_type     VARCHAR2(50) NOT NULL,
     kafka_topic    VARCHAR2(100) NOT NULL,
     payload        CLOB NOT NULL,
     status         VARCHAR2(20) DEFAULT 'PENDING' NOT NULL CHECK (status IN ('PENDING', 'PUBLISHED', 'FAILED')),
     retry_count    NUMBER(4) DEFAULT 0 NOT NULL,
     created_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    published_at   TIMESTAMP WITH TIME ZONE,
-    CONSTRAINT fk_oe_aggregate FOREIGN KEY (aggregate_id) REFERENCES transactions(transaction_id)
+    published_at   TIMESTAMP WITH TIME ZONE
 );
 
 COMMENT ON TABLE outbox_events IS 'Transactional outbox table for reliable asynchronous event delivery to Kafka';

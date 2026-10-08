@@ -107,6 +107,9 @@ public class CbsFundsTransferService {
 
         String sourceId = request.sourceAccountId();
         String destId = request.destinationAccountId();
+        if (sourceId == null || sourceId.isBlank() || destId == null || destId.isBlank()) {
+            throw new IllegalArgumentException("Source and destination accounts must not be null or blank.");
+        }
         if (sourceId.equalsIgnoreCase(destId)) {
             throw new IllegalArgumentException("Source and destination accounts must be different.");
         }
@@ -284,7 +287,7 @@ public class CbsFundsTransferService {
         try {
             OutboxEventMaster outbox = OutboxEventMaster.builder()
                     .eventId(UUID.randomUUID().toString())
-                    .aggregateType("Transaction")
+                    .aggregateType("TRANSACTION")
                     .aggregateId(aggregateId)
                     .eventType(eventType)
                     .kafkaTopic(KafkaConfig.TOPIC_TRANSFERS_EVENTS)

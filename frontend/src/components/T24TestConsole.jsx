@@ -198,29 +198,29 @@ export default function T24TestConsole() {
     fetchSystemDate();
   }, [activeAccount]);
 
-  // Execute Transfer
+  // Execute Transfer (Dual-Endpoint 1: POST /t24/funds-transfer)
   const handleExecuteTransfer = async (e) => {
     e.preventDefault();
     setIsTransferring(true);
     setTransferResult(null);
     try {
+      const txRef = 'FT' + Math.floor(Math.random() * 900000 + 100000);
       const payload = {
-        transactionId: 'TX-' + Math.floor(Math.random() * 900000 + 100000),
-        sourceAccountId: transferForm.sourceAccountId,
-        destinationAccountId: transferForm.destinationAccountId,
+        transaction_id: txRef,
+        source_account_id: transferForm.sourceAccountId,
+        destination_account_id: transferForm.destinationAccountId,
         amount: parseFloat(transferForm.amount),
         currency: transferForm.currency,
-        description: transferForm.description,
-        channel: 'T24_TEST_CONSOLE',
-        idempotencyKey: 'IDEMP-' + Date.now()
+        memo: transferForm.description,
+        transaction_type: 'INTRA_BANK',
+        requires_maker_checker: 0
       };
-      const res = await axios.post(`${API_BASE}/cbs/postings/transfer`, payload);
+      const res = await axios.post(`${API_BASE}/cbs/t24/funds-transfer`, payload);
       setTransferResult({ success: true, data: res.data });
-      showToast('Transfer executed successfully on CBS core!', 'success');
+      showToast('T24 Endpoint 1 (/funds-transfer) executed and posted!', 'success');
       // Auto-fill reversal original Tx ID
-      if (res.data?.transactionId) {
-        setReversalForm((prev) => ({ ...prev, originalTransactionId: res.data.transactionId }));
-      }
+      const ref = res.data?.t24_reference || res.data?.transactionId || txRef;
+      setReversalForm((prev) => ({ ...prev, originalTransactionId: ref }));
       fetchBalance(activeAccount);
     } catch (err) {
       setTransferResult({
@@ -230,6 +230,36 @@ export default function T24TestConsole() {
       showToast('Transfer failed: ' + (err.response?.data?.message || err.message), 'error');
     } finally {
       setIsTransferring(false);
+    }
+  };
+
+  // Execute Compensating Reversal (Dual-Endpoint 2: POST /t24/reversal)
+  const handleCompensatingReversal = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!reversalForm.originalTransactionId) {
+      showToast('Please specify the original transaction ID to reverse.', 'error');
+      return;
+    }
+    setIsReversing(true);
+    setReversalResult(null);
+    try {
+      const payload = {
+        original_transaction_id: reversalForm.originalTransactionId,
+        reversal_reason: reversalForm.reason || 'SAGA_COMPENSATION_ROLLBACK',
+        actor_id: 'SAGA_COORDINATOR'
+      };
+      const res = await axios.post(`${API_BASE}/cbs/t24/reversal`, payload);
+      setReversalResult({ success: true, step: 'COMPENSATED_EP2', data: res.data });
+      showToast('T24 Endpoint 2 (/reversal) compensating saga reversal executed!', 'success');
+      fetchBalance(activeAccount);
+    } catch (err) {
+      setReversalResult({
+        success: false,
+        error: err.response?.data?.message || err.response?.data || err.message
+      });
+      showToast('Compensating reversal failed: ' + (err.response?.data?.message || err.message), 'error');
+    } finally {
+      setIsReversing(false);
     }
   };
 
@@ -992,17 +1022,52 @@ export default function T24TestConsole() {
       )}
 
 
-      {/* TAB 3: TRANSACTION REVERSAL (MAKER-CHECKER) */}
+      {/* TAB 3: TRANSACTION REVERSAL (DUAL ENDPOINT 2 & MAKER-CHECKER) */}
       {activeTab === 'reversal' && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Maker Dispute Request */}
-          <div className="border border-line bg-surface p-6">
-            <div className="flex items-center gap-2 border-b border-line pb-3">
-              <span className="border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 font-mono text-2xs uppercase text-blue-400">
-                Step 1: Maker Role
-              </span>
-              <h2 className="text-sm font-semibold text-fg">Initiate Dispute Reversal Ticket</h2>
+        <div className="space-y-6">
+          {/* Dual-Endpoint 2 Saga Compensation Quick Trigger */}
+          <div className="border border-purple-500/30 bg-purple-950/20 p-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="border border-purple-400/40 bg-purple-500/20 px-2 py-0.5 font-mono text-2xs uppercase text-purple-300">
+                  Dual Architecture Endpoint 2
+                </span>
+                <h3 className="text-sm font-semibold text-fg">Automated Saga Compensating Reversal (`POST /t24/reversal`)</h3>
+              </div>
+              <span className="font-mono text-2xs text-fg-subtle">ACID Rollback</span>
             </div>
+            <p className="mt-1 text-xs text-fg-muted">
+              Instantly reverses transaction balances in the Oracle Master DB and commits audit records to the PostgreSQL Audit Vault without requiring manual teller maker-checker approval. Invoked by Saga Coordinator on downstream pipeline failure.
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <input
+                type="text"
+                placeholder="Transaction ID to reverse (e.g. FT123456 or TXN-...)"
+                value={reversalForm.originalTransactionId}
+                onChange={(e) => setReversalForm({ ...reversalForm, originalTransactionId: e.target.value })}
+                className="flex-1 min-w-[240px] border border-line bg-sunken px-3 py-2 font-mono text-xs text-fg focus:border-accent focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleCompensatingReversal}
+                disabled={isReversing}
+                className="flex items-center gap-2 border border-purple-500/60 bg-purple-600/30 px-4 py-2 font-mono text-xs font-semibold uppercase text-purple-200 hover:bg-purple-600/40 disabled:opacity-50"
+              >
+                {isReversing ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                Execute EP2 Compensating Reversal
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* Maker Dispute Request */}
+            <div className="border border-line bg-surface p-6">
+              <div className="flex items-center gap-2 border-b border-line pb-3">
+                <span className="border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 font-mono text-2xs uppercase text-blue-400">
+                  Step 1: Maker Role
+                </span>
+                <h2 className="text-sm font-semibold text-fg">Initiate Dispute Reversal Ticket</h2>
+              </div>
 
             <form onSubmit={handleRequestReversal} className="mt-4 space-y-4">
               <div>
@@ -1154,6 +1219,7 @@ export default function T24TestConsole() {
             )}
           </div>
         </div>
+      </div>
       )}
 
       {/* TAB 4: RAW TEMENOS OFS PROTOCOL TERMINAL */}

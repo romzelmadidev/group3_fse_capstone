@@ -55,4 +55,16 @@ public class ReversalOrchestratorController {
                 .block();
         return ResponseEntity.ok(response);
     }
+
+    @PostMapping({"/direct", "/compensate"})
+    public ResponseEntity<Map<?, ?>> directReversal(@RequestBody Map<String, Object> request) {
+        Map<?, ?> response = cbsWebClient.post()
+                .uri("/t24/reversal")
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .timeout(Duration.ofMillis(3000))
+                .block();
+        return ResponseEntity.ok(response);
+    }
 }
