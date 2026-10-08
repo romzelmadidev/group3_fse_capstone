@@ -94,7 +94,12 @@ public class TransferOrchestrationService {
             // 3. Biometric Verification Challenge (High Value or Moderate Risk)
             boolean requiresBiometric = request.amount().compareTo(BIOMETRIC_THRESHOLD) >= 0 || riskResp.score() >= 60;
             if (requiresBiometric && (request.biometricSignature() == null || request.biometricSignature().isBlank())) {
-                String challenge = biometricService.generateChallenge(txId);
+                String challenge = biometricService.generateChallenge(
+                        txId,
+                        request.destinationAccountId(),
+                        request.amount(),
+                        request.currency() != null ? request.currency() : "PHP"
+                );
                 log.info("Transfer {} requires biometric authentication challenge", txId);
                 return new TransferInitiationResponse(
                         txId,

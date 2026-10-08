@@ -108,7 +108,7 @@ class TransferOrchestrationServiceTest {
 
         when(riskService.evaluateRisk(any(RiskScoreRequest.class)))
                 .thenReturn(new RiskScoreResponse("TXN-BIO", 20, "ALLOW", "Normal risk"));
-        when(biometricService.generateChallenge("TXN-BIO"))
+        when(biometricService.generateChallenge(eq("TXN-BIO"), eq("ACC-DEST"), eq(new BigDecimal("75000.00")), eq("PHP")))
                 .thenReturn("CHALLENGE-TOKEN-XYZ");
 
         TransferInitiationResponse response = orchestrationService.initiateTransfer(request);

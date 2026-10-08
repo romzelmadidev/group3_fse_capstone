@@ -47,8 +47,30 @@ public class TransferOrchestratorController {
     @PostMapping("/verify-biometric")
     public ResponseEntity<TransferInitiationResponse> verifyBiometric(
             @Valid @RequestBody BiometricVerificationRequest request) {
+
+        String destAccount = request.destinationAccountId();
+        java.math.BigDecimal amount = request.amount();
+
+        // Retrieve stored transfer from cooloff if available to bind context
+        String payloadJson = coolOffService.getCoolOffPayload(request.transactionId());
+        TransferInitiationRequest origReq = null;
+        if (payloadJson != null) {
+            try {
+                origReq = objectMapper.readValue(payloadJson, TransferInitiationRequest.class);
+                if (destAccount == null) {
+                    destAccount = origReq.destinationAccountId();
+                }
+                if (amount == null) {
+                    amount = origReq.amount();
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
         boolean verified = biometricService.verifyChallenge(
                 request.transactionId(),
+                destAccount,
+                amount,
                 request.challengeToken(),
                 request.assertionSignature(),
                 request.deviceId()
