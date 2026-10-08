@@ -8,6 +8,7 @@ import com.bank.orchestrator.dto.TransferInitiationResponse;
 import com.bank.ledger.contracts.enums.TransactionStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -140,6 +141,7 @@ public class CbsClientService {
         return postToCbs(request, txId, false);
     }
 
+    @Retry(name = "cbsService")
     @CircuitBreaker(name = "cbsService", fallbackMethod = "cbsPostingFallback")
     public TransferInitiationResponse postToCbs(TransferInitiationRequest request, String txId, boolean fundsHeld) {
         log.info("Sending funds transfer request to CBS via OFS: txId={}, amount={}, fundsHeld={}", txId, request.amount(), fundsHeld);

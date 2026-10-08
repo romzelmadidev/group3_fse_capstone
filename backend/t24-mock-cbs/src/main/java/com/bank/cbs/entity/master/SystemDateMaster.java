@@ -36,4 +36,8 @@ public class SystemDateMaster {
     @Column(name = "updated_at", nullable = false)
     @Builder.Default
     private Instant updatedAt = Instant.now();
+
+    public boolean isPostingWindowOpen() {
+        return Boolean.TRUE.equals(postingWindowOpen);
+    }
 }

@@ -50,6 +50,16 @@ public class CbsAuditController {
         return ResponseEntity.ok(auditQueryService.resolveFailedTransaction(transferId, notes, operator));
     }
 
+    @PostMapping("/failed-transactions/simulate")
+    public ResponseEntity<FailedTransactionAudit> simulateFailedTransaction(@RequestBody(required = false) Map<String, String> request) {
+        String txId = request != null ? request.get("transactionId") : null;
+        String errType = request != null && request.get("errorType") != null ? request.get("errorType") : "NETWORK_TIMEOUT";
+        String errCode = request != null && request.get("errorCode") != null ? request.get("errorCode") : "HTTP_504";
+        String cbState = request != null && request.get("circuitBreakerState") != null ? request.get("circuitBreakerState") : "OPEN";
+        String payload = request != null ? request.get("payload") : null;
+        return ResponseEntity.ok(auditQueryService.createFailedTransactionAudit(txId, errType, errCode, cbState, payload, null));
+    }
+
     @GetMapping("/eod-reports")
     public ResponseEntity<List<EodReportsMetadata>> getEodReports(@RequestParam("eodDate") String eodDate) {
         return ResponseEntity.ok(auditQueryService.getEodReports(eodDate));

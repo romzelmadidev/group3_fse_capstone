@@ -68,6 +68,33 @@ public class CbsAuditQueryService {
         return failedTransactionAuditRepository.save(audit);
     }
 
+    @Transactional("auditTransactionManager")
+    public FailedTransactionAudit createFailedTransactionAudit(
+            String transactionId,
+            String errorType,
+            String errorCode,
+            String circuitBreakerState,
+            String payloadJson,
+            String stackTrace) {
+        String incidentId = "INC-" + java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String txId = (transactionId != null && !transactionId.isBlank()) 
+                ? transactionId 
+                : ("FAIL-TX-" + java.util.UUID.randomUUID().toString().substring(0, 6).toUpperCase());
+        FailedTransactionAudit audit = FailedTransactionAudit.builder()
+                .incidentId(incidentId)
+                .correlationId("CORR-" + java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase())
+                .transactionId(txId)
+                .errorType(errorType != null ? errorType : "NETWORK_TIMEOUT")
+                .errorCode(errorCode != null ? errorCode : "HTTP_504")
+                .circuitBreakerState(circuitBreakerState != null ? circuitBreakerState : "OPEN")
+                .payloadJson(payloadJson != null ? payloadJson : "{\"amount\":5000.00,\"sourceAccountId\":\"ACC-1001\",\"destinationAccountId\":\"ACC-1002\"}")
+                .stackTrace(stackTrace != null ? stackTrace : "Simulated downstream CBS timeout after 3 retries. Routed to DLQ.")
+                .replayStatus("PENDING_REPLAY")
+                .failureTimestamp(Instant.now())
+                .build();
+        return failedTransactionAuditRepository.save(audit);
+    }
+
     @Transactional(value = "auditTransactionManager", readOnly = true)
     public List<EodReportsMetadata> getEodReports(String businessDate) {
         return eodReportsMetadataRepository.findByBusinessDateOrderByGeneratedAtUtcDesc(businessDate);

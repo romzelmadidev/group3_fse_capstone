@@ -118,7 +118,7 @@ public class ComplianceController {
         return ResponseEntity.ok(incidents);
     }
 
-    @PostMapping("/dlq/replays/{transferId}")
+    @PostMapping(path = {"/dlq/replays/{transferId}", "/dlq/replay/{transferId}"})
     public ResponseEntity<Map<String, Object>> replayDlqTransaction(
             @PathVariable String transferId,
             @RequestBody(required = false) Map<String, Object> replayOverride) {
@@ -145,7 +145,45 @@ public class ComplianceController {
         return ResponseEntity.ok(Map.of(
                 "transferId", transferId,
                 "status", "REPLAYED",
-                "orchestratorResult", replayedResult
+                "orchestratorResult", replayedResult != null ? replayedResult : Map.of()
         ));
     }
+
+    @PostMapping("/dlq/simulate")
+    public ResponseEntity<?> simulateDlqFailure(@RequestBody(required = false) Map<String, String> body) {
+        log.info("Simulating DLQ failure incident: {}", body);
+        try {
+            Map<?, ?> res = cbsWebClient.post()
+                    .uri("/api/v1/cbs/audit/failed-transactions/simulate")
+                    .bodyValue(body != null ? body : Map.of())
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .timeout(Duration.ofSeconds(3))
+                    .block();
+            return ResponseEntity.ok(res != null ? res : Map.of("status", "SIMULATED"));
+        } catch (Exception e) {
+            log.error("Failed to simulate DLQ incident: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/azurite/blobs")
+    public ResponseEntity<List<AzuriteBlobStorageService.BlobItemDto>> listAzuriteBlobs() {
+        return ResponseEntity.ok(azuriteService.listArtifacts());
+    }
+
+    @PostMapping(value = "/azurite/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<AzuriteBlobStorageService.UploadResult> uploadToAzurite(
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+            @RequestParam(value = "folder", defaultValue = "compliance") String folder) {
+        try {
+            String blobName = folder + "/" + (file.getOriginalFilename() != null ? file.getOriginalFilename() : "report.bin");
+            String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
+            var result = azuriteService.uploadArtifact(blobName, file.getBytes(), contentType);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to upload to Azurite: " + e.getMessage(), e);
+        }
+    }
 }
+

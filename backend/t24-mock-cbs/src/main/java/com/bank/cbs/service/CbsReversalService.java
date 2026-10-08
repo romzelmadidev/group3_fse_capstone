@@ -5,6 +5,8 @@ import com.bank.cbs.dto.ReversalActionDto;
 import com.bank.cbs.dto.ReversalRequestDto;
 import com.bank.cbs.entity.master.*;
 import com.bank.cbs.repository.master.*;
+import com.bank.ledger.contracts.dto.T24ReversalRequest;
+import com.bank.ledger.contracts.dto.T24ReversalResponse;
 import com.bank.ledger.contracts.dto.events.TransactionStatusChangedEvent;
 import com.bank.ledger.contracts.dto.events.TransferReversedEvent;
 import com.bank.ledger.contracts.enums.ActorType;
@@ -61,8 +63,10 @@ public class CbsReversalService {
         TransactionMaster originalTx = transactionRepository.findById(dto.originalTransactionId())
                 .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + dto.originalTransactionId()));
 
-        if (!TransactionStatus.Posted.name().equalsIgnoreCase(originalTx.getStatus())) {
-            throw new IllegalStateException("Only POSTED transactions can be reversed. Current status: " + originalTx.getStatus());
+        if (!TransactionStatus.Posted.name().equalsIgnoreCase(originalTx.getStatus())
+                && !"COMMITTED".equalsIgnoreCase(originalTx.getStatus())
+                && !"POSTED".equalsIgnoreCase(originalTx.getStatus())) {
+            throw new IllegalStateException("Only POSTED or COMMITTED transactions can be reversed. Current status: " + originalTx.getStatus());
         }
 
         originalTx.setStatus(TransactionStatus.PendingReversal.name());
@@ -332,11 +336,178 @@ public class CbsReversalService {
         return request;
     }
 
+    @Transactional("masterTransactionManager")
+    public T24ReversalResponse executeCompensatingReversal(T24ReversalRequest req) {
+        String origTxId = req.getOriginalTransactionId();
+        if (origTxId == null || origTxId.isBlank()) {
+            throw new IllegalArgumentException("original_transaction_id is required for reversal");
+        }
+
+        TransactionMaster originalTx = transactionRepository.findById(origTxId)
+                .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + origTxId));
+
+        if (!TransactionStatus.Posted.name().equalsIgnoreCase(originalTx.getStatus())) {
+            throw new IllegalStateException("Only POSTED transactions can be reversed. Current status: " + originalTx.getStatus());
+        }
+
+        String sourceId = originalTx.getSourceAccountId(); // Original sender (will be refunded)
+        String destId = originalTx.getTargetAccountId(); // Original beneficiary (will be debited back)
+
+        String firstLockId = sourceId.compareTo(destId) < 0 ? sourceId : destId;
+        String secondLockId = sourceId.compareTo(destId) < 0 ? destId : sourceId;
+
+        BalanceMaster firstBal = balanceRepository.findByAccountIdForUpdate(firstLockId)
+                .orElseThrow(() -> new IllegalArgumentException("Balance not found for ID: " + firstLockId));
+        BalanceMaster secondBal = balanceRepository.findByAccountIdForUpdate(secondLockId)
+                .orElseThrow(() -> new IllegalArgumentException("Balance not found for ID: " + secondLockId));
+
+        BalanceMaster senderBal = sourceId.equals(firstLockId) ? firstBal : secondBal;
+        BalanceMaster beneficiaryBal = destId.equals(firstLockId) ? firstBal : secondBal;
+
+        BigDecimal beneficiaryAvailable = beneficiaryBal.getAvailableBalance();
+        if (beneficiaryAvailable.compareTo(originalTx.getAmount()) < 0) {
+            throw new IllegalStateException("Beneficiary account has insufficient funds to process reversal: available="
+                    + beneficiaryAvailable + ", required=" + originalTx.getAmount());
+        }
+
+        Instant now = Instant.now();
+
+        // Reverse balances
+        beneficiaryBal.setBalanceAmount(beneficiaryBal.getBalanceAmount().subtract(originalTx.getAmount()));
+        BigDecimal benHold = beneficiaryBal.getHoldAmount() != null ? beneficiaryBal.getHoldAmount() : BigDecimal.ZERO;
+        beneficiaryBal.setAvailableBalance(beneficiaryBal.getBalanceAmount().subtract(benHold));
+        beneficiaryBal.setUpdatedAt(now);
+        balanceRepository.save(beneficiaryBal);
+
+        senderBal.setBalanceAmount(senderBal.getBalanceAmount().add(originalTx.getAmount()));
+        BigDecimal sendHold = senderBal.getHoldAmount() != null ? senderBal.getHoldAmount() : BigDecimal.ZERO;
+        senderBal.setAvailableBalance(senderBal.getBalanceAmount().subtract(sendHold));
+        senderBal.setUpdatedAt(now);
+        balanceRepository.save(senderBal);
+
+        // Compensating GL entries
+        String reversalTxId = UUID.randomUUID().toString();
+        LocalDate valDate = LocalDate.now();
+
+        GlLedgerMaster compensatingDr = GlLedgerMaster.builder()
+                .journalId(UUID.randomUUID().toString())
+                .transactionId(reversalTxId)
+                .glCode("20100")
+                .debitAmount(originalTx.getAmount())
+                .creditAmount(BigDecimal.ZERO)
+                .postingDate(valDate)
+                .createdAt(now)
+                .build();
+        glLedgerRepository.save(compensatingDr);
+
+        GlLedgerMaster compensatingCr = GlLedgerMaster.builder()
+                .journalId(UUID.randomUUID().toString())
+                .transactionId(reversalTxId)
+                .glCode("20100")
+                .debitAmount(BigDecimal.ZERO)
+                .creditAmount(originalTx.getAmount())
+                .postingDate(valDate)
+                .createdAt(now)
+                .build();
+        glLedgerRepository.save(compensatingCr);
+
+        // Update original transaction
+        originalTx.setStatus(TransactionStatus.Reversed.name());
+        originalTx.setUpdatedAt(now);
+        transactionRepository.save(originalTx);
+
+        // Create reversal transaction record
+        String actor = req.getCheckerId() != null ? req.getCheckerId() : (req.getMakerId() != null ? req.getMakerId() : "SAGA_COMPENSATOR");
+        TransactionMaster reversalTx = TransactionMaster.builder()
+                .transactionId(reversalTxId)
+                .sourceAccountId(destId)
+                .targetAccountId(sourceId)
+                .amount(originalTx.getAmount())
+                .currency(originalTx.getCurrency())
+                .transactionType("REVERSAL")
+                .status(TransactionStatus.Reversed.name())
+                .requiresMakerChecker(0)
+                .approvedBy(actor)
+                .memo("Compensating reversal of transaction " + originalTx.getTransactionId() + ": " + req.getReversalReason())
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        transactionRepository.save(reversalTx);
+
+        // Status history
+        TransactionStatusHistoryMaster statusHistory = TransactionStatusHistoryMaster.builder()
+                .historyId(UUID.randomUUID().toString())
+                .transactionId(originalTx.getTransactionId())
+                .fromStatus(TransactionStatus.Posted.name())
+                .toStatus(TransactionStatus.Reversed.name())
+                .changeReason(ChangeReasonCode.CHECKER_REVERSAL_APPROVED_SETTLED)
+                .reasonDetails("Compensating reversal executed: " + req.getReversalReason())
+                .actorId(actor)
+                .actorType(ActorType.SYSTEM_ORCH.name())
+                .changedAt(now)
+                .build();
+        statusHistoryRepository.save(statusHistory);
+
+        // Events
+        TransferReversedEvent reversedEvent = TransferReversedEvent.builder()
+                .eventId(UUID.randomUUID().toString())
+                .eventType("TransferReversedEvent")
+                .version("1.0")
+                .ticketId("SAGA-" + reversalTxId)
+                .originalTransactionId(originalTx.getTransactionId())
+                .reversalTransactionId(reversalTxId)
+                .cbsReference("REV-" + reversalTxId)
+                .beneficiaryAccountId(destId)
+                .originalSenderAccountId(sourceId)
+                .amount(originalTx.getAmount())
+                .currency(originalTx.getCurrency())
+                .makerId(req.getMakerId() != null ? req.getMakerId() : "SAGA_COORDINATOR")
+                .checkerId(actor)
+                .beneficiaryBalanceAfter(beneficiaryBal.getBalanceAmount())
+                .originalSenderBalanceAfter(senderBal.getBalanceAmount())
+                .executedAtUtc(now)
+                .build();
+
+        TransactionStatusChangedEvent statusEvent = TransactionStatusChangedEvent.builder()
+                .eventId(UUID.randomUUID().toString())
+                .eventType("TransactionStatusChangedEvent")
+                .version("1.0")
+                .transactionId(originalTx.getTransactionId())
+                .fromStatus(TransactionStatus.Posted)
+                .toStatus(TransactionStatus.Reversed)
+                .changeReason(ChangeReasonCode.CHECKER_REVERSAL_APPROVED_SETTLED)
+                .actorId(actor)
+                .actorType(ActorType.SYSTEM_ORCH)
+                .changedAt(now)
+                .build();
+
+        publishEvent("TransferReversedEvent", originalTx.getTransactionId(), reversedEvent);
+        publishEvent("TransactionStatusChangedEvent", originalTx.getTransactionId(), statusEvent);
+
+        String ofsResponse = String.format("FUNDS.TRANSFER//1,REVERSED,TRANSACTION.ID:1:1=%s,REVERSAL.ID:1:1=REV-%s,ORIGINAL.TX:1:1=%s",
+                reversalTxId, reversalTxId, origTxId);
+
+        return T24ReversalResponse.builder()
+                .reversalReference("REV-" + reversalTxId)
+                .originalTransactionId(origTxId)
+                .status("REVERSED")
+                .reversalReason(req.getReversalReason())
+                .amount(originalTx.getAmount())
+                .debitedAccountId(destId)
+                .debitedBalanceAfter(beneficiaryBal.getBalanceAmount())
+                .creditedAccountId(sourceId)
+                .creditedBalanceAfter(senderBal.getBalanceAmount())
+                .ofsResponse(ofsResponse)
+                .message("Transaction reversed successfully via T24 compensating workflow")
+                .timestamp(now)
+                .build();
+    }
+
     private void publishEvent(String eventType, String aggregateId, Object payload) {
         try {
             OutboxEventMaster outbox = OutboxEventMaster.builder()
                     .eventId(UUID.randomUUID().toString())
-                    .aggregateType("Transaction")
+                    .aggregateType("TRANSACTION")
                     .aggregateId(aggregateId)
                     .eventType(eventType)
                     .kafkaTopic(KafkaConfig.TOPIC_TRANSFERS_EVENTS)

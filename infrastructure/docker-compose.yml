@@ -247,6 +247,24 @@ services:
       - banking-net
 
   # ============================================================================
+  # Azurite Drive Web GUI (Google Drive UI for Azurite Blob Storage)
+  # Container Name: azurite-drive
+  # Development UI for browsing, previewing, and downloading generated reports
+  # ============================================================================
+  azurite-drive:
+    container_name: azurite-drive
+    build:
+      context: ./azurite-drive
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "10005:80"
+    networks:
+      - banking-net
+    depends_on:
+      - azurite
+
+  # ============================================================================
   # 9. T24 Mock Core Banking System (Spring Boot :8085)
   # Container Name: t24-mock-cbs
   # Sole custodian of Master DB & Postgres Audit Vault, row locking & EOD batch
@@ -469,17 +487,7 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
-    volumes:
-      - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
     environment:
-      - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
-      - DD_AGENT_HOST=dd-agent
-      - DD_TRACE_AGENT_PORT=8126
-      - DD_SERVICE=gateway-service
-      - DD_ENV=local
-      - DD_VERSION=1.0.0
-      - DD_LOGS_INJECTION=true
-      - DD_TRACE_SAMPLE_RATE=1.0
       - REDIS_HOST=redis-cache
       - REDIS_PORT=6379
       - ACCOUNT_SERVICE_URI=http://account-service:8081
