@@ -242,6 +242,8 @@ services:
     command: "azurite-blob --blobHost 0.0.0.0 --blobPort 10000 -l /data"
     volumes:
       - azurite_data:/data
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "azure-storage", "service": "azurite-storage"}]'
     networks:
       - banking-net
 
@@ -258,16 +260,29 @@ services:
     restart: unless-stopped
     ports:
       - "8085:8085"
+    volumes:
+      - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
     environment:
-      - SPRING_DATASOURCE_ORACLE_URL=jdbc:oracle:thin:@oracle-xe-master:1521/XEPDB1
-      - SPRING_DATASOURCE_ORACLE_USERNAME=fse_user
-      - SPRING_DATASOURCE_ORACLE_PASSWORD=fse_password
-      - SPRING_DATASOURCE_POSTGRES_URL=jdbc:postgresql://postgres-audit-vault:5432/banking_audit
-      - SPRING_DATASOURCE_POSTGRES_USERNAME=audit_user
-      - SPRING_DATASOURCE_POSTGRES_PASSWORD=audit_password
+      - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
+      - DD_AGENT_HOST=dd-agent
+      - DD_TRACE_AGENT_PORT=8126
+      - DD_SERVICE=t24-mock-cbs
+      - DD_ENV=local
+      - DD_VERSION=1.0.0
+      - DD_LOGS_INJECTION=true
+      - DD_TRACE_SAMPLE_RATE=1.0
+      - MASTER_DB_URL=jdbc:oracle:thin:@oracle-xe-master:1521/XEPDB1
+      - MASTER_DB_USER=fse_user
+      - MASTER_DB_PASSWORD=fse_password
+      - MASTER_DB_DRIVER=oracle.jdbc.OracleDriver
+      - AUDIT_DB_URL=jdbc:postgresql://postgres-audit-vault:5432/banking_audit
+      - AUDIT_DB_USER=audit_user
+      - AUDIT_DB_PASSWORD=audit_password
       - SPRING_DATA_REDIS_HOST=redis-cache
       - SPRING_DATA_REDIS_PORT=6379
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka-broker:29092
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:29092
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "java", "service": "t24-mock-cbs"}]'
     networks:
       - banking-net
     depends_on:
@@ -275,6 +290,7 @@ services:
       - postgres-audit-vault
       - redis-cache
       - kafka-broker
+      - dd-agent
 
   # ============================================================================
   # 9b. Stateless Transfer Orchestrator (Spring Boot :8082)
@@ -289,13 +305,25 @@ services:
     restart: unless-stopped
     ports:
       - "8082:8082"
+    volumes:
+      - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
     environment:
-      - SPRING_DATA_REDIS_HOST=redis-cache
-      - SPRING_DATA_REDIS_PORT=6379
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka-broker:29092
-      - APP_CBS_SERVICE_URL=http://t24-mock-cbs:8085
-      - APP_RISK_SERVICE_URL=http://risk-service:8084
-      - APP_ACCOUNT_SERVICE_URL=http://account-service:8081
+      - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
+      - DD_AGENT_HOST=dd-agent
+      - DD_TRACE_AGENT_PORT=8126
+      - DD_SERVICE=transfer-orchestrator
+      - DD_ENV=local
+      - DD_VERSION=1.0.0
+      - DD_LOGS_INJECTION=true
+      - DD_TRACE_SAMPLE_RATE=1.0
+      - REDIS_HOST=redis-cache
+      - REDIS_PORT=6379
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:29092
+      - CBS_SERVICE_URL=http://t24-mock-cbs:8085
+      - RISK_SERVICE_URL=http://risk-service:8084
+      - ACCOUNT_SERVICE_URL=http://account-service:8081
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "java", "service": "transfer-orchestrator"}]'
     networks:
       - banking-net
     depends_on:
@@ -303,6 +331,7 @@ services:
       - kafka-broker
       - risk-service
       - t24-mock-cbs
+      - dd-agent
 
   # ============================================================================
   # 9c. Compliance & Reporting Service (Spring Boot :8086)
@@ -317,17 +346,30 @@ services:
     restart: unless-stopped
     ports:
       - "8086:8086"
+    volumes:
+      - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
     environment:
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka-broker:29092
-      - APP_CBS_SERVICE_URL=http://t24-mock-cbs:8085
-      - APP_ORCHESTRATOR_SERVICE_URL=http://transfer-orchestrator:8082
+      - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
+      - DD_AGENT_HOST=dd-agent
+      - DD_TRACE_AGENT_PORT=8126
+      - DD_SERVICE=compliance-service
+      - DD_ENV=local
+      - DD_VERSION=1.0.0
+      - DD_LOGS_INJECTION=true
+      - DD_TRACE_SAMPLE_RATE=1.0
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:29092
+      - CBS_SERVICE_URL=http://t24-mock-cbs:8085
+      - ORCHESTRATOR_SERVICE_URL=http://transfer-orchestrator:8082
       - AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "java", "service": "compliance-service"}]'
     networks:
       - banking-net
     depends_on:
       - kafka-broker
       - azurite
       - t24-mock-cbs
+      - dd-agent
 
   # ============================================================================
   # 9b. Local NanoJev Risk Engine (FastAPI / Threaded Python :8084)

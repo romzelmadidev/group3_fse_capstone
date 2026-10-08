@@ -45,6 +45,15 @@ Run from the `backend/` directory:
 
 # Run Notification Service
 .\start-services-datadog.ps1 -Service notification-service
+
+# Run T24 Mock Core Banking System (:8085)
+.\start-services-datadog.ps1 -Service t24-mock-cbs
+
+# Run Stateless Transfer Orchestrator (:8082)
+.\start-services-datadog.ps1 -Service transfer-orchestrator
+
+# Run Compliance & Reporting Service (:8086)
+.\start-services-datadog.ps1 -Service compliance-service
 ```
 
 ### Option B: Running with Maven directly

@@ -1,5 +1,6 @@
 package com.bank.orchestrator.controller;
 
+import com.bank.ledger.contracts.dto.AccountTransactionDto;
 import com.bank.orchestrator.dto.*;
 import com.bank.orchestrator.service.BiometricChallengeService;
 import com.bank.orchestrator.service.CoolOffService;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -92,17 +94,10 @@ public class TransferOrchestratorController {
                     java.time.Instant.now()
             ));
         }
-
-        // Retrieve stored transfer from cooloff or execute
-        String payloadJson = coolOffService.getCoolOffPayload(request.transactionId());
-        if (payloadJson != null) {
-            try {
-                TransferInitiationRequest origReq = objectMapper.readValue(payloadJson, TransferInitiationRequest.class);
-                TransferInitiationResponse resp = orchestrationService.initiateTransfer(origReq);
-                return ResponseEntity.ok(resp);
-            } catch (Exception e) {
-                return ResponseEntity.internalServerError().build();
-            }
+        // If original request was cached, execute the transfer now that biometrics passed
+        if (origReq != null) {
+            TransferInitiationResponse resp = orchestrationService.initiateTransfer(origReq);
+            return ResponseEntity.ok(resp);
         }
 
         return ResponseEntity.ok(new TransferInitiationResponse(

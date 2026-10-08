@@ -4,7 +4,7 @@
 
 param (
     [Parameter(Mandatory=$false)]
-    [ValidateSet("gateway-service", "account-service", "ledger-mutation-engine", "notification-service")]
+    [ValidateSet("gateway-service", "account-service", "ledger-mutation-engine", "notification-service", "t24-mock-cbs", "transfer-orchestrator", "compliance-service")]
     [string]$Service = "gateway-service"
 )
 

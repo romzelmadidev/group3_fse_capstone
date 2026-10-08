@@ -387,3 +387,45 @@ mvn package -DskipTests -pl t24-mock-cbs,transfer-orchestrator,compliance-servic
   * **MerkleTreeService**: Asynchronously constructs balanced Merkle Trees from batched mutation hashes, computing a single tamper-evident `Merkle_Root`.
   * **AuditBlockAnchor**: Periodically anchors batches of audit records into `audit_block_anchor` table, chaining block roots sequentially ($\text{BlockHash}_K = \text{SHA256}(\text{MerkleRoot}_K \parallel \text{PrevBlockHash}_{K-1} \parallel K)$).
   * **Logarithmic $O(\log N)$ Proof Verification**: Provided `getMerkleProof` and `verifyMerkleProof` APIs enabling instant mathematical verification of transaction inclusion without full-table scans.
+
+---
+
+## 12. Datadog Observability & APM Telemetry Integration
+
+To maintain full observability across the core banking platform, the new target architecture services and infrastructure have been fully integrated into the Datadog full-stack telemetry pipeline:
+
+### 12.1 APM Distributed Tracing & W3C Context Propagation
+* **Java Tracer Agent Mount**: Configured volume mount `./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro` across all Spring Boot containers:
+  * `t24-mock-cbs` (:8085)
+  * `transfer-orchestrator` (:8082)
+  * `compliance-service` (:8086)
+* **Environment Injection**:
+  * `JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar`
+  * `DD_AGENT_HOST=dd-agent`
+  * `DD_TRACE_AGENT_PORT=8126`
+  * `DD_ENV=local`
+  * `DD_VERSION=1.0.0`
+  * `DD_LOGS_INJECTION=true` (correlates logs with `dd.trace_id` and `dd.span_id` in Log Explorer)
+  * `DD_TRACE_SAMPLE_RATE=1.0`
+
+### 12.2 Autodiscovery Log Source Tagging
+* Configured `com.datadoghq.ad.logs` labels to route container output to unified Datadog service entities:
+  * `azurite-storage`: `[{"source": "azure-storage", "service": "azurite-storage"}]`
+  * `t24-mock-cbs`: `[{"source": "java", "service": "t24-mock-cbs"}]`
+  * `transfer-orchestrator`: `[{"source": "java", "service": "transfer-orchestrator"}]`
+  * `compliance-service`: `[{"source": "java", "service": "compliance-service"}]`
+
+### 12.3 Local Development Runner Script
+* Updated [`backend/start-services-datadog.ps1`](file:///c:/Users/HRR83780/Downloads/group3_fse_capstone/backend/start-services-datadog.ps1) parameter validation to allow spinning up any of the new services with the local Datadog Java tracer:
+  ```powershell
+  .\start-services-datadog.ps1 -Service t24-mock-cbs
+  .\start-services-datadog.ps1 -Service transfer-orchestrator
+  .\start-services-datadog.ps1 -Service compliance-service
+  ```
+
+### 12.4 Synthetic Health Probes & SLA Monitoring
+* Updated [`scripts/datadog-provision-tests.js`](file:///c:/Users/HRR83780/Downloads/group3_fse_capstone/scripts/datadog-provision-tests.js) with automated API synthetic probes:
+  * **`t24-mock-cbs`**: Probes `http://t24-mock-cbs:8085/actuator/health` (< 150ms SLA).
+  * **`transfer-orchestrator`**: Probes `http://transfer-orchestrator:8082/actuator/health` (< 100ms SLA).
+  * **`compliance-service`**: Probes `http://compliance-service:8086/actuator/health` (< 150ms SLA).
+
