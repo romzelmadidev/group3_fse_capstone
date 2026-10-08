@@ -10,5 +10,19 @@ public record TransferRequestDto(
         String currency,
         String description,
         String channel,
-        String idempotencyKey
-) {}
+        String idempotencyKey,
+        Boolean fundsHeld
+) {
+    public TransferRequestDto(
+            String transactionId,
+            String sourceAccountId,
+            String destinationAccountId,
+            BigDecimal amount,
+            String currency,
+            String description,
+            String channel,
+            String idempotencyKey
+    ) {
+        this(transactionId, sourceAccountId, destinationAccountId, amount, currency, description, channel, idempotencyKey, false);
+    }
+}

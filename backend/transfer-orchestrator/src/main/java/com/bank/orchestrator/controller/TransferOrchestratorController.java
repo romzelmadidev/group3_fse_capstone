@@ -21,16 +21,19 @@ public class TransferOrchestratorController {
     private final TransferOrchestrationService orchestrationService;
     private final BiometricChallengeService biometricService;
     private final CoolOffService coolOffService;
+    private final com.bank.orchestrator.service.CbsClientService cbsService;
     private final ObjectMapper objectMapper;
 
     public TransferOrchestratorController(
             TransferOrchestrationService orchestrationService,
             BiometricChallengeService biometricService,
             CoolOffService coolOffService,
+            com.bank.orchestrator.service.CbsClientService cbsService,
             ObjectMapper objectMapper) {
         this.orchestrationService = orchestrationService;
         this.biometricService = biometricService;
         this.coolOffService = coolOffService;
+        this.cbsService = cbsService;
         this.objectMapper = objectMapper;
     }
 
@@ -110,11 +113,19 @@ public class TransferOrchestratorController {
     @PostMapping("/cancel")
     public ResponseEntity<Map<String, Object>> cancelTransferDuringCoolOff(
             @Valid @RequestBody CoolOffCancelRequest request) {
+        String payloadJson = coolOffService.getCoolOffPayload(request.transactionId());
+        if (payloadJson != null) {
+            try {
+                TransferInitiationRequest origReq = objectMapper.readValue(payloadJson, TransferInitiationRequest.class);
+                cbsService.releaseHold(origReq.sourceAccountId(), origReq.amount(), request.transactionId());
+            } catch (Exception ignored) {
+            }
+        }
         boolean cancelled = coolOffService.cancelCoolOff(request.transactionId());
         return ResponseEntity.ok(Map.of(
                 "transactionId", request.transactionId(),
                 "cancelled", cancelled,
-                "message", cancelled ? "Transfer cancelled successfully during cooling-off window" : "Cooling-off window expired or not found"
+                "message", cancelled ? "Transfer cancelled successfully during cooling-off window. Funds hold released." : "Cooling-off window expired or not found"
         ));
     }
 

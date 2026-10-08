@@ -124,19 +124,37 @@ public class CbsFundsTransferService {
         BalanceMaster destBal = destId.equals(firstLockId) ? firstBal : secondBal;
 
         // 3. Solvency check
+        BigDecimal currentSourceHold = sourceBal.getHoldAmount() != null ? sourceBal.getHoldAmount() : BigDecimal.ZERO;
         BigDecimal availableBalance = sourceBal.getAvailableBalance();
         if (availableBalance == null) {
-            availableBalance = sourceBal.getBalanceAmount().subtract(sourceBal.getHoldAmount() != null ? sourceBal.getHoldAmount() : BigDecimal.ZERO);
+            availableBalance = sourceBal.getBalanceAmount().subtract(currentSourceHold);
         }
-        if (availableBalance.compareTo(request.amount()) < 0) {
-            throw new IllegalArgumentException(String.format(
-                    "Insufficient funds. Account %s has available balance %s, requested %s",
-                    sourceId, availableBalance, request.amount()));
+
+        boolean isHeld = Boolean.TRUE.equals(request.fundsHeld());
+        if (isHeld) {
+            if (currentSourceHold.compareTo(request.amount()) < 0 || sourceBal.getBalanceAmount().compareTo(request.amount()) < 0) {
+                throw new IllegalArgumentException(String.format(
+                        "Held funds mismatch. Account %s has hold %s and total balance %s, requested %s",
+                        sourceId, currentSourceHold, sourceBal.getBalanceAmount(), request.amount()));
+            }
+        } else {
+            if (availableBalance.compareTo(request.amount()) < 0) {
+                throw new IllegalArgumentException(String.format(
+                        "Insufficient funds. Account %s has available balance %s, requested %s",
+                        sourceId, availableBalance, request.amount()));
+            }
         }
 
         // 4. Update balances
         Instant now = Instant.now();
         sourceBal.setBalanceAmount(sourceBal.getBalanceAmount().subtract(request.amount()));
+        if (isHeld) {
+            BigDecimal newHold = currentSourceHold.subtract(request.amount());
+            if (newHold.compareTo(BigDecimal.ZERO) < 0) {
+                newHold = BigDecimal.ZERO;
+            }
+            sourceBal.setHoldAmount(newHold);
+        }
         BigDecimal sourceHold = sourceBal.getHoldAmount() != null ? sourceBal.getHoldAmount() : BigDecimal.ZERO;
         sourceBal.setAvailableBalance(sourceBal.getBalanceAmount().subtract(sourceHold));
         sourceBal.setUpdatedAt(now);
