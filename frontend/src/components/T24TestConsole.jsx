@@ -682,7 +682,7 @@ export default function T24TestConsole() {
               <Send className="h-4 w-4 text-accent" /> Execute Funds Transfer (`FUNDS.TRANSFER`)
             </h2>
             <p className="mt-1 text-xs text-fg-muted">
-              Sends an intra-bank transfer payload directly to CBS Core (`POST /api/v1/cbs/postings/transfer`).
+              Sends an intra-bank transfer payload to Dual-Endpoint 1 (`POST /t24/funds-transfer`).
               Enforces posting window cutoff, row lock ordering, and solvency check against available balance.
             </p>
 
