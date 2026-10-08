@@ -6,7 +6,7 @@ import lombok.*;
 import java.time.Instant;
 
 @Entity
-@Table(name = "reversal_requests")
+@Table(name = "reversal_requests", schema = "core")
 @Getter
 @Setter
 @NoArgsConstructor

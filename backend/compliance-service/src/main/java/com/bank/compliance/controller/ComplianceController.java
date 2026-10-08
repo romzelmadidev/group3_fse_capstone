@@ -2,6 +2,7 @@ package com.bank.compliance.controller;
 
 import com.bank.compliance.generator.CustomerStatementPdfGenerator;
 import com.bank.compliance.service.AzuriteBlobStorageService;
+import com.bank.ledger.contracts.ofs.OfsMessageUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -67,9 +68,9 @@ public class ComplianceController {
 
     @GetMapping("/statements/{accountId}/pdf")
     public ResponseEntity<byte[]> generateAndDownloadStatement(@PathVariable String accountId) {
-        // Query balance and account from CBS
-        Map<?, ?> balanceMap = cbsWebClient.get()
-                .uri("/api/v1/cbs/accounts/" + accountId + "/balance")
+        // Query balance and account from Transfer Orchestrator facade (JSON protocol)
+        Map<?, ?> balanceMap = orchestratorWebClient.get()
+                .uri("/api/v1/transfers/accounts/" + accountId + "/balance")
                 .retrieve()
                 .bodyToMono(Map.class)
                 .timeout(Duration.ofSeconds(3))

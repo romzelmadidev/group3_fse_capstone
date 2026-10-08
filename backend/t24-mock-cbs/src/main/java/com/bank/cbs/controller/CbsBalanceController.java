@@ -3,6 +3,9 @@ package com.bank.cbs.controller;
 import com.bank.cbs.dto.BalanceEnquiryResponseDto;
 import com.bank.cbs.entity.master.TransactionMaster;
 import com.bank.cbs.service.CbsBalanceEnquiryService;
+import com.bank.ledger.contracts.dto.AccountTransactionDto;
+import com.bank.ledger.contracts.ofs.OfsMessageUtil;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,21 +21,43 @@ public class CbsBalanceController {
         this.balanceEnquiryService = balanceEnquiryService;
     }
 
-    @GetMapping("/{accountId}/balance")
-    public ResponseEntity<BalanceEnquiryResponseDto> getBalanceById(@PathVariable String accountId) {
-        return ResponseEntity.ok(balanceEnquiryService.getBalanceByAccountId(accountId));
+    @GetMapping(value = "/{accountId}/balance", produces = MediaType.TEXT_PLAIN_VALUE)
+    public ResponseEntity<String> getBalanceById(@PathVariable String accountId) {
+        BalanceEnquiryResponseDto dto = balanceEnquiryService.getBalanceByAccountId(accountId);
+        String ofs = OfsMessageUtil.buildBalanceEnquiryResponse(
+                dto.accountId(), dto.accountNumber(), dto.currentBalance(), dto.availableBalance(), dto.holdBalance(), dto.currency()
+        );
+        return ResponseEntity.ok(ofs);
     }
 
-    @GetMapping("/by-number/{accountNumber}/balance")
-    public ResponseEntity<BalanceEnquiryResponseDto> getBalanceByNumber(@PathVariable String accountNumber) {
-        return ResponseEntity.ok(balanceEnquiryService.getBalanceByAccountNumber(accountNumber));
+    @GetMapping(value = "/by-number/{accountNumber}/balance", produces = MediaType.TEXT_PLAIN_VALUE)
+    public ResponseEntity<String> getBalanceByNumber(@PathVariable String accountNumber) {
+        BalanceEnquiryResponseDto dto = balanceEnquiryService.getBalanceByAccountNumber(accountNumber);
+        String ofs = OfsMessageUtil.buildBalanceEnquiryResponse(
+                dto.accountId(), dto.accountNumber(), dto.currentBalance(), dto.availableBalance(), dto.holdBalance(), dto.currency()
+        );
+        return ResponseEntity.ok(ofs);
     }
 
-    @GetMapping("/{accountId}/transactions")
-    public ResponseEntity<List<TransactionMaster>> getAccountTransactions(
+    @GetMapping(value = "/{accountId}/transactions", produces = MediaType.TEXT_PLAIN_VALUE)
+    public ResponseEntity<String> getAccountTransactions(
             @PathVariable String accountId,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size) {
-        return ResponseEntity.ok(balanceEnquiryService.getTransactionsByAccountId(accountId, page, size));
+        List<TransactionMaster> txList = balanceEnquiryService.getTransactionsByAccountId(accountId, page, size);
+        List<AccountTransactionDto> dtos = txList.stream()
+                .map(tx -> new AccountTransactionDto(
+                        tx.getTransactionId(),
+                        tx.getSourceAccountId(),
+                        tx.getTargetAccountId(),
+                        tx.getAmount(),
+                        tx.getCurrency(),
+                        tx.getTransactionType(),
+                        tx.getStatus(),
+                        tx.getMemo(),
+                        tx.getCreatedAt()
+                )).toList();
+        String ofs = OfsMessageUtil.buildTransactionEnquiryResponse(accountId, dtos, page, size);
+        return ResponseEntity.ok(ofs);
     }
 }

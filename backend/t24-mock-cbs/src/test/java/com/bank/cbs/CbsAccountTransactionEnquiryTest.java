@@ -64,11 +64,13 @@ class CbsAccountTransactionEnquiryTest {
 
         when(balanceEnquiryService.getTransactionsByAccountId("ACC-100001", 0, 20)).thenReturn(List.of(tx2, tx1));
 
-        ResponseEntity<List<TransactionMaster>> response = controller.getAccountTransactions("ACC-100001", 0, 20);
+        ResponseEntity<String> response = controller.getAccountTransactions("ACC-100001", 0, 20);
         assertNotNull(response.getBody());
-        assertEquals(2, response.getBody().size());
-        assertEquals("TXN-102", response.getBody().get(0).getTransactionId());
-        assertEquals(new BigDecimal("2500.00"), response.getBody().get(0).getAmount());
+        assertTrue(response.getBody().startsWith("//1,SUCCESS"));
+        List<AccountTransactionDto> parsedList = OfsMessageUtil.parseTransactionEnquiryResponse(response.getBody());
+        assertEquals(2, parsedList.size());
+        assertEquals("TXN-102", parsedList.get(0).getTransactionId());
+        assertEquals(new BigDecimal("2500.00"), parsedList.get(0).getAmount());
     }
 
     @Test
@@ -89,10 +91,12 @@ class CbsAccountTransactionEnquiryTest {
 
         when(balanceEnquiryService.getTransactionsByAccountId("ACC-100001", 1, 1)).thenReturn(List.of(tx2));
 
-        ResponseEntity<List<TransactionMaster>> response = controller.getAccountTransactions("ACC-100001", 1, 1);
+        ResponseEntity<String> response = controller.getAccountTransactions("ACC-100001", 1, 1);
         assertNotNull(response.getBody());
-        assertEquals(1, response.getBody().size());
-        assertEquals("TXN-102", response.getBody().get(0).getTransactionId());
+        assertTrue(response.getBody().startsWith("//1,SUCCESS"));
+        List<AccountTransactionDto> parsedList = OfsMessageUtil.parseTransactionEnquiryResponse(response.getBody());
+        assertEquals(1, parsedList.size());
+        assertEquals("TXN-102", parsedList.get(0).getTransactionId());
     }
 
     @Test

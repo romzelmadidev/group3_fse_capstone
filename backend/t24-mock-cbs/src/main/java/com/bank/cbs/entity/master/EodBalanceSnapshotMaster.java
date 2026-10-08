@@ -8,7 +8,7 @@ import java.time.LocalDate;
 import java.time.Instant;
 
 @Entity
-@Table(name = "eod_balance_snapshots")
+@Table(name = "eod_balance_snapshots", schema = "core")
 @Getter
 @Setter
 @NoArgsConstructor

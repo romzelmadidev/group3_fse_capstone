@@ -32,10 +32,27 @@ public class CbsPostingController {
         this.balanceEnquiryService = balanceEnquiryService;
     }
 
-    @PostMapping("/postings/transfer")
-    public ResponseEntity<TransferResponseDto> postTransfer(@RequestBody TransferRequestDto request) {
-        TransferResponseDto response = transferService.executeTransfer(request);
-        return ResponseEntity.ok(response);
+    @PostMapping(value = "/postings/transfer", produces = "text/plain")
+    public ResponseEntity<String> postTransfer(@RequestBody String body) {
+        try {
+            TransferRequestDto req;
+            if (body.trim().startsWith("{")) {
+                req = new com.fasterxml.jackson.databind.ObjectMapper().readValue(body, TransferRequestDto.class);
+            } else {
+                Map<String, String> fields = OfsMessageUtil.parseOfsFields(body);
+                String txId = fields.getOrDefault("TXN.ID", fields.getOrDefault("TRANSACTION.ID", UUID.randomUUID().toString()));
+                String debitAcct = fields.getOrDefault("DEBIT.ACCT.NO", fields.get("SOURCE.ACCOUNT.ID"));
+                String creditAcct = fields.getOrDefault("CREDIT.ACCT.NO", fields.get("DESTINATION.ACCOUNT.ID"));
+                BigDecimal amount = new BigDecimal(fields.get("AMOUNT"));
+                String currency = fields.getOrDefault("CURRENCY", "PHP");
+                String desc = fields.getOrDefault("DESCRIPTION", "Funds Transfer");
+                req = new TransferRequestDto(txId, debitAcct, creditAcct, amount, currency, desc, "ORCHESTRATOR", txId);
+            }
+            TransferResponseDto response = transferService.executeTransfer(req);
+            return ResponseEntity.ok(response.ofsResponse());
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(OfsMessageUtil.buildOfsResponse(false, "ERROR", e.getMessage()));
+        }
     }
 
     @PostMapping(value = "/ofs", consumes = "text/plain", produces = "text/plain")
@@ -65,6 +82,23 @@ public class CbsPostingController {
 
                 TransferResponseDto resp = transferService.executeTransfer(req);
                 return ResponseEntity.ok(resp.ofsResponse());
+            }
+
+            if ("BALANCE.ENQUIRY".equalsIgnoreCase(operation)
+                    || (ofsMessage != null && ofsMessage.contains("ENQUIRY.SELECT") && !ofsMessage.contains("TRANSACTION.LIST"))) {
+                String accountId = fields.get("ACCOUNT.NUMBER");
+                if (accountId == null || accountId.isBlank()) {
+                    accountId = fields.get("ACCOUNT.NUMBER:EQ");
+                }
+                if (accountId == null || accountId.isBlank()) {
+                    accountId = fields.get("ACCOUNT.ID");
+                }
+                if (accountId != null && !accountId.isBlank()) {
+                    var dto = balanceEnquiryService.getBalanceByAccountId(accountId);
+                    return ResponseEntity.ok(OfsMessageUtil.buildBalanceEnquiryResponse(
+                            dto.accountId(), dto.accountNumber(), dto.currentBalance(), dto.availableBalance(), dto.holdBalance(), dto.currency()
+                    ));
+                }
             }
 
             if ("TRANSACTION.LIST".equalsIgnoreCase(operation)

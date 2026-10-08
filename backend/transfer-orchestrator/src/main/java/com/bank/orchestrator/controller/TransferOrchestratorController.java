@@ -55,6 +55,22 @@ public class TransferOrchestratorController {
         return ResponseEntity.ok(transactions);
     }
 
+    @GetMapping("/accounts/{accountId}/balance")
+    public ResponseEntity<Map<String, String>> getAccountBalance(@PathVariable String accountId) {
+        Map<String, String> balance = cbsService.getAccountBalance(accountId);
+        return ResponseEntity.ok(balance);
+    }
+
+    @GetMapping("/system-date")
+    public ResponseEntity<Map<String, String>> getSystemDate() {
+        return ResponseEntity.ok(cbsService.getSystemDate());
+    }
+
+    @PostMapping("/cob/run")
+    public ResponseEntity<Map<String, String>> runCob() {
+        return ResponseEntity.ok(cbsService.triggerCob());
+    }
+
     @PostMapping
     public ResponseEntity<TransferInitiationResponse> initiateTransfer(
             @Valid @RequestBody TransferInitiationRequest request) {

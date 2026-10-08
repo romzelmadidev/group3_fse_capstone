@@ -7,7 +7,7 @@ import java.time.LocalDate;
 import java.time.Instant;
 
 @Entity
-@Table(name = "system_dates")
+@Table(name = "system_dates", schema = "core")
 @Getter
 @Setter
 @NoArgsConstructor

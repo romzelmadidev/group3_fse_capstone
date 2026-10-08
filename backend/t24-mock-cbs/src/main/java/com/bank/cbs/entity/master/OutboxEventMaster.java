@@ -6,7 +6,7 @@ import lombok.*;
 import java.time.Instant;
 
 @Entity
-@Table(name = "outbox_events")
+@Table(name = "outbox_events", schema = "integration")
 @Getter
 @Setter
 @NoArgsConstructor
