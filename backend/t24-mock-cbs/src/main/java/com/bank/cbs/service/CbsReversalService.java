@@ -63,8 +63,10 @@ public class CbsReversalService {
         TransactionMaster originalTx = transactionRepository.findById(dto.originalTransactionId())
                 .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + dto.originalTransactionId()));
 
-        if (!TransactionStatus.Posted.name().equalsIgnoreCase(originalTx.getStatus())) {
-            throw new IllegalStateException("Only POSTED transactions can be reversed. Current status: " + originalTx.getStatus());
+        if (!TransactionStatus.Posted.name().equalsIgnoreCase(originalTx.getStatus())
+                && !"COMMITTED".equalsIgnoreCase(originalTx.getStatus())
+                && !"POSTED".equalsIgnoreCase(originalTx.getStatus())) {
+            throw new IllegalStateException("Only POSTED or COMMITTED transactions can be reversed. Current status: " + originalTx.getStatus());
         }
 
         originalTx.setStatus(TransactionStatus.PendingReversal.name());

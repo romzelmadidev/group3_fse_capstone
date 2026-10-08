@@ -29,17 +29,33 @@ import axios from 'axios';
 // API Clients
 const API_BASE = '/api/v1';
 
+const parseOfsResponse = (text) => {
+  if (!text || typeof text !== 'string') return {};
+  const map = {};
+  const parts = text.split(',');
+  for (const part of parts) {
+    const eqIdx = part.indexOf('=');
+    if (eqIdx !== -1) {
+      let key = part.slice(0, eqIdx).trim();
+      key = key.replace(/:\d+:\d+$/, '');
+      const val = part.slice(eqIdx + 1).trim();
+      map[key] = val;
+    }
+  }
+  return map;
+};
+
 export default function T24TestConsole() {
   const [activeTab, setActiveTab] = useState('transfer'); // transfer | hold | reversal | ofs | cob | dlq
-  const [activeAccount, setActiveAccount] = useState('ACC-1001');
+  const [activeAccount, setActiveAccount] = useState('acc-2002-chk-001');
   const [balanceData, setBalanceData] = useState({
-    accountId: 'ACC-1001',
-    balanceAmount: 150000.0,
+    accountId: 'acc-2002-chk-001',
+    balanceAmount: 8500000.0,
     holdAmount: 0.0,
-    availableBalance: 150000.0
+    availableBalance: 8500000.0
   });
   const [systemDate, setSystemDate] = useState({
-    businessDate: '2026-10-08',
+    businessDate: '2026-10-09',
     status: 'ONLINE',
     postingWindowOpen: true
   });
@@ -49,8 +65,8 @@ export default function T24TestConsole() {
 
   // Transfer State
   const [transferForm, setTransferForm] = useState({
-    sourceAccountId: 'ACC-1001',
-    destinationAccountId: 'ACC-1002',
+    sourceAccountId: 'acc-2002-chk-001',
+    destinationAccountId: 'acc-2003-sav-002',
     amount: '5000.00',
     currency: 'PHP',
     description: 'Test Transfer via CBS Console'
@@ -60,10 +76,10 @@ export default function T24TestConsole() {
 
   // Amount Hold & Reservation State
   const [holdForm, setHoldForm] = useState({
-    accountId: 'ACC-1001',
-    targetAccountId: 'ACC-1002',
+    accountId: 'acc-2002-chk-001',
+    targetAccountId: 'acc-2003-sav-002',
     transactionId: 'TX-RES-' + Math.floor(Math.random() * 90000 + 10000),
-    holdAmount: '10000.00',
+    holdAmount: '1000.00',
     reason: 'PRE_AUTHORIZATION',
     expiryHours: 24,
     externalReference: 'TRANSFER_RESERVATION'
@@ -122,32 +138,39 @@ export default function T24TestConsole() {
     setIsLoadingBalance(true);
     try {
       const res = await axios.get(`${API_BASE}/cbs/accounts/${accId}/balance`);
-      if (res.data) {
-        setBalanceData({
-          accountId: accId,
-          balanceAmount: parseFloat(res.data.balanceAmount || res.data.currentBalance || 0),
-          holdAmount: parseFloat(res.data.holdAmount || 0),
-          availableBalance: parseFloat(res.data.availableBalance || 0)
-        });
+      let bal = 0, hld = 0, avail = 0;
+      if (typeof res.data === 'string') {
+        const ofs = parseOfsResponse(res.data);
+        bal = parseFloat(ofs['CURRENT.BALANCE'] || ofs['WORKING.BALANCE'] || 0);
+        hld = parseFloat(ofs['HOLD.AMOUNT'] || ofs['LOCKED.AMOUNT'] || 0);
+        avail = parseFloat(ofs['AVAILABLE.BALANCE'] !== undefined ? ofs['AVAILABLE.BALANCE'] : (bal - hld));
+      } else if (res.data) {
+        bal = parseFloat(res.data.balanceAmount ?? res.data.currentBalance ?? 0);
+        hld = parseFloat(res.data.holdAmount ?? 0);
+        avail = parseFloat(res.data.availableBalance ?? (bal - hld));
       }
+      setBalanceData({
+        accountId: accId,
+        balanceAmount: isNaN(bal) ? 0 : bal,
+        holdAmount: isNaN(hld) ? 0 : hld,
+        availableBalance: isNaN(avail) ? 0 : avail
+      });
     } catch (e) {
       // Fallback enquiry via OFS or simulated state
       try {
         const ofsRes = await axios.post(`${API_BASE}/cbs/ofs`, `ENQUIRY.SELECT,,USER01/123456,ACCOUNT.NUMBER:EQ=${accId}`, {
           headers: { 'Content-Type': 'text/plain' }
         });
-        const text = ofsRes.data || '';
-        const balMatch = text.match(/WORKING\.BALANCE:1:1=([\d\.]+)/);
-        const holdMatch = text.match(/LOCKED\.AMOUNT:1:1=([\d\.]+)/);
-        const availMatch = text.match(/AVAILABLE\.BALANCE:1:1=([\d\.]+)/);
-        if (balMatch) {
-          setBalanceData({
-            accountId: accId,
-            balanceAmount: parseFloat(balMatch[1]),
-            holdAmount: holdMatch ? parseFloat(holdMatch[1]) : 0,
-            availableBalance: availMatch ? parseFloat(availMatch[1]) : parseFloat(balMatch[1])
-          });
-        }
+        const ofs = parseOfsResponse(ofsRes.data);
+        const bal = parseFloat(ofs['CURRENT.BALANCE'] || ofs['WORKING.BALANCE'] || 0);
+        const hld = parseFloat(ofs['HOLD.AMOUNT'] || ofs['LOCKED.AMOUNT'] || 0);
+        const avail = parseFloat(ofs['AVAILABLE.BALANCE'] !== undefined ? ofs['AVAILABLE.BALANCE'] : (bal - hld));
+        setBalanceData({
+          accountId: accId,
+          balanceAmount: isNaN(bal) ? 0 : bal,
+          holdAmount: isNaN(hld) ? 0 : hld,
+          availableBalance: isNaN(avail) ? 0 : avail
+        });
       } catch (err) {
         console.warn('Balance fetch error:', err);
       }
@@ -162,6 +185,8 @@ export default function T24TestConsole() {
       const res = await axios.get(`${API_BASE}/cbs/holds/account/${accId}`);
       if (Array.isArray(res.data)) {
         setActiveHolds(res.data);
+      } else {
+        setActiveHolds([]);
       }
     } catch {
       setActiveHolds([]);
@@ -172,7 +197,20 @@ export default function T24TestConsole() {
   const fetchSystemDate = async () => {
     try {
       const res = await axios.get(`${API_BASE}/cbs/system-date`);
-      if (res.data) setSystemDate(res.data);
+      if (typeof res.data === 'string') {
+        const ofs = parseOfsResponse(res.data);
+        setSystemDate({
+          businessDate: ofs['BUSINESS.DATE'] || '2026-10-09',
+          status: ofs['STATUS'] || 'ONLINE',
+          postingWindowOpen: ofs['POSTING.WINDOW'] === 'OPEN' || ofs['POSTING.WINDOW.OPEN'] === 'true'
+        });
+      } else if (res.data) {
+        setSystemDate({
+          businessDate: res.data.businessDate || '2026-10-09',
+          status: res.data.status || 'ONLINE',
+          postingWindowOpen: res.data.postingWindowOpen ?? true
+        });
+      }
     } catch (e) {
       console.warn('System date fetch error:', e);
     }
@@ -469,8 +507,13 @@ export default function T24TestConsole() {
     setCobResult(null);
     try {
       const res = await axios.post(`${API_BASE}/cbs/cob/run`);
-      setCobResult({ success: true, data: res.data });
-      showToast(`COB Batch finished! Rolled over to ${res.data.businessDate}`, 'success');
+      let parsed = res.data;
+      if (typeof res.data === 'string') {
+        parsed = parseOfsResponse(res.data);
+      }
+      setCobResult({ success: true, data: parsed });
+      const nextDate = parsed.businessDate || parsed['BUSINESS.DATE'] || 'T+1';
+      showToast(`COB Batch finished! Rolled over to ${nextDate}`, 'success');
       fetchSystemDate();
       fetchBalance(activeAccount);
     } catch (err) {
@@ -581,7 +624,7 @@ export default function T24TestConsole() {
             Select Test Account
           </label>
           <div className="mt-2 flex flex-col gap-1.5">
-            {['ACC-1001', 'ACC-1002', '1000-2000-3001', 'ACC-LOW'].map((acc) => (
+            {['acc-2002-chk-001', 'acc-2001-sav-001', 'acc-2003-sav-002', '1000-2000-3001'].map((acc) => (
               <button
                 key={acc}
                 onClick={() => {
@@ -597,7 +640,7 @@ export default function T24TestConsole() {
               >
                 <span>{acc}</span>
                 <span className="text-2xs text-fg-subtle">
-                  {acc === 'ACC-1001' ? 'Primary' : acc === 'ACC-1002' ? 'Beneficiary' : 'Customer'}
+                  {acc === 'acc-2002-chk-001' ? 'Checking (8.5M)' : acc === 'acc-2001-sav-001' ? 'Savings (25M)' : acc === 'acc-2003-sav-002' ? 'Savings (12.3M)' : 'Primary'}
                 </span>
               </button>
             ))}
@@ -611,7 +654,7 @@ export default function T24TestConsole() {
             <Database className="h-3.5 w-3.5 text-blue-400" />
           </div>
           <div className="mt-2 font-mono text-xl font-bold text-fg">
-            PHP {balanceData.balanceAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            PHP {(balanceData?.balanceAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </div>
           <p className="mt-1 text-2xs text-fg-subtle">Total authoritative ledger balance in `balance_master`</p>
         </div>
@@ -623,7 +666,7 @@ export default function T24TestConsole() {
             <Lock className="h-3.5 w-3.5 text-amber-400" />
           </div>
           <div className="mt-2 font-mono text-xl font-bold text-amber-400">
-            PHP {balanceData.holdAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            PHP {(balanceData?.holdAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </div>
           <p className="mt-1 text-2xs text-fg-subtle">
             {activeHolds.length} active hold(s) via `AC.LOCKED.EVENTS`
@@ -637,7 +680,7 @@ export default function T24TestConsole() {
             <DollarSign className="h-3.5 w-3.5 text-emerald-400" />
           </div>
           <div className="mt-2 font-mono text-xl font-bold text-emerald-400">
-            PHP {balanceData.availableBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            PHP {(balanceData?.availableBalance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </div>
           <p className="mt-1 text-2xs text-fg-subtle">Solvency check: (Working - Hold). Protected from overdraft.</p>
         </div>
