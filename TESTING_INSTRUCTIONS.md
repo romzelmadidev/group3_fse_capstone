@@ -84,6 +84,7 @@ You can verify the database state using either the **Command Line (Docker CLI)**
     * Outbound payload contains generated `TXN.ID` (e.g. `TXN-582910`) and `DEBIT.ACCT.NO=1000-2000-3001`.
     * Inbound CBS response indicates `STATUS=SUCCESS` and status code `1`.
   * The generated Transaction ID (e.g., `TXN-582910`) is automatically populated into the Reversal form.
+  * Under the Execution Evidence card, click the **"Inspect Status Lifecycle History"** button. The modal opens and renders all 4 lifecycle transitions from Core Banking via Orchestrator (`Initiated` ➔ `Authorized` ➔ `Reserved` ➔ `Processing` ➔ `Posted`).
 
 * **Database Table Verification Steps**:
   1. **Check `BALANCE_MASTER` Table (Oracle XE)**:
@@ -99,14 +100,14 @@ You can verify the database state using either the **Command Line (Docker CLI)**
 
   2. **Check `TRANSACTIONS` Table (Oracle XE)**:
      ```sql
-     SELECT transaction_id, source_account_id, target_account_id, amount, currency, transaction_type, status, memo, created_at 
+     SELECT transaction_id, from_account_id, to_account_id, amount, currency, transaction_type, status, memo, created_at 
      FROM transactions 
      WHERE transaction_id = '<TXN_ID>';
      ```
      * **Expected Invariant**:
        * Record exists with `status = 'Posted'`.
        * `transaction_type = 'INTRA_BANK'`, `amount = 5000.0000`, `currency = 'PHP'`.
-       * `source_account_id = '1000-2000-3001'`, `target_account_id = '1000-2000-3002'`.
+       * `from_account_id = '1000-2000-3001'`, `to_account_id = '1000-2000-3002'`.
 
   3. **Check `GL_LEDGER` Table (Oracle XE - Double-Entry Accounting)**:
      ```sql
@@ -120,15 +121,19 @@ You can verify the database state using either the **Command Line (Docker CLI)**
          * **Credit leg**: `gl_code = '20100'`, `debit_amount = 0.0000`, `credit_amount = 5000.0000` (beneficiary addition).
        * Total Debits equals Total Credits (`SUM(debit_amount) == SUM(credit_amount)`).
 
-  4. **Check `TRANSACTION_STATUS_HISTORY` Table (Oracle XE - Audit Trail)**:
+  4. **Check `TRANSACTION_STATUS_HISTORY` Table (Oracle XE - Complete Lifecycle Audit Trail)**:
      ```sql
-     SELECT history_id, transaction_id, from_status, to_status, change_reason, actor_id, actor_type, changed_at 
+     SELECT history_id, transaction_id, from_status, to_status, change_reason, reason_details, actor_id, actor_type, changed_at 
      FROM transaction_status_history 
-     WHERE transaction_id = '<TXN_ID>';
+     WHERE transaction_id = '<TXN_ID>' 
+     ORDER BY changed_at ASC;
      ```
      * **Expected Invariant**:
-       * Entry logged with `from_status = NULL`, `to_status = 'Posted'`.
-       * `change_reason = 'ACID_LEDGER_COMMITTED'`, `actor_type = 'SYSTEM_CBS'`.
+       * Exactly **four chronological lifecycle transition records** are saved for the funds transfer:
+         1. `from_status = NULL` (or `Initiated`) ➔ `to_status = 'Authorized'`: `change_reason = 'BIOMETRIC_AUTH_VERIFIED'`, `actor_id = '1000-2000-3001'`, `actor_type = 'CUSTOMER'`.
+         2. `from_status = 'Authorized'` ➔ `to_status = 'Reserved'`: `change_reason = 'FUNDS_RESERVATION_EARMARKED'`, `actor_id = 'SYSTEM_CBS'`, `actor_type = 'SYSTEM_CBS'`.
+         3. `from_status = 'Reserved'` ➔ `to_status = 'Processing'`: `change_reason = 'CBS_OFS_PROCESSING'`, `actor_id = 'SYSTEM_CBS'`, `actor_type = 'SYSTEM_CBS'`.
+         4. `from_status = 'Processing'` ➔ `to_status = 'Posted'`: `change_reason = 'ACID_LEDGER_COMMITTED'`, `actor_id = 'SYSTEM_CBS'`, `actor_type = 'SYSTEM_CBS'`.
 
   5. **Check `OUTBOX_EVENTS` Table (Oracle XE - Transactional Outbox)**:
      ```sql
@@ -160,30 +165,44 @@ You can verify the database state using either the **Command Line (Docker CLI)**
 * **Frontend Verification Checkpoints**:
   * The ledger table renders the transaction list matching the Temenos `ENQUIRY.SELECT` dataset.
   * The transfer from **Test 1.1** appears with `Amount: ₱5,000.00`, `Type: INTRA_BANK`, and `Status: POSTED`.
-  * Click the **"Audit Status Timeline"** / **"View History"** button on the transaction row.
-  * A modal opens showing the audit progression from `TransactionStatusHistoryMaster`:
-    * `fromStatus`: `null` ➔ `toStatus`: `POSTED`
-    * `changeReason`: `ACID_LEDGER_COMMITTED`
-    * `actorType`: `SYSTEM_CBS`
+  * Click the **"History"** / **"Audit Status Timeline"** button on the transaction row.
+  * A modal opens showing the complete audit progression from `TransactionStatusHistoryMaster`:
+    * Step 1: `INITIATED` ➔ `Authorized` (`BIOMETRIC_AUTH_VERIFIED` — Customer authorization and risk validation passed)
+    * Step 2: `Authorized` ➔ `Reserved` (`FUNDS_RESERVATION_EARMARKED` — Funds reservation earmarked in core balance)
+    * Step 3: `Reserved` ➔ `Processing` (`CBS_OFS_PROCESSING` — Core OFS transaction processing initiated)
+    * Step 4: `Processing` ➔ `Posted` (`ACID_LEDGER_COMMITTED` — ACID double-entry ledger posting committed)
 
-* **Database Table Verification Steps**:
+* **Database & Direct Endpoint Verification Steps**:
   1. **Verify On-Screen Records Match `TRANSACTIONS` (Oracle XE)**:
      ```sql
-     SELECT transaction_id, source_account_id, target_account_id, amount, currency, status, created_at 
+     SELECT transaction_id, from_account_id, to_account_id, amount, currency, status, created_at 
      FROM transactions 
-     WHERE source_account_id = '1000-2000-3001' OR target_account_id = '1000-2000-3001' 
+     WHERE from_account_id = '1000-2000-3001' OR to_account_id = '1000-2000-3001' 
      ORDER BY created_at DESC FETCH FIRST 10 ROWS ONLY;
      ```
      * **Expected Invariant**: The record count, transaction IDs, and amounts in the database match the UI list.
 
   2. **Verify Modal Lifecycle Matches `TRANSACTION_STATUS_HISTORY` (Oracle XE)**:
      ```sql
-     SELECT history_id, from_status, to_status, change_reason, actor_id, actor_type, changed_at 
+     SELECT history_id, from_status, to_status, change_reason, reason_details, actor_id, actor_type, changed_at 
      FROM transaction_status_history 
      WHERE transaction_id = '<TXN_ID>' 
      ORDER BY changed_at ASC;
      ```
-     * **Expected Invariant**: Displays the sequential audit states for the transaction.
+     * **Expected Invariant**: Displays the sequential audit states for the transaction matching the modal inspector.
+
+  3. **Verify Direct Status History Endpoints (OFS & REST)**:
+     * **Via Transfer Orchestrator (JSON)**:
+       ```bash
+       curl -s "http://localhost:8080/api/v1/transfers/transactions/<TXN_ID>/status-history?page=0&size=20"
+       ```
+       *Returns JSON array of status transition objects with history IDs, statuses, and reasons.*
+     * **Via T24 CBS Core (Temenos OFS Wire Syntax)**:
+       ```bash
+       curl -s "http://localhost:8085/api/v1/cbs/transactions/<TXN_ID>/status-history?page=0&size=20"
+       ```
+       *Returns raw Temenos OFS syntax:*
+       `TRANSACTION.STATUS.HISTORY,ENQUIRY/I/PROCESS//<TXN_ID>,TOTAL.RECORDS:4,PAGE:0,SIZE:20,RECORD.1:...,RECORD.2:...`
 
 ---
 
@@ -206,6 +225,7 @@ You can verify the database state using either the **Command Line (Docker CLI)**
   * Toast confirms *"Reversal APPROVED via Orchestrator! Compensating GL entries posted and balances reversed."*.
   * The **Working Balance** of `1000-2000-3001` increases by ₱5,000.00 (refunded).
   * In the **Live Reversal Requests Backlog** table below, the ticket status changes to `APPROVED`.
+  * Click the **"History"** button on the approved reversal row to view the full audit progression modal from `TransactionStatusHistoryMaster`.
   * Selecting `1000-2000-3002` confirms its balance was debited back by ₱5,000.00.
 
 * **Database Table Verification Steps**:
@@ -233,7 +253,7 @@ You can verify the database state using either the **Command Line (Docker CLI)**
 
   3. **Check `TRANSACTION_STATUS_HISTORY` Table (Oracle XE)**:
      ```sql
-     SELECT from_status, to_status, change_reason, actor_id, actor_type 
+     SELECT from_status, to_status, change_reason, reason_details, actor_id, actor_type 
      FROM transaction_status_history 
      WHERE transaction_id = '<ORIGINAL_TX_ID>' 
      ORDER BY changed_at DESC FETCH FIRST 1 ROWS ONLY;
@@ -270,7 +290,7 @@ You can verify the database state using either the **Command Line (Docker CLI)**
      -- Check original transaction:
      SELECT transaction_id, status FROM transactions WHERE transaction_id = '<ORIGINAL_TX_ID>';
      -- Check generated compensating reversal transaction:
-     SELECT transaction_id, source_account_id, target_account_id, amount, transaction_type, status, approved_by 
+     SELECT transaction_id, from_account_id, to_account_id, amount, transaction_type, status, approved_by 
      FROM transactions 
      WHERE transaction_id = '<REVERSAL_TX_ID>';
      ```
@@ -278,10 +298,30 @@ You can verify the database state using either the **Command Line (Docker CLI)**
        * Original transaction status updated to `Reversed`.
        * New compensating transaction created with:
          * `transaction_id = '<REVERSAL_TX_ID>'`.
-         * `source_account_id = '1000-2000-3002'` (beneficiary), `target_account_id = '1000-2000-3001'` (sender).
+         * `from_account_id = '1000-2000-3002'` (beneficiary), `to_account_id = '1000-2000-3001'` (sender).
          * `transaction_type = 'REVERSAL'`, `status = 'Reversed'`, `approved_by = 'MGR_BOB'`.
 
-  4. **Check `GL_LEDGER` Table (Oracle XE - Compensating Journal Entries)**:
+  4. **Check `TRANSACTION_STATUS_HISTORY` Table (Oracle XE - Lifecycle Transitions)**:
+     ```sql
+     -- 1. Status history for original transaction:
+     SELECT from_status, to_status, change_reason, reason_details, actor_id, actor_type 
+     FROM transaction_status_history 
+     WHERE transaction_id = '<ORIGINAL_TX_ID>' 
+     ORDER BY changed_at DESC FETCH FIRST 1 ROWS ONLY;
+     -- Expected: from_status = 'PendingReversal', to_status = 'Reversed', change_reason = 'CHECKER_REVERSAL_APPROVED_SETTLED', actor_id = 'MGR_BOB', actor_type = 'MANAGER_CHECKER'
+
+     -- 2. Status history for generated compensating transaction:
+     SELECT from_status, to_status, change_reason, reason_details, actor_id, actor_type 
+     FROM transaction_status_history 
+     WHERE transaction_id = '<REVERSAL_TX_ID>' 
+     ORDER BY changed_at ASC;
+     -- Expected: 3 sequential rows:
+     -- (1) NULL -> 'Initiated' (CHECKER_REVERSAL_APPROVED_SETTLED, actor: MGR_BOB)
+     -- (2) 'Initiated' -> 'Processing' (CBS_OFS_PROCESSING, actor: SYSTEM_CBS)
+     -- (3) 'Processing' -> 'Reversed' (CHECKER_REVERSAL_APPROVED_SETTLED, actor: MGR_BOB)
+     ```
+
+  5. **Check `GL_LEDGER` Table (Oracle XE - Compensating Journal Entries)**:
      ```sql
      SELECT journal_id, transaction_id, gl_code, debit_amount, credit_amount 
      FROM gl_ledger 
@@ -292,7 +332,7 @@ You can verify the database state using either the **Command Line (Docker CLI)**
          * Debit entry: `gl_code = '20100'`, `debit_amount = 5000.0000`, `credit_amount = 0.0000`.
          * Credit entry: `gl_code = '20100'`, `debit_amount = 0.0000`, `credit_amount = 5000.0000`.
 
-  5. **Check `ledger_mutation_audit` Table (PostgreSQL Audit Vault)**:
+  6. **Check `ledger_mutation_audit` Table (PostgreSQL Audit Vault)**:
      ```sql
      SELECT audit_id, transaction_id, mutation_type, mutation_amount, status 
      FROM ledger_mutation_audit 
@@ -407,12 +447,16 @@ You can verify the database state using either the **Command Line (Docker CLI)**
 
      * **Scenario 4: Anti-Scam Cooling-Off Period (BSP Circular 1140)**
        * *Payload*: ₱300,000.00.
-       * *Pass Criteria*: Status `Reserved`, `coolingOffRequired=true`, and 600-second lock.
-       * **Database Verification (Oracle XE & Redis)**:
+       * *Pass Criteria*: Status `Reserved`, `coolingOffRequired=true`, and 600-second lock (`coolingOffExpiresInSeconds=600`).
+       * **Database & Cache Verification (Oracle XE & Redis)**:
          ```sql
+         -- Verify balances in Oracle XE are untouched:
          SELECT balance_amount, hold_amount FROM balance_master WHERE account_id = '1000-2000-3001';
+         -- Verify NO transaction or status history rows exist in CBS Master DB:
+         SELECT COUNT(*) FROM transactions WHERE transaction_id LIKE 'SCEN-COOL-%';
+         SELECT COUNT(*) FROM transaction_status_history WHERE transaction_id LIKE 'SCEN-COOL-%';
          ```
-         *Expected Invariant*: Balances are NOT debited in Oracle yet because the transfer payload is held in Redis with key `cooloff:SCEN-COOL-...` (TTL 600s).
+         *Expected Invariant*: Count is `0` for both tables. CBS enforces pure OFS wire protocol and does not receive premature hold records; the entire transfer request is decoupled and safely held in Redis under key `tx:cooloff:SCEN-COOL-...` (TTL 600s). Balances remain unmutated until settlement.
 
      * **Scenario 5: Strong Customer Authentication (SCA) Step-Up**
        * *Payload*: ₱75,000.00 without biometric signature.
@@ -586,8 +630,11 @@ curl -X POST http://localhost:8080/api/v1/transfers/verify-biometric \
 
 ---
 
-### Test 2.3: Anti-Scam Cooling-Off Polling & Cancellation
-Implemented in [`TransferOrchestratorController.java#L145-L165`](file:///c:/Users/HRR83780/Downloads/group3_fse_capstone/backend/transfer-orchestrator/src/main/java/com/bank/orchestrator/controller/TransferOrchestratorController.java#L145-L165) and [`CoolOffService.java`](file:///c:/Users/HRR83780/Downloads/group3_fse_capstone/backend/transfer-orchestrator/src/main/java/com/bank/orchestrator/service/CoolOffService.java).
+### Test 2.3: Anti-Scam Cooling-Off Polling & Cancellation (Decoupled Redis Architecture)
+Implemented in [`TransferOrchestratorController.java#L145-L165`](file:///c:/Users/HRR83780/Downloads/group3_fse_capstone/backend/transfer-orchestrator/src/main/java/com/bank/orchestrator/controller/TransferOrchestratorController.java#L145-L165), [`TransferOrchestrationService.java`](file:///c:/Users/HRR83780/Downloads/group3_fse_capstone/backend/transfer-orchestrator/src/main/java/com/bank/orchestrator/service/TransferOrchestrationService.java), and [`CoolOffService.java`](file:///c:/Users/HRR83780/Downloads/group3_fse_capstone/backend/transfer-orchestrator/src/main/java/com/bank/orchestrator/service/CoolOffService.java).
+
+> **Architectural Note (Pure OFS & State Decoupling)**: 
+> Temenos T24 CBS strictly enforces a pure Temenos OFS wire protocol (`text/plain`). To maintain architectural separation of concerns, the Transfer Orchestrator holds high-value cooling-off state (`amount >= 250,000.00`) exclusively in Redis under key `tx:cooloff:<transactionId>` with a 10-minute (600s) TTL. CBS is **never notified** of pending holds or cancellations, ensuring zero premature writes to Oracle XE `transactions` or `transaction_status_history` tables. Only when the cooling-off window finishes and the transfer is explicitly released does the Orchestrator submit the raw OFS message (`FUNDS.TRANSFER,INITIATE...`) to CBS.
 
 #### Step 1: Initiate Transfer Exceeding ₱250,000 Threshold
 ```bash
@@ -625,7 +672,31 @@ curl http://localhost:8080/api/v1/transfers/TXN-COOL-101/cool-off
 }
 ```
 
-#### Step 3: Cancel Transfer During Cooling-Off Period
+#### Step 3: Inspect Redis Cache State (Active Hold)
+```bash
+docker exec -i redis redis-cli GET tx:cooloff:TXN-COOL-101
+docker exec -i redis redis-cli TTL tx:cooloff:TXN-COOL-101
+```
+*Expected Invariant*:
+* Returns the complete serialized JSON request payload.
+* TTL returns remaining seconds ($\le 600$).
+
+#### Step 4: Verify Oracle XE Isolation (Zero Pre-Posting Mutation)
+```sql
+-- Balances in Oracle XE are NOT debited or frozen:
+SELECT account_id, balance_amount, hold_amount, available_balance 
+FROM balance_master 
+WHERE account_id = '1000-2000-3001';
+
+-- Zero transaction records in CBS Master DB:
+SELECT COUNT(*) FROM transactions WHERE transaction_id = 'TXN-COOL-101';
+
+-- Zero status history transitions in CBS:
+SELECT COUNT(*) FROM transaction_status_history WHERE transaction_id = 'TXN-COOL-101';
+```
+*Expected Invariant*: Count is `0`. Pure OFS decoupling ensures CBS has no record of the transaction during the cooling-off hold.
+
+#### Step 5: Cancel Transfer During Cooling-Off Period
 ```bash
 curl -X POST http://localhost:8080/api/v1/transfers/cancel \
   -H "Content-Type: application/json" \
@@ -641,7 +712,23 @@ curl -X POST http://localhost:8080/api/v1/transfers/cancel \
   "message": "Transfer cancelled successfully during cooling-off window."
 }
 ```
-*Verification*: Check `TXN-COOL-101/cool-off` again; `isCoolingOff` is now `false`, and the ₱300,000.00 was never debited.
+
+#### Step 6: Post-Cancellation Verification
+1. **Redis Key Eviction**:
+   ```bash
+   docker exec -i redis redis-cli GET tx:cooloff:TXN-COOL-101
+   ```
+   *Returns*: `(nil)`. The hold key was deleted immediately.
+2. **Polling API Verification**:
+   ```bash
+   curl http://localhost:8080/api/v1/transfers/TXN-COOL-101/cool-off
+   ```
+   *Returns*: `{"transactionId":"TXN-COOL-101","isCoolingOff":false,"remainingSeconds":0}`.
+3. **Database Ledger Cleanliness**:
+   ```sql
+   SELECT COUNT(*) FROM transactions WHERE transaction_id = 'TXN-COOL-101';
+   ```
+   *Returns*: `0`. The transaction never touched CBS or mutated customer balances.
 
 ---
 
@@ -846,7 +933,7 @@ curl http://localhost:8080/api/v1/compliance/statements/1000-2000-3001/pdf --out
 #### C. Redis Distributed Locks & Cache (Redis Insight)
 1. Open **`http://localhost:5540`** in your browser.
 2. Browse active keys:
-   * `cooloff:*`: Active 10-minute high-value transfer hold payloads.
+   * `tx:cooloff:*`: Active 10-minute high-value transfer hold payloads (decoupled from CBS until settlement).
    * `idemp:*`: Distributed idempotency locks with TTL.
    * `blacklist:*`: Revoked JWT tokens after user logout.
 
@@ -858,16 +945,17 @@ curl http://localhost:8080/api/v1/compliance/statements/1000-2000-3001/pdf --out
 | :--- | :--- | :--- |
 | **Intra-bank Transfer** | T24 Lab (`/t24-test`) Tab 1 | Working balance decrements by exact amount; GL entries committed. |
 | **Transaction History** | T24 Lab (`/t24-test`) Tab 2 | `ENQUIRY.SELECT` table lists transaction; Audit modal displays lifecycle. |
+| **Status Lifecycle Audit**| T24 Lab Tab 1/2/3 / CBS OFS | Full transitions recorded (`Initiated`➔`Authorized`➔`Reserved`➔`Processing`➔`Posted`). |
 | **Four-Eyes Reversal** | T24 Lab (`/t24-test`) Tab 3 | Maker tickets status `PendingReversal`; independent Checker approves and refunds. |
 | **Direct Saga Reversal** | T24 Lab (`/t24-test`) Tab 3 | Automated compensation rollback completes via raw OFS without human queue. |
 | **DLQ Replay** | T24 Lab (`/t24-test`) Tab 4 | Simulated error enqueued; clicking Replay resolves incident in audit vault. |
 | **Overdraft Rejection** | T24 Lab (`/t24-test`) Tab 5 | ₱999M transfer rejected with HTTP 400 Insufficient Funds; zero balance change. |
 | **Circular Transfer Block**| T24 Lab (`/t24-test`) Tab 5 | Same source & destination rejected with HTTP 400. |
-| **Cooling-Off Interception**| T24 Lab Tab 5 / API | ₱300k transfer paused in `Reserved` status with 600s timer (BSP Cir. 1140). |
+| **Cooling-Off Interception**| T24 Lab Tab 5 / API | ₱300k transfer held in Redis (`tx:cooloff:*`) with 600s timer; zero writes to CBS. |
 | **Biometric Challenge** | T24 Lab Tab 5 / API | ₱75k transfer paused in `Authorized` status with challenge token. |
 | **COB/EOD Batch Processing**| `POST /api/v1/cbs/cob/run` | ADB fee deducted, interest accrued, GL reconciled, date advances to $T+1$. |
 | **Biometric Settlement** | `POST /verify-biometric` | Submitting signature settles transfer to CBS core with `status: Posted`. |
-| **Cooling-Off Cancellation**| `POST /transfers/cancel` | Transfer cancelled before 10-minute hold window expires; funds released. |
+| **Cooling-Off Cancellation**| `POST /transfers/cancel` | Transfer cancelled; Redis key evicted immediately; funds never touched. |
 | **Scam Advisory Bypass** | `POST /transfers` with ack | Supplying `scamAdvisoryAcknowledged: true` overrides advisory warning. |
 | **Beneficiary Insolvency** | `POST /reversals/approve` | Reversal blocked if beneficiary account lacks available funds for debit. |
 | **Account Freezing** | Admin Portal / `PATCH /status`| Account status set to `FROZEN`; subsequent transactions blocked. |
