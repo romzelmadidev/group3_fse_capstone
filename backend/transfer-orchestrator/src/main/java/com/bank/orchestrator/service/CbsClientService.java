@@ -197,14 +197,9 @@ public class CbsClientService {
     }
 
     public TransferInitiationResponse cbsPostingFallback(TransferInitiationRequest request, String txId, boolean fundsHeld, Throwable t) {
-        if (t instanceof ResponseStatusException rse) {
-            throw rse;
-        }
-        if (t instanceof org.springframework.web.reactive.function.client.WebClientResponseException wcre && wcre.getStatusCode().is4xxClientError()) {
-            String respBody = wcre.getResponseBodyAsString();
-            Map<String, String> fields = OfsMessageUtil.parseOfsFields(respBody);
-            String errMsg = fields.getOrDefault("MESSAGE", fields.getOrDefault("ERROR", wcre.getMessage()));
-            throw new ResponseStatusException(wcre.getStatusCode(), "Posting failed in CBS: " + errMsg);
+        ResponseStatusException clientEx = extractClientException(t);
+        if (clientEx != null) {
+            throw clientEx;
         }
 
         log.error("CBS Circuit Breaker fallback activated for txId={}: {}", txId, t.getMessage());
@@ -242,5 +237,22 @@ public class CbsClientService {
                 "Core banking system is temporarily unavailable. Transaction queued into DLQ for safe replay: incident=" + incidentId,
                 t
         );
+    }
+
+    private ResponseStatusException extractClientException(Throwable t) {
+        Throwable curr = t;
+        while (curr != null) {
+            if (curr instanceof ResponseStatusException rse && rse.getStatusCode().is4xxClientError()) {
+                return rse;
+            }
+            if (curr instanceof org.springframework.web.reactive.function.client.WebClientResponseException wcre && wcre.getStatusCode().is4xxClientError()) {
+                String respBody = wcre.getResponseBodyAsString();
+                Map<String, String> fields = OfsMessageUtil.parseOfsFields(respBody);
+                String errMsg = fields.getOrDefault("MESSAGE", fields.getOrDefault("ERROR", wcre.getMessage()));
+                return new ResponseStatusException(wcre.getStatusCode(), "Posting failed in CBS: " + errMsg);
+            }
+            curr = curr.getCause();
+        }
+        return null;
     }
 }

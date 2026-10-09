@@ -165,22 +165,4 @@ public class TransferOrchestratorController {
                 "message", cancelled ? "Transfer cancelled successfully during cooling-off window." : "Cooling-off window expired or not found"
         ));
     }
-
-    @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<Map<String, Object>> handleResponseStatusException(ResponseStatusException ex) {
-        if (ex.getStatusCode() == HttpStatus.FORBIDDEN) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
-                    "error", "TRANSACTION_DECLINED",
-                    "code", "TX_DECLINED_POLICY",
-                    "status", "Cancelled",
-                    "message", "Transaction could not be processed at this time. Please contact customer support.",
-                    "timestampUtc", Instant.now().toString()
-            ));
-        }
-        return ResponseEntity.status(ex.getStatusCode()).body(Map.of(
-                "error", ex.getStatusCode().toString(),
-                "message", ex.getReason() != null ? ex.getReason() : ex.getMessage(),
-                "timestampUtc", Instant.now().toString()
-        ));
-    }
 }

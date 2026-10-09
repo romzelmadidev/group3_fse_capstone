@@ -62,15 +62,22 @@ public class ReversalOrchestratorController {
         String maker = String.valueOf(request.getOrDefault("makerId", "MAKER01"));
         String ofsMsg = OfsMessageUtil.buildReversalRequestMessage(origTx, reason, maker);
 
-        String response = cbsWebClient.post()
-                .uri("/api/v1/cbs/reversals/request")
-                .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
-                .bodyValue(ofsMsg)
-                .retrieve()
-                .bodyToMono(String.class)
-                .timeout(Duration.ofMillis(3000))
-                .block();
-        return ResponseEntity.ok(OfsMessageUtil.parseOfsFields(response));
+        try {
+            String response = cbsWebClient.post()
+                    .uri("/api/v1/cbs/reversals/request")
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
+                    .bodyValue(ofsMsg)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofMillis(3000))
+                    .block();
+            return ResponseEntity.ok(OfsMessageUtil.parseOfsFields(response));
+        } catch (org.springframework.web.reactive.function.client.WebClientResponseException ex) {
+            String respBody = ex.getResponseBodyAsString();
+            Map<String, String> fields = OfsMessageUtil.parseOfsFields(respBody);
+            String errMsg = fields.getOrDefault("MESSAGE", fields.getOrDefault("ERROR", ex.getMessage()));
+            throw new org.springframework.web.server.ResponseStatusException(ex.getStatusCode(), errMsg);
+        }
     }
 
     @PostMapping("/approve")
@@ -80,15 +87,22 @@ public class ReversalOrchestratorController {
         String reason = String.valueOf(request.getOrDefault("checkerNotes", "Approved"));
         String ofsMsg = OfsMessageUtil.buildReversalApprovalMessage(ticketId, checker, reason);
 
-        String response = cbsWebClient.post()
-                .uri("/api/v1/cbs/reversals/approve")
-                .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
-                .bodyValue(ofsMsg)
-                .retrieve()
-                .bodyToMono(String.class)
-                .timeout(Duration.ofMillis(3000))
-                .block();
-        return ResponseEntity.ok(OfsMessageUtil.parseOfsFields(response));
+        try {
+            String response = cbsWebClient.post()
+                    .uri("/api/v1/cbs/reversals/approve")
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
+                    .bodyValue(ofsMsg)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofMillis(3000))
+                    .block();
+            return ResponseEntity.ok(OfsMessageUtil.parseOfsFields(response));
+        } catch (org.springframework.web.reactive.function.client.WebClientResponseException ex) {
+            String respBody = ex.getResponseBodyAsString();
+            Map<String, String> fields = OfsMessageUtil.parseOfsFields(respBody);
+            String errMsg = fields.getOrDefault("MESSAGE", fields.getOrDefault("ERROR", ex.getMessage()));
+            throw new org.springframework.web.server.ResponseStatusException(ex.getStatusCode(), errMsg);
+        }
     }
 
     @PostMapping("/reject")
@@ -98,15 +112,22 @@ public class ReversalOrchestratorController {
         String reason = String.valueOf(request.getOrDefault("rejectionReason", request.getOrDefault("checkerNotes", "Rejected")));
         String ofsMsg = OfsMessageUtil.buildReversalRejectionMessage(ticketId, checker, reason);
 
-        String response = cbsWebClient.post()
-                .uri("/api/v1/cbs/reversals/reject")
-                .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
-                .bodyValue(ofsMsg)
-                .retrieve()
-                .bodyToMono(String.class)
-                .timeout(Duration.ofMillis(3000))
-                .block();
-        return ResponseEntity.ok(OfsMessageUtil.parseOfsFields(response));
+        try {
+            String response = cbsWebClient.post()
+                    .uri("/api/v1/cbs/reversals/reject")
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
+                    .bodyValue(ofsMsg)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofMillis(3000))
+                    .block();
+            return ResponseEntity.ok(OfsMessageUtil.parseOfsFields(response));
+        } catch (org.springframework.web.reactive.function.client.WebClientResponseException ex) {
+            String respBody = ex.getResponseBodyAsString();
+            Map<String, String> fields = OfsMessageUtil.parseOfsFields(respBody);
+            String errMsg = fields.getOrDefault("MESSAGE", fields.getOrDefault("ERROR", ex.getMessage()));
+            throw new org.springframework.web.server.ResponseStatusException(ex.getStatusCode(), errMsg);
+        }
     }
 
     @PostMapping({"/direct", "/compensate"})
@@ -118,14 +139,21 @@ public class ReversalOrchestratorController {
         String ofsMsg = String.format("FUNDS.TRANSFER,REVERSAL/I/PROCESS//%s,%s/123456,ORIGINAL.FT.NO=%s,REASON=%s,CHECKER.ID=%s,MAKER.ID=%s",
                 origTx, maker, origTx, reason, checker, maker);
 
-        String response = cbsWebClient.post()
-                .uri("/api/v1/cbs/reversal")
-                .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
-                .bodyValue(ofsMsg)
-                .retrieve()
-                .bodyToMono(String.class)
-                .timeout(Duration.ofMillis(3000))
-                .block();
-        return ResponseEntity.ok(OfsMessageUtil.parseOfsFields(response));
+        try {
+            String response = cbsWebClient.post()
+                    .uri("/api/v1/cbs/reversal")
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
+                    .bodyValue(ofsMsg)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofMillis(3000))
+                    .block();
+            return ResponseEntity.ok(OfsMessageUtil.parseOfsFields(response));
+        } catch (org.springframework.web.reactive.function.client.WebClientResponseException ex) {
+            String respBody = ex.getResponseBodyAsString();
+            Map<String, String> fields = OfsMessageUtil.parseOfsFields(respBody);
+            String errMsg = fields.getOrDefault("MESSAGE", fields.getOrDefault("ERROR", ex.getMessage()));
+            throw new org.springframework.web.server.ResponseStatusException(ex.getStatusCode(), errMsg);
+        }
     }
 }
