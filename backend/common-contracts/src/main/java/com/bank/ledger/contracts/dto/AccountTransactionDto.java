@@ -70,4 +70,33 @@ public class AccountTransactionDto {
     @JsonProperty("created_at")
     @JsonAlias("createdAt")
     private Instant createdAt;
+
+    @JsonProperty("before_balance")
+    @JsonAlias({"beforeBalance", "before_balance"})
+    private BigDecimal beforeBalance;
+
+    @JsonProperty("after_balance")
+    @JsonAlias({"afterBalance", "after_balance"})
+    private BigDecimal afterBalance;
+
+    public AccountTransactionDto(
+            String transactionId,
+            String sourceAccountId,
+            String targetAccountId,
+            BigDecimal amount,
+            String currency,
+            String transactionType,
+            String status,
+            String memo,
+            Instant createdAt) {
+        this.transactionId = transactionId;
+        this.sourceAccountId = sourceAccountId;
+        this.targetAccountId = targetAccountId;
+        this.amount = amount;
+        this.currency = currency;
+        this.transactionType = transactionType;
+        this.status = status;
+        this.memo = memo;
+        this.createdAt = createdAt;
+    }
 }

@@ -156,6 +156,7 @@ public class CbsFundsTransferService {
 
         // 4. Update balances
         Instant now = Instant.now();
+        BigDecimal sourceBefore = sourceBal.getBalanceAmount();
         sourceBal.setBalanceAmount(sourceBal.getBalanceAmount().subtract(request.amount()));
         if (isHeld) {
             BigDecimal newHold = currentSourceHold.subtract(request.amount());
@@ -168,6 +169,7 @@ public class CbsFundsTransferService {
         sourceBal.setAvailableBalance(sourceBal.getBalanceAmount().subtract(sourceHold));
         sourceBal.setUpdatedAt(now);
         balanceRepository.save(sourceBal);
+        BigDecimal sourceAfter = sourceBal.getBalanceAmount();
 
         destBal.setBalanceAmount(destBal.getBalanceAmount().add(request.amount()));
         BigDecimal destHold = destBal.getHoldAmount() != null ? destBal.getHoldAmount() : BigDecimal.ZERO;
@@ -212,6 +214,8 @@ public class CbsFundsTransferService {
                     .sourceAccountId(sourceId)
                     .targetAccountId(destId)
                     .amount(request.amount())
+                    .beforeBalance(sourceBefore)
+                    .afterBalance(sourceAfter)
                     .currency(request.currency() != null ? request.currency() : "PHP")
                     .transactionType("INTRA_BANK")
                     .status(TransactionStatus.Posted.name())
@@ -222,6 +226,8 @@ public class CbsFundsTransferService {
                     .build();
         } else {
             tx.setStatus(TransactionStatus.Posted.name());
+            tx.setBeforeBalance(sourceBefore);
+            tx.setAfterBalance(sourceAfter);
             tx.setUpdatedAt(now);
         }
         transactionRepository.save(tx);
@@ -426,6 +432,10 @@ public class CbsFundsTransferService {
         String txId = request.transactionId() != null ? request.transactionId() : UUID.randomUUID().toString();
         Instant now = Instant.now();
 
+        BigDecimal currentBal = balanceRepository.findById(request.sourceAccountId())
+                .map(BalanceMaster::getBalanceAmount)
+                .orElse(BigDecimal.ZERO);
+
         TransactionMaster tx = transactionRepository.findById(txId).orElse(null);
         if (tx == null) {
             tx = TransactionMaster.builder()
@@ -434,6 +444,8 @@ public class CbsFundsTransferService {
                     .sourceAccountId(request.sourceAccountId())
                     .targetAccountId(request.destinationAccountId())
                     .amount(request.amount())
+                    .beforeBalance(currentBal)
+                    .afterBalance(currentBal)
                     .currency(request.currency() != null ? request.currency() : "PHP")
                     .transactionType("INTRA_BANK")
                     .status(TransactionStatus.Failed.name())
@@ -444,6 +456,12 @@ public class CbsFundsTransferService {
                     .build();
         } else {
             tx.setStatus(TransactionStatus.Failed.name());
+            if (tx.getBeforeBalance() == null) {
+                tx.setBeforeBalance(currentBal);
+            }
+            if (tx.getAfterBalance() == null) {
+                tx.setAfterBalance(currentBal);
+            }
             tx.setUpdatedAt(now);
         }
         transactionRepository.save(tx);
@@ -539,6 +557,10 @@ public class CbsFundsTransferService {
     @Transactional(propagation = Propagation.REQUIRES_NEW, transactionManager = "masterTransactionManager")
     public void recordCancelledTransfer(String txId, String sourceAccountId, String destAccountId, BigDecimal amount, String currency, String cancelReason, String reasonDetails, String actorId, String actorType) {
         Instant now = Instant.now();
+        BigDecimal currentBal = sourceAccountId != null ? balanceRepository.findById(sourceAccountId)
+                .map(BalanceMaster::getBalanceAmount)
+                .orElse(BigDecimal.ZERO) : BigDecimal.ZERO;
+
         TransactionMaster tx = transactionRepository.findById(txId).orElse(null);
         if (tx == null) {
             tx = TransactionMaster.builder()
@@ -546,6 +568,8 @@ public class CbsFundsTransferService {
                     .sourceAccountId(sourceAccountId != null ? sourceAccountId : "ACC-UNKNOWN")
                     .targetAccountId(destAccountId != null ? destAccountId : "ACC-UNKNOWN")
                     .amount(amount != null ? amount : BigDecimal.ZERO)
+                    .beforeBalance(currentBal)
+                    .afterBalance(currentBal)
                     .currency(currency != null ? currency : "PHP")
                     .transactionType("INTRA_BANK")
                     .status(TransactionStatus.Cancelled.name())
@@ -556,6 +580,12 @@ public class CbsFundsTransferService {
                     .build();
         } else {
             tx.setStatus(TransactionStatus.Cancelled.name());
+            if (tx.getBeforeBalance() == null) {
+                tx.setBeforeBalance(currentBal);
+            }
+            if (tx.getAfterBalance() == null) {
+                tx.setAfterBalance(currentBal);
+            }
             tx.setUpdatedAt(now);
         }
         transactionRepository.save(tx);
@@ -613,6 +643,10 @@ public class CbsFundsTransferService {
     @Transactional(propagation = Propagation.REQUIRES_NEW, transactionManager = "masterTransactionManager")
     public void recordReservedTransfer(String txId, String sourceAccountId, String destAccountId, BigDecimal amount, String currency, String memo) {
         Instant now = Instant.now();
+        BigDecimal currentBal = sourceAccountId != null ? balanceRepository.findById(sourceAccountId)
+                .map(BalanceMaster::getBalanceAmount)
+                .orElse(BigDecimal.ZERO) : BigDecimal.ZERO;
+
         TransactionMaster tx = transactionRepository.findById(txId).orElse(null);
         if (tx == null) {
             tx = TransactionMaster.builder()
@@ -620,6 +654,8 @@ public class CbsFundsTransferService {
                     .sourceAccountId(sourceAccountId != null ? sourceAccountId : "ACC-UNKNOWN")
                     .targetAccountId(destAccountId != null ? destAccountId : "ACC-UNKNOWN")
                     .amount(amount != null ? amount : BigDecimal.ZERO)
+                    .beforeBalance(currentBal)
+                    .afterBalance(currentBal)
                     .currency(currency != null ? currency : "PHP")
                     .transactionType("INTRA_BANK")
                     .status(TransactionStatus.Reserved.name())
@@ -630,6 +666,12 @@ public class CbsFundsTransferService {
                     .build();
         } else {
             tx.setStatus(TransactionStatus.Reserved.name());
+            if (tx.getBeforeBalance() == null) {
+                tx.setBeforeBalance(currentBal);
+            }
+            if (tx.getAfterBalance() == null) {
+                tx.setAfterBalance(currentBal);
+            }
             tx.setUpdatedAt(now);
         }
         transactionRepository.save(tx);

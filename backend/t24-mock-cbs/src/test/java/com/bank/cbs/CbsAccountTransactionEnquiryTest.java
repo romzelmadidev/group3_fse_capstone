@@ -124,6 +124,8 @@ class CbsAccountTransactionEnquiryTest {
                 .transactionType("TRANSFER")
                 .status("Posted")
                 .createdAt(Instant.parse("2026-10-08T08:00:00Z"))
+                .beforeBalance(new BigDecimal("15000.00"))
+                .afterBalance(new BigDecimal("10000.00"))
                 .build();
 
         when(balanceEnquiryService.getTransactionsByAccountId("ACC-100001", 0, 20)).thenReturn(List.of(tx1));
@@ -138,6 +140,8 @@ class CbsAccountTransactionEnquiryTest {
         assertEquals(1, parsed.size());
         assertEquals("TXN-201", parsed.get(0).getTransactionId());
         assertEquals(new BigDecimal("5000.00"), parsed.get(0).getAmount());
+        assertEquals(new BigDecimal("15000.00"), parsed.get(0).getBeforeBalance());
+        assertEquals(new BigDecimal("10000.00"), parsed.get(0).getAfterBalance());
     }
 
     @Test

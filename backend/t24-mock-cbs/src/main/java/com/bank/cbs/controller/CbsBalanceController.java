@@ -43,17 +43,20 @@ public class CbsBalanceController {
             @RequestParam(value = "size", defaultValue = "20") int size) {
         List<TransactionMaster> txList = balanceEnquiryService.getTransactionsByAccountId(accountId, page, size);
         List<AccountTransactionDto> dtos = txList.stream()
-                .map(tx -> new AccountTransactionDto(
-                        tx.getTransactionId(),
-                        tx.getSourceAccountId(),
-                        tx.getTargetAccountId(),
-                        tx.getAmount(),
-                        tx.getCurrency(),
-                        tx.getTransactionType(),
-                        tx.getStatus(),
-                        tx.getMemo(),
-                        tx.getCreatedAt()
-                )).toList();
+                .map(tx -> AccountTransactionDto.builder()
+                        .transactionId(tx.getTransactionId())
+                        .sourceAccountId(tx.getSourceAccountId())
+                        .targetAccountId(tx.getTargetAccountId())
+                        .amount(tx.getAmount())
+                        .currency(tx.getCurrency())
+                        .transactionType(tx.getTransactionType())
+                        .status(tx.getStatus())
+                        .memo(tx.getMemo())
+                        .createdAt(tx.getCreatedAt())
+                        .beforeBalance(tx.getBeforeBalance())
+                        .afterBalance(tx.getAfterBalance())
+                        .build())
+                .toList();
         String ofs = OfsMessageUtil.buildTransactionEnquiryResponse(accountId, dtos, page, size);
         return ResponseEntity.ok(ofs);
     }

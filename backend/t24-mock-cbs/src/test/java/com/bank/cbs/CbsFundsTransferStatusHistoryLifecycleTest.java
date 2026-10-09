@@ -171,6 +171,13 @@ class CbsFundsTransferStatusHistoryLifecycleTest {
                     "Timestamps must be chronologically ascending: step " + i + " vs step " + (i + 1)
             );
         }
+
+        // Verify transaction master balance snapshot
+        ArgumentCaptor<TransactionMaster> txCaptor = ArgumentCaptor.forClass(TransactionMaster.class);
+        verify(transactionRepository).save(txCaptor.capture());
+        TransactionMaster savedTx = txCaptor.getValue();
+        assertEquals(new BigDecimal("10000.00"), savedTx.getBeforeBalance(), "Source account before_balance must be recorded");
+        assertEquals(new BigDecimal("8500.00"), savedTx.getAfterBalance(), "Source account after_balance must be debited balance");
     }
 
     @Test

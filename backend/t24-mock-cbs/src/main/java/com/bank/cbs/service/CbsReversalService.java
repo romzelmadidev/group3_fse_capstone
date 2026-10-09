@@ -171,11 +171,13 @@ public class CbsReversalService {
         Instant now = Instant.now();
 
         // Reverse balances
+        BigDecimal benBefore = beneficiaryBal.getBalanceAmount();
         beneficiaryBal.setBalanceAmount(beneficiaryBal.getBalanceAmount().subtract(originalTx.getAmount()));
         BigDecimal benHold = beneficiaryBal.getHoldAmount() != null ? beneficiaryBal.getHoldAmount() : BigDecimal.ZERO;
         beneficiaryBal.setAvailableBalance(beneficiaryBal.getBalanceAmount().subtract(benHold));
         beneficiaryBal.setUpdatedAt(now);
         balanceRepository.save(beneficiaryBal);
+        BigDecimal benAfter = beneficiaryBal.getBalanceAmount();
 
         senderBal.setBalanceAmount(senderBal.getBalanceAmount().add(originalTx.getAmount()));
         BigDecimal sendHold = senderBal.getHoldAmount() != null ? senderBal.getHoldAmount() : BigDecimal.ZERO;
@@ -228,6 +230,8 @@ public class CbsReversalService {
                 .sourceAccountId(destId)
                 .targetAccountId(sourceId)
                 .amount(originalTx.getAmount())
+                .beforeBalance(benBefore)
+                .afterBalance(benAfter)
                 .currency(originalTx.getCurrency())
                 .transactionType("REVERSAL")
                 .status(TransactionStatus.Reversed.name())
@@ -424,11 +428,13 @@ public class CbsReversalService {
         Instant now = Instant.now();
 
         // Reverse balances
+        BigDecimal benBefore = beneficiaryBal.getBalanceAmount();
         beneficiaryBal.setBalanceAmount(beneficiaryBal.getBalanceAmount().subtract(originalTx.getAmount()));
         BigDecimal benHold = beneficiaryBal.getHoldAmount() != null ? beneficiaryBal.getHoldAmount() : BigDecimal.ZERO;
         beneficiaryBal.setAvailableBalance(beneficiaryBal.getBalanceAmount().subtract(benHold));
         beneficiaryBal.setUpdatedAt(now);
         balanceRepository.save(beneficiaryBal);
+        BigDecimal benAfter = beneficiaryBal.getBalanceAmount();
 
         senderBal.setBalanceAmount(senderBal.getBalanceAmount().add(originalTx.getAmount()));
         BigDecimal sendHold = senderBal.getHoldAmount() != null ? senderBal.getHoldAmount() : BigDecimal.ZERO;
@@ -474,6 +480,8 @@ public class CbsReversalService {
                 .sourceAccountId(destId)
                 .targetAccountId(sourceId)
                 .amount(originalTx.getAmount())
+                .beforeBalance(benBefore)
+                .afterBalance(benAfter)
                 .currency(originalTx.getCurrency())
                 .transactionType("REVERSAL")
                 .status(TransactionStatus.Reversed.name())

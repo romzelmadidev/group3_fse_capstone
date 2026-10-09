@@ -50,6 +50,12 @@ public class TransactionMaster {
     @Column(name = "amount", nullable = false, precision = 18, scale = 4)
     private BigDecimal amount;
 
+    @Column(name = "before_balance", precision = 18, scale = 4)
+    private BigDecimal beforeBalance;
+
+    @Column(name = "after_balance", precision = 18, scale = 4)
+    private BigDecimal afterBalance;
+
     @Column(name = "currency", length = 3)
     @Builder.Default
     private String currency = "PHP";

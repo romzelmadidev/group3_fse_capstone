@@ -377,14 +377,16 @@ public final class OfsMessageUtil {
                 if (i > 0) {
                     sb.append(";;");
                 }
-                sb.append(tx.getTransactionId() != null ? tx.getTransactionId() : "").append(":")
-                  .append(tx.getSourceAccountId() != null ? tx.getSourceAccountId() : "").append(":")
-                  .append(tx.getTargetAccountId() != null ? tx.getTargetAccountId() : "").append(":")
-                  .append(tx.getAmount() != null ? tx.getAmount().toPlainString() : "0.00").append(":")
-                  .append(tx.getCurrency() != null ? tx.getCurrency() : "PHP").append(":")
-                  .append(tx.getTransactionType() != null ? tx.getTransactionType() : "").append(":")
-                  .append(tx.getStatus() != null ? tx.getStatus() : "").append(":")
-                  .append(tx.getCreatedAt() != null ? tx.getCreatedAt().toString() : "");
+                sb.append(tx.getTransactionId() != null ? tx.getTransactionId() : "").append("|")
+                  .append(tx.getSourceAccountId() != null ? tx.getSourceAccountId() : "").append("|")
+                  .append(tx.getTargetAccountId() != null ? tx.getTargetAccountId() : "").append("|")
+                  .append(tx.getAmount() != null ? tx.getAmount().toPlainString() : "0.00").append("|")
+                  .append(tx.getCurrency() != null ? tx.getCurrency() : "PHP").append("|")
+                  .append(tx.getTransactionType() != null ? tx.getTransactionType() : "").append("|")
+                  .append(tx.getStatus() != null ? tx.getStatus() : "").append("|")
+                  .append(tx.getCreatedAt() != null ? tx.getCreatedAt().toString() : "").append("|")
+                  .append(tx.getBeforeBalance() != null ? tx.getBeforeBalance().toPlainString() : "0.00").append("|")
+                  .append(tx.getAfterBalance() != null ? tx.getAfterBalance().toPlainString() : "0.00");
             }
         }
         return sb.toString();
@@ -419,23 +421,73 @@ public final class OfsMessageUtil {
         String[] records = data.split(";;");
         for (String record : records) {
             if (record.isBlank()) continue;
-            String[] cols = record.split(":");
             AccountTransactionDto dto = new AccountTransactionDto();
-            if (cols.length > 0) dto.setTransactionId(cols[0]);
-            if (cols.length > 1) dto.setSourceAccountId(cols[1]);
-            if (cols.length > 2) dto.setTargetAccountId(cols[2]);
-            if (cols.length > 3 && !cols[3].isBlank()) {
-                try {
-                    dto.setAmount(new BigDecimal(cols[3]));
-                } catch (Exception ignored) {}
-            }
-            if (cols.length > 4) dto.setCurrency(cols[4]);
-            if (cols.length > 5) dto.setTransactionType(cols[5]);
-            if (cols.length > 6) dto.setStatus(cols[6]);
-            if (cols.length > 7 && !cols[7].isBlank()) {
-                try {
-                    dto.setCreatedAt(Instant.parse(cols[7]));
-                } catch (Exception ignored) {}
+            if (record.contains("|")) {
+                String[] cols = record.split("\\|", -1);
+                if (cols.length > 0) dto.setTransactionId(cols[0]);
+                if (cols.length > 1) dto.setSourceAccountId(cols[1]);
+                if (cols.length > 2) dto.setTargetAccountId(cols[2]);
+                if (cols.length > 3 && !cols[3].isBlank()) {
+                    try {
+                        dto.setAmount(new BigDecimal(cols[3]));
+                    } catch (Exception ignored) {}
+                }
+                if (cols.length > 4) dto.setCurrency(cols[4]);
+                if (cols.length > 5) dto.setTransactionType(cols[5]);
+                if (cols.length > 6) dto.setStatus(cols[6]);
+                if (cols.length > 7 && !cols[7].isBlank()) {
+                    try {
+                        dto.setCreatedAt(Instant.parse(cols[7]));
+                    } catch (Exception ignored) {}
+                }
+                if (cols.length > 8 && !cols[8].isBlank()) {
+                    try {
+                        dto.setBeforeBalance(new BigDecimal(cols[8]));
+                    } catch (Exception ignored) {}
+                }
+                if (cols.length > 9 && !cols[9].isBlank()) {
+                    try {
+                        dto.setAfterBalance(new BigDecimal(cols[9]));
+                    } catch (Exception ignored) {}
+                }
+            } else {
+                String[] cols = record.split(":", -1);
+                if (cols.length > 0) dto.setTransactionId(cols[0]);
+                if (cols.length > 1) dto.setSourceAccountId(cols[1]);
+                if (cols.length > 2) dto.setTargetAccountId(cols[2]);
+                if (cols.length > 3 && !cols[3].isBlank()) {
+                    try {
+                        dto.setAmount(new BigDecimal(cols[3]));
+                    } catch (Exception ignored) {}
+                }
+                if (cols.length > 4) dto.setCurrency(cols[4]);
+                if (cols.length > 5) dto.setTransactionType(cols[5]);
+                if (cols.length > 6) dto.setStatus(cols[6]);
+                if (cols.length >= 10) {
+                    try {
+                        dto.setAfterBalance(new BigDecimal(cols[cols.length - 1]));
+                    } catch (Exception ignored) {}
+                    try {
+                        dto.setBeforeBalance(new BigDecimal(cols[cols.length - 2]));
+                    } catch (Exception ignored) {}
+                    StringBuilder timeSb = new StringBuilder();
+                    for (int t = 7; t <= cols.length - 3; t++) {
+                        if (t > 7) timeSb.append(":");
+                        timeSb.append(cols[t]);
+                    }
+                    try {
+                        dto.setCreatedAt(Instant.parse(timeSb.toString()));
+                    } catch (Exception ignored) {}
+                } else if (cols.length > 7) {
+                    StringBuilder timeSb = new StringBuilder();
+                    for (int t = 7; t < cols.length; t++) {
+                        if (t > 7) timeSb.append(":");
+                        timeSb.append(cols[t]);
+                    }
+                    try {
+                        dto.setCreatedAt(Instant.parse(timeSb.toString()));
+                    } catch (Exception ignored) {}
+                }
             }
             list.add(dto);
         }
@@ -455,19 +507,19 @@ public final class OfsMessageUtil {
                 if (i > 0) {
                     sb.append(";;");
                 }
-                String reason = t.getDisputeReason() != null ? t.getDisputeReason().replace(":", "-").replace(";", ",") : "";
-                String mNotes = t.getMakerNotes() != null ? t.getMakerNotes().replace(":", "-").replace(";", ",") : "";
-                String cNotes = t.getCheckerNotes() != null ? t.getCheckerNotes().replace(":", "-").replace(";", ",") : "";
-                sb.append(t.getTicketId() != null ? t.getTicketId() : "").append(":")
-                  .append(t.getOriginalTransactionId() != null ? t.getOriginalTransactionId() : "").append(":")
-                  .append(t.getMakerId() != null ? t.getMakerId() : "").append(":")
-                  .append(t.getCheckerId() != null ? t.getCheckerId() : "").append(":")
-                  .append(t.getStatus() != null ? t.getStatus() : "").append(":")
-                  .append(reason).append(":")
-                  .append(mNotes).append(":")
-                  .append(cNotes).append(":")
-                  .append(t.getReversalTransactionId() != null ? t.getReversalTransactionId() : "").append(":")
-                  .append(t.getCreatedAt() != null ? t.getCreatedAt().toString() : "").append(":")
+                String reason = t.getDisputeReason() != null ? t.getDisputeReason().replace("|", "-").replace(";", ",") : "";
+                String mNotes = t.getMakerNotes() != null ? t.getMakerNotes().replace("|", "-").replace(";", ",") : "";
+                String cNotes = t.getCheckerNotes() != null ? t.getCheckerNotes().replace("|", "-").replace(";", ",") : "";
+                sb.append(t.getTicketId() != null ? t.getTicketId() : "").append("|")
+                  .append(t.getOriginalTransactionId() != null ? t.getOriginalTransactionId() : "").append("|")
+                  .append(t.getMakerId() != null ? t.getMakerId() : "").append("|")
+                  .append(t.getCheckerId() != null ? t.getCheckerId() : "").append("|")
+                  .append(t.getStatus() != null ? t.getStatus() : "").append("|")
+                  .append(reason).append("|")
+                  .append(mNotes).append("|")
+                  .append(cNotes).append("|")
+                  .append(t.getReversalTransactionId() != null ? t.getReversalTransactionId() : "").append("|")
+                  .append(t.getCreatedAt() != null ? t.getCreatedAt().toString() : "").append("|")
                   .append(t.getResolvedAt() != null ? t.getResolvedAt().toString() : "");
             }
         }
@@ -496,26 +548,49 @@ public final class OfsMessageUtil {
         String[] records = data.split(";;");
         for (String record : records) {
             if (record.isBlank()) continue;
-            String[] cols = record.split(":");
             ReversalTicketDto dto = new ReversalTicketDto();
-            if (cols.length > 0) dto.setTicketId(cols[0]);
-            if (cols.length > 1) dto.setOriginalTransactionId(cols[1]);
-            if (cols.length > 2) dto.setMakerId(cols[2]);
-            if (cols.length > 3) dto.setCheckerId(cols[3]);
-            if (cols.length > 4) dto.setStatus(cols[4]);
-            if (cols.length > 5) dto.setDisputeReason(cols[5]);
-            if (cols.length > 6) dto.setMakerNotes(cols[6]);
-            if (cols.length > 7) dto.setCheckerNotes(cols[7]);
-            if (cols.length > 8) dto.setReversalTransactionId(cols[8]);
-            if (cols.length > 9 && !cols[9].isBlank()) {
-                try {
-                    dto.setCreatedAt(Instant.parse(cols[9]));
-                } catch (Exception ignored) {}
-            }
-            if (cols.length > 10 && !cols[10].isBlank()) {
-                try {
-                    dto.setResolvedAt(Instant.parse(cols[10]));
-                } catch (Exception ignored) {}
+            if (record.contains("|")) {
+                String[] cols = record.split("\\|", -1);
+                if (cols.length > 0) dto.setTicketId(cols[0]);
+                if (cols.length > 1) dto.setOriginalTransactionId(cols[1]);
+                if (cols.length > 2) dto.setMakerId(cols[2]);
+                if (cols.length > 3) dto.setCheckerId(cols[3]);
+                if (cols.length > 4) dto.setStatus(cols[4]);
+                if (cols.length > 5) dto.setDisputeReason(cols[5]);
+                if (cols.length > 6) dto.setMakerNotes(cols[6]);
+                if (cols.length > 7) dto.setCheckerNotes(cols[7]);
+                if (cols.length > 8) dto.setReversalTransactionId(cols[8]);
+                if (cols.length > 9 && !cols[9].isBlank()) {
+                    try {
+                        dto.setCreatedAt(Instant.parse(cols[9]));
+                    } catch (Exception ignored) {}
+                }
+                if (cols.length > 10 && !cols[10].isBlank()) {
+                    try {
+                        dto.setResolvedAt(Instant.parse(cols[10]));
+                    } catch (Exception ignored) {}
+                }
+            } else {
+                String[] cols = record.split(":", -1);
+                if (cols.length > 0) dto.setTicketId(cols[0]);
+                if (cols.length > 1) dto.setOriginalTransactionId(cols[1]);
+                if (cols.length > 2) dto.setMakerId(cols[2]);
+                if (cols.length > 3) dto.setCheckerId(cols[3]);
+                if (cols.length > 4) dto.setStatus(cols[4]);
+                if (cols.length > 5) dto.setDisputeReason(cols[5]);
+                if (cols.length > 6) dto.setMakerNotes(cols[6]);
+                if (cols.length > 7) dto.setCheckerNotes(cols[7]);
+                if (cols.length > 8) dto.setReversalTransactionId(cols[8]);
+                if (cols.length > 9 && !cols[9].isBlank()) {
+                    try {
+                        dto.setCreatedAt(Instant.parse(cols[9]));
+                    } catch (Exception ignored) {}
+                }
+                if (cols.length > 10 && !cols[10].isBlank()) {
+                    try {
+                        dto.setResolvedAt(Instant.parse(cols[10]));
+                    } catch (Exception ignored) {}
+                }
             }
             list.add(dto);
         }
@@ -535,15 +610,15 @@ public final class OfsMessageUtil {
                 if (i > 0) {
                     sb.append(";;");
                 }
-                String details = h.getReasonDetails() != null ? h.getReasonDetails().replace(":", "-").replace(";", ",") : "";
-                sb.append(h.getHistoryId() != null ? h.getHistoryId() : "").append(":")
-                  .append(h.getTransactionId() != null ? h.getTransactionId() : "").append(":")
-                  .append(h.getFromStatus() != null ? h.getFromStatus() : "").append(":")
-                  .append(h.getToStatus() != null ? h.getToStatus() : "").append(":")
-                  .append(h.getChangeReason() != null ? h.getChangeReason() : "").append(":")
-                  .append(h.getActorId() != null ? h.getActorId() : "").append(":")
-                  .append(h.getActorType() != null ? h.getActorType() : "").append(":")
-                  .append(h.getChangedAt() != null ? h.getChangedAt().toString() : "").append(":")
+                String details = h.getReasonDetails() != null ? h.getReasonDetails().replace("|", "-").replace(";", ",") : "";
+                sb.append(h.getHistoryId() != null ? h.getHistoryId() : "").append("|")
+                  .append(h.getTransactionId() != null ? h.getTransactionId() : "").append("|")
+                  .append(h.getFromStatus() != null ? h.getFromStatus() : "").append("|")
+                  .append(h.getToStatus() != null ? h.getToStatus() : "").append("|")
+                  .append(h.getChangeReason() != null ? h.getChangeReason() : "").append("|")
+                  .append(h.getActorId() != null ? h.getActorId() : "").append("|")
+                  .append(h.getActorType() != null ? h.getActorType() : "").append("|")
+                  .append(h.getChangedAt() != null ? h.getChangedAt().toString() : "").append("|")
                   .append(details);
             }
         }
@@ -572,21 +647,47 @@ public final class OfsMessageUtil {
         String[] records = data.split(";;");
         for (String record : records) {
             if (record.isBlank()) continue;
-            String[] cols = record.split(":");
             TransactionStatusHistoryDto dto = new TransactionStatusHistoryDto();
-            if (cols.length > 0) dto.setHistoryId(cols[0]);
-            if (cols.length > 1) dto.setTransactionId(cols[1]);
-            if (cols.length > 2) dto.setFromStatus(cols[2]);
-            if (cols.length > 3) dto.setToStatus(cols[3]);
-            if (cols.length > 4) dto.setChangeReason(cols[4]);
-            if (cols.length > 5) dto.setActorId(cols[5]);
-            if (cols.length > 6) dto.setActorType(cols[6]);
-            if (cols.length > 7 && !cols[7].isBlank()) {
-                try {
-                    dto.setChangedAt(Instant.parse(cols[7]));
-                } catch (Exception ignored) {}
+            if (record.contains("|")) {
+                String[] cols = record.split("\\|", -1);
+                if (cols.length > 0) dto.setHistoryId(cols[0]);
+                if (cols.length > 1) dto.setTransactionId(cols[1]);
+                if (cols.length > 2) dto.setFromStatus(cols[2]);
+                if (cols.length > 3) dto.setToStatus(cols[3]);
+                if (cols.length > 4) dto.setChangeReason(cols[4]);
+                if (cols.length > 5) dto.setActorId(cols[5]);
+                if (cols.length > 6) dto.setActorType(cols[6]);
+                if (cols.length > 7 && !cols[7].isBlank()) {
+                    try {
+                        dto.setChangedAt(Instant.parse(cols[7]));
+                    } catch (Exception ignored) {}
+                }
+                if (cols.length > 8) dto.setReasonDetails(cols[8]);
+            } else {
+                String[] cols = record.split(":", -1);
+                if (cols.length > 0) dto.setHistoryId(cols[0]);
+                if (cols.length > 1) dto.setTransactionId(cols[1]);
+                if (cols.length > 2) dto.setFromStatus(cols[2]);
+                if (cols.length > 3) dto.setToStatus(cols[3]);
+                if (cols.length > 4) dto.setChangeReason(cols[4]);
+                if (cols.length > 5) dto.setActorId(cols[5]);
+                if (cols.length > 6) dto.setActorType(cols[6]);
+                if (cols.length >= 9) {
+                    dto.setReasonDetails(cols[cols.length - 1]);
+                    StringBuilder timeSb = new StringBuilder();
+                    for (int t = 7; t <= cols.length - 2; t++) {
+                        if (t > 7) timeSb.append(":");
+                        timeSb.append(cols[t]);
+                    }
+                    try {
+                        dto.setChangedAt(Instant.parse(timeSb.toString()));
+                    } catch (Exception ignored) {}
+                } else if (cols.length > 7) {
+                    try {
+                        dto.setChangedAt(Instant.parse(cols[7]));
+                    } catch (Exception ignored) {}
+                }
             }
-            if (cols.length > 8) dto.setReasonDetails(cols[8]);
             list.add(dto);
         }
         return list;
