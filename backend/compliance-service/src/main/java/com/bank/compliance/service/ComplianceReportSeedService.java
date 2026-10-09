@@ -43,7 +43,7 @@ public class ComplianceReportSeedService implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        seedDefaultReportsIfMissing();
+        log.info("Azurite report automatic startup seeding disabled for clean test slate.");
     }
 
     public synchronized void seedDefaultReportsIfMissing() {

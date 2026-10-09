@@ -146,49 +146,5 @@ INSERT INTO balance_master (
 );
 
 
--- ------------------------------------------------------------------------------
--- 5. SEED TRANSACTIONS
--- Transaction T5001: Juan transfers PHP 2,000 to Maria's Account
--- ------------------------------------------------------------------------------
-INSERT INTO transactions (
-    transaction_id, from_account_id, to_account_id, type, amount,
-    before_balance, after_balance, status, requires_maker_checker,
-    approved_by_user_id, created_at, updated_at
-) VALUES (
-    'T5001', 'A2001', 'A2002', 'TRANSFER', 2000.0000,
-    300000.0000, 298000.0000, 'COMMITTED', 0,
-    NULL,
-    TIMESTAMP '2024-06-01 14:32:00 UTC', TIMESTAMP '2024-06-01 14:32:00 UTC'
-);
-
-
--- ------------------------------------------------------------------------------
--- 6. SEED TRANSACTIONAL OUTBOX EVENTS
--- Outbox record for T5001 ready for Kafka / RabbitMQ streaming
--- ------------------------------------------------------------------------------
-INSERT INTO outbox_events (
-    event_id, aggregate_type, aggregate_id, event_type, kafka_topic,
-    payload, status, retry_count, created_at, published_at
-) VALUES (
-    'EVT-9001', 'TRANSACTION', 'T5001', 'MUTATION_COMMITTED', 'transaction-events',
-    '{"transactionId":"T5001","fromAccount":"A2001","toAccount":"A2002","amount":2000.0000,"status":"COMMITTED"}',
-    'PUBLISHED', 0,
-    TIMESTAMP '2024-06-01 14:32:00 UTC', TIMESTAMP '2024-06-01 14:32:00 UTC'
-);
-
-
--- ------------------------------------------------------------------------------
--- 7. SEED NOTIFICATIONS
--- Transaction alert sent to Juan for transfer T5001
--- ------------------------------------------------------------------------------
-INSERT INTO notifications (
-    notification_id, user_id, type, message,
-    sent_at, created_at, updated_at
-) VALUES (
-    'N7001', 'U1001', 'TRANSACTION_ALERT',
-    'Transfer of PHP 2,000.00 sent from account 1000-2000-3001. New available balance: PHP 298,000.00.',
-    TIMESTAMP '2024-06-01 14:32:01 UTC', TIMESTAMP '2024-06-01 14:32:01 UTC', TIMESTAMP '2024-06-01 14:32:01 UTC'
-);
-
 -- Commit all inserted seed data
 COMMIT;
