@@ -20,15 +20,19 @@ BEGIN
   END IF;
 
   SELECT COUNT(*) INTO v_count FROM user_tab_cols WHERE table_name = 'TRANSACTIONS' AND column_name = 'SOURCE_ACCOUNT_ID';
-  IF v_count = 0 THEN
-    EXECUTE IMMEDIATE 'ALTER TABLE transactions ADD (source_account_id VARCHAR2(64))';
-    DBMS_OUTPUT.PUT_LINE('Added transactions.source_account_id');
+  IF v_count > 0 THEN
+    BEGIN
+      EXECUTE IMMEDIATE 'ALTER TABLE transactions DROP COLUMN source_account_id';
+      DBMS_OUTPUT.PUT_LINE('Dropped redundant transactions.source_account_id');
+    EXCEPTION WHEN OTHERS THEN NULL; END;
   END IF;
 
   SELECT COUNT(*) INTO v_count FROM user_tab_cols WHERE table_name = 'TRANSACTIONS' AND column_name = 'TARGET_ACCOUNT_ID';
-  IF v_count = 0 THEN
-    EXECUTE IMMEDIATE 'ALTER TABLE transactions ADD (target_account_id VARCHAR2(64))';
-    DBMS_OUTPUT.PUT_LINE('Added transactions.target_account_id');
+  IF v_count > 0 THEN
+    BEGIN
+      EXECUTE IMMEDIATE 'ALTER TABLE transactions DROP COLUMN target_account_id';
+      DBMS_OUTPUT.PUT_LINE('Dropped redundant transactions.target_account_id');
+    EXCEPTION WHEN OTHERS THEN NULL; END;
   END IF;
 
   SELECT COUNT(*) INTO v_count FROM user_tab_cols WHERE table_name = 'TRANSACTIONS' AND column_name = 'TRANSACTION_TYPE';
@@ -88,8 +92,6 @@ END;
 
 -- 4. Sync existing transactions rows
 UPDATE transactions SET
-  source_account_id = COALESCE(source_account_id, from_account_id),
-  target_account_id = COALESCE(target_account_id, to_account_id),
   transaction_type = COALESCE(transaction_type, type, 'INTRA_BANK'),
   requires_maker_checker = COALESCE(requires_maker_checker, requires_2fa_otp, 0),
   approved_by = COALESCE(approved_by, approved_by_user_id),
@@ -101,18 +103,6 @@ CREATE OR REPLACE TRIGGER trg_tx_sync_cols
 BEFORE INSERT OR UPDATE ON transactions
 FOR EACH ROW
 BEGIN
-    IF :NEW.from_account_id IS NULL AND :NEW.source_account_id IS NOT NULL THEN
-        :NEW.from_account_id := :NEW.source_account_id;
-    END IF;
-    IF :NEW.source_account_id IS NULL AND :NEW.from_account_id IS NOT NULL THEN
-        :NEW.source_account_id := :NEW.from_account_id;
-    END IF;
-    IF :NEW.to_account_id IS NULL AND :NEW.target_account_id IS NOT NULL THEN
-        :NEW.to_account_id := :NEW.target_account_id;
-    END IF;
-    IF :NEW.target_account_id IS NULL AND :NEW.to_account_id IS NOT NULL THEN
-        :NEW.target_account_id := :NEW.to_account_id;
-    END IF;
     IF :NEW.type IS NULL AND :NEW.transaction_type IS NOT NULL THEN
         :NEW.type := :NEW.transaction_type;
     END IF;

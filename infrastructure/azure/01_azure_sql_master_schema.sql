@@ -118,8 +118,8 @@ CREATE TABLE core.balance_master (
 -- ==============================================================================
 CREATE TABLE core.transactions (
     transaction_id         NVARCHAR(64) NOT NULL PRIMARY KEY,
-    source_account_id      NVARCHAR(64) NOT NULL,
-    target_account_id      NVARCHAR(64) NOT NULL,
+    from_account_id        NVARCHAR(64) NOT NULL,
+    to_account_id          NVARCHAR(64) NOT NULL,
     amount                 DECIMAL(18, 4) NOT NULL,
     currency               NVARCHAR(3) DEFAULT 'PHP' NOT NULL,
     transaction_type       NVARCHAR(20) NOT NULL,
@@ -130,8 +130,8 @@ CREATE TABLE core.transactions (
     idempotency_key        NVARCHAR(64) NULL,
     created_at             DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     updated_at             DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
-    CONSTRAINT fk_tx_source FOREIGN KEY (source_account_id) REFERENCES core.accounts(account_id),
-    CONSTRAINT fk_tx_target FOREIGN KEY (target_account_id) REFERENCES core.accounts(account_id),
+    CONSTRAINT fk_tx_from_acc FOREIGN KEY (from_account_id) REFERENCES core.accounts(account_id),
+    CONSTRAINT fk_tx_to_acc FOREIGN KEY (to_account_id) REFERENCES core.accounts(account_id),
     CONSTRAINT chk_tx_amount CHECK (amount > 0)
 );
 
@@ -170,8 +170,8 @@ CREATE TABLE integration.notifications (
 
 -- Performance Indexes
 CREATE NONCLUSTERED INDEX idx_acc_user_id ON core.accounts(user_id);
-CREATE NONCLUSTERED INDEX idx_tx_source ON core.transactions(source_account_id, created_at DESC);
-CREATE NONCLUSTERED INDEX idx_tx_target ON core.transactions(target_account_id, created_at DESC);
+CREATE NONCLUSTERED INDEX idx_tx_from ON core.transactions(from_account_id, created_at DESC);
+CREATE NONCLUSTERED INDEX idx_tx_to ON core.transactions(to_account_id, created_at DESC);
 CREATE UNIQUE NONCLUSTERED INDEX uq_tx_idempotency_key ON core.transactions(idempotency_key) WHERE idempotency_key IS NOT NULL;
 CREATE NONCLUSTERED INDEX idx_outbox_status ON integration.outbox_events(status, created_at) WHERE status = 'PENDING';
 
