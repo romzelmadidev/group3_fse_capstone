@@ -41,7 +41,7 @@ import CustomerProfile from './CustomerProfile';
 import { cn } from '../ui';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
-import Money from '../ui/Money';
+const formatTxnId = (id) => (id ? (id.startsWith('TXN-') ? id : id.startsWith('TX-') ? 'TXN-' + id.slice(3) : 'TXN-' + id) : '--');
 
 export default function CustomerPortal({ balance, onTransactionComplete, onSwitchAccount, showToast }) {
   const { user } = useAuth();
@@ -208,7 +208,7 @@ export default function CustomerPortal({ balance, onTransactionComplete, onSwitc
   const handleExecuteTransfer = async () => {
     setIsSubmitting(true);
     try {
-      const generatedRef = 'TX-' + Math.floor(100000 + Math.random() * 900000);
+      const generatedRef = 'TXN-' + Math.floor(100000 + Math.random() * 900000);
       const fromAcc = balance?.account_id || '1000-2000-3001';
       const toAcc = toAccount.trim();
       const res = await apiClient.post(
@@ -427,7 +427,7 @@ export default function CustomerPortal({ balance, onTransactionComplete, onSwitc
   const handleExportCSV = () => {
     const headers = ['Transaction Reference', 'Timestamp', 'From Account', 'To Account', 'Recipient', 'Amount (PHP)', 'Status', 'Memo'];
     const rows = transactionsList.map((tx) => [
-      `"${tx.id || ''}"`,
+      `"${formatTxnId(tx.id)}"`,
       `"${new Date(tx.created_at).toISOString()}"`,
       `"${tx.from_account_id || ''}"`,
       `"${tx.to_account_id || ''}"`,
@@ -457,7 +457,7 @@ export default function CustomerPortal({ balance, onTransactionComplete, onSwitc
   const handleViewReceipt = (tx) => {
     const isIncoming = tx.to_account_id === '1000-2000-3001' && tx.from_account_id !== '1000-2000-3001';
     setReceiptData({
-      refNumber: tx.id,
+      refNumber: formatTxnId(tx.id),
       fromAccount: tx.from_account_id || '1000-2000-3001',
       senderName: isIncoming ? tx.recipient_name : (user?.name || 'Juan Dela Cruz'),
       toAccount: tx.to_account_id || '1000-2000-3002',
@@ -914,7 +914,7 @@ export default function CustomerPortal({ balance, onTransactionComplete, onSwitc
                         <div>
                           <p className="font-semibold text-fg">{tx.recipient_name || 'Counterparty'}</p>
                           <p className="text-2xs font-mono text-fg-subtle">
-                            {tx.id} &bull; {new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            {formatTxnId(tx.id)} &bull; {new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                           </p>
                         </div>
                       </div>
@@ -1218,7 +1218,7 @@ export default function CustomerPortal({ balance, onTransactionComplete, onSwitc
                           {new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </td>
                         <td className="px-4 py-3 font-mono text-fg font-medium whitespace-nowrap">
-                          {tx.id}
+                          {formatTxnId(tx.id)}
                         </td>
                         <td className="px-4 py-3 text-fg font-medium">
                           {tx.recipient_name || 'Counterparty'}

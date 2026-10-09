@@ -46,9 +46,17 @@ public class TransferOrchestrationService {
     }
 
     public TransferInitiationResponse initiateTransfer(TransferInitiationRequest request) {
-        String txId = request.transactionId() != null && !request.transactionId().isBlank()
-                ? request.transactionId()
-                : UUID.randomUUID().toString();
+        String rawTxId = request.transactionId();
+        String txId;
+        if (rawTxId == null || rawTxId.isBlank()) {
+            txId = "TXN-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        } else if (rawTxId.startsWith("TX-")) {
+            txId = "TXN-" + rawTxId.substring(3);
+        } else if (!rawTxId.startsWith("TXN-")) {
+            txId = "TXN-" + rawTxId;
+        } else {
+            txId = rawTxId;
+        }
 
         // 1. Idempotency Lock
         String idempKey = request.idempotencyKey() != null ? request.idempotencyKey() : txId;

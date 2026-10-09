@@ -169,18 +169,42 @@ public class CbsPostingController {
         int safeSize = Math.min(Math.max(1, size), 100);
         Page<TransactionStatusHistoryMaster> historyPage = statusHistoryRepository
                 .findByTransactionIdOrderByChangedAtAsc(transactionId, PageRequest.of(safePage, safeSize));
+        if (historyPage.isEmpty() && transactionId != null) {
+            if (transactionId.startsWith("TXN-")) {
+                historyPage = statusHistoryRepository.findByTransactionIdOrderByChangedAtAsc(
+                        "TX-" + transactionId.substring(4), PageRequest.of(safePage, safeSize));
+                if (historyPage.isEmpty()) {
+                    historyPage = statusHistoryRepository.findByTransactionIdOrderByChangedAtAsc(
+                            transactionId.substring(4), PageRequest.of(safePage, safeSize));
+                }
+            } else if (transactionId.startsWith("TX-")) {
+                historyPage = statusHistoryRepository.findByTransactionIdOrderByChangedAtAsc(
+                        "TXN-" + transactionId.substring(3), PageRequest.of(safePage, safeSize));
+            }
+        }
         List<TransactionStatusHistoryDto> dtos = historyPage.getContent().stream()
-                .map(h -> TransactionStatusHistoryDto.builder()
-                        .historyId(h.getHistoryId())
-                        .transactionId(h.getTransactionId())
-                        .fromStatus(h.getFromStatus())
-                        .toStatus(h.getToStatus())
-                        .changeReason(h.getChangeReason())
-                        .reasonDetails(h.getReasonDetails())
-                        .actorId(h.getActorId())
-                        .actorType(h.getActorType())
-                        .changedAt(h.getChangedAt())
-                        .build())
+                .map(h -> {
+                    String rawId = h.getTransactionId();
+                    String formattedId = rawId;
+                    if (rawId != null && !rawId.isBlank()) {
+                        if (rawId.startsWith("TX-")) {
+                            formattedId = "TXN-" + rawId.substring(3);
+                        } else if (!rawId.startsWith("TXN-")) {
+                            formattedId = "TXN-" + rawId;
+                        }
+                    }
+                    return TransactionStatusHistoryDto.builder()
+                            .historyId(h.getHistoryId())
+                            .transactionId(formattedId)
+                            .fromStatus(h.getFromStatus())
+                            .toStatus(h.getToStatus())
+                            .changeReason(h.getChangeReason())
+                            .reasonDetails(h.getReasonDetails())
+                            .actorId(h.getActorId())
+                            .actorType(h.getActorType())
+                            .changedAt(h.getChangedAt())
+                            .build();
+                })
                 .toList();
         String ofs = OfsMessageUtil.buildStatusHistoryResponse(transactionId, dtos, safePage, safeSize);
         return ResponseEntity.ok(ofs);

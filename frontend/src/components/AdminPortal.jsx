@@ -201,21 +201,21 @@ export default function AdminPortal() {
             notificationId: 'NOTIF-8901A',
             userId: 'U1001',
             type: 'TRANSACTION_ALERT',
-            message: 'Transaction TX-984210 completed: PHP 15,000.00 transferred to ACC-1000-2000-3002. Digital advice delivered.',
+            message: 'Transaction TXN-984210 completed: PHP 15,000.00 transferred to ACC-1000-2000-3002. Digital advice delivered.',
             sentAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
           },
           {
             notificationId: 'NOTIF-8902B',
             userId: 'U1001',
             type: 'CUSTOMER_OTP_DISPATCH',
-            message: 'Customer 2FA Email OTP dispatched to juan.dc@email.com for Transaction TX-772190 (PHP 75,000.00).',
+            message: 'Customer 2FA Email OTP dispatched to juan.dc@email.com for Transaction TXN-772190 (PHP 75,000.00).',
             sentAt: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
           },
           {
             notificationId: 'NOTIF-8903C',
             userId: 'U1001',
             type: 'TRANSACTION_ALERT',
-            message: 'Transaction TX-772190 OTP verified and settled directly to ledger vault. Digital advice dispatched.',
+            message: 'Transaction TXN-772190 OTP verified and settled directly to ledger vault. Digital advice dispatched.',
             sentAt: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
           },
         ]);
@@ -1005,7 +1005,7 @@ export default function AdminPortal() {
 
                           {/* Tx ID */}
                           <td className="py-2.5 px-3 font-bold text-fg whitespace-nowrap">
-                            {tx.id}
+                            {tx.id ? (tx.id.startsWith('TXN-') ? tx.id : tx.id.startsWith('TX-') ? 'TXN-' + tx.id.slice(3) : 'TXN-' + tx.id) : '--'}
                           </td>
 
                           {/* Timestamp */}
@@ -1682,7 +1682,10 @@ export default function AdminPortal() {
                             {t.ticketId || t.ticket_id}
                           </td>
                           <td className="py-2.5 px-3 font-semibold text-accent">
-                            {t.originalTransactionId || t.original_transaction_id || '--'}
+                            {(() => {
+                              const origId = t.originalTransactionId || t.original_transaction_id;
+                              return origId ? (origId.startsWith('TXN-') ? origId : origId.startsWith('TX-') ? 'TXN-' + origId.slice(3) : 'TXN-' + origId) : '--';
+                            })()}
                           </td>
                           <td className="py-2.5 px-3">
                             <span className="font-semibold text-fg block">{t.disputeReason || t.dispute_reason}</span>

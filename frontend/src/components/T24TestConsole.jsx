@@ -266,7 +266,7 @@ export default function T24TestConsole() {
   const handleSimulateFailure = async (errorType, errorCode, cbState = 'OPEN') => {
     setIsSimulatingFailure(true);
     try {
-      const txId = 'FAIL-TX-' + Math.floor(Math.random() * 90000 + 10000);
+      const txId = 'TXN-FAIL-' + Math.floor(Math.random() * 90000 + 10000);
       const payload = {
         transactionId: txId,
         errorType: errorType,
@@ -1235,7 +1235,7 @@ export default function T24TestConsole() {
                           return (
                             <tr key={tx.transaction_id} className="hover:bg-purple-50/40 transition">
                               <td className="py-3 px-3.5 font-bold text-purple-950 flex items-center gap-1.5">
-                                <span>{tx.transaction_id}</span>
+                                <span>{tx.transaction_id ? (tx.transaction_id.startsWith('TXN-') ? tx.transaction_id : tx.transaction_id.startsWith('TX-') ? 'TXN-' + tx.transaction_id.slice(3) : 'TXN-' + tx.transaction_id) : '--'}</span>
                               </td>
                               <td className="py-3 px-3.5">
                                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-sans text-2xs font-semibold ${

@@ -43,19 +43,30 @@ public class CbsBalanceController {
             @RequestParam(value = "size", defaultValue = "20") int size) {
         List<TransactionMaster> txList = balanceEnquiryService.getTransactionsByAccountId(accountId, page, size);
         List<AccountTransactionDto> dtos = txList.stream()
-                .map(tx -> AccountTransactionDto.builder()
-                        .transactionId(tx.getTransactionId())
-                        .sourceAccountId(tx.getSourceAccountId())
-                        .targetAccountId(tx.getTargetAccountId())
-                        .amount(tx.getAmount())
-                        .currency(tx.getCurrency())
-                        .transactionType(tx.getTransactionType())
-                        .status(tx.getStatus())
-                        .memo(tx.getMemo())
-                        .createdAt(tx.getCreatedAt())
-                        .beforeBalance(tx.getBeforeBalance())
-                        .afterBalance(tx.getAfterBalance())
-                        .build())
+                .map(tx -> {
+                    String rawId = tx.getTransactionId();
+                    String formattedId = rawId;
+                    if (rawId != null && !rawId.isBlank()) {
+                        if (rawId.startsWith("TX-")) {
+                            formattedId = "TXN-" + rawId.substring(3);
+                        } else if (!rawId.startsWith("TXN-")) {
+                            formattedId = "TXN-" + rawId;
+                        }
+                    }
+                    return AccountTransactionDto.builder()
+                            .transactionId(formattedId)
+                            .sourceAccountId(tx.getSourceAccountId())
+                            .targetAccountId(tx.getTargetAccountId())
+                            .amount(tx.getAmount())
+                            .currency(tx.getCurrency())
+                            .transactionType(tx.getTransactionType())
+                            .status(tx.getStatus())
+                            .memo(tx.getMemo())
+                            .createdAt(tx.getCreatedAt())
+                            .beforeBalance(tx.getBeforeBalance())
+                            .afterBalance(tx.getAfterBalance())
+                            .build();
+                })
                 .toList();
         String ofs = OfsMessageUtil.buildTransactionEnquiryResponse(accountId, dtos, page, size);
         return ResponseEntity.ok(ofs);

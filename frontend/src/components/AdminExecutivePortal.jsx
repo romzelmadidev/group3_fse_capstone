@@ -3036,10 +3036,10 @@ export default function AdminExecutivePortal() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {[
-                { ref: 'TX-30E637D3', typology: 'Investment Scam', amount: 500000, trigger: 'High Spike Ratio (25x) + Urgent Memo' },
-                { ref: 'TX-74D6BDD5', typology: 'Impersonation / NBI Warrant', amount: 250000, trigger: 'Active Call + Coercion Telemetry' },
-                { ref: 'TX-CD05024D', typology: 'Romance / Emergency Aid', amount: 150000, trigger: 'New Payee + Drain Ratio 0.85' },
-                { ref: 'TX-AE3E7621', typology: 'Impossible Travel / Hijack', amount: 80000, trigger: 'Velocity > 2,000,000 km/h (London Jump)' }
+                { ref: 'TXN-30E637D3', typology: 'Investment Scam', amount: 500000, trigger: 'High Spike Ratio (25x) + Urgent Memo' },
+                { ref: 'TXN-74D6BDD5', typology: 'Impersonation / NBI Warrant', amount: 250000, trigger: 'Active Call + Coercion Telemetry' },
+                { ref: 'TXN-CD05024D', typology: 'Romance / Emergency Aid', amount: 150000, trigger: 'New Payee + Drain Ratio 0.85' },
+                { ref: 'TXN-AE3E7621', typology: 'Impossible Travel / Hijack', amount: 80000, trigger: 'Velocity > 2,000,000 km/h (London Jump)' }
               ].map((sar) => (
                 <div key={sar.ref} className="rounded-3xl border border-line bg-surface p-5 shadow-xs space-y-2.5">
                   <div className="flex items-center justify-between">

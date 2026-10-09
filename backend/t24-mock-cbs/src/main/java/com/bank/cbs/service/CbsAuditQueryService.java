@@ -93,9 +93,19 @@ public class CbsAuditQueryService {
             String payloadJson,
             String stackTrace) {
         String incidentId = "INC-" + java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        String txId = (transactionId != null && !transactionId.isBlank()) 
-                ? transactionId 
-                : ("FAIL-TX-" + java.util.UUID.randomUUID().toString().substring(0, 6).toUpperCase());
+        String txId;
+        if (transactionId != null && !transactionId.isBlank()) {
+            String trimmed = transactionId.trim();
+            if (trimmed.startsWith("TX-")) {
+                txId = "TXN-" + trimmed.substring(3);
+            } else if (trimmed.startsWith("TXN-")) {
+                txId = trimmed;
+            } else {
+                txId = "TXN-" + trimmed;
+            }
+        } else {
+            txId = "TXN-FAIL-" + java.util.UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+        }
         FailedTransactionAudit audit = FailedTransactionAudit.builder()
                 .incidentId(incidentId)
                 .correlationId("CORR-" + java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase())

@@ -294,7 +294,7 @@ const initialMockState = {
   ],
   transfers: [
     {
-      id: 'TX-5003-AMLA',
+      id: 'TXN-5003-AMLA',
       from_account_id: '1000-2000-3001',
       to_account_id: '1000-2000-3004',
       recipient_name: 'Apex Commercial Supplies Ltd.',
@@ -311,7 +311,7 @@ const initialMockState = {
       required_stages: 0,
     },
     {
-      id: 'TX-5002-OTP',
+      id: 'TXN-5002-OTP',
       from_account_id: '1000-2000-3001',
       to_account_id: '1000-2000-3002',
       recipient_name: 'Maria Santos',
@@ -328,7 +328,7 @@ const initialMockState = {
       required_stages: 0,
     },
     {
-      id: 'TX-5001-STP',
+      id: 'TXN-5001-STP',
       from_account_id: '1000-2000-3001',
       to_account_id: '1000-2000-3002',
       recipient_name: 'Maria Santos',
@@ -345,7 +345,7 @@ const initialMockState = {
       required_stages: 0,
     },
     {
-      id: 'TX-5000-DIR',
+      id: 'TXN-5000-DIR',
       from_account_id: '1000-9999-0001',
       to_account_id: '1000-2000-3001',
       recipient_name: 'Juan Dela Cruz (Payroll Deposit)',
@@ -363,7 +363,7 @@ const initialMockState = {
       required_stages: 0,
     },
     {
-      id: 'TX-4990-CRD',
+      id: 'TXN-4990-CRD',
       from_account_id: '1000-2000-3003',
       to_account_id: '1000-2000-3002',
       recipient_name: 'Maria Santos',
@@ -384,7 +384,7 @@ const initialMockState = {
   auditLogs: [
     {
       scn: 52,
-      tx_id: 'TX-5003-AMLA-OTP-VERIFIED',
+      tx_id: 'TXN-5003-AMLA-OTP-VERIFIED',
       event_type: 'AMLA_CTR_CUSTOMER_OTP_VERIFIED',
       actor_id: 'U1001',
       actor_role: 'CUSTOMER',
@@ -398,7 +398,7 @@ const initialMockState = {
     },
     {
       scn: 51,
-      tx_id: 'TX-5002-OTP-VERIFIED',
+      tx_id: 'TXN-5002-OTP-VERIFIED',
       event_type: 'CUSTOMER_EMAIL_OTP_VERIFIED',
       actor_id: 'U1001',
       actor_role: 'CUSTOMER',
@@ -412,7 +412,7 @@ const initialMockState = {
     },
     {
       scn: 50,
-      tx_id: 'TX-5001-STP',
+      tx_id: 'TXN-5001-STP',
       event_type: 'TRANSFER',
       actor_id: 'U1001',
       actor_role: 'CUSTOMER',
@@ -428,7 +428,7 @@ const initialMockState = {
   reversalTickets: [
     {
       ticketId: 'REV-TKT-1001',
-      originalTransactionId: 'FT-9901-2026',
+      originalTransactionId: 'TXN-9901-2026',
       makerId: 'TELLER_ALICE',
       checkerId: null,
       status: 'PENDING',
@@ -448,8 +448,15 @@ const loadMockState = () => {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.account && Array.isArray(parsed.transfers)) {
-        // Migration and compatibility check: ensure no legacy holds or approvals remain
+        // Migration and compatibility check: ensure no legacy holds or approvals remain, and standardize transaction IDs to TXN-
         parsed.transfers.forEach((tx) => {
+          if (tx.id) {
+            if (tx.id.startsWith('TX-')) {
+              tx.id = 'TXN-' + tx.id.slice(3);
+            } else if (!tx.id.startsWith('TXN-')) {
+              tx.id = 'TXN-' + tx.id;
+            }
+          }
           tx.hold_active = false;
           tx.approval_stage = 0;
           tx.required_stages = 0;
@@ -463,6 +470,24 @@ const loadMockState = () => {
             tx.tier_label = 'Tier 2: Customer Email OTP Verified';
           }
         });
+        if (parsed.auditLogs && Array.isArray(parsed.auditLogs)) {
+          parsed.auditLogs.forEach((log) => {
+            if (log.tx_id) {
+              if (log.tx_id.startsWith('TX-')) {
+                log.tx_id = 'TXN-' + log.tx_id.slice(3);
+              } else if (!log.tx_id.startsWith('TXN-')) {
+                log.tx_id = 'TXN-' + log.tx_id;
+              }
+            }
+            if (log.transactionId) {
+              if (log.transactionId.startsWith('TX-')) {
+                log.transactionId = 'TXN-' + log.transactionId.slice(3);
+              } else if (!log.transactionId.startsWith('TXN-')) {
+                log.transactionId = 'TXN-' + log.transactionId;
+              }
+            }
+          });
+        }
         parsed.account.held_balance = 0.0000;
         if (parsed.account.current_balance < 15000000.0000) {
           parsed.account.current_balance = 15000000.0000;
@@ -494,6 +519,23 @@ const loadMockState = () => {
         });
         if (!parsed.reversalTickets || !Array.isArray(parsed.reversalTickets)) {
           parsed.reversalTickets = JSON.parse(JSON.stringify(initialMockState.reversalTickets));
+        } else {
+          parsed.reversalTickets.forEach((ticket) => {
+            if (ticket.originalTransactionId) {
+              if (ticket.originalTransactionId.startsWith('TX-') || ticket.originalTransactionId.startsWith('FT-')) {
+                ticket.originalTransactionId = 'TXN-' + ticket.originalTransactionId.slice(3);
+              } else if (!ticket.originalTransactionId.startsWith('TXN-')) {
+                ticket.originalTransactionId = 'TXN-' + ticket.originalTransactionId;
+              }
+            }
+            if (ticket.reversalTransactionId) {
+              if (ticket.reversalTransactionId.startsWith('REV-TX-')) {
+                ticket.reversalTransactionId = 'TXN-REV-' + ticket.reversalTransactionId.slice(7);
+              } else if (ticket.reversalTransactionId.startsWith('TX-')) {
+                ticket.reversalTransactionId = 'TXN-' + ticket.reversalTransactionId.slice(3);
+              }
+            }
+          });
         }
         return parsed;
       }
@@ -896,7 +938,7 @@ function handleMockFallback(config) {
           ticket.checkerId = payload.checkerId || 'usr-1004-adm-001';
           ticket.checkerNotes = payload.checkerNotes || 'Approved';
           ticket.resolvedAt = new Date().toISOString();
-          ticket.reversalTransactionId = 'REV-TX-' + Math.floor(Math.random() * 90000 + 10000);
+          ticket.reversalTransactionId = 'TXN-REV-' + Math.floor(Math.random() * 90000 + 10000);
           saveMockState();
         }
         return resolve({
@@ -976,7 +1018,7 @@ function handleMockFallback(config) {
           data: {
             STATUS_CODE: '1',
             STATUS: 'SUCCESS',
-            'TXN.ID': 'REV-COMP-' + Math.floor(Math.random() * 90000 + 10000),
+            'TXN.ID': 'TXN-REV-COMP-' + Math.floor(Math.random() * 90000 + 10000),
             MESSAGE: 'REVERSAL_APPROVED_AND_SETTLED',
             message: 'Reversal successfully settled on core banking ledger'
           }
@@ -1239,8 +1281,8 @@ function handleMockFallback(config) {
 
         const newTransfer = {
           id: isPayCredit
-            ? 'CRD-PAY-' + Math.floor(100000 + Math.random() * 900000)
-            : ('TX-' + Math.floor(5000 + Math.random() * 4999) + (isTier3 ? '-AMLA' : isTier2 ? '-OTP' : '-STP')),
+            ? 'TXN-CRD-' + Math.floor(100000 + Math.random() * 900000)
+            : ('TXN-' + Math.floor(5000 + Math.random() * 4999) + (isTier3 ? '-AMLA' : isTier2 ? '-OTP' : '-STP')),
           from_account_id: sourceAccount.account_id,
           to_account_id: matchedAccount.account_number || toAccountId,
           recipient_name: payload.recipient_name || matchedAccount.account_name || 'Beneficiary Account',
@@ -1363,7 +1405,9 @@ function handleMockFallback(config) {
         let tx = mockState.transfers.find((t) => t.id === transfer_id);
         if (!tx) {
           tx = {
-            id: transfer_id || 'TX-' + Math.floor(100000 + Math.random() * 900000),
+            id: transfer_id
+              ? (transfer_id.startsWith('TXN-') ? transfer_id : transfer_id.startsWith('TX-') ? 'TXN-' + transfer_id.slice(3) : 'TXN-' + transfer_id)
+              : 'TXN-' + Math.floor(100000 + Math.random() * 900000),
             status: 'PENDING_VERIFICATION',
             verification_code: Math.floor(100000 + Math.random() * 900000).toString(),
             amount: 90000,

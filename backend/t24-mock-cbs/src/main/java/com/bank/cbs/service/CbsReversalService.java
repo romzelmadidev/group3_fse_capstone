@@ -193,7 +193,7 @@ public class CbsReversalService {
         balanceRepository.save(senderBal);
 
         // Compensating GL entries
-        String reversalTxId = UUID.randomUUID().toString();
+        String reversalTxId = "TXN-REV-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         LocalDate valDate = LocalDate.now();
 
         GlLedgerMaster compensatingDr = GlLedgerMaster.builder()
@@ -452,7 +452,7 @@ public class CbsReversalService {
         balanceRepository.save(senderBal);
 
         // Compensating GL entries
-        String reversalTxId = UUID.randomUUID().toString();
+        String reversalTxId = "TXN-REV-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         LocalDate valDate = LocalDate.now();
 
         GlLedgerMaster compensatingDr = GlLedgerMaster.builder()

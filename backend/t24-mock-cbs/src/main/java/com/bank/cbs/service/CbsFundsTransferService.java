@@ -178,7 +178,7 @@ public class CbsFundsTransferService {
         balanceRepository.save(destBal);
 
         // 5. Double-entry GL postings
-        String txId = request.transactionId() != null ? request.transactionId() : UUID.randomUUID().toString();
+        String txId = resolveTransactionId(request.transactionId());
         LocalDate valDate = systemDate.getBusinessDate() != null ? systemDate.getBusinessDate() : LocalDate.now();
 
         GlLedgerMaster drEntry = GlLedgerMaster.builder()
@@ -429,7 +429,7 @@ public class CbsFundsTransferService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, transactionManager = "masterTransactionManager")
     public void recordFailedTransfer(TransferRequestDto request, String failureReason) {
-        String txId = request.transactionId() != null ? request.transactionId() : UUID.randomUUID().toString();
+        String txId = resolveTransactionId(request.transactionId());
         Instant now = Instant.now();
 
         BigDecimal currentBal = balanceRepository.findById(request.sourceAccountId())
@@ -556,15 +556,16 @@ public class CbsFundsTransferService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, transactionManager = "masterTransactionManager")
     public void recordCancelledTransfer(String txId, String sourceAccountId, String destAccountId, BigDecimal amount, String currency, String cancelReason, String reasonDetails, String actorId, String actorType) {
+        String resolvedTxId = resolveTransactionId(txId);
         Instant now = Instant.now();
         BigDecimal currentBal = sourceAccountId != null ? balanceRepository.findById(sourceAccountId)
                 .map(BalanceMaster::getBalanceAmount)
                 .orElse(BigDecimal.ZERO) : BigDecimal.ZERO;
 
-        TransactionMaster tx = transactionRepository.findById(txId).orElse(null);
+        TransactionMaster tx = transactionRepository.findById(resolvedTxId).orElse(null);
         if (tx == null) {
             tx = TransactionMaster.builder()
-                    .transactionId(txId)
+                    .transactionId(resolvedTxId)
                     .sourceAccountId(sourceAccountId != null ? sourceAccountId : "ACC-UNKNOWN")
                     .targetAccountId(destAccountId != null ? destAccountId : "ACC-UNKNOWN")
                     .amount(amount != null ? amount : BigDecimal.ZERO)
@@ -642,15 +643,16 @@ public class CbsFundsTransferService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, transactionManager = "masterTransactionManager")
     public void recordReservedTransfer(String txId, String sourceAccountId, String destAccountId, BigDecimal amount, String currency, String memo) {
+        String resolvedTxId = resolveTransactionId(txId);
         Instant now = Instant.now();
         BigDecimal currentBal = sourceAccountId != null ? balanceRepository.findById(sourceAccountId)
                 .map(BalanceMaster::getBalanceAmount)
                 .orElse(BigDecimal.ZERO) : BigDecimal.ZERO;
 
-        TransactionMaster tx = transactionRepository.findById(txId).orElse(null);
+        TransactionMaster tx = transactionRepository.findById(resolvedTxId).orElse(null);
         if (tx == null) {
             tx = TransactionMaster.builder()
-                    .transactionId(txId)
+                    .transactionId(resolvedTxId)
                     .sourceAccountId(sourceAccountId != null ? sourceAccountId : "ACC-UNKNOWN")
                     .targetAccountId(destAccountId != null ? destAccountId : "ACC-UNKNOWN")
                     .amount(amount != null ? amount : BigDecimal.ZERO)
@@ -737,5 +739,19 @@ public class CbsFundsTransferService {
     private List<TransactionStatusHistoryMaster> getExistingStatusHistory(String txId) {
         Page<TransactionStatusHistoryMaster> page = statusHistoryRepository.findByTransactionIdOrderByChangedAtAsc(txId, PageRequest.of(0, 10));
         return (page != null && page.getContent() != null) ? page.getContent() : Collections.emptyList();
+    }
+
+    private String resolveTransactionId(String inputId) {
+        if (inputId == null || inputId.isBlank()) {
+            return "TXN-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        }
+        String trimmed = inputId.trim();
+        if (trimmed.startsWith("TXN-")) {
+            return trimmed;
+        }
+        if (trimmed.startsWith("TX-")) {
+            return "TXN-" + trimmed.substring(3);
+        }
+        return "TXN-" + trimmed;
     }
 }
