@@ -21,11 +21,13 @@ services:
       - APP_USER_PASSWORD=fse_password
     volumes:
       - ./oracle/init.sql:/container-entrypoint-initdb.d/init.sql:ro
+      - ./oracle/startup_verify.sh:/container-entrypoint-startdb.d/startup_verify.sh:ro
+      - ./oracle:/opt/oracle/scripts:ro
       - oracle_data:/opt/oracle/oradata
     networks:
       - banking-net
     healthcheck:
-      test: [ "CMD-SHELL", "/opt/oracle/checkDBStatus.sh || exit 0" ]
+      test: [ "CMD-SHELL", "/opt/oracle/healthcheck.sh" ]
       interval: 10s
       timeout: 5s
       retries: 20

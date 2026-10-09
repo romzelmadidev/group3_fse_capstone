@@ -354,6 +354,9 @@ VALUES ('5010-INT-EXPENSE', 'Deposit Interest Expense', 'EXPENSE', 'PHP', 1);
 INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)
 VALUES ('2150-TAX-WITHHOLD-PAYABLE', 'BIR Final Withholding Tax Payable (20%)', 'LIABILITY', 'PHP', 1);
 
+INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)
+VALUES ('20100', 'Demand Deposit - Customer Accounts', 'LIABILITY', 'PHP', 1);
+
 INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
 VALUES ('1010-CASH-VAULT', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
 
@@ -369,5 +372,15 @@ VALUES ('5010-INT-EXPENSE', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP
 INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
 VALUES ('2150-TAX-WITHHOLD-PAYABLE', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
 
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('20100', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('20100', '2026-M10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
 INSERT INTO system_dates (system_date_id, business_date, status, posting_window_open, last_cob_completed_at, updated_at)
 VALUES ('SYS-DATE-001', DATE '2026-10-07', 'ONLINE', 1, NULL, CURRENT_TIMESTAMP);
+
+INSERT INTO system_dates (system_date_id, business_date, status, posting_window_open, last_cob_completed_at, updated_at)
+VALUES ('SYS-DATE-1', DATE '2026-10-07', 'ONLINE', 1, NULL, CURRENT_TIMESTAMP);
+
