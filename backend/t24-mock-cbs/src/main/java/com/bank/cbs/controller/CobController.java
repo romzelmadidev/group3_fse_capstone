@@ -55,4 +55,28 @@ public class CobController {
                 sysDate.isPostingWindowOpen()
         ));
     }
+
+    @PostMapping(value = "/cob/posting-window", produces = MediaType.TEXT_PLAIN_VALUE)
+    public ResponseEntity<String> togglePostingWindow(@RequestParam(value = "open", required = false) Boolean open) {
+        SystemDateMaster sysDate = systemDateRepository.findTopByOrderBySystemDateIdAsc()
+                .orElseGet(() -> {
+                    SystemDateMaster d = new SystemDateMaster();
+                    d.setSystemDateId("SYS-DATE-1");
+                    d.setBusinessDate(LocalDate.now());
+                    d.setStatus("ONLINE");
+                    d.setPostingWindowOpen(true);
+                    return d;
+                });
+        boolean newStatus = open != null ? open : !Boolean.TRUE.equals(sysDate.getPostingWindowOpen());
+        sysDate.setPostingWindowOpen(newStatus);
+        sysDate.setStatus(newStatus ? "ONLINE" : "EOD_CUTOFF");
+        sysDate.setUpdatedAt(java.time.Instant.now());
+        systemDateRepository.save(sysDate);
+        return ResponseEntity.ok(OfsMessageUtil.buildSystemDateResponse(
+                sysDate.getSystemDateId(),
+                sysDate.getBusinessDate().toString(),
+                sysDate.getStatus(),
+                sysDate.isPostingWindowOpen()
+        ));
+    }
 }

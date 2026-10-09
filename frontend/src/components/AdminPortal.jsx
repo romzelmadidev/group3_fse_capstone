@@ -103,6 +103,16 @@ export default function AdminPortal() {
   const [reversalMemo, setReversalMemo] = useState('');
   const [isReversing, setIsReversing] = useState(false);
 
+  // Status History State (GET /api/v1/transfers/transactions/{txId}/status-history)
+  const [statusHistoryMap, setStatusHistoryMap] = useState({});
+  const [loadingHistoryId, setLoadingHistoryId] = useState(null);
+
+  // Reversals Dispute Backlog State (GET /api/v1/reversals)
+  const [reversalRequests, setReversalRequests] = useState([]);
+  const [isLoadingReversals, setIsLoadingReversals] = useState(false);
+  const [reversalFilter, setReversalFilter] = useState('ALL');
+  const [reversalActionLoading, setReversalActionLoading] = useState(null);
+
   // Customer 360 & Geo Simulator State
   const [selectedCustomerUser, setSelectedCustomerUser] = useState('U1001'); // Juan Dela Cruz
   const [customerGeoState, setCustomerGeoState] = useState(() => {
@@ -312,6 +322,18 @@ export default function AdminPortal() {
     },
   ];
 
+  // Toggle Row Expansion and Auto-Fetch Status History from Orchestrator
+  const handleToggleExpand = (txId) => {
+    if (expandedTxId === txId) {
+      setExpandedTxId(null);
+    } else {
+      setExpandedTxId(txId);
+      if (!statusHistoryMap[txId]) {
+        fetchStatusHistoryForTx(txId);
+      }
+    }
+  };
+
   // Helper to compute the 11-Stage Transaction Lifecycle Audit Stepper
   const getLifecycleStages = (tx) => {
     const isFraud = tx.status === 'REJECTED_FRAUD' || (tx.id && tx.id.includes('FRAUD'));
@@ -411,14 +433,107 @@ export default function AdminPortal() {
     ];
   };
 
-  // Reversal Execution Handler (T24 CBS Rollback)
+  // Query Status History for a specific transaction (Gateway/Orchestrator endpoint)
+  const fetchStatusHistoryForTx = async (txId) => {
+    if (!txId) return;
+    setLoadingHistoryId(txId);
+    try {
+      const res = await apiClient.get(`/transfers/transactions/${txId}/status-history`);
+      if (Array.isArray(res.data)) {
+        setStatusHistoryMap((prev) => ({ ...prev, [txId]: res.data }));
+      }
+    } catch (_) {
+      // Handled via mock fallback or existing records
+    } finally {
+      setLoadingHistoryId(null);
+    }
+  };
+
+  // Query Reversal Requests Backlog (Gateway/Orchestrator endpoint)
+  const fetchReversalRequests = async () => {
+    setIsLoadingReversals(true);
+    try {
+      const res = await apiClient.get('/reversals?page=0&size=50');
+      if (Array.isArray(res.data)) {
+        setReversalRequests(res.data);
+      }
+    } catch (_) {
+      setReversalRequests(mockState.reversalTickets || []);
+    } finally {
+      setIsLoadingReversals(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReversalRequests();
+  }, []);
+
+  // Checker Approve Reversal (Gateway/Orchestrator endpoint)
+  const handleApproveReversal = async (ticketId) => {
+    setReversalActionLoading(ticketId);
+    try {
+      await apiClient.post('/reversals/approve', {
+        reversalRequestId: ticketId,
+        checkerId: 'MGR_ADMIN',
+        checkerNotes: 'Approved via Admin Portal reviewer'
+      });
+      showAdminToast({
+        type: 'success',
+        title: 'Reversal Ticket Approved',
+        message: `Ticket ${ticketId} approved. Compensating contra-entry posted to CBS.`,
+      });
+      fetchReversalRequests();
+      setLiveTransfers([...mockState.transfers]);
+      fetchPostgresAuditLogs();
+    } catch (err) {
+      showAdminToast({
+        type: 'error',
+        title: 'Approval Failed',
+        message: err.response?.data?.detail || err.message || 'Unable to approve reversal.',
+      });
+    } finally {
+      setReversalActionLoading(null);
+    }
+  };
+
+  // Checker Reject Reversal (Gateway/Orchestrator endpoint)
+  const handleRejectReversal = async (ticketId) => {
+    setReversalActionLoading(ticketId);
+    try {
+      await apiClient.post('/reversals/reject', {
+        reversalRequestId: ticketId,
+        checkerId: 'MGR_ADMIN',
+        rejectionReason: 'Rejected via Admin Portal review'
+      });
+      showAdminToast({
+        type: 'success',
+        title: 'Reversal Ticket Rejected',
+        message: `Ticket ${ticketId} rejected.`,
+      });
+      fetchReversalRequests();
+    } catch (err) {
+      showAdminToast({
+        type: 'error',
+        title: 'Rejection Failed',
+        message: err.response?.data?.detail || err.message || 'Unable to reject reversal.',
+      });
+    } finally {
+      setReversalActionLoading(null);
+    }
+  };
+
+  // Reversal Execution Handler (T24 CBS Rollback via Transfer Orchestrator)
   const handleConfirmReversal = async () => {
     if (!reversalModalTx) return;
     setIsReversing(true);
     try {
-      await apiClient.post(`/transfers/${reversalModalTx.id}/reverse`, {
+      // Call Gateway / Orchestrator compensating direct reversal endpoint
+      await apiClient.post('/reversals/direct', {
+        originalTransactionId: reversalModalTx.id,
         reason: reversalReason,
         memo: reversalMemo.trim() || 'CSR Escalation Reversal',
+        makerId: 'ADMIN_CSR',
+        checkerId: 'ADMIN_SUPERVISOR'
       });
       showAdminToast({
         type: 'success',
@@ -428,6 +543,10 @@ export default function AdminPortal() {
       setReversalModalTx(null);
       setLiveTransfers([...mockState.transfers]);
       fetchPostgresAuditLogs();
+      fetchReversalRequests();
+      if (statusHistoryMap[reversalModalTx.id]) {
+        fetchStatusHistoryForTx(reversalModalTx.id);
+      }
     } catch (err) {
       showAdminToast({
         type: 'error',
@@ -750,6 +869,26 @@ export default function AdminPortal() {
             {services.length}
           </span>
         </button>
+
+        {/* Tab 6: CBS Reversals & Dispute Backlog */}
+        <button
+          onClick={() => {
+            setActiveTab('reversals');
+            fetchReversalRequests();
+          }}
+          className={cn(
+            'flex items-center gap-2 pb-3 font-medium transition-colors border-b-2 -mb-px cursor-pointer shrink-0',
+            activeTab === 'reversals'
+              ? 'border-purple-600 text-fg font-semibold'
+              : 'border-transparent text-fg-muted hover:text-fg'
+          )}
+        >
+          <RotateCcw className="w-3.5 h-3.5 text-purple-600" />
+          <span>CBS Reversals Backlog</span>
+          <span className="font-mono text-2xs px-1.5 py-0.5 border border-purple-500/20 bg-purple-500/10 text-purple-600">
+            {reversalRequests.filter(r => r.status === 'PENDING').length} PENDING
+          </span>
+        </button>
       </div>
 
       {/* ========================================================
@@ -856,7 +995,7 @@ export default function AdminPortal() {
                           <td className="py-2.5 px-2 text-center">
                             <button
                               type="button"
-                              onClick={() => setExpandedTxId(isExpanded ? null : tx.id)}
+                              onClick={() => handleToggleExpand(tx.id)}
                               className="p-1 hover:bg-surface text-fg-muted hover:text-fg transition-colors cursor-pointer"
                               title={isExpanded ? 'Collapse Stepper' : 'Expand 11-Stage Audit Stepper'}
                             >
@@ -927,7 +1066,7 @@ export default function AdminPortal() {
                               {/* 11-Stage Audit Stepper Button */}
                               <button
                                 type="button"
-                                onClick={() => setExpandedTxId(isExpanded ? null : tx.id)}
+                                onClick={() => handleToggleExpand(tx.id)}
                                 className="px-2 py-1 text-2xs font-medium border border-line bg-sunken hover:bg-surface text-fg transition-colors flex items-center gap-1 cursor-pointer"
                               >
                                 <Layers className="w-3 h-3 text-accent" />
@@ -1026,6 +1165,79 @@ export default function AdminPortal() {
                                   </p>
                                 </div>
                               )}
+
+                              {/* Live Transaction Status History (Orchestrator GET /api/v1/transfers/transactions/{tx.id}/status-history) */}
+                              <div className="p-3 bg-surface border border-line space-y-2 mt-2">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <History className="w-3.5 h-3.5 text-accent" />
+                                    <span className="text-xs font-bold font-mono text-fg">
+                                      Core Banking Status Transition Audit Trail
+                                    </span>
+                                    <span className="text-2xs font-mono text-fg-subtle">
+                                      GET /api/v1/transfers/transactions/{tx.id}/status-history
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => fetchStatusHistoryForTx(tx.id)}
+                                    disabled={loadingHistoryId === tx.id}
+                                    className="px-2 py-0.5 text-2xs font-mono border border-line bg-sunken hover:bg-surface text-fg-muted hover:text-fg flex items-center gap-1 cursor-pointer transition-colors"
+                                  >
+                                    <RefreshCw className={`w-3 h-3 ${loadingHistoryId === tx.id ? 'animate-spin' : ''}`} />
+                                    <span>Sync Transitions</span>
+                                  </button>
+                                </div>
+
+                                {loadingHistoryId === tx.id && !statusHistoryMap[tx.id] ? (
+                                  <div className="py-2 text-center text-2xs font-mono text-fg-subtle">
+                                    Fetching OFS transaction transitions from Orchestrator...
+                                  </div>
+                                ) : statusHistoryMap[tx.id] && statusHistoryMap[tx.id].length > 0 ? (
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-2xs font-mono border-collapse">
+                                      <thead>
+                                        <tr className="bg-sunken text-fg-subtle border-b border-line uppercase">
+                                          <th className="py-1.5 px-2">Transition</th>
+                                          <th className="py-1.5 px-2">Trigger Reason</th>
+                                          <th className="py-1.5 px-2">Details</th>
+                                          <th className="py-1.5 px-2">Actor / Type</th>
+                                          <th className="py-1.5 px-2">Timestamp</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-line">
+                                        {statusHistoryMap[tx.id].map((sh, idx) => (
+                                          <tr key={sh.historyId || idx} className="hover:bg-sunken/40">
+                                            <td className="py-1.5 px-2 font-semibold">
+                                              <span className="text-fg-muted">{sh.fromStatus || 'START'}</span>
+                                              <span className="text-accent mx-1 font-bold">&rarr;</span>
+                                              <span className={sh.toStatus === 'POSTED' ? 'text-emerald-600 font-bold' : sh.toStatus === 'REVERSED' ? 'text-purple-600 font-bold' : 'text-amber-600 font-bold'}>
+                                                {sh.toStatus}
+                                              </span>
+                                            </td>
+                                            <td className="py-1.5 px-2 font-semibold text-fg">
+                                              {sh.changeReason || '--'}
+                                            </td>
+                                            <td className="py-1.5 px-2 text-fg-muted truncate max-w-xs">
+                                              {sh.reasonDetails || '--'}
+                                            </td>
+                                            <td className="py-1.5 px-2 text-fg-subtle">
+                                              {sh.actorId || 'SYSTEM'} ({sh.actorType || 'SERVICE'})
+                                            </td>
+                                            <td className="py-1.5 px-2 text-fg-subtle whitespace-nowrap">
+                                              {sh.changedAt ? new Date(sh.changedAt).toLocaleString() : '--'}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                ) : (
+                                  <div className="py-1.5 text-2xs font-mono text-fg-subtle">
+                                    Click "Sync Transitions" to query recorded Core Banking lifecycle state changes.
+                                  </div>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         )}
@@ -1382,6 +1594,150 @@ export default function AdminPortal() {
                 <p className="text-2xs text-fg-muted">{svc.role}</p>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          TAB 6: CBS REVERSALS & DISPUTE BACKLOG (ORCHESTRATOR API)
+         ======================================================== */}
+      {activeTab === 'reversals' && (
+        <div className="bg-surface border border-line p-5 space-y-4 font-mono">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-line">
+            <div>
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-purple-600" />
+                <h3 className="text-sm font-semibold text-fg">
+                  Core Banking Reversal Tickets &amp; Dispute Backlog
+                </h3>
+              </div>
+              <p className="text-xs text-fg-muted mt-0.5">
+                Maker-Checker escalation requests and saga compensations routed via Transfer Orchestrator (<span className="text-accent">GET /api/v1/reversals</span>).
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 border border-line bg-sunken p-0.5 text-2xs">
+                {['ALL', 'PENDING', 'APPROVED', 'REJECTED'].map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setReversalFilter(st)}
+                    className={cn(
+                      'px-2.5 py-1 text-2xs transition-colors cursor-pointer',
+                      reversalFilter === st
+                        ? 'bg-purple-600 text-white font-bold'
+                        : 'text-fg-muted hover:text-fg'
+                    )}
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={fetchReversalRequests}
+                disabled={isLoadingReversals}
+                className="px-2.5 py-1 text-2xs border border-line bg-surface hover:bg-sunken text-fg flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <RefreshCw className={`w-3 h-3 ${isLoadingReversals ? 'animate-spin' : ''}`} />
+                <span>Refresh Queue</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Tickets Table */}
+          <div className="overflow-x-auto border border-line">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-sunken text-fg-subtle text-2xs uppercase border-b border-line">
+                  <th className="py-2.5 px-3">Ticket ID</th>
+                  <th className="py-2.5 px-3">Original Tx Reference</th>
+                  <th className="py-2.5 px-3">Dispute Reason</th>
+                  <th className="py-2.5 px-3">Maker ID</th>
+                  <th className="py-2.5 px-3">Checker ID</th>
+                  <th className="py-2.5 px-3 text-center">Status</th>
+                  <th className="py-2.5 px-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line text-2xs">
+                {reversalRequests.filter((t) => reversalFilter === 'ALL' || t.status === reversalFilter).length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-6 text-center text-fg-subtle">
+                      No reversal requests matching current filter.
+                    </td>
+                  </tr>
+                ) : (
+                  reversalRequests
+                    .filter((t) => reversalFilter === 'ALL' || t.status === reversalFilter)
+                    .map((t) => {
+                      const isPending = t.status === 'PENDING';
+                      const isApproved = t.status === 'APPROVED';
+                      const isRejected = t.status === 'REJECTED';
+
+                      return (
+                        <tr key={t.ticketId || t.ticket_id} className="hover:bg-sunken/40">
+                          <td className="py-2.5 px-3 font-bold text-fg">
+                            {t.ticketId || t.ticket_id}
+                          </td>
+                          <td className="py-2.5 px-3 font-semibold text-accent">
+                            {t.originalTransactionId || t.original_transaction_id || '--'}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className="font-semibold text-fg block">{t.disputeReason || t.dispute_reason}</span>
+                            <span className="text-fg-subtle text-[10px]">{t.makerNotes || t.maker_notes || ''}</span>
+                          </td>
+                          <td className="py-2.5 px-3 text-fg-muted">
+                            {t.makerId || t.maker_id || 'MAKER01'}
+                          </td>
+                          <td className="py-2.5 px-3 text-fg-muted">
+                            {t.checkerId || t.checker_id || '--'}
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <span className={cn(
+                              'px-2 py-0.5 text-2xs font-bold border',
+                              isPending && 'bg-amber-500/10 text-amber-600 border-amber-500/30',
+                              isApproved && 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
+                              isRejected && 'bg-red-500/10 text-red-600 border-red-500/30'
+                            )}>
+                              {t.status}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            {isPending ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  disabled={reversalActionLoading === (t.ticketId || t.ticket_id)}
+                                  onClick={() => handleApproveReversal(t.ticketId || t.ticket_id)}
+                                  className="px-2 py-1 text-2xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer transition-colors"
+                                  title="Approve Reversal via POST /api/v1/reversals/approve"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={reversalActionLoading === (t.ticketId || t.ticket_id)}
+                                  onClick={() => handleRejectReversal(t.ticketId || t.ticket_id)}
+                                  className="px-2 py-1 text-2xs font-bold bg-red-600 hover:bg-red-700 text-white cursor-pointer transition-colors"
+                                  title="Reject Reversal via POST /api/v1/reversals/reject"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-fg-subtle text-[10px]">
+                                {t.resolvedAt ? new Date(t.resolvedAt).toLocaleTimeString() : 'Settled'}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

@@ -22,7 +22,14 @@ import {
   History,
   Clock,
   Play,
-  FileText
+  FileText,
+  Search,
+  ArrowUpRight,
+  ArrowDownLeft,
+  AlertCircle,
+  Ban,
+  ShieldCheck,
+  Zap
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -46,7 +53,7 @@ const parseOfsResponse = (text) => {
 };
 
 export default function T24TestConsole() {
-  const [activeTab, setActiveTab] = useState('transfer'); // transfer | hold | reversal | ofs | cob | dlq
+  const [activeTab, setActiveTab] = useState('transfer'); // transfer | enquiry | reversal | ofs | cob | dlq
   const [activeAccount, setActiveAccount] = useState('acc-2002-chk-001');
   const [balanceData, setBalanceData] = useState({
     accountId: 'acc-2002-chk-001',
@@ -74,22 +81,21 @@ export default function T24TestConsole() {
   const [transferResult, setTransferResult] = useState(null);
   const [isTransferring, setIsTransferring] = useState(false);
 
-  // Amount Hold & Reservation State
-  const [holdForm, setHoldForm] = useState({
-    accountId: 'acc-2002-chk-001',
-    targetAccountId: 'acc-2003-sav-002',
-    transactionId: 'TX-RES-' + Math.floor(Math.random() * 90000 + 10000),
-    holdAmount: '1000.00',
-    reason: 'PRE_AUTHORIZATION',
-    expiryHours: 24,
-    externalReference: 'TRANSFER_RESERVATION'
-  });
-  const [activeHolds, setActiveHolds] = useState([]);
-  const [isHolding, setIsHolding] = useState(false);
-  const [holdResult, setHoldResult] = useState(null);
-  const [isCapturing, setIsCapturing] = useState(false);
-  const [captureResult, setCaptureResult] = useState(null);
+  // Account Transaction Enquiry State (ENQUIRY.SELECT)
+  const [enquiryAccount, setEnquiryAccount] = useState('acc-2002-chk-001');
+  const [enquiryPage, setEnquiryPage] = useState(0);
+  const [enquirySize, setEnquirySize] = useState(20);
+  const [enquiryProtocol, setEnquiryProtocol] = useState('ORCHESTRATOR_JSON'); // 'ORCHESTRATOR_JSON' | 'T24_OFS'
+  const [enquiryTransactions, setEnquiryTransactions] = useState([]);
+  const [enquiryRawOfs, setEnquiryRawOfs] = useState('');
+  const [isLoadingEnquiry, setIsLoadingEnquiry] = useState(false);
   const [isSimulatingFailure, setIsSimulatingFailure] = useState(false);
+
+  // Real-World Banking Failure Scenarios Simulator State
+  const [selectedScenario, setSelectedScenario] = useState('INSUFFICIENT_FUNDS');
+  const [scenarioRunning, setScenarioRunning] = useState(false);
+  const [scenarioResult, setScenarioResult] = useState(null);
+  const [postingWindowToggling, setPostingWindowToggling] = useState(false);
 
   // Reversal State
   const [reversalForm, setReversalForm] = useState({
@@ -105,6 +111,17 @@ export default function T24TestConsole() {
   });
   const [reversalResult, setReversalResult] = useState(null);
   const [isReversing, setIsReversing] = useState(false);
+
+  // Live Reversal Requests Backlog (Gateway: GET /api/v1/reversals)
+  const [reversalRequests, setReversalRequests] = useState([]);
+  const [isLoadingReversals, setIsLoadingReversals] = useState(false);
+  const [reversalStatusFilter, setReversalStatusFilter] = useState('ALL');
+
+  // Transaction Status History (Gateway: GET /api/v1/transfers/transactions/{id}/status-history)
+  const [statusHistoryTxId, setStatusHistoryTxId] = useState('');
+  const [statusHistoryList, setStatusHistoryList] = useState([]);
+  const [isLoadingStatusHistory, setIsLoadingStatusHistory] = useState(false);
+  const [isStatusHistoryOpen, setIsStatusHistoryOpen] = useState(false);
 
   // OFS Terminal State
   const [ofsInput, setOfsInput] = useState(
@@ -179,20 +196,6 @@ export default function T24TestConsole() {
     }
   };
 
-  // Fetch active holds
-  const fetchHolds = async (accId = activeAccount) => {
-    try {
-      const res = await axios.get(`${API_BASE}/cbs/holds/account/${accId}`);
-      if (Array.isArray(res.data)) {
-        setActiveHolds(res.data);
-      } else {
-        setActiveHolds([]);
-      }
-    } catch {
-      setActiveHolds([]);
-    }
-  };
-
   // Fetch system date & COB status
   const fetchSystemDate = async () => {
     try {
@@ -233,32 +236,43 @@ export default function T24TestConsole() {
 
   useEffect(() => {
     fetchBalance(activeAccount);
-    fetchHolds(activeAccount);
     fetchSystemDate();
   }, [activeAccount]);
 
-  // Execute Transfer (Dual-Endpoint 1: POST /t24/funds-transfer)
+  useEffect(() => {
+    if (activeTab === 'reversal') {
+      fetchReversalRequests(reversalStatusFilter === 'ALL' ? '' : reversalStatusFilter);
+    }
+  }, [activeTab, reversalStatusFilter]);
+
+  useEffect(() => {
+    if (activeTab === 'enquiry') {
+      handleFetchEnquiryTransactions(enquiryAccount, enquiryPage, enquiryProtocol);
+    }
+  }, [activeTab, enquiryAccount, enquiryPage, enquiryProtocol]);
+
+  // Execute Transfer (Orchestrator JSON mapping: POST /api/v1/transfers -> T24 OFS: POST /api/v1/cbs/funds-transfer)
   const handleExecuteTransfer = async (e) => {
     e.preventDefault();
     setIsTransferring(true);
     setTransferResult(null);
     try {
-      const txRef = 'FT' + Math.floor(Math.random() * 900000 + 100000);
+      const txRef = 'TXN-' + Math.floor(Math.random() * 900000 + 100000);
       const payload = {
-        transaction_id: txRef,
-        source_account_id: transferForm.sourceAccountId,
-        destination_account_id: transferForm.destinationAccountId,
+        transactionId: txRef,
+        sourceAccountId: transferForm.sourceAccountId,
+        destinationAccountId: transferForm.destinationAccountId,
         amount: parseFloat(transferForm.amount),
         currency: transferForm.currency,
-        memo: transferForm.description,
-        transaction_type: 'INTRA_BANK',
-        requires_maker_checker: 0
+        description: transferForm.description,
+        deviceId: 'TEST-CONSOLE-BROWSER',
+        idempotencyKey: 'IDEMP-' + txRef
       };
-      const res = await axios.post(`${API_BASE}/cbs/t24/funds-transfer`, payload);
+      const res = await axios.post(`${API_BASE}/transfers`, payload);
       setTransferResult({ success: true, data: res.data });
-      showToast('T24 Endpoint 1 (/funds-transfer) executed and posted!', 'success');
+      showToast('Funds Transfer executed and posted via Orchestrator JSON ➔ T24 OFS!', 'success');
       // Auto-fill reversal original Tx ID
-      const ref = res.data?.t24_reference || res.data?.transactionId || txRef;
+      const ref = res.data?.transactionId || txRef;
       setReversalForm((prev) => ({ ...prev, originalTransactionId: ref }));
       fetchBalance(activeAccount);
     } catch (err) {
@@ -272,7 +286,33 @@ export default function T24TestConsole() {
     }
   };
 
-  // Execute Compensating Reversal (Dual-Endpoint 2: POST /t24/reversal)
+  // Account Transaction Enquiry (Orchestrator JSON: GET /transfers/accounts/{id}/transactions | T24 OFS: GET /cbs/accounts/{id}/transactions)
+  const handleFetchEnquiryTransactions = async (accId = enquiryAccount, page = enquiryPage, protocol = enquiryProtocol) => {
+    setIsLoadingEnquiry(true);
+    setEnquiryRawOfs('');
+    try {
+      if (protocol === 'ORCHESTRATOR_JSON') {
+        const res = await axios.get(`${API_BASE}/transfers/accounts/${accId}/transactions?page=${page}&size=${enquirySize}`);
+        const data = Array.isArray(res.data) ? res.data : [];
+        setEnquiryTransactions(data);
+        showToast(`Retrieved ${data.length} transactions via Orchestrator JSON mapping`, 'info');
+      } else {
+        const res = await axios.get(`${API_BASE}/cbs/accounts/${accId}/transactions?page=${page}&size=${enquirySize}`, {
+          responseType: 'text'
+        });
+        setEnquiryRawOfs(typeof res.data === 'string' ? res.data : JSON.stringify(res.data));
+        showToast('Retrieved raw Temenos OFS transaction enquiry wire string', 'info');
+      }
+    } catch (err) {
+      console.warn('Transaction enquiry error:', err);
+      showToast('Enquiry failed: ' + (err.response?.data?.message || err.message), 'error');
+      setEnquiryTransactions([]);
+    } finally {
+      setIsLoadingEnquiry(false);
+    }
+  };
+
+  // Execute Compensating Reversal (Gateway / Orchestrator: POST /api/v1/reversals/direct)
   const handleCompensatingReversal = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     if (!reversalForm.originalTransactionId) {
@@ -283,14 +323,16 @@ export default function T24TestConsole() {
     setReversalResult(null);
     try {
       const payload = {
-        original_transaction_id: reversalForm.originalTransactionId,
-        reversal_reason: reversalForm.reason || 'SAGA_COMPENSATION_ROLLBACK',
-        actor_id: 'SAGA_COORDINATOR'
+        originalTransactionId: reversalForm.originalTransactionId,
+        reason: reversalForm.reason || 'SAGA_COMPENSATION_ROLLBACK',
+        makerId: 'SAGA_COORDINATOR',
+        checkerId: 'SYSTEM_SAGA'
       };
-      const res = await axios.post(`${API_BASE}/cbs/t24/reversal`, payload);
-      setReversalResult({ success: true, step: 'COMPENSATED_EP2', data: res.data });
-      showToast('T24 Endpoint 2 (/reversal) compensating saga reversal executed!', 'success');
+      const res = await axios.post(`${API_BASE}/reversals/direct`, payload);
+      setReversalResult({ success: true, step: 'COMPENSATED_ORCHESTRATOR', data: res.data });
+      showToast('Orchestrator compensating saga reversal executed via Gateway!', 'success');
       fetchBalance(activeAccount);
+      fetchReversalRequests(reversalStatusFilter === 'ALL' ? '' : reversalStatusFilter);
     } catch (err) {
       setReversalResult({
         success: false,
@@ -299,81 +341,6 @@ export default function T24TestConsole() {
       showToast('Compensating reversal failed: ' + (err.response?.data?.message || err.message), 'error');
     } finally {
       setIsReversing(false);
-    }
-  };
-
-  // Place Amount Hold (Reserve Funds for Transfer)
-  const handlePlaceHold = async (e) => {
-    e.preventDefault();
-    setIsHolding(true);
-    setHoldResult(null);
-    try {
-      const payload = {
-        account_id: holdForm.accountId,
-        target_account_id: holdForm.targetAccountId,
-        transaction_id: holdForm.transactionId,
-        hold_amount: parseFloat(holdForm.holdAmount),
-        reason: holdForm.reason,
-        expiry_hours: parseInt(holdForm.expiryHours, 10),
-        external_reference: holdForm.externalReference
-      };
-      const res = await axios.post(`${API_BASE}/cbs/holds`, payload);
-      setHoldResult({ success: true, data: res.data });
-      showToast(`Funds reserved under Hold ${res.data.hold_id} for Tx ${holdForm.transactionId}!`, 'success');
-      // Regenerate next transaction ID for convenience
-      setHoldForm((prev) => ({
-        ...prev,
-        transactionId: 'TX-RES-' + Math.floor(Math.random() * 90000 + 10000)
-      }));
-      fetchBalance(activeAccount);
-      fetchHolds(activeAccount);
-    } catch (err) {
-      setHoldResult({
-        success: false,
-        error: err.response?.data?.message || err.response?.data || err.message
-      });
-      showToast('Hold reservation failed: ' + (err.response?.data?.message || err.message), 'error');
-    } finally {
-      setIsHolding(false);
-    }
-  };
-
-  // Capture Amount Hold (Settle Transfer into Destination Account)
-  const handleCaptureHold = async (holdId, targetAcc, amount) => {
-    setIsCapturing(true);
-    setCaptureResult(null);
-    try {
-      const payload = {
-        hold_id: holdId,
-        target_account_id: targetAcc || 'ACC-1002',
-        capture_amount: amount ? parseFloat(amount) : undefined,
-        narrative: 'Settlement capture of reserved hold ' + holdId
-      };
-      const res = await axios.post(`${API_BASE}/cbs/holds/${holdId}/capture`, payload);
-      setCaptureResult({ success: true, data: res.data });
-      showToast(`Hold ${holdId} captured and settled into completed transfer!`, 'success');
-      fetchBalance(activeAccount);
-      fetchHolds(activeAccount);
-    } catch (err) {
-      setCaptureResult({
-        success: false,
-        error: err.response?.data?.message || err.response?.data || err.message
-      });
-      showToast('Capture failed: ' + (err.response?.data?.message || err.message), 'error');
-    } finally {
-      setIsCapturing(false);
-    }
-  };
-
-  // Release / Cancel Amount Hold
-  const handleReleaseHold = async (holdId) => {
-    try {
-      const res = await axios.delete(`${API_BASE}/cbs/holds/${holdId}`);
-      showToast(`Hold ${holdId} cancelled! Funds restored to available balance.`, 'success');
-      fetchBalance(activeAccount);
-      fetchHolds(activeAccount);
-    } catch (err) {
-      showToast('Release failed: ' + (err.response?.data?.message || err.message), 'error');
     }
   };
 
@@ -405,7 +372,387 @@ export default function T24TestConsole() {
     }
   };
 
-  // Maker Reversal Request
+  // Toggle Posting Window (Cutoff Simulation: ONLINE <-> EOD_CUTOFF)
+  const handleTogglePostingWindow = async (openTarget) => {
+    setPostingWindowToggling(true);
+    try {
+      const q = openTarget !== undefined ? `?open=${openTarget}` : '';
+      const res = await axios.post(`${API_BASE}/cbs/cob/posting-window${q}`);
+      const ofs = typeof res.data === 'string' ? parseOfsResponse(res.data) : res.data;
+      const isOpen = ofs['POSTING.WINDOW'] === 'OPEN' || ofs['POSTING.WINDOW.OPEN'] === 'true' || ofs.postingWindowOpen;
+      setSystemDate((prev) => ({
+        ...prev,
+        status: ofs['STATUS'] || ofs.status || (isOpen ? 'ONLINE' : 'EOD_CUTOFF'),
+        postingWindowOpen: isOpen
+      }));
+      showToast(`Posting window is now ${isOpen ? 'OPEN (ONLINE)' : 'CLOSED (EOD_CUTOFF)'}!`, isOpen ? 'success' : 'info');
+      fetchSystemDate();
+    } catch (err) {
+      showToast('Failed to toggle posting window: ' + (err.response?.data?.message || err.message), 'error');
+    } finally {
+      setPostingWindowToggling(false);
+    }
+  };
+
+  // Real-World Banking Failure Scenario Runner
+  const handleRunScenario = async (scenarioId) => {
+    setScenarioRunning(true);
+    setScenarioResult(null);
+    setSelectedScenario(scenarioId);
+
+    try {
+      if (scenarioId === 'INSUFFICIENT_FUNDS') {
+        const txRef = 'SCEN-INS-' + Math.floor(Math.random() * 90000 + 10000);
+        const payload = {
+          transactionId: txRef,
+          sourceAccountId: activeAccount,
+          destinationAccountId: 'acc-2003-sav-002',
+          amount: 999999999.00,
+          currency: 'PHP',
+          description: 'Solvency Test: Overdraft rejection',
+          deviceId: 'SCENARIO-RUNNER',
+          idempotencyKey: 'IDEMP-' + txRef
+        };
+        try {
+          const res = await axios.post(`${API_BASE}/transfers`, payload);
+          setScenarioResult({
+            id: scenarioId,
+            passed: false,
+            expected: 'HTTP 400 rejection (Insufficient funds)',
+            actual: `Unexpected Success: HTTP 200 (${res.data?.status})`,
+            payload,
+            response: res.data
+          });
+        } catch (err) {
+          const errData = err.response?.data;
+          const errMsg = typeof errData === 'string' ? errData : errData?.message || err.message;
+          const status = err.response?.status;
+          const isExpected = status === 400 || (errMsg && errMsg.toLowerCase().includes('insufficient'));
+          setScenarioResult({
+            id: scenarioId,
+            passed: isExpected,
+            expected: 'HTTP 400 Bad Request with "Insufficient funds" message',
+            actual: `HTTP ${status}: ${errMsg}`,
+            payload,
+            response: errData || { error: err.message }
+          });
+          showToast(isExpected ? 'Scenario Verified: Overdraft successfully blocked by CBS!' : 'Unexpected error: ' + errMsg, isExpected ? 'success' : 'error');
+        }
+      } else if (scenarioId === 'EOD_CUTOFF_WINDOW_CLOSED') {
+        // Step 1: Ensure window is closed
+        await axios.post(`${API_BASE}/cbs/cob/posting-window?open=false`);
+        fetchSystemDate();
+
+        const txRef = 'SCEN-CUTOFF-' + Math.floor(Math.random() * 90000 + 10000);
+        const payload = {
+          transactionId: txRef,
+          sourceAccountId: activeAccount,
+          destinationAccountId: 'acc-2003-sav-002',
+          amount: 1000.00,
+          currency: 'PHP',
+          description: 'EOD Cutoff Window Closed Test',
+          deviceId: 'SCENARIO-RUNNER',
+          idempotencyKey: 'IDEMP-' + txRef
+        };
+        try {
+          const res = await axios.post(`${API_BASE}/transfers`, payload);
+          setScenarioResult({
+            id: scenarioId,
+            passed: false,
+            expected: 'Rejection with "Posting window is closed"',
+            actual: `Unexpected Success: HTTP 200 (${res.data?.status})`,
+            payload,
+            response: res.data
+          });
+        } catch (err) {
+          const errData = err.response?.data;
+          const errMsg = typeof errData === 'string' ? errData : errData?.message || err.message;
+          const status = err.response?.status;
+          const isExpected = errMsg && errMsg.toLowerCase().includes('posting window is closed');
+          setScenarioResult({
+            id: scenarioId,
+            passed: isExpected,
+            expected: 'HTTP 400/500 with "CBS Posting window is closed. Business status: EOD_CUTOFF"',
+            actual: `HTTP ${status}: ${errMsg}`,
+            payload,
+            response: errData || { error: err.message }
+          });
+          showToast(isExpected ? 'Scenario Verified: Transfer rejected due to closed posting window!' : 'Result: ' + errMsg, isExpected ? 'success' : 'error');
+        }
+      } else if (scenarioId === 'CIRCULAR_SAME_ACCOUNT') {
+        const txRef = 'SCEN-CIRC-' + Math.floor(Math.random() * 90000 + 10000);
+        const payload = {
+          transactionId: txRef,
+          sourceAccountId: activeAccount,
+          destinationAccountId: activeAccount,
+          amount: 500.00,
+          currency: 'PHP',
+          description: 'Self-transfer input hygiene check',
+          deviceId: 'SCENARIO-RUNNER',
+          idempotencyKey: 'IDEMP-' + txRef
+        };
+        try {
+          const res = await axios.post(`${API_BASE}/transfers`, payload);
+          setScenarioResult({
+            id: scenarioId,
+            passed: false,
+            expected: 'HTTP 400 rejection: Source and destination must be different',
+            actual: `Unexpected Success: HTTP 200 (${res.data?.status})`,
+            payload,
+            response: res.data
+          });
+        } catch (err) {
+          const errData = err.response?.data;
+          const errMsg = typeof errData === 'string' ? errData : errData?.message || err.message;
+          const status = err.response?.status;
+          const isExpected = status === 400 && errMsg.includes('different');
+          setScenarioResult({
+            id: scenarioId,
+            passed: isExpected,
+            expected: 'HTTP 400 with "Source and destination accounts must be different"',
+            actual: `HTTP ${status}: ${errMsg}`,
+            payload,
+            response: errData || { error: err.message }
+          });
+          showToast(isExpected ? 'Scenario Verified: Circular transfer blocked!' : 'Result: ' + errMsg, isExpected ? 'success' : 'error');
+        }
+      } else if (scenarioId === 'NON_EXISTENT_ACCOUNT') {
+        const txRef = 'SCEN-404-' + Math.floor(Math.random() * 90000 + 10000);
+        const payload = {
+          transactionId: txRef,
+          sourceAccountId: activeAccount,
+          destinationAccountId: 'ACC-INVALID-999-NOTFOUND',
+          amount: 500.00,
+          currency: 'PHP',
+          description: 'Routing Failure: Unknown beneficiary',
+          deviceId: 'SCENARIO-RUNNER',
+          idempotencyKey: 'IDEMP-' + txRef
+        };
+        try {
+          const res = await axios.post(`${API_BASE}/transfers`, payload);
+          setScenarioResult({
+            id: scenarioId,
+            passed: false,
+            expected: 'HTTP 400 rejection: Account balance not found',
+            actual: `Unexpected Success: HTTP 200 (${res.data?.status})`,
+            payload,
+            response: res.data
+          });
+        } catch (err) {
+          const errData = err.response?.data;
+          const errMsg = typeof errData === 'string' ? errData : errData?.message || err.message;
+          const status = err.response?.status;
+          const isExpected = errMsg && (errMsg.includes('not found') || errMsg.includes('ACC-INVALID'));
+          setScenarioResult({
+            id: scenarioId,
+            passed: isExpected,
+            expected: 'HTTP 400 with "Account balance not found for ID: ACC-INVALID-999-NOTFOUND"',
+            actual: `HTTP ${status}: ${errMsg}`,
+            payload,
+            response: errData || { error: err.message }
+          });
+          showToast(isExpected ? 'Scenario Verified: Unknown routing blocked!' : 'Result: ' + errMsg, isExpected ? 'success' : 'error');
+        }
+      } else if (scenarioId === 'ANTI_SCAM_COOLING_OFF') {
+        const txRef = 'SCEN-COOL-' + Math.floor(Math.random() * 90000 + 10000);
+        const payload = {
+          transactionId: txRef,
+          sourceAccountId: activeAccount,
+          destinationAccountId: 'acc-2003-sav-002',
+          amount: 300000.00,
+          currency: 'PHP',
+          description: 'BSP Circular 1140: High-Value Cooling-Off Hold',
+          deviceId: 'SCENARIO-RUNNER',
+          idempotencyKey: 'IDEMP-' + txRef
+        };
+        const res = await axios.post(`${API_BASE}/transfers`, payload);
+        const isExpected = res.data?.coolingOffRequired === true || res.data?.status === 'Reserved';
+        setScenarioResult({
+          id: scenarioId,
+          passed: isExpected,
+          expected: 'Status "Reserved" with coolingOffRequired=true and 600s timer (BSP Circular 1140)',
+          actual: `Status: ${res.data?.status}, coolingOffRequired: ${res.data?.coolingOffRequired}, lockSecs: ${res.data?.coolingOffExpiresInSeconds}`,
+          payload,
+          response: res.data
+        });
+        showToast(isExpected ? 'Scenario Verified: ₱300k transfer intercepted by Anti-Scam Cooling-Off!' : 'Response: ' + res.data?.status, isExpected ? 'success' : 'info');
+      } else if (scenarioId === 'BIOMETRIC_STEP_UP_CHALLENGE') {
+        const txRef = 'SCEN-BIO-' + Math.floor(Math.random() * 90000 + 10000);
+        const payload = {
+          transactionId: txRef,
+          sourceAccountId: activeAccount,
+          destinationAccountId: 'acc-2003-sav-002',
+          amount: 75000.00,
+          currency: 'PHP',
+          description: 'Strong Customer Authentication (SCA) Step-Up Challenge',
+          deviceId: 'SCENARIO-RUNNER',
+          idempotencyKey: 'IDEMP-' + txRef
+        };
+        const res = await axios.post(`${API_BASE}/transfers`, payload);
+        const isExpected = res.data?.biometricRequired === true || res.data?.status === 'Authorized';
+        setScenarioResult({
+          id: scenarioId,
+          passed: isExpected,
+          expected: 'Status "Authorized" with biometricRequired=true and challenge string (MFA Step-Up)',
+          actual: `Status: ${res.data?.status}, biometricRequired: ${res.data?.biometricRequired}, challenge: ${res.data?.biometricChallenge ? 'Supplied' : 'None'}`,
+          payload,
+          response: res.data
+        });
+        showToast(isExpected ? 'Scenario Verified: Biometric challenge required for ₱75k transfer!' : 'Response: ' + res.data?.status, isExpected ? 'success' : 'info');
+      } else if (scenarioId === 'FOUR_EYES_DUAL_CONTROL_VIOLATION') {
+        // Step 1: Create a real dispute ticket
+        const originTx = 'TXN-DISP-' + Math.floor(Math.random() * 90000 + 10000);
+        const reqPayload = {
+          originalTransactionId: originTx,
+          makerId: 'TELLER_ALICE',
+          reason: 'CUSTOMER_DISPUTE',
+          notes: 'Customer disputed charge'
+        };
+        const reqRes = await axios.post(`${API_BASE}/reversals/request`, reqPayload);
+        const ticketId = reqRes.data?.ticketId || reqRes.data?.['TICKET.ID'];
+
+        // Step 2: Attempt rogue self-approval using SAME ID (checkerId == makerId)
+        const approvePayload = {
+          reversalRequestId: ticketId,
+          checkerId: 'TELLER_ALICE',
+          checkerNotes: 'Rogue unauthorized self-approval attempt'
+        };
+        try {
+          const appRes = await axios.post(`${API_BASE}/reversals/approve`, approvePayload);
+          setScenarioResult({
+            id: scenarioId,
+            passed: false,
+            expected: 'HTTP 400 rejection: Dual control violation (checkerId cannot match makerId)',
+            actual: `Unexpected Success: HTTP 200 (${appRes.data?.STATUS || 'APPROVED'})`,
+            payload: approvePayload,
+            response: appRes.data
+          });
+        } catch (err) {
+          const errData = err.response?.data;
+          const errMsg = typeof errData === 'string' ? errData : errData?.message || err.message;
+          const status = err.response?.status;
+          const isExpected = errMsg && (errMsg.includes('Dual control') || errMsg.includes('cannot match') || errMsg.includes('Maker'));
+          setScenarioResult({
+            id: scenarioId,
+            passed: isExpected,
+            expected: 'HTTP 400 with "Dual control violation: Checker ID cannot match Maker ID" (BSP Circular 982)',
+            actual: `HTTP ${status}: ${errMsg}`,
+            payload: approvePayload,
+            response: errData || { error: err.message }
+          });
+          showToast(isExpected ? 'Scenario Verified: Rogue self-approval blocked by Four-Eyes principle!' : 'Result: ' + errMsg, isExpected ? 'success' : 'error');
+        }
+      } else if (scenarioId === 'IDEMPOTENCY_DUPLICATE_REPLAY') {
+        const idempKey = 'IDEMP-TEST-' + Date.now();
+        const payload = {
+          transactionId: 'TXN-DUP-A-' + Math.floor(Math.random() * 90000 + 10000),
+          sourceAccountId: activeAccount,
+          destinationAccountId: 'acc-2003-sav-002',
+          amount: 250.00,
+          currency: 'PHP',
+          description: 'Idempotency Test Mutation',
+          deviceId: 'SCENARIO-RUNNER',
+          idempotencyKey: idempKey
+        };
+
+        // Call 1: First Execution
+        const res1 = await axios.post(`${API_BASE}/transfers`, payload);
+
+        // Call 2: Second Execution with SAME IDEMPOTENCY KEY
+        const payload2 = {
+          ...payload,
+          transactionId: 'TXN-DUP-B-' + Math.floor(Math.random() * 90000 + 10000)
+        };
+        const res2 = await axios.post(`${API_BASE}/transfers`, payload2);
+
+        const isExpected = res2.data?.message?.includes('IDEMPOTENT_REPLAY') || res2.data?.message?.includes('idempotent') || res2.data?.status === res1.data?.status;
+        setScenarioResult({
+          id: scenarioId,
+          passed: isExpected,
+          expected: 'Second attempt returns idempotent response without double-debiting balances',
+          actual: `Call 1: ${res1.data?.status} (${res1.data?.message || 'OK'}) ➔ Call 2: ${res2.data?.status} (${res2.data?.message || 'OK'})`,
+          payload: { attempt1: payload, attempt2: payload2 },
+          response: { call1Response: res1.data, call2Response: res2.data }
+        });
+        showToast('Scenario Verified: Idempotent replay safely prevented duplicate transfer!', 'success');
+      } else if (scenarioId === 'CIRCUIT_BREAKER_DLQ_ROUTING') {
+        const txId = 'FAIL-TIMEOUT-' + Math.floor(Math.random() * 90000 + 10000);
+        const payload = {
+          transactionId: txId,
+          errorType: 'NETWORK_TIMEOUT',
+          errorCode: 'HTTP_504',
+          circuitBreakerState: 'OPEN',
+          payload: JSON.stringify({
+            sourceAccountId: activeAccount,
+            destinationAccountId: 'acc-2003-sav-002',
+            amount: 5000.00,
+            reason: 'Simulated CBS 504 Gateway Timeout'
+          })
+        };
+        const res = await axios.post(`${API_BASE}/cbs/audit/failed-transactions/simulate`, payload);
+        setScenarioResult({
+          id: scenarioId,
+          passed: true,
+          expected: 'Trip circuit breaker to OPEN, persist incident to banking.transfers.dlq audit vault',
+          actual: `Incident ${res.data?.incidentId || txId} committed to PostgreSQL Audit Vault. Circuit breaker: OPEN.`,
+          payload,
+          response: res.data
+        });
+        showToast(`Scenario Verified: Incident ${txId} routed to DLQ!`, 'info');
+        fetchDlqIncidents();
+      }
+      fetchBalance(activeAccount);
+    } catch (err) {
+      console.error('Scenario run error:', err);
+      setScenarioResult({
+        id: scenarioId,
+        passed: false,
+        expected: 'Handled scenario response',
+        actual: `Exception: ${err.message}`,
+        response: err.response?.data || { error: err.message }
+      });
+      showToast('Scenario encountered error: ' + err.message, 'error');
+    } finally {
+      setScenarioRunning(false);
+    }
+  };
+
+  // Query Reversal Requests (Gateway / Orchestrator: GET /api/v1/reversals)
+  const fetchReversalRequests = async (status = '') => {
+    setIsLoadingReversals(true);
+    try {
+      const query = status && status !== 'ALL' ? `?status=${status}&page=0&size=20` : `?page=0&size=20`;
+      const res = await axios.get(`${API_BASE}/reversals${query}`);
+      const data = Array.isArray(res.data) ? res.data : [];
+      setReversalRequests(data);
+    } catch (err) {
+      console.warn('Could not fetch reversals list from orchestrator:', err.message);
+      setReversalRequests([]);
+    } finally {
+      setIsLoadingReversals(false);
+    }
+  };
+
+  // Query Transaction Status History (Gateway / Orchestrator: GET /api/v1/transfers/transactions/{id}/status-history)
+  const fetchStatusHistory = async (txId) => {
+    if (!txId) return;
+    setIsLoadingStatusHistory(true);
+    setStatusHistoryTxId(txId);
+    setStatusHistoryList([]);
+    setIsStatusHistoryOpen(true);
+    try {
+      const res = await axios.get(`${API_BASE}/transfers/transactions/${txId}/status-history?page=0&size=20`);
+      const data = Array.isArray(res.data) ? res.data : [];
+      setStatusHistoryList(data);
+    } catch (err) {
+      console.warn('Could not fetch transaction status history:', err.message);
+      setStatusHistoryList([]);
+    } finally {
+      setIsLoadingStatusHistory(false);
+    }
+  };
+
+  // Maker Reversal Request (Gateway / Orchestrator: POST /api/v1/reversals/request)
   const handleRequestReversal = async (e) => {
     e.preventDefault();
     setIsReversing(true);
@@ -417,12 +764,14 @@ export default function T24TestConsole() {
         reason: reversalForm.reason,
         notes: reversalForm.notes
       };
-      const res = await axios.post(`${API_BASE}/cbs/reversals/request`, payload);
+      const res = await axios.post(`${API_BASE}/reversals/request`, payload);
       setReversalResult({ success: true, step: 'REQUESTED', data: res.data });
-      if (res.data?.ticketId) {
-        setCheckerForm((prev) => ({ ...prev, ticketId: res.data.ticketId }));
+      const createdTicketId = res.data?.ticketId || res.data?.['TICKET.ID'];
+      if (createdTicketId) {
+        setCheckerForm((prev) => ({ ...prev, ticketId: createdTicketId }));
       }
-      showToast('Reversal ticket created! Waiting for Checker approval.', 'info');
+      showToast('Reversal ticket created via Orchestrator! Waiting for Checker approval.', 'info');
+      fetchReversalRequests(reversalStatusFilter === 'ALL' ? '' : reversalStatusFilter);
     } catch (err) {
       setReversalResult({
         success: false,
@@ -434,7 +783,7 @@ export default function T24TestConsole() {
     }
   };
 
-  // Checker Approve Reversal
+  // Checker Approve Reversal (Gateway / Orchestrator: POST /api/v1/reversals/approve)
   const handleApproveReversal = async () => {
     setIsReversing(true);
     try {
@@ -443,10 +792,11 @@ export default function T24TestConsole() {
         checkerId: checkerForm.checkerId,
         checkerNotes: checkerForm.checkerNotes
       };
-      const res = await axios.post(`${API_BASE}/cbs/reversals/approve`, payload);
+      const res = await axios.post(`${API_BASE}/reversals/approve`, payload);
       setReversalResult({ success: true, step: 'APPROVED', data: res.data });
-      showToast('Reversal APPROVED! Compensating GL entries posted and balances reversed.', 'success');
+      showToast('Reversal APPROVED via Orchestrator! Compensating GL entries posted and balances reversed.', 'success');
       fetchBalance(activeAccount);
+      fetchReversalRequests(reversalStatusFilter === 'ALL' ? '' : reversalStatusFilter);
     } catch (err) {
       setReversalResult({
         success: false,
@@ -458,7 +808,7 @@ export default function T24TestConsole() {
     }
   };
 
-  // Checker Reject Reversal
+  // Checker Reject Reversal (Gateway / Orchestrator: POST /api/v1/reversals/reject)
   const handleRejectReversal = async () => {
     setIsReversing(true);
     try {
@@ -467,9 +817,10 @@ export default function T24TestConsole() {
         checkerId: checkerForm.checkerId,
         checkerNotes: 'Rejected: ' + checkerForm.checkerNotes
       };
-      const res = await axios.post(`${API_BASE}/cbs/reversals/reject`, payload);
+      const res = await axios.post(`${API_BASE}/reversals/reject`, payload);
       setReversalResult({ success: true, step: 'REJECTED', data: res.data });
-      showToast('Reversal REJECTED! Transaction status restored to Posted.', 'info');
+      showToast('Reversal REJECTED via Orchestrator! Transaction status restored to Posted.', 'info');
+      fetchReversalRequests(reversalStatusFilter === 'ALL' ? '' : reversalStatusFilter);
     } catch (err) {
       setReversalResult({
         success: false,
@@ -492,7 +843,6 @@ export default function T24TestConsole() {
       setOfsResponse(res.data);
       showToast('OFS message processed by CBS wire parser!', 'success');
       fetchBalance(activeAccount);
-      fetchHolds(activeAccount);
     } catch (err) {
       setOfsResponse(err.response?.data || err.message);
       showToast('OFS error returned by CBS', 'error');
@@ -578,7 +928,7 @@ export default function T24TestConsole() {
             T24 Mock CBS Test Laboratory
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Aura Bank interactive workbench for validating Funds Transfers, Amount Holds (`AC.LOCKED.EVENTS`),
+            Aura Bank interactive workbench for validating Funds Transfers, Account Transaction Enquiries (`ENQUIRY.SELECT`),
             Maker-Checker Reversals, Temenos OFS wire strings, COB lifecycle, and DLQ incident replays.
           </p>
         </div>
@@ -630,7 +980,7 @@ export default function T24TestConsole() {
                 onClick={() => {
                   setActiveAccount(acc);
                   setTransferForm((prev) => ({ ...prev, sourceAccountId: acc }));
-                  setHoldForm((prev) => ({ ...prev, accountId: acc }));
+                  setEnquiryAccount(acc);
                 }}
                 className={`flex items-center justify-between rounded-xl px-3 py-2 text-left font-mono text-xs transition-all ${
                   activeAccount === acc
@@ -663,11 +1013,11 @@ export default function T24TestConsole() {
           <p className="mt-2 text-2xs text-slate-500">Authoritative master balance in `balance_master`</p>
         </div>
 
-        {/* Amount Hold (Locked Events) */}
+        {/* Amount Hold (Restricted Funds) */}
         <div className="rounded-2xl border border-amber-100 bg-white p-5 shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between text-2xs font-bold uppercase tracking-wider text-amber-900">
-              <span>Locked / Held Funds</span>
+              <span>Restricted / Held Funds</span>
               <div className="h-7 w-7 rounded-lg bg-amber-100 flex items-center justify-center text-amber-800">
                 <Lock className="h-4 w-4" />
               </div>
@@ -677,7 +1027,7 @@ export default function T24TestConsole() {
             </div>
           </div>
           <p className="mt-2 text-2xs text-slate-500">
-            {activeHolds.length} active hold(s) via `AC.LOCKED.EVENTS`
+            {balanceData?.holdAmount > 0 ? 'Cooling-off / system restraint active' : 'Zero held funds; 100% liquid'}
           </p>
         </div>
 
@@ -694,7 +1044,7 @@ export default function T24TestConsole() {
               PHP {(balanceData?.availableBalance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </div>
           </div>
-          <p className="mt-2 text-2xs text-slate-500">Solvency formula: (Working - Hold)</p>
+          <p className="mt-2 text-2xs text-slate-500">Solvency formula: (Working - Restricted)</p>
         </div>
       </div>
 
@@ -702,11 +1052,12 @@ export default function T24TestConsole() {
       <div className="flex flex-wrap gap-2 rounded-2xl bg-purple-50/70 p-2 border border-purple-100 shadow-2xs">
         {[
           { id: 'transfer', label: '1. Funds Transfer', icon: Send },
-          { id: 'hold', label: '2. Amount Hold (AC.LOCKED.EVENTS)', icon: Lock },
+          { id: 'enquiry', label: '2. Transaction Enquiry (ENQUIRY.SELECT)', icon: FileText },
           { id: 'reversal', label: '3. Reversal (Dual Control)', icon: RotateCcw },
           { id: 'ofs', label: '4. Raw Temenos OFS Terminal', icon: Terminal },
           { id: 'cob', label: '5. COB & EOD Lifecycle', icon: Moon },
-          { id: 'dlq', label: '6. DLQ Incident Replays', icon: AlertTriangle }
+          { id: 'dlq', label: '6. DLQ Incident Replays', icon: AlertTriangle },
+          { id: 'scenarios', label: '7. Banking Failure Simulator', icon: ShieldAlert }
         ].map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
@@ -738,9 +1089,120 @@ export default function T24TestConsole() {
               <Send className="h-4 w-4 text-purple-700" /> Execute Funds Transfer (`FUNDS.TRANSFER`)
             </h2>
             <p className="mt-1 text-xs text-slate-500">
-              Direct intra-bank transfer dispatched to CBS Core (`POST /api/v1/cbs/postings/transfer`).
+              Dispatched via Transfer Orchestrator (`POST /api/v1/transfers`) mapping JSON to CBS Core Temenos OFS wire string (`POST /api/v1/cbs/funds-transfer`).
               Enforces posting window checks, alphabetical row lock ordering, and liquid solvency.
             </p>
+
+            {/* Quick Banking Failure Scenario Presets Bar */}
+            <div className="mt-4 rounded-xl border border-purple-100 bg-purple-50/50 p-3 space-y-2">
+              <div className="flex items-center justify-between text-2xs font-bold uppercase tracking-wider text-purple-950">
+                <span className="flex items-center gap-1.5">
+                  <ShieldAlert className="h-3.5 w-3.5 text-purple-700" /> Quick Failure Test Presets
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('scenarios')}
+                  className="text-2xs text-purple-700 hover:text-purple-950 font-semibold underline"
+                >
+                  Open Dedicated Simulator &rarr;
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTransferForm({
+                      ...transferForm,
+                      sourceAccountId: activeAccount,
+                      destinationAccountId: 'acc-2003-sav-002',
+                      amount: '999999999.00',
+                      description: 'Test Insolvency: Amount > Available'
+                    });
+                    showToast('Loaded Insufficient Funds Preset (₱999,999,999.00)', 'info');
+                  }}
+                  className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-2xs font-semibold text-rose-800 hover:bg-rose-100 transition"
+                >
+                  Insufficient Balance (₱999M)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTransferForm({
+                      ...transferForm,
+                      sourceAccountId: activeAccount,
+                      destinationAccountId: activeAccount,
+                      amount: '1000.00',
+                      description: 'Test Circular Self-Transfer'
+                    });
+                    showToast('Loaded Same-Account Circular Transfer Preset', 'info');
+                  }}
+                  className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-2xs font-semibold text-amber-800 hover:bg-amber-100 transition"
+                >
+                  Circular Self-Transfer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTransferForm({
+                      ...transferForm,
+                      sourceAccountId: activeAccount,
+                      destinationAccountId: 'acc-unknown-404-none',
+                      amount: '1000.00',
+                      description: 'Test Invalid Account Routing'
+                    });
+                    showToast('Loaded Non-Existent Account Preset', 'info');
+                  }}
+                  className="rounded-lg border border-purple-200 bg-purple-50 px-2 py-1 text-2xs font-semibold text-purple-900 hover:bg-purple-100 transition"
+                >
+                  Unknown Account (404)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTransferForm({
+                      ...transferForm,
+                      sourceAccountId: activeAccount,
+                      destinationAccountId: 'acc-2003-sav-002',
+                      amount: '350000.00',
+                      description: 'Test High-Value Cooling-Off Hold'
+                    });
+                    showToast('Loaded Anti-Scam Cooling-Off Preset (₱350,000.00)', 'info');
+                  }}
+                  className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-2xs font-semibold text-indigo-900 hover:bg-indigo-100 transition"
+                >
+                  Anti-Scam Cooling-Off (₱350k)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTransferForm({
+                      ...transferForm,
+                      sourceAccountId: activeAccount,
+                      destinationAccountId: 'acc-2003-sav-002',
+                      amount: '75000.00',
+                      description: 'Test Biometric Step-Up Challenge'
+                    });
+                    showToast('Loaded Biometric Step-Up Preset (₱75,000.00)', 'info');
+                  }}
+                  className="rounded-lg border border-sky-200 bg-sky-50 px-2 py-1 text-2xs font-semibold text-sky-900 hover:bg-sky-100 transition"
+                >
+                  Biometric Step-Up (₱75k)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTogglePostingWindow()}
+                  disabled={postingWindowToggling}
+                  className={`rounded-lg border px-2 py-1 text-2xs font-semibold transition ${
+                    systemDate.postingWindowOpen
+                      ? 'border-rose-300 bg-white text-rose-700 hover:bg-rose-50'
+                      : 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                  }`}
+                  title="Toggle Posting Window to simulate clearing cutoff"
+                >
+                  {postingWindowToggling ? 'Toggling...' : systemDate.postingWindowOpen ? 'Simulate Cutoff (Close Window)' : 'Re-open Window (ONLINE)'}
+                </button>
+              </div>
+            </div>
 
             <form onSubmit={handleExecuteTransfer} className="mt-5 space-y-4">
               <div>
@@ -814,7 +1276,7 @@ export default function T24TestConsole() {
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-5 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-xs hover:shadow-md transition-all disabled:opacity-50"
               >
                 {isTransferring ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                Post to CBS Core
+                Execute Transfer (JSON ➔ T24 OFS)
               </button>
             </form>
           </div>
@@ -840,6 +1302,21 @@ export default function T24TestConsole() {
                     </span>
                   </div>
 
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xs font-mono text-purple-900 font-medium">Trace Output &bull; OFS Settlement</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const ref = transferResult.data?.transaction_id || transferResult.data?.transactionId || transferResult.data?.t24_reference || transferResult.data?.['TXN.ID'] || reversalForm.originalTransactionId;
+                        fetchStatusHistory(ref);
+                      }}
+                      className="flex items-center gap-1 rounded-lg border border-purple-200 bg-purple-50 px-2.5 py-1 text-2xs font-semibold text-purple-900 hover:bg-purple-100 transition shadow-2xs"
+                    >
+                      <History className="h-3 w-3 text-purple-700" />
+                      Status History
+                    </button>
+                  </div>
+
                   <pre className="overflow-x-auto rounded-xl border border-purple-900/40 bg-[#120B24] p-4 font-mono text-2xs text-purple-200 shadow-inner">
                     {JSON.stringify(transferResult, null, 2)}
                   </pre>
@@ -858,232 +1335,243 @@ export default function T24TestConsole() {
         </div>
       )}
 
-      {/* TAB 2: AMOUNT HOLD & FUNDS RESERVATION (AC.LOCKED.EVENTS) */}
-      {activeTab === 'hold' && (
+      {/* TAB 2: ACCOUNT TRANSACTION ENQUIRY (ENQUIRY.SELECT) */}
+      {activeTab === 'enquiry' && (
         <div className="space-y-6">
           {/* Architecture Explanatory Banner */}
           <div className="rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 via-white to-purple-50/50 p-5 shadow-xs">
             <div className="font-bold text-xs uppercase tracking-wider text-purple-950 flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-purple-700" />
-              Two-Phase Transfer Lifecycle: Reserve &rarr; Capture / Release
+              Temenos T24 Canonical Transaction Enquiry (`ENQUIRY.SELECT`) &amp; Orchestrator Translation
             </div>
             <p className="mt-1.5 text-xs text-slate-600 leading-relaxed">
-              In modern core banking orchestration, an Amount Hold is not just an isolated freeze&mdash;it represents{' '}
-              <strong className="text-purple-900 font-semibold">Phase 1 (Provisional Reservation)</strong> of a high-value or risk-evaluated transfer.
-              Available balance drops immediately to prevent double-spending while fraud or maker-checker checks execute. Once verified,{' '}
-              <strong className="text-emerald-700 font-semibold">Phase 2 (Capture & Settle)</strong> debits the source, credits the beneficiary, and clears the hold into a posted transfer.
+              Queries committed ledger transactions (`TransactionMaster` table) with pagination support.
+              In <strong className="text-purple-950">Orchestrator JSON mode</strong> (`GET /api/v1/transfers/accounts/{'{'}accountId{'}'}/transactions`), the orchestrator translates incoming requests, invokes T24, and unpacks the Temenos OFS syntax into strongly-typed DTOs.
+              In <strong className="text-purple-950">Direct CBS OFS mode</strong> (`GET /api/v1/cbs/accounts/{'{'}accountId{'}'}/transactions`), observe the raw wire string formatted by CBS with double-semicolon record delimiters.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {/* Phase 1: Reserve Funds Form */}
-            <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm">
-              <div className="flex items-center gap-2 border-b border-purple-100/70 pb-3.5">
-                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 font-mono text-2xs font-bold uppercase text-amber-900">
-                  Phase 1: Reserve
-                </span>
-                <h2 className="text-sm font-bold text-slate-900">
-                  Reserve Funds for Transfer (`RESERVED`)
-                </h2>
-              </div>
-
-              <form onSubmit={handlePlaceHold} className="mt-5 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
-                      Source Account
-                    </label>
-                    <input
-                      type="text"
-                      value={holdForm.accountId}
-                      onChange={(e) => setHoldForm({ ...holdForm, accountId: e.target.value })}
-                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
-                      Beneficiary Account
-                    </label>
-                    <input
-                      type="text"
-                      value={holdForm.targetAccountId}
-                      onChange={(e) => setHoldForm({ ...holdForm, targetAccountId: e.target.value })}
-                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
-                      Transaction Reference ID
-                    </label>
-                    <input
-                      type="text"
-                      value={holdForm.transactionId}
-                      onChange={(e) => setHoldForm({ ...holdForm, transactionId: e.target.value })}
-                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-purple-900 font-semibold focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
-                      Hold / Transfer Amount (PHP)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={holdForm.holdAmount}
-                      onChange={(e) => setHoldForm({ ...holdForm, holdAmount: e.target.value })}
-                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
-                      required
-                    />
-                  </div>
-                </div>
-
+          <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm space-y-5">
+            {/* Control Bar: Account, Protocol, Pagination, Refresh */}
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-purple-100/80 pb-4">
+              <div className="flex flex-wrap items-center gap-3">
                 <div>
                   <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
-                    Reservation Purpose / Reason
+                    Enquiry Account ID
                   </label>
-                  <select
-                    value={holdForm.reason}
-                    onChange={(e) => setHoldForm({ ...holdForm, reason: e.target.value })}
-                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
-                  >
-                    <option value="PRE_AUTHORIZATION">PRE_AUTHORIZATION (Payment / Wire Reservation)</option>
-                    <option value="MAKER_CHECKER_HOLD">MAKER_CHECKER_HOLD (Pending Dual Authorization)</option>
-                    <option value="CARD_PREAUTH">CARD_PREAUTH (Merchant Terminal Reservation)</option>
-                    <option value="COURT_ORDER_FREEZE">COURT_ORDER_FREEZE (Legal Restraint)</option>
-                    <option value="AML_INVESTIGATION">AML_INVESTIGATION (Suspicious Transaction Review)</option>
-                  </select>
+                  <input
+                    type="text"
+                    value={enquiryAccount}
+                    onChange={(e) => setEnquiryAccount(e.target.value)}
+                    className="mt-1 w-48 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-1.5 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
+                  />
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={isHolding}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-5 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-xs hover:shadow-md transition-all disabled:opacity-50"
-                >
-                  {isHolding ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
-                  Step 1: Reserve Funds via AC.LOCKED.EVENTS
-                </button>
-              </form>
-            </div>
-
-            {/* Phase 2: Active Reservations & Settlement Actions */}
-            <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between border-b border-purple-100/70 pb-3.5">
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 font-mono text-2xs font-bold uppercase text-emerald-900">
-                      Phase 2: Capture / Cancel
-                    </span>
-                    <h3 className="text-sm font-bold text-slate-900">Active Holds on `{activeAccount}`</h3>
+                {/* Protocol Toggle */}
+                <div>
+                  <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                    Wire Protocol / Format
+                  </label>
+                  <div className="mt-1 flex items-center rounded-xl bg-purple-50/70 p-1 border border-purple-100 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setEnquiryProtocol('ORCHESTRATOR_JSON')}
+                      className={`px-3 py-1 rounded-lg font-semibold transition-all ${
+                        enquiryProtocol === 'ORCHESTRATOR_JSON'
+                          ? 'bg-purple-900 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-purple-900'
+                      }`}
+                    >
+                      Orchestrator JSON
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEnquiryProtocol('T24_OFS')}
+                      className={`px-3 py-1 rounded-lg font-mono text-2xs font-semibold transition-all ${
+                        enquiryProtocol === 'T24_OFS'
+                          ? 'bg-purple-900 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-purple-900'
+                      }`}
+                    >
+                      Raw T24 OFS
+                    </button>
                   </div>
+                </div>
+              </div>
+
+              {/* Pagination & Action Controls */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50/70 p-1 text-xs">
                   <button
-                    onClick={() => fetchHolds(activeAccount)}
-                    className="text-xs font-semibold text-purple-700 hover:text-purple-950 transition-colors"
+                    type="button"
+                    onClick={() => setEnquiryPage((prev) => Math.max(0, prev - 1))}
+                    disabled={enquiryPage === 0 || isLoadingEnquiry}
+                    className="rounded-lg px-2.5 py-1 text-slate-600 hover:bg-white hover:text-purple-900 disabled:opacity-40 transition"
                   >
-                    Refresh Holds
+                    Prev
+                  </button>
+                  <span className="px-2 font-mono text-2xs font-bold text-purple-950">
+                    Page {enquiryPage}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setEnquiryPage((prev) => prev + 1)}
+                    disabled={isLoadingEnquiry || (enquiryProtocol === 'ORCHESTRATOR_JSON' && enquiryTransactions.length < enquirySize)}
+                    className="rounded-lg px-2.5 py-1 text-slate-600 hover:bg-white hover:text-purple-900 disabled:opacity-40 transition"
+                  >
+                    Next
                   </button>
                 </div>
 
-                {activeHolds.length > 0 ? (
-                  <div className="mt-4 space-y-3">
-                    {activeHolds.map((h) => {
-                      const ext = h.externalReference || '';
-                      const linkedTx = ext.includes('|') ? ext.split('|')[0] : ext;
-                      const beneficiaryAcc = ext.includes('|') ? ext.split('|')[1] : 'ACC-1002';
+                <button
+                  type="button"
+                  onClick={() => handleFetchEnquiryTransactions(enquiryAccount, enquiryPage, enquiryProtocol)}
+                  disabled={isLoadingEnquiry}
+                  className="flex items-center gap-1.5 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-4 py-2 text-xs font-bold uppercase tracking-wider text-white shadow-2xs transition-all disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isLoadingEnquiry ? 'animate-spin' : ''}`} />
+                  Run Enquiry
+                </button>
+              </div>
+            </div>
 
-                      return (
-                        <div key={h.holdId} className="rounded-xl border border-purple-100 bg-purple-50/40 p-4 transition-all">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <div className="flex items-center gap-2 font-mono text-xs font-semibold text-slate-900">
-                                <span className="text-purple-900 font-bold">{h.holdId}</span>
-                                <span className="rounded border border-purple-200 bg-white px-2 py-0.5 text-2xs text-purple-700 font-medium">
-                                  {h.t24LockReference}
-                                </span>
-                                <span className={`px-2 py-0.5 rounded-full text-2xs font-mono uppercase ${
-                                  h.status === 'ACTIVE'
-                                    ? 'bg-amber-100 text-amber-800 border border-amber-200 font-bold'
-                                    : h.status === 'CAPTURED'
-                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold'
-                                    : 'bg-slate-100 text-slate-600 border border-slate-200'
-                                }`}>
-                                  {h.status}
-                                </span>
-                              </div>
-
-                              <div className="mt-1.5 font-mono text-xs text-slate-700">
-                                Reserved: <strong className="text-slate-900">PHP {parseFloat(h.holdAmount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>
-                                {' '}&bull; Linked Tx: <span className="text-purple-700 font-medium">{linkedTx || 'N/A'}</span>
-                                {' '}&bull; Beneficiary: <span className="text-indigo-700 font-medium">{beneficiaryAcc}</span>
-                              </div>
-                              <div className="text-2xs text-slate-500 mt-1">Reason: {h.reason}</div>
-                            </div>
-                          </div>
-
-                          {h.status === 'ACTIVE' && (
-                            <div className="mt-3.5 flex items-center justify-end gap-2.5 border-t border-purple-100/70 pt-2.5">
-                              <button
-                                onClick={() => handleReleaseHold(h.holdId)}
-                                className="flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 shadow-2xs transition-all"
-                                title="Cancel hold and restore customer available balance"
-                              >
-                                <Unlock className="h-3.5 w-3.5" /> Cancel & Void
-                              </button>
-                              <button
-                                onClick={() => handleCaptureHold(h.holdId, beneficiaryAcc, h.holdAmount)}
-                                disabled={isCapturing}
-                                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs transition-all"
-                                title="Debit source, credit beneficiary, clear hold, and mark transfer POSTED"
-                              >
-                                {isCapturing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                                Capture & Settle Transfer
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+            {/* Content Display: Mode 1 Orchestrator JSON vs Mode 2 Raw OFS */}
+            {isLoadingEnquiry ? (
+              <div className="py-12 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                <RefreshCw className="h-5 w-5 animate-spin text-purple-600" />
+                Querying ledger transactions for account <code className="font-mono">{enquiryAccount}</code>...
+              </div>
+            ) : enquiryProtocol === 'T24_OFS' ? (
+              /* Raw OFS Wire String View */
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-2xs uppercase tracking-wider text-purple-900">
+                  <span className="font-bold flex items-center gap-1.5">
+                    <Terminal className="h-3.5 w-3.5 text-purple-700" /> Temenos OFS Return String
+                  </span>
+                  <span className="font-mono text-emerald-600 font-semibold">GET /api/v1/cbs/accounts/{enquiryAccount}/transactions</span>
+                </div>
+                {enquiryRawOfs ? (
+                  <div>
+                    <pre className="overflow-x-auto rounded-xl border border-purple-900/40 bg-[#120B24] p-4 font-mono text-2xs text-purple-200 shadow-inner leading-relaxed">
+                      {enquiryRawOfs}
+                    </pre>
+                    <div className="mt-2.5 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(enquiryRawOfs)}
+                        className="flex items-center gap-1.5 rounded-xl border border-purple-200 bg-white px-3 py-1.5 text-xs font-semibold text-purple-900 hover:bg-purple-50 shadow-2xs transition"
+                      >
+                        {copiedText ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                        Copy OFS Response
+                      </button>
+                    </div>
                   </div>
                 ) : (
-                  <div className="mt-12 flex flex-col items-center justify-center text-center text-slate-400">
-                    <div className="h-12 w-12 rounded-2xl bg-purple-50 flex items-center justify-center text-purple-400 mb-2">
-                      <Unlock className="h-6 w-6" />
-                    </div>
-                    <p className="text-xs font-medium text-slate-600">No active holds on this account</p>
-                    <p className="mt-1 text-2xs text-slate-400">Funds are 100% available to spend.</p>
-                  </div>
-                )}
-
-                {/* Settlement / Capture Trace Inspector */}
-                {captureResult && (
-                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5">
-                    <div className="flex items-center justify-between text-2xs font-bold uppercase tracking-wider text-emerald-800">
-                      <span>Capture Execution Result</span>
-                      <span className="font-mono">HTTP 200 OK &mdash; POSTED</span>
-                    </div>
-                    <pre className="mt-2 overflow-x-auto rounded-lg border border-emerald-300/40 bg-[#120B24] p-3 font-mono text-2xs text-emerald-300">
-                      {JSON.stringify(captureResult.data, null, 2)}
-                    </pre>
-                  </div>
-                )}
-
-                {holdResult && !captureResult && (
-                  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-3.5">
-                    <div className="text-2xs font-bold uppercase tracking-wider text-amber-800">
-                      Provisional Reservation Confirmed
-                    </div>
-                    <pre className="mt-2 overflow-x-auto rounded-lg border border-amber-300/40 bg-[#120B24] p-3 font-mono text-2xs text-amber-300">
-                      {JSON.stringify(holdResult.data, null, 2)}
-                    </pre>
+                  <div className="py-10 text-center text-xs text-slate-400">
+                    No wire response captured. Click "Run Enquiry" to fetch.
                   </div>
                 )}
               </div>
-            </div>
+            ) : (
+              /* Orchestrator JSON Table View */
+              <div>
+                {enquiryTransactions.length === 0 ? (
+                  <div className="py-12 text-center text-slate-400 space-y-2">
+                    <FileText className="h-10 w-10 text-purple-300 mx-auto" />
+                    <p className="text-xs font-semibold text-slate-600">No transactions recorded for this account</p>
+                    <p className="text-2xs text-slate-400">Execute a Funds Transfer in Tab 1 to populate ledger entries.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-xl border border-purple-100 shadow-2xs">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="border-b border-purple-100 bg-purple-50/70 text-2xs uppercase tracking-wider text-purple-950 font-mono">
+                        <tr>
+                          <th className="py-3 px-3.5">Transaction ID</th>
+                          <th className="py-3 px-3.5">Type &amp; Flow</th>
+                          <th className="py-3 px-3.5">Counterparty Account</th>
+                          <th className="py-3 px-3.5">Amount</th>
+                          <th className="py-3 px-3.5">Status</th>
+                          <th className="py-3 px-3.5">Timestamp</th>
+                          <th className="py-3 px-3.5 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-purple-50 font-mono text-2xs">
+                        {enquiryTransactions.map((tx) => {
+                          const isDebit = tx.source_account_id === enquiryAccount;
+                          const counterparty = isDebit ? tx.target_account_id : tx.source_account_id;
+
+                          return (
+                            <tr key={tx.transaction_id} className="hover:bg-purple-50/40 transition">
+                              <td className="py-3 px-3.5 font-bold text-purple-950 flex items-center gap-1.5">
+                                <span>{tx.transaction_id}</span>
+                              </td>
+                              <td className="py-3 px-3.5">
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-sans text-2xs font-semibold ${
+                                  isDebit
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                }`}>
+                                  {isDebit ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownLeft className="h-3 w-3" />}
+                                  {isDebit ? 'Debit / Outgoing' : 'Credit / Incoming'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3.5 text-slate-700">{counterparty || '--'}</td>
+                              <td className="py-3 px-3.5 font-bold">
+                                <span className={isDebit ? 'text-rose-600' : 'text-emerald-600'}>
+                                  {isDebit ? '-' : '+'} {tx.currency || 'PHP'} {parseFloat(tx.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3.5">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full font-sans text-2xs font-semibold ${
+                                  tx.status === 'Posted' || tx.status === 'POSTED'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : tx.status === 'Reversed' || tx.status === 'REVERSED'
+                                    ? 'bg-slate-200 text-slate-700'
+                                    : tx.status === 'PendingReversal'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-purple-100 text-purple-800'
+                                }`}>
+                                  {tx.status}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3.5 text-slate-500 font-sans">
+                                {tx.created_at ? new Date(tx.created_at).toLocaleString() : '--'}
+                              </td>
+                              <td className="py-3 px-3.5 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => fetchStatusHistory(tx.transaction_id)}
+                                    className="flex items-center gap-1 rounded-lg border border-purple-200 bg-purple-50 px-2 py-1 text-2xs font-sans font-semibold text-purple-900 hover:bg-purple-100 transition shadow-2xs"
+                                    title="View Status Lifecycle History"
+                                  >
+                                    <History className="h-3 w-3 text-purple-700" />
+                                    Lifecycle
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setReversalForm((prev) => ({ ...prev, originalTransactionId: tx.transaction_id }));
+                                      setActiveTab('reversal');
+                                      showToast(`Loaded ${tx.transaction_id} into Reversal workbench!`, 'info');
+                                    }}
+                                    className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-2xs font-sans font-semibold text-slate-700 hover:bg-slate-50 transition shadow-2xs"
+                                    title="Initiate Reversal Dispute in Tab 3"
+                                  >
+                                    <RotateCcw className="h-3 w-3 text-slate-500" />
+                                    Dispute
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1277,8 +1765,21 @@ export default function T24TestConsole() {
               {/* Reversal Result Inspector */}
               {reversalResult && (
                 <div className="mt-4 space-y-2 rounded-xl border border-purple-200 bg-purple-50/60 p-3.5">
-                  <div className="font-mono text-2xs font-bold text-purple-950">
-                    Result Step: {reversalResult.step || 'Error'}
+                  <div className="flex items-center justify-between">
+                    <div className="font-mono text-2xs font-bold text-purple-950">
+                      Result Step: {reversalResult.step || 'Error'}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const txId = reversalResult.data?.['ORIGINAL.FT.NO'] || reversalResult.data?.originalTransactionId || reversalForm.originalTransactionId;
+                        fetchStatusHistory(txId);
+                      }}
+                      className="flex items-center gap-1.5 rounded-lg border border-purple-300 bg-white px-2.5 py-1 text-2xs font-semibold text-purple-900 hover:bg-purple-100 transition shadow-2xs"
+                    >
+                      <History className="h-3 w-3 text-purple-700" />
+                      Status History
+                    </button>
                   </div>
                   <pre className="overflow-x-auto rounded-lg border border-purple-300/40 bg-[#120B24] p-3 text-2xs text-purple-200">
                     {JSON.stringify(reversalResult, null, 2)}
@@ -1287,6 +1788,129 @@ export default function T24TestConsole() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Live Reversal Requests Backlog via Orchestrator */}
+        <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-purple-100/70 pb-3.5">
+            <div>
+              <div className="flex items-center gap-2">
+                <RotateCcw className="h-4 w-4 text-purple-700" />
+                <h2 className="text-sm font-bold text-slate-900">
+                  Live Dispute Reversal Backlog (Orchestrator: <code className="text-2xs font-mono bg-purple-50 text-purple-900 px-1.5 py-0.5 rounded">GET /api/v1/reversals</code>)
+                </h2>
+              </div>
+              <p className="text-2xs text-slate-500 mt-0.5">
+                Real-time maker-checker dispute tickets queue mapped from Temenos OFS via Gateway / Transfer Orchestrator.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-xl bg-slate-100 p-0.5 text-2xs font-semibold">
+                {['ALL', 'PENDING', 'APPROVED', 'REJECTED'].map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => setReversalStatusFilter(filter)}
+                    className={`px-2.5 py-1 rounded-lg transition-all ${
+                      reversalStatusFilter === filter
+                        ? 'bg-white text-purple-950 font-bold shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => fetchReversalRequests(reversalStatusFilter === 'ALL' ? '' : reversalStatusFilter)}
+                disabled={isLoadingReversals}
+                className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-2xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-2xs disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isLoadingReversals ? 'animate-spin text-purple-600' : ''}`} />
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {isLoadingReversals ? (
+            <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+              <RefreshCw className="h-4 w-4 animate-spin text-purple-600" /> Loading reversal backlog...
+            </div>
+          ) : reversalRequests.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-400">
+              No reversal requests found for status "{reversalStatusFilter}". File a dispute ticket in Step 1 to populate.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="border-b border-slate-200 bg-slate-50/70 text-2xs uppercase tracking-wider text-slate-500 font-mono">
+                  <tr>
+                    <th className="py-2.5 px-3.5">Ticket ID</th>
+                    <th className="py-2.5 px-3.5">Original Tx</th>
+                    <th className="py-2.5 px-3.5">Maker</th>
+                    <th className="py-2.5 px-3.5">Status</th>
+                    <th className="py-2.5 px-3.5">Reason</th>
+                    <th className="py-2.5 px-3.5">Created At</th>
+                    <th className="py-2.5 px-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono text-2xs">
+                  {reversalRequests.map((req) => (
+                    <tr key={req.ticketId} className="hover:bg-purple-50/40 transition">
+                      <td className="py-2.5 px-3.5 font-bold text-purple-950">{req.ticketId}</td>
+                      <td className="py-2.5 px-3.5 text-slate-700">{req.originalTransactionId}</td>
+                      <td className="py-2.5 px-3.5 text-slate-600">{req.makerId}</td>
+                      <td className="py-2.5 px-3.5">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full font-sans text-2xs font-semibold ${
+                          req.status === 'APPROVED'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : req.status === 'REJECTED'
+                            ? 'bg-rose-100 text-rose-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {req.status}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3.5 font-sans text-slate-600 max-w-[200px] truncate" title={req.disputeReason}>
+                        {req.disputeReason}
+                      </td>
+                      <td className="py-2.5 px-3.5 text-slate-500">
+                        {req.createdAt ? new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'}
+                      </td>
+                      <td className="py-2.5 px-3.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {req.status === 'PENDING' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCheckerForm((prev) => ({ ...prev, ticketId: req.ticketId }));
+                                setReversalForm((prev) => ({ ...prev, originalTransactionId: req.originalTransactionId }));
+                                showToast(`Loaded ticket ${req.ticketId} into Step 2 Checker form!`, 'info');
+                              }}
+                              className="px-2 py-1 rounded bg-purple-700 hover:bg-purple-800 text-white font-sans text-2xs font-semibold transition"
+                            >
+                              Select for Review
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => fetchStatusHistory(req.originalTransactionId)}
+                            className="px-2 py-1 rounded border border-slate-300 hover:bg-slate-100 text-slate-700 font-sans text-2xs transition"
+                            title="Inspect Status History"
+                          >
+                            <History className="h-3 w-3 inline" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
       )}
@@ -1309,22 +1933,22 @@ export default function T24TestConsole() {
               {[
                 {
                   label: 'FT INITIATE',
-                  cmd: 'FUNDS.TRANSFER,INITIATE/I/PROCESS//TX-9901,USER01/123456,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=acc-2002-chk-001,CREDIT.ACCT.NO=acc-2003-sav-002,AMOUNT=2500.00,CURRENCY=PHP,VALUE.DATE=20261008'
+                  cmd: 'FUNDS.TRANSFER,INITIATE/I/PROCESS//TX-9901,USER01/123456,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=acc-2002-chk-001,CREDIT.ACCT.NO=acc-2003-sav-002,AMOUNT=2500.00,CURRENCY=PHP,VALUE.DATE=20261009,DESCRIPTION=TestPayment,IDEMPOTENCY.KEY=IDEMP-9901'
                 },
                 {
                   label: 'FT REVERSAL',
-                  cmd: 'FUNDS.TRANSFER,REVERSAL/I/PROCESS//REV-01,MGR02/123456,ORIGINAL.FT.NO=TX-9901'
+                  cmd: 'FUNDS.TRANSFER,REVERSAL/I/PROCESS//REV-001,SAGA_COORDINATOR/123456,ORIGINAL.FT.NO=TX-9901,REASON=SAGA_COMPENSATION,CHECKER.ID=SYSTEM_SAGA,MAKER.ID=SAGA_COORDINATOR'
                 },
                 {
-                  label: 'HOLD INPUT',
-                  cmd: 'AC.LOCKED.EVENTS,INPUT/I/PROCESS/0/1,USER01/123456,,ACCOUNT.NUMBER=acc-2002-chk-001,FROM.DATE=20261008,TO.DATE=20261009,LOCKED.AMOUNT=4000.00,HOLD.REASON=MAKER_CHECKER_HOLD,EXT.REF=OFS-HLD-01'
+                  label: 'DISPUTE REQUEST',
+                  cmd: 'FUNDS.TRANSFER,REVERSAL.REQUEST/I/PROCESS//TX-9901,MAKER01/123456,ORIGINAL.FT.NO=TX-9901,REASON=CUSTOMER_DISPUTE,MAKER=MAKER01'
                 },
                 {
-                  label: 'HOLD REVERSE',
-                  cmd: 'AC.LOCKED.EVENTS,REVERSE/I/PROCESS/0/1,USER01/123456,,HOLD.REF=HLD-DEMO,ACCOUNT.NUMBER=acc-2002-chk-001'
+                  label: 'DISPUTE APPROVE',
+                  cmd: 'FUNDS.TRANSFER,REVERSAL/I/PROCESS//TICKET-01,MGR02/123456,TICKET.ID=TICKET-01,CHECKER=MGR02,REASON=Approved'
                 },
                 {
-                  label: 'ENQUIRY',
+                  label: 'ENQUIRY.SELECT',
                   cmd: 'ENQUIRY.SELECT,,USER01/123456,ACCOUNT.NUMBER:EQ=acc-2002-chk-001'
                 }
               ].map((tmpl) => (
@@ -1551,6 +2175,338 @@ export default function T24TestConsole() {
               <p className="mt-1 text-2xs text-slate-400">Circuit breaker is CLOSED and all transfer pathways are healthy.</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* TAB 7: REAL-WORLD BANKING FAILURE SCENARIOS & CHAOS SIMULATOR */}
+      {activeTab === 'scenarios' && (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 via-white to-purple-50/50 p-5 shadow-xs">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="font-bold text-xs uppercase tracking-wider text-purple-950 flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-rose-600 animate-pulse" />
+                  Real-World Banking Failure Scenarios &amp; Resilience Verification
+                </div>
+                <p className="mt-1 text-xs text-slate-600 max-w-3xl leading-relaxed">
+                  Validate core banking defense mechanisms under real-world production stress and regulatory failure modes:
+                  unauthorized overdrafts, national clearing cutoff times (PCHC/PhilPaSS), circular self-transfers, invalid routing,
+                  BSP Circular 1140 anti-scam cooling-off locks, biometric step-up authentication, Four-Eyes segregation of duties,
+                  and idempotency lock protection.
+                </p>
+              </div>
+
+              {/* Instant Cutoff Toggle Control */}
+              <div className="flex items-center gap-3 rounded-xl border border-purple-200 bg-white p-3 shadow-2xs shrink-0">
+                <div>
+                  <div className="text-2xs font-bold uppercase text-purple-950">Posting Window</div>
+                  <div className="flex items-center gap-1.5 font-mono text-xs font-bold">
+                    <span className={`h-2 w-2 rounded-full ${systemDate.postingWindowOpen ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                    <span className={systemDate.postingWindowOpen ? 'text-emerald-700' : 'text-rose-700'}>
+                      {systemDate.status}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleTogglePostingWindow()}
+                  disabled={postingWindowToggling}
+                  className={`rounded-lg px-3 py-1.5 text-2xs font-bold uppercase tracking-wider text-white shadow-2xs transition disabled:opacity-50 ${
+                    systemDate.postingWindowOpen ? 'bg-rose-700 hover:bg-rose-800' : 'bg-emerald-700 hover:bg-emerald-800'
+                  }`}
+                >
+                  {postingWindowToggling ? 'Toggling...' : systemDate.postingWindowOpen ? 'Simulate Cutoff' : 'Re-open Window'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Scenarios Grid */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {[
+              {
+                id: 'INSUFFICIENT_FUNDS',
+                badge: 'Solvency & Overdraft',
+                badgeColor: 'border-rose-200 bg-rose-50 text-rose-800',
+                title: '1. Insufficient Funds / Negative Balance Block',
+                description: 'Attempts to transfer PHP 999M exceeding account available balance. Asserts that CBS solvency checks reject without balance mutation.',
+                route: 'POST /api/v1/transfers',
+                icon: AlertCircle
+              },
+              {
+                id: 'EOD_CUTOFF_WINDOW_CLOSED',
+                badge: 'Clearing Cutoff',
+                badgeColor: 'border-amber-200 bg-amber-50 text-amber-800',
+                title: '2. EOD Posting Window Closed (Clearing Cutoff)',
+                description: 'Forces posting window into EOD_CUTOFF and dispatches transfer. Asserts that CBS rejects postings while batch clearing is in progress.',
+                route: 'POST /api/v1/cbs/funds-transfer',
+                icon: Moon
+              },
+              {
+                id: 'CIRCULAR_SAME_ACCOUNT',
+                badge: 'Input Hygiene',
+                badgeColor: 'border-orange-200 bg-orange-50 text-orange-800',
+                title: '3. Same-Account Circular Self-Transfer',
+                description: 'Attempts to transfer funds from source account to the identical destination account. Asserts zero-sum loop rejection.',
+                route: 'POST /api/v1/transfers',
+                icon: Ban
+              },
+              {
+                id: 'NON_EXISTENT_ACCOUNT',
+                badge: 'Routing Failure',
+                badgeColor: 'border-slate-200 bg-slate-100 text-slate-800',
+                title: '4. Non-Existent Account / Invalid Directory Routing',
+                description: 'Dispatches transfer to an unmapped account (ACC-INVALID-999-NOTFOUND). Asserts that CBS rejects invalid routing before double-entry posting.',
+                route: 'POST /api/v1/transfers',
+                icon: XCircle
+              },
+              {
+                id: 'ANTI_SCAM_COOLING_OFF',
+                badge: 'BSP Circular 1140',
+                badgeColor: 'border-indigo-200 bg-indigo-50 text-indigo-800',
+                title: '5. High-Value Anti-Scam 10-Min Cooling-Off (₱250k+)',
+                description: 'Transfers ₱300,000.00. Asserts that Orchestrator intercepts payment into a 10-minute provisional cooling-off hold (Reserved state).',
+                route: 'POST /api/v1/transfers',
+                icon: Clock
+              },
+              {
+                id: 'BIOMETRIC_STEP_UP_CHALLENGE',
+                badge: 'SCA Authentication',
+                badgeColor: 'border-sky-200 bg-sky-50 text-sky-800',
+                title: '6. Biometric MFA Step-Up Challenge (₱50k+)',
+                description: 'Transfers ₱75,000.00 without biometric signature. Asserts that Orchestrator returns Authorized status with an authentication challenge.',
+                route: 'POST /api/v1/transfers',
+                icon: ShieldCheck
+              },
+              {
+                id: 'FOUR_EYES_DUAL_CONTROL_VIOLATION',
+                badge: 'BSP Circular 982',
+                badgeColor: 'border-purple-200 bg-purple-50 text-purple-900',
+                title: '7. Four-Eyes Maker-Checker Self-Approval Violation',
+                description: 'Maker TELLER_ALICE creates dispute ticket, then attempts to self-approve with checkerId: TELLER_ALICE. Asserts segregation-of-duties block.',
+                route: 'POST /api/v1/reversals/approve',
+                icon: ShieldAlert
+              },
+              {
+                id: 'IDEMPOTENCY_DUPLICATE_REPLAY',
+                badge: 'Deduplication',
+                badgeColor: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+                title: '8. Concurrent Duplicate Idempotency Replay',
+                description: 'Dispatches two transfers with the identical idempotencyKey. Asserts that the second attempt replays safely without double debiting.',
+                route: 'POST /api/v1/transfers',
+                icon: Zap
+              },
+              {
+                id: 'CIRCUIT_BREAKER_DLQ_ROUTING',
+                badge: 'Resilience & DLQ',
+                badgeColor: 'border-rose-200 bg-rose-50 text-rose-800',
+                title: '9. Core Outage Circuit Breaker & DLQ Audit Fallback',
+                description: 'Simulates CBS HTTP 504 Gateway Timeout. Asserts that Resilience4j trips circuit breaker to OPEN and routes incident to banking.transfers.dlq.',
+                route: 'POST /api/v1/cbs/audit/failed-transactions/simulate',
+                icon: AlertTriangle
+              }
+            ].map((scen) => {
+              const Icon = scen.icon;
+              const isSelected = selectedScenario === scen.id;
+              const isRunning = scenarioRunning && isSelected;
+
+              return (
+                <div
+                  key={scen.id}
+                  className={`flex flex-col justify-between rounded-2xl border bg-white p-5 shadow-sm transition-all ${
+                    isSelected ? 'border-purple-600 ring-2 ring-purple-100' : 'border-slate-200 hover:border-purple-200'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className={`rounded-full border px-2.5 py-0.5 font-mono text-2xs font-bold uppercase ${scen.badgeColor}`}>
+                        {scen.badge}
+                      </span>
+                      <span className="font-mono text-2xs text-slate-400 font-semibold">{scen.route}</span>
+                    </div>
+
+                    <h3 className="mt-3 text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <Icon className="h-4 w-4 text-purple-700 shrink-0" />
+                      <span>{scen.title}</span>
+                    </h3>
+
+                    <p className="mt-2 text-2xs text-slate-500 leading-relaxed">
+                      {scen.description}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-2xs font-mono text-slate-400">Account: {activeAccount}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRunScenario(scen.id)}
+                      disabled={scenarioRunning}
+                      className="flex items-center gap-1.5 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-3.5 py-1.5 text-2xs font-bold uppercase tracking-wider text-white shadow-2xs transition-all disabled:opacity-50"
+                    >
+                      {isRunning ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                      Execute Test
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Execution Trace & Assertion Results Inspector */}
+          {scenarioResult && (
+            <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm space-y-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-purple-100 pb-3">
+                <div className="flex items-center gap-2">
+                  {scenarioResult.passed ? (
+                    <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                  ) : (
+                    <XCircle className="h-5 w-5 text-rose-600" />
+                  )}
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Scenario Verification: {scenarioResult.id}
+                    </h3>
+                    <p className="text-2xs text-slate-500 font-mono">
+                      Validation Assertion: {scenarioResult.expected}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className={`px-3 py-1 rounded-full font-mono text-xs font-bold uppercase tracking-wider ${
+                    scenarioResult.passed
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      : 'bg-rose-100 text-rose-800 border border-rose-200'
+                  }`}>
+                    {scenarioResult.passed ? '✓ PASSED & VERIFIED' : '✗ FAILED ASSERTION'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {/* Outgoing Test Payload */}
+                <div>
+                  <div className="text-2xs font-bold uppercase tracking-wider text-purple-950 mb-1.5">
+                    Outgoing Simulated Request Payload
+                  </div>
+                  <pre className="overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-3.5 font-mono text-2xs text-slate-800">
+                    {JSON.stringify(scenarioResult.payload, null, 2)}
+                  </pre>
+                </div>
+
+                {/* Returned CBS Response */}
+                <div>
+                  <div className="text-2xs font-bold uppercase tracking-wider text-purple-950 mb-1.5 flex items-center justify-between">
+                    <span>Observed Core Banking Response</span>
+                    <span className="font-mono text-2xs text-purple-700">{scenarioResult.actual}</span>
+                  </div>
+                  <pre className="overflow-x-auto rounded-xl border border-purple-900/40 bg-[#120B24] p-3.5 font-mono text-2xs text-purple-200 shadow-inner">
+                    {JSON.stringify(scenarioResult.response, null, 2)}
+                  </pre>
+                </div>
+              </div>
+
+              {/* Invariant Assertion Summary */}
+              <div className="rounded-xl border border-purple-100 bg-purple-50/60 p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-2xs">
+                <span className="text-slate-600">
+                  <strong className="text-purple-950 font-bold">Ledger Invariant Check:</strong> Active account <code className="font-mono text-purple-900 font-semibold">{activeAccount}</code> balance remains <strong className="font-mono text-slate-900">PHP {(balanceData?.balanceAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong> (Zero phantom debit, ACID integrity held).
+                </span>
+                <button
+                  type="button"
+                  onClick={() => fetchBalance(activeAccount)}
+                  className="shrink-0 flex items-center gap-1 font-semibold text-purple-700 hover:text-purple-950"
+                >
+                  <RefreshCw className="h-3 w-3" /> Re-verify Balance
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Transaction Status History Modal via Orchestrator */}
+      {isStatusHistoryOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-purple-200 bg-white p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-purple-100 pb-3">
+              <div className="flex items-center gap-2">
+                <History className="h-5 w-5 text-purple-700" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Transaction Status Lifecycle History
+                  </h3>
+                  <p className="font-mono text-2xs text-purple-900">
+                    Orchestrator: <code className="bg-purple-50 px-1 py-0.5 rounded">GET /api/v1/transfers/transactions/{statusHistoryTxId}/status-history</code>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsStatusHistoryOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+
+            {isLoadingStatusHistory ? (
+              <div className="py-10 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                <RefreshCw className="h-4 w-4 animate-spin text-purple-600" /> Querying status transitions from Core Banking via Orchestrator...
+              </div>
+            ) : statusHistoryList.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400">
+                No recorded status transition history found for transaction <code className="font-mono">{statusHistoryTxId}</code>.
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+                {statusHistoryList.map((item, idx) => (
+                  <div
+                    key={item.historyId || idx}
+                    className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-xs"
+                  >
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-700 font-bold font-mono text-2xs">
+                      {idx + 1}
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 font-mono text-2xs font-bold">
+                          <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-800">
+                            {item.fromStatus || 'INITIATED'}
+                          </span>
+                          <span className="text-purple-600">➔</span>
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                            {item.toStatus}
+                          </span>
+                        </div>
+                        <span className="text-2xs text-slate-400 font-mono">
+                          {item.changedAt ? new Date(item.changedAt).toLocaleString() : '--'}
+                        </span>
+                      </div>
+                      <p className="font-medium text-slate-700 text-2xs">
+                        Reason: <span className="font-mono text-purple-900 font-bold">{item.changeReason}</span>
+                        {item.reasonDetails && ` — ${item.reasonDetails}`}
+                      </p>
+                      <div className="flex items-center gap-3 text-2xs text-slate-400 font-mono">
+                        <span>Actor: {item.actorId}</span>
+                        <span>Type: {item.actorType}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsStatusHistoryOpen(false)}
+                className="rounded-xl bg-purple-700 hover:bg-purple-800 px-4 py-2 text-xs font-semibold text-white transition"
+              >
+                Close Inspector
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

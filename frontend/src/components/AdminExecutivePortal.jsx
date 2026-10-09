@@ -40,7 +40,8 @@ import {
   Wallet,
   Eye,
   UserCheck,
-  Unlock
+  Unlock,
+  History
 } from 'lucide-react';
 import apiClient, { mockState } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -1226,6 +1227,14 @@ export default function AdminExecutivePortal() {
 
   // Selected Transaction for Slide-over Detail Drawer
   const [selectedTx, setSelectedTx] = useState(null);
+  const [selectedTxStatusHistory, setSelectedTxStatusHistory] = useState([]);
+  const [isLoadingStatusHistory, setIsLoadingStatusHistory] = useState(false);
+
+  // Live Reversal Backlog State (GET /api/v1/reversals)
+  const [reversalRequests, setReversalRequests] = useState([]);
+  const [txSubView, setTxSubView] = useState('journal'); // 'journal' | 'reversals'
+  const [reversalFilter, setReversalFilter] = useState('ALL');
+  const [isProcessingReversalAction, setIsProcessingReversalAction] = useState(null);
 
   // Account Lock / Unlock Modal State
   const [lockTargetAccount, setLockTargetAccount] = useState(null);
@@ -1448,6 +1457,16 @@ export default function AdminExecutivePortal() {
       }
 
       setAccounts(accountsList);
+
+      // 5. Reversal requests from Orchestrator (GET /api/v1/reversals)
+      try {
+        const revRes = await apiClient.get('/reversals?page=0&size=50');
+        if (Array.isArray(revRes.data)) {
+          setReversalRequests(revRes.data);
+        }
+      } catch (_) {
+        setReversalRequests(mockState.reversalTickets || []);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -1458,6 +1477,25 @@ export default function AdminExecutivePortal() {
     const timer = setInterval(loadData, 15000);
     return () => clearInterval(timer);
   }, []);
+
+  // Auto-fetch status history when selectedTx changes (GET /api/v1/transfers/transactions/{txId}/status-history)
+  useEffect(() => {
+    if (selectedTx?.id) {
+      setIsLoadingStatusHistory(true);
+      apiClient.get(`/transfers/transactions/${selectedTx.id}/status-history`)
+        .then((res) => {
+          setSelectedTxStatusHistory(Array.isArray(res.data) ? res.data : []);
+        })
+        .catch(() => {
+          setSelectedTxStatusHistory([]);
+        })
+        .finally(() => {
+          setIsLoadingStatusHistory(false);
+        });
+    } else {
+      setSelectedTxStatusHistory([]);
+    }
+  }, [selectedTx?.id]);
 
   // Select Customer Target for Simulation (Connected to Live API)
   const handleSelectSimCustomer = async (cust) => {
@@ -1612,7 +1650,7 @@ export default function AdminExecutivePortal() {
     }
   };
 
-  // Execute Reversal / Rollback
+  // Execute Reversal / Rollback via Transfer Orchestrator
   const handleExecuteRollback = async () => {
     if (!rollbackTarget) return;
     if (currentAdmin.capability !== 'REVERSAL_APPROVAL') {
@@ -1625,13 +1663,14 @@ export default function AdminExecutivePortal() {
     }
     setIsSubmittingRollback(true);
     try {
-      const payload = {
-        reversed_by_user_id: activeAdminId,
-        approved_by_admin_id: rollbackApproverId,
+      // Route through Transfer Orchestrator compensating direct reversal endpoint
+      await apiClient.post('/reversals/direct', {
+        originalTransactionId: rollbackTarget.id,
         reason: reversalReason,
-        memo: reversalMemo
-      };
-      await apiClient.post(`/transfers/${rollbackTarget.id}/reverse`, payload);
+        memo: reversalMemo,
+        makerId: activeAdminId,
+        checkerId: rollbackApproverId
+      });
       setNotification({
         type: 'success',
         title: 'Reversal Executed',
@@ -1646,10 +1685,78 @@ export default function AdminExecutivePortal() {
       setNotification({
         type: 'alert',
         title: 'Rollback Failed',
-        message: err.response?.data?.message || err.message || 'Error executing reversal.'
+        message: err.response?.data?.message || err.response?.data?.detail || err.message || 'Error executing reversal.'
       });
     } finally {
       setIsSubmittingRollback(false);
+    }
+  };
+
+  // Checker Approve Reversal Ticket (POST /api/v1/reversals/approve)
+  const handleApproveReversalTicket = async (ticketId) => {
+    if (currentAdmin.capability !== 'REVERSAL_APPROVAL') {
+      setNotification({
+        type: 'alert',
+        title: 'Segregation of Duties Enforced',
+        message: 'Only the Compliance & Settlement Checker (Diana Vance) is authorized to sign off on compensating contra-entries.'
+      });
+      return;
+    }
+    setIsProcessingReversalAction(ticketId);
+    try {
+      await apiClient.post('/reversals/approve', {
+        reversalRequestId: ticketId,
+        checkerId: activeAdminId,
+        checkerNotes: `Approved by ${currentAdmin.name} (${currentAdmin.role})`
+      });
+      setNotification({
+        type: 'success',
+        title: 'Reversal Approved',
+        message: `Ticket ${ticketId} approved. Compensating contra-entry posted to CBS.`
+      });
+      await loadData();
+    } catch (err) {
+      setNotification({
+        type: 'alert',
+        title: 'Approval Failed',
+        message: err.response?.data?.detail || err.message || 'Unable to approve reversal.'
+      });
+    } finally {
+      setIsProcessingReversalAction(null);
+    }
+  };
+
+  // Checker Reject Reversal Ticket (POST /api/v1/reversals/reject)
+  const handleRejectReversalTicket = async (ticketId) => {
+    if (currentAdmin.capability !== 'REVERSAL_APPROVAL') {
+      setNotification({
+        type: 'alert',
+        title: 'Segregation of Duties Enforced',
+        message: 'Only the Compliance & Settlement Checker (Diana Vance) is authorized to reject reversal tickets.'
+      });
+      return;
+    }
+    setIsProcessingReversalAction(ticketId);
+    try {
+      await apiClient.post('/reversals/reject', {
+        reversalRequestId: ticketId,
+        checkerId: activeAdminId,
+        rejectionReason: `Rejected by ${currentAdmin.name}`
+      });
+      setNotification({
+        type: 'success',
+        title: 'Reversal Rejected',
+        message: `Ticket ${ticketId} rejected.`
+      });
+      await loadData();
+    } catch (err) {
+      setNotification({
+        type: 'alert',
+        title: 'Rejection Failed',
+        message: err.response?.data?.detail || err.message || 'Unable to reject reversal.'
+      });
+    } finally {
+      setIsProcessingReversalAction(null);
     }
   };
 
@@ -2157,132 +2264,308 @@ export default function AdminExecutivePortal() {
             ========================================================================= */}
         {activeView === 'transactions' && (
           <div className="space-y-4 animate-fade-in">
-            {/* Search and Filters */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-subtle" />
-                <input
-                  type="text"
-                  placeholder="Search reference, account, or amount..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-10 w-full rounded-2xl border border-line bg-surface pl-9 pr-4 text-xs text-fg placeholder:text-fg-subtle focus:border-accent focus:outline-none transition shadow-xs"
-                />
+            {/* Sub-view Switcher: Journal vs Reversals Queue */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-line pb-3">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setTxSubView('journal')}
+                  className={cn(
+                    "flex items-center gap-2 rounded-2xl px-3.5 py-2 text-xs font-semibold transition cursor-pointer",
+                    txSubView === 'journal'
+                      ? "bg-accent text-white shadow-xs"
+                      : "bg-surface border border-line text-fg-muted hover:text-fg"
+                  )}
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>Transactions Journal</span>
+                  <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-mono">
+                    {transactions.length}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setTxSubView('reversals')}
+                  className={cn(
+                    "flex items-center gap-2 rounded-2xl px-3.5 py-2 text-xs font-semibold transition cursor-pointer",
+                    txSubView === 'reversals'
+                      ? "bg-purple-600 text-white shadow-xs"
+                      : "bg-surface border border-line text-fg-muted hover:text-fg"
+                  )}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>CBS Reversal Queue</span>
+                  <span className={cn(
+                    "rounded-full px-2 py-0.5 text-[10px] font-mono font-bold",
+                    reversalRequests.filter(r => r.status === 'PENDING').length > 0
+                      ? "bg-amber-400 text-black"
+                      : "bg-white/20 text-white"
+                  )}>
+                    {reversalRequests.filter(r => r.status === 'PENDING').length} PENDING
+                  </span>
+                </button>
               </div>
 
-              <div className="flex items-center gap-1.5">
-                {['ALL', 'SETTLED', 'REVERSED', 'REVIEW'].map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => setStatusFilter(status)}
-                    className={cn(
-                      "rounded-xl px-3 py-1.5 text-xs font-medium transition",
-                      statusFilter === status
-                        ? "bg-accent/10 text-accent font-semibold border border-accent/30 shadow-xs"
-                        : "text-fg-muted hover:text-fg"
-                    )}
-                  >
-                    {status}
-                  </button>
-                ))}
+              <div className="text-2xs font-mono text-fg-subtle">
+                Orchestrator Endpoints: <span className="text-accent">/api/v1/transfers</span> &bull; <span className="text-purple-400">/api/v1/reversals</span>
               </div>
             </div>
 
-            {/* Table */}
-            <div className="overflow-hidden rounded-3xl border border-line bg-surface shadow-xs">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-line bg-sunken/40 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">
-                      <th className="py-3.5 px-6">Reference</th>
-                      <th className="py-3.5 px-6">Transfer Route</th>
-                      <th className="py-3.5 px-6 text-right">Amount</th>
-                      <th className="py-3.5 px-6 text-center">Status</th>
-                      <th className="py-3.5 px-6">Sign-off / Reversal</th>
-                      <th className="py-3.5 px-6 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-line text-xs">
-                    {filteredTransactions.map((tx) => {
-                      const isReversed = tx.status === 'REVERSED';
-                      const isCommitted = tx.status === 'COMMITTED' || tx.status === 'POSTED' || tx.status === 'SETTLED';
+            {txSubView === 'journal' ? (
+              <>
+                {/* Search and Filters */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="relative flex-1 max-w-sm">
+                    <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-subtle" />
+                    <input
+                      type="text"
+                      placeholder="Search reference, account, or amount..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="h-10 w-full rounded-2xl border border-line bg-surface pl-9 pr-4 text-xs text-fg placeholder:text-fg-subtle focus:border-accent focus:outline-none transition shadow-xs"
+                    />
+                  </div>
 
-                      return (
-                        <tr 
-                          key={tx.id}
-                          onClick={() => setSelectedTx(tx)}
-                          className="group cursor-pointer hover:bg-sunken/50 transition"
-                        >
-                          <td className="py-4 px-6 font-mono">
-                            <span className="font-semibold text-fg block">{formatShortId(tx.id)}</span>
-                            <span className="text-[10px] font-sans text-fg-subtle">
-                              {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </td>
+                  <div className="flex items-center gap-1.5">
+                    {['ALL', 'SETTLED', 'REVERSED', 'REVIEW'].map((status) => (
+                      <button
+                        key={status}
+                        onClick={() => setStatusFilter(status)}
+                        className={cn(
+                          "rounded-xl px-3 py-1.5 text-xs font-medium transition cursor-pointer",
+                          statusFilter === status
+                            ? "bg-accent/10 text-accent font-semibold border border-accent/30 shadow-xs"
+                            : "text-fg-muted hover:text-fg"
+                        )}
+                      >
+                        {status}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-                          <td className="py-4 px-6">
-                            <div className="flex items-center gap-1.5 text-fg">
-                              <span className="font-medium">Juan Dela Cruz</span>
-                              <span className="text-fg-subtle">➔</span>
-                              <span className="font-medium">Maria Reyes</span>
-                            </div>
-                            <span className="block text-[10px] font-mono text-fg-subtle mt-0.5">
-                              {tx.fromAccount}
-                            </span>
-                          </td>
-
-                          <td className="py-4 px-6 text-right font-medium text-fg">
-                            <span className="text-sm font-semibold">{formatPHP(tx.amount)}</span>
-                          </td>
-
-                          <td className="py-4 px-6 text-center">
-                            <span className={cn(
-                              "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium",
-                              isReversed && "bg-rose-500/10 text-rose-400",
-                              isCommitted && "bg-emerald-500/10 text-emerald-400",
-                              tx.status === 'PENDING_APPROVAL' && "bg-amber-500/10 text-amber-400"
-                            )}>
-                              {isReversed ? 'Reversed' : isCommitted ? 'Settled' : 'Review'}
-                            </span>
-                          </td>
-
-                          <td className="py-4 px-6 text-fg-muted">
-                            {isReversed ? (
-                              <span className="text-rose-400 font-medium">Reversed by {tx.reversedBy === 'usr-1006-mgr-002' ? 'Carlos M.' : 'Diana V.'}</span>
-                            ) : (
-                              <span>{tx.approvedBy ? `Approved: ${tx.approvedBy === 'usr-1004-adm-001' ? 'Diana V.' : 'Carlos M.'}` : 'Auto-settled'}</span>
-                            )}
-                          </td>
-
-                          <td className="py-4 px-6 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              {isCommitted && (
-                                currentAdmin.capability === 'REVERSAL_APPROVAL' ? (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setRollbackTarget(tx);
-                                    }}
-                                    className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-400 hover:bg-amber-500/20 transition shadow-xs"
-                                  >
-                                    Rollback
-                                  </button>
-                                ) : (
-                                  <span className="rounded-lg bg-sunken px-2 py-0.5 text-[10px] text-fg-subtle italic">
-                                    Checker Req.
-                                  </span>
-                                )
-                              )}
-                              <ChevronRight className="h-4 w-4 text-fg-subtle group-hover:text-fg group-hover:translate-x-0.5 transition" />
-                            </div>
-                          </td>
+                {/* Table */}
+                <div className="overflow-hidden rounded-3xl border border-line bg-surface shadow-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-line bg-sunken/40 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">
+                          <th className="py-3.5 px-6">Reference</th>
+                          <th className="py-3.5 px-6">Transfer Route</th>
+                          <th className="py-3.5 px-6 text-right">Amount</th>
+                          <th className="py-3.5 px-6 text-center">Status</th>
+                          <th className="py-3.5 px-6">Sign-off / Reversal</th>
+                          <th className="py-3.5 px-6 text-right">Actions</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody className="divide-y divide-line text-xs">
+                        {filteredTransactions.map((tx) => {
+                          const isReversed = tx.status === 'REVERSED';
+                          const isCommitted = tx.status === 'COMMITTED' || tx.status === 'POSTED' || tx.status === 'SETTLED';
+
+                          return (
+                            <tr 
+                              key={tx.id}
+                              onClick={() => setSelectedTx(tx)}
+                              className="group cursor-pointer hover:bg-sunken/50 transition"
+                            >
+                              <td className="py-4 px-6 font-mono">
+                                <span className="font-semibold text-fg block">{formatShortId(tx.id)}</span>
+                                <span className="text-[10px] font-sans text-fg-subtle">
+                                  {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </td>
+
+                              <td className="py-4 px-6">
+                                <div className="flex items-center gap-1.5 text-fg">
+                                  <span className="font-medium">Juan Dela Cruz</span>
+                                  <span className="text-fg-subtle">➔</span>
+                                  <span className="font-medium">Maria Reyes</span>
+                                </div>
+                                <span className="block text-[10px] font-mono text-fg-subtle mt-0.5">
+                                  {tx.fromAccount}
+                                </span>
+                              </td>
+
+                              <td className="py-4 px-6 text-right font-medium text-fg">
+                                <span className="text-sm font-semibold">{formatPHP(tx.amount)}</span>
+                              </td>
+
+                              <td className="py-4 px-6 text-center">
+                                <span className={cn(
+                                  "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium",
+                                  isReversed && "bg-rose-500/10 text-rose-400",
+                                  isCommitted && "bg-emerald-500/10 text-emerald-400",
+                                  tx.status === 'PENDING_APPROVAL' && "bg-amber-500/10 text-amber-400"
+                                )}>
+                                  {isReversed ? 'Reversed' : isCommitted ? 'Settled' : 'Review'}
+                                </span>
+                              </td>
+
+                              <td className="py-4 px-6 text-fg-muted">
+                                {isReversed ? (
+                                  <span className="text-rose-400 font-medium">Reversed by {tx.reversedBy === 'usr-1006-mgr-002' ? 'Carlos M.' : 'Diana V.'}</span>
+                                ) : (
+                                  <span>{tx.approvedBy ? `Approved: ${tx.approvedBy === 'usr-1004-adm-001' ? 'Diana V.' : 'Carlos M.'}` : 'Auto-settled'}</span>
+                                )}
+                              </td>
+
+                              <td className="py-4 px-6 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  {isCommitted && (
+                                    currentAdmin.capability === 'REVERSAL_APPROVAL' ? (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setRollbackTarget(tx);
+                                        }}
+                                        className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-400 hover:bg-amber-500/20 transition shadow-xs cursor-pointer"
+                                      >
+                                        Rollback
+                                      </button>
+                                    ) : (
+                                      <span className="rounded-lg bg-sunken px-2 py-0.5 text-[10px] text-fg-subtle italic">
+                                        Checker Req.
+                                      </span>
+                                    )
+                                  )}
+                                  <ChevronRight className="h-4 w-4 text-fg-subtle group-hover:text-fg group-hover:translate-x-0.5 transition" />
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* Sub-view: Reversals Queue */
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="flex items-center gap-1.5">
+                    {['ALL', 'PENDING', 'APPROVED', 'REJECTED'].map((st) => (
+                      <button
+                        key={st}
+                        onClick={() => setReversalFilter(st)}
+                        className={cn(
+                          "rounded-xl px-3 py-1.5 text-xs font-medium transition cursor-pointer",
+                          reversalFilter === st
+                            ? "bg-purple-600 text-white font-semibold shadow-xs"
+                            : "text-fg-muted hover:text-fg bg-surface border border-line"
+                        )}
+                      >
+                        {st}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-xs text-fg-muted font-sans">
+                    Checker Segregation: Only <strong>Diana Vance</strong> ({currentAdmin.badge}) can authorize contra-postings.
+                  </div>
+                </div>
+
+                <div className="overflow-hidden rounded-3xl border border-line bg-surface shadow-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-line bg-sunken/40 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">
+                          <th className="py-3.5 px-6">Ticket ID</th>
+                          <th className="py-3.5 px-6">Original Transaction</th>
+                          <th className="py-3.5 px-6">Dispute Reason &amp; Notes</th>
+                          <th className="py-3.5 px-6">Maker / Checker</th>
+                          <th className="py-3.5 px-6 text-center">Status</th>
+                          <th className="py-3.5 px-6 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-line text-xs font-mono">
+                        {reversalRequests.filter(r => reversalFilter === 'ALL' || r.status === reversalFilter).length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="py-8 text-center text-fg-subtle font-sans">
+                              No reversal tickets found matching filter.
+                            </td>
+                          </tr>
+                        ) : (
+                          reversalRequests
+                            .filter(r => reversalFilter === 'ALL' || r.status === reversalFilter)
+                            .map((ticket) => {
+                              const isPending = ticket.status === 'PENDING';
+                              const isApproved = ticket.status === 'APPROVED';
+                              const isRejected = ticket.status === 'REJECTED';
+
+                              return (
+                                <tr key={ticket.ticketId || ticket.ticket_id} className="hover:bg-sunken/40 transition">
+                                  <td className="py-4 px-6 font-bold text-fg">
+                                    {ticket.ticketId || ticket.ticket_id}
+                                  </td>
+                                  <td className="py-4 px-6 font-semibold text-accent">
+                                    {ticket.originalTransactionId || ticket.original_transaction_id || '--'}
+                                  </td>
+                                  <td className="py-4 px-6 font-sans">
+                                    <span className="font-semibold text-fg block font-mono text-xs">
+                                      {ticket.disputeReason || ticket.dispute_reason}
+                                    </span>
+                                    <span className="text-fg-subtle text-2xs">
+                                      {ticket.makerNotes || ticket.maker_notes || ticket.checkerNotes || ''}
+                                    </span>
+                                  </td>
+                                  <td className="py-4 px-6 text-2xs text-fg-muted font-sans">
+                                    <div>Maker: <strong className="text-fg">{ticket.makerId || ticket.maker_id || 'MAKER01'}</strong></div>
+                                    <div>Checker: <strong className="text-fg">{ticket.checkerId || ticket.checker_id || 'PENDING'}</strong></div>
+                                  </td>
+                                  <td className="py-4 px-6 text-center">
+                                    <span className={cn(
+                                      "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
+                                      isApproved && "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
+                                      isRejected && "bg-rose-500/10 text-rose-400 border border-rose-500/20",
+                                      isPending && "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                    )}>
+                                      {ticket.status}
+                                    </span>
+                                  </td>
+                                  <td className="py-4 px-6 text-right font-sans">
+                                    {isPending ? (
+                                      currentAdmin.capability === 'REVERSAL_APPROVAL' ? (
+                                        <div className="flex items-center justify-end gap-2">
+                                          <button
+                                            type="button"
+                                            disabled={isProcessingReversalAction === (ticket.ticketId || ticket.ticket_id)}
+                                            onClick={() => handleApproveReversalTicket(ticket.ticketId || ticket.ticket_id)}
+                                            className="rounded-xl bg-emerald-600 hover:bg-emerald-500 px-3 py-1 text-xs font-semibold text-white transition shadow-xs cursor-pointer"
+                                            title="Approve via POST /api/v1/reversals/approve"
+                                          >
+                                            Approve
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={isProcessingReversalAction === (ticket.ticketId || ticket.ticket_id)}
+                                            onClick={() => handleRejectReversalTicket(ticket.ticketId || ticket.ticket_id)}
+                                            className="rounded-xl bg-rose-600 hover:bg-rose-500 px-3 py-1 text-xs font-semibold text-white transition shadow-xs cursor-pointer"
+                                            title="Reject via POST /api/v1/reversals/reject"
+                                          >
+                                            Reject
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <span className="rounded-lg bg-sunken px-2 py-0.5 text-[10px] text-fg-subtle italic">
+                                          Requires Checker
+                                        </span>
+                                      )
+                                    ) : (
+                                      <span className="text-[11px] text-fg-subtle">
+                                        Resolved
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -2966,6 +3249,84 @@ export default function AdminExecutivePortal() {
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* Core Banking Status History Section */}
+              <div className="space-y-3 pt-4 border-t border-line">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-fg-subtle flex items-center gap-1.5">
+                      <History className="h-3.5 w-3.5 text-accent" />
+                      <span>CBS Lifecycle Status History Audit Trail</span>
+                    </h4>
+                    <p className="text-xs text-fg-muted mt-0.5">
+                      Real-time database and OFS state transitions from Transfer Orchestrator (<span className="font-mono text-accent">GET /api/v1/transfers/transactions/{selectedTx.id}/status-history</span>).
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (selectedTx?.id) {
+                        setIsLoadingStatusHistory(true);
+                        apiClient.get(`/transfers/transactions/${selectedTx.id}/status-history`)
+                          .then((res) => setSelectedTxStatusHistory(Array.isArray(res.data) ? res.data : []))
+                          .catch(() => setSelectedTxStatusHistory([]))
+                          .finally(() => setIsLoadingStatusHistory(false));
+                      }
+                    }}
+                    className="rounded-xl border border-line bg-sunken px-2.5 py-1 text-[11px] font-semibold text-fg hover:bg-raised transition flex items-center gap-1 shrink-0"
+                  >
+                    <RefreshCw className={cn("h-3 w-3", isLoadingStatusHistory && "animate-spin")} />
+                    <span>Sync Transitions</span>
+                  </button>
+                </div>
+
+                {isLoadingStatusHistory ? (
+                  <div className="rounded-2xl border border-line bg-sunken/40 p-4 text-center text-xs text-fg-subtle font-mono">
+                    Loading status transition records...
+                  </div>
+                ) : selectedTxStatusHistory.length > 0 ? (
+                  <div className="overflow-hidden rounded-2xl border border-line bg-surface">
+                    <table className="w-full text-left text-xs font-mono border-collapse">
+                      <thead>
+                        <tr className="border-b border-line bg-sunken/50 text-[10px] font-semibold uppercase tracking-wider text-fg-subtle">
+                          <th className="py-2.5 px-3">Seq</th>
+                          <th className="py-2.5 px-3">State Transition</th>
+                          <th className="py-2.5 px-3">Reason</th>
+                          <th className="py-2.5 px-3">Trigger Actor</th>
+                          <th className="py-2.5 px-3">Timestamp</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-line text-[11px]">
+                        {selectedTxStatusHistory.map((sh, idx) => (
+                          <tr key={sh.historyId || idx} className="hover:bg-sunken/30">
+                            <td className="py-2 px-3 text-fg-subtle font-bold">#{idx + 1}</td>
+                            <td className="py-2 px-3 font-semibold">
+                              <span className="text-fg-muted">{sh.fromStatus || 'START'}</span>
+                              <span className="text-accent mx-1.5 font-bold">&rarr;</span>
+                              <span className={sh.toStatus === 'POSTED' ? 'text-emerald-400 font-bold' : sh.toStatus === 'REVERSED' ? 'text-rose-400 font-bold' : 'text-amber-400 font-bold'}>
+                                {sh.toStatus}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3">
+                              <span className="font-semibold text-fg block">{sh.changeReason || '--'}</span>
+                              <span className="text-[10px] text-fg-subtle">{sh.reasonDetails || ''}</span>
+                            </td>
+                            <td className="py-2 px-3 text-fg-muted">
+                              {sh.actorId || 'SYSTEM'} <span className="text-fg-subtle">({sh.actorType || 'SERVICE'})</span>
+                            </td>
+                            <td className="py-2 px-3 text-fg-subtle whitespace-nowrap">
+                              {sh.changedAt ? new Date(sh.changedAt).toLocaleString() : '--'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-line bg-sunken/40 p-4 text-center text-xs text-fg-muted font-mono">
+                    No transition records returned from core banking.
+                  </div>
+                )}
               </div>
             </div>
 

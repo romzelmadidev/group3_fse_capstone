@@ -424,6 +424,21 @@ const initialMockState = {
       timestamp: new Date(Date.now() - 7200000).toISOString(),
       status: 'COMMITTED',
     }
+  ],
+  reversalTickets: [
+    {
+      ticketId: 'REV-TKT-1001',
+      originalTransactionId: 'FT-9901-2026',
+      makerId: 'TELLER_ALICE',
+      checkerId: null,
+      status: 'PENDING',
+      disputeReason: 'CUSTOMER_ERRONEOUS_TRANSFER',
+      makerNotes: 'Customer transferred to wrong recipient account. Immediate recall requested.',
+      checkerNotes: null,
+      reversalTransactionId: null,
+      createdAt: new Date(Date.now() - 3600000).toISOString(),
+      resolvedAt: null
+    }
   ]
 };
 
@@ -477,6 +492,9 @@ const loadMockState = () => {
           const cleanTo = (tx.to_account_id || '').replace(/[\s-]/g, '').toUpperCase();
           return validAccountNums.includes(cleanTo);
         });
+        if (!parsed.reversalTickets || !Array.isArray(parsed.reversalTickets)) {
+          parsed.reversalTickets = JSON.parse(JSON.stringify(initialMockState.reversalTickets));
+        }
         return parsed;
       }
     }
@@ -768,6 +786,199 @@ function handleMockFallback(config) {
             reversal_id: revTx.id,
             amount_restored: amount,
             message: `Transaction ${tx.id} successfully reversed. Funds restored to ${tx.from_account_id}.`
+          }
+        });
+      }
+
+      // 3b-1. Query Transaction Status History (Audit Trail of Transitions)
+      if (url.includes('/status-history') && method === 'get') {
+        const txId = url.split('/transactions/')[1]?.split('/status-history')[0] 
+          || url.split('/transfers/')[1]?.split('/status-history')[0]
+          || 'TXN-DEMO';
+        const tx = mockState.transfers.find(t => t.id === txId);
+        const historyList = [
+          {
+            historyId: 'HIST-' + txId + '-01',
+            transactionId: txId,
+            fromStatus: 'INITIATED',
+            toStatus: 'PROCESSING',
+            changeReason: 'ORCHESTRATOR_DISPATCH',
+            reasonDetails: 'Forwarded to CBS queue via Temenos OFS',
+            actorId: 'ORCHESTRATOR',
+            actorType: 'SERVICE',
+            changedAt: tx?.created_at || new Date(Date.now() - 60000).toISOString()
+          },
+          {
+            historyId: 'HIST-' + txId + '-02',
+            transactionId: txId,
+            fromStatus: 'PROCESSING',
+            toStatus: tx?.status === 'REVERSED' ? 'POSTED' : (tx?.status || 'POSTED'),
+            changeReason: 'CBS_POSTING_CONFIRMED',
+            reasonDetails: 'Ledger double-entry mutation complete in Core Banking',
+            actorId: 'CBS_POSTING_ENGINE',
+            actorType: 'SYSTEM',
+            changedAt: tx?.created_at ? new Date(new Date(tx.created_at).getTime() + 1200).toISOString() : new Date().toISOString()
+          }
+        ];
+        if (tx?.status === 'REVERSED') {
+          historyList.push({
+            historyId: 'HIST-' + txId + '-03',
+            transactionId: txId,
+            fromStatus: 'POSTED',
+            toStatus: 'REVERSED',
+            changeReason: tx?.reversal_reason || 'CUSTOMER_DISPUTE_REVERSAL',
+            reasonDetails: tx?.reversal_memo || 'Compensating contra-entry posted',
+            actorId: tx?.reversedByUserId || 'MAKER_CHECKER_PAIR',
+            actorType: 'USER',
+            changedAt: tx?.reversed_at || new Date().toISOString()
+          });
+        }
+        return resolve({
+          status: 200,
+          data: historyList
+        });
+      }
+
+      // 3b-2. Reversal Requests List & Orchestrator Operations
+      if ((url.includes('/reversals') && !url.includes('/request') && !url.includes('/approve') && !url.includes('/reject') && !url.includes('/direct') && !url.includes('/compensate')) && method === 'get') {
+        const tickets = (mockState.reversalTickets || []).map(t => ({
+          ticketId: t.ticketId || t.ticket_id,
+          originalTransactionId: t.originalTransactionId || t.original_tx_id,
+          makerId: t.makerId || t.maker_id || 'MAKER01',
+          checkerId: t.checkerId || t.checker_id || null,
+          status: t.status || 'PENDING',
+          disputeReason: t.disputeReason || t.dispute_reason || 'CUSTOMER_DISPUTE',
+          makerNotes: t.makerNotes || t.maker_notes || 'Customer dispute claim',
+          checkerNotes: t.checkerNotes || t.checker_notes || null,
+          reversalTransactionId: t.reversalTransactionId || t.reversal_tx_id || null,
+          createdAt: t.createdAt || t.created_at || new Date().toISOString(),
+          resolvedAt: t.resolvedAt || t.resolved_at || null
+        }));
+        return resolve({
+          status: 200,
+          data: tickets
+        });
+      }
+
+      if (url.includes('/reversals/request') && method === 'post') {
+        const ticketId = 'REV-TKT-' + Math.floor(Math.random() * 90000 + 10000);
+        const newTicket = {
+          ticketId,
+          originalTransactionId: payload.originalTransactionId || payload.originalTxId,
+          makerId: payload.makerId || 'MAKER01',
+          status: 'PENDING',
+          disputeReason: payload.reason || payload.disputeReason || 'DISPUTE',
+          makerNotes: payload.notes || payload.makerNotes || 'Filed dispute ticket',
+          createdAt: new Date().toISOString()
+        };
+        mockState.reversalTickets = mockState.reversalTickets || [];
+        mockState.reversalTickets.unshift(newTicket);
+        saveMockState();
+        return resolve({
+          status: 200,
+          data: {
+            STATUS_CODE: '1',
+            STATUS: 'PENDING',
+            ticketId,
+            'TICKET.ID': ticketId,
+            'ORIGINAL.FT.NO': newTicket.originalTransactionId,
+            message: 'Reversal request registered',
+            MESSAGE: 'Reversal request registered'
+          }
+        });
+      }
+
+      if (url.includes('/reversals/approve') && method === 'post') {
+        const ticketId = payload.reversalRequestId || payload.ticketId;
+        const ticket = (mockState.reversalTickets || []).find(t => t.ticketId === ticketId);
+        if (ticket) {
+          ticket.status = 'APPROVED';
+          ticket.checkerId = payload.checkerId || 'CHECKER01';
+          ticket.checkerNotes = payload.checkerNotes || 'Approved';
+          ticket.resolvedAt = new Date().toISOString();
+          ticket.reversalTransactionId = 'REV-TX-' + Math.floor(Math.random() * 90000 + 10000);
+          saveMockState();
+        }
+        return resolve({
+          status: 200,
+          data: {
+            STATUS_CODE: '1',
+            STATUS: 'APPROVED',
+            ticketId,
+            'TICKET.ID': ticketId,
+            message: 'Reversal executed successfully',
+            MESSAGE: 'Reversal executed successfully'
+          }
+        });
+      }
+
+      if (url.includes('/reversals/reject') && method === 'post') {
+        const ticketId = payload.reversalRequestId || payload.ticketId;
+        const ticket = (mockState.reversalTickets || []).find(t => t.ticketId === ticketId);
+        if (ticket) {
+          ticket.status = 'REJECTED';
+          ticket.checkerId = payload.checkerId || 'CHECKER01';
+          ticket.checkerNotes = payload.rejectionReason || payload.checkerNotes || 'Rejected';
+          ticket.resolvedAt = new Date().toISOString();
+          saveMockState();
+        }
+        return resolve({
+          status: 200,
+          data: {
+            STATUS_CODE: '1',
+            STATUS: 'REJECTED',
+            ticketId,
+            'TICKET.ID': ticketId,
+            message: 'Reversal rejected',
+            MESSAGE: 'Reversal rejected'
+          }
+        });
+      }
+
+      if ((url.includes('/reversals/direct') || url.includes('/reversals/compensate')) && method === 'post') {
+        const origTxId = payload.originalTransactionId || payload.original_transaction_id || payload.originalFtNo;
+        const reason = payload.reason || payload.reversalReason || 'SAGA_COMPENSATION';
+        const memo = payload.memo || payload.checkerNotes || 'Compensating contra-entry posted';
+        const makerId = payload.makerId || payload.reversed_by_user_id || 'SAGA_COORDINATOR';
+        const checkerId = payload.checkerId || payload.approved_by_admin_id || 'SYSTEM_SAGA';
+        const tx = mockState.transfers.find(t => t.id === origTxId);
+        if (tx) {
+          tx.status = 'REVERSED';
+          tx.reversed_at = new Date().toISOString();
+          tx.reversal_reason = reason;
+          tx.reversal_memo = memo;
+          tx.reversed_by_user_id = makerId;
+          tx.approved_by_user_id = checkerId;
+
+          const amount = parseFloat(tx.amount || 0);
+          if (mockState.account && (tx.from_account_id === '1000-2000-3001' || tx.from_account_id === 'A2001' || tx.source === '1000-2000-3001')) {
+            mockState.account.current_balance += amount;
+            mockState.account.available_balance += amount;
+          }
+
+          if (Array.isArray(mockState.auditLogs)) {
+            mockState.auditLogs.unshift({
+              auditId: 'AUD-REV-' + Math.floor(Math.random() * 90000 + 10000),
+              transactionId: origTxId,
+              mutationType: 'REVERSAL_COMPENSATING',
+              mutationAmount: amount,
+              initiatorUserId: makerId,
+              status: 'COMMITTED',
+              createdAt: new Date().toISOString(),
+              beforeBalance: mockState.account?.current_balance ? mockState.account.current_balance - amount : 0,
+              afterBalance: mockState.account?.current_balance || 0
+            });
+          }
+        }
+        saveMockState();
+        return resolve({
+          status: 200,
+          data: {
+            STATUS_CODE: '1',
+            STATUS: 'SUCCESS',
+            'TXN.ID': 'REV-COMP-' + Math.floor(Math.random() * 90000 + 10000),
+            MESSAGE: 'REVERSAL_APPROVED_AND_SETTLED',
+            message: 'Reversal successfully settled on core banking ledger'
           }
         });
       }
