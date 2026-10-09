@@ -1,13 +1,11 @@
 package com.bank.orchestrator.service;
 
 import com.bank.ledger.contracts.enums.TransactionStatus;
-import com.bank.orchestrator.dto.RiskScoreRequest;
-import com.bank.orchestrator.dto.RiskScoreResponse;
-import com.bank.orchestrator.dto.TransferInitiationRequest;
-import com.bank.orchestrator.dto.TransferInitiationResponse;
+import com.bank.orchestrator.dto.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -28,7 +26,26 @@ public class TransferOrchestrationService {
     private final BiometricChallengeService biometricService;
     private final RiskClientService riskService;
     private final CbsClientService cbsService;
+    private final InterbankWireClient wireClient;
     private final ObjectMapper objectMapper;
+
+    @Autowired
+    public TransferOrchestrationService(
+            IdempotencyLockService idempotencyService,
+            CoolOffService coolOffService,
+            BiometricChallengeService biometricService,
+            RiskClientService riskService,
+            CbsClientService cbsService,
+            InterbankWireClient wireClient,
+            ObjectMapper objectMapper) {
+        this.idempotencyService = idempotencyService;
+        this.coolOffService = coolOffService;
+        this.biometricService = biometricService;
+        this.riskService = riskService;
+        this.cbsService = cbsService;
+        this.wireClient = wireClient;
+        this.objectMapper = objectMapper;
+    }
 
     public TransferOrchestrationService(
             IdempotencyLockService idempotencyService,
@@ -37,12 +54,7 @@ public class TransferOrchestrationService {
             RiskClientService riskService,
             CbsClientService cbsService,
             ObjectMapper objectMapper) {
-        this.idempotencyService = idempotencyService;
-        this.coolOffService = coolOffService;
-        this.biometricService = biometricService;
-        this.riskService = riskService;
-        this.cbsService = cbsService;
-        this.objectMapper = objectMapper;
+        this(idempotencyService, coolOffService, biometricService, riskService, cbsService, null, objectMapper);
     }
 
     public TransferInitiationResponse initiateTransfer(TransferInitiationRequest request) {
@@ -139,7 +151,16 @@ public class TransferOrchestrationService {
                 );
             }
 
-            // 5. Post to CBS
+            // 5. Inter-bank check (Nostro/Vostro Corridor)
+            boolean isInterbank = request.destinationBank() != null &&
+                    !request.destinationBank().isBlank() &&
+                    !"AURABANK".equalsIgnoreCase(request.destinationBank());
+
+            if (isInterbank) {
+                return processInterbankTransfer(request, txId, inCoolOff);
+            }
+
+            // 6. Normal Intra-bank Transfer on CBS
             return cbsService.postToCbs(request, txId, inCoolOff);
 
         } catch (ResponseStatusException rse) {
@@ -149,6 +170,76 @@ public class TransferOrchestrationService {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Transfer execution failed: " + e.getMessage(), e);
         } finally {
             idempotencyService.releaseLock(idempKey);
+        }
+    }
+
+    /**
+     * Executes Outward Inter-Bank Transfer via Bilateral Nostro/Vostro Model.
+     * Leg 1: Debits Sender and Credits ACC-NOSTRO-BANK-B in local CBS.
+     * Leg 2: Dispatches HTTP Wire to Partner Bank.
+     * Saga: If Leg 2 fails, automatically executes Compensating Reversal on CBS.
+     */
+    private TransferInitiationResponse processInterbankTransfer(
+            TransferInitiationRequest request, String txId, boolean inCoolOff) {
+        log.info("Starting Outward Inter-bank Transfer via Nostro buffer: txId={}, targetBank={}, beneficiary={}",
+                txId, request.destinationBank(), request.destinationAccountId());
+
+        // Leg 1: CBS Local Mutation (Debit Sender -> Credit ACC-NOSTRO-BANK-B)
+        TransferInitiationRequest leg1Req = new TransferInitiationRequest(
+                txId,
+                request.sourceAccountId(),
+                "ACC-NOSTRO-BANK-B",
+                request.amount(),
+                request.currency() != null ? request.currency() : "PHP",
+                "Interbank Wire Leg 1 to " + request.destinationBank() + ": " + request.destinationAccountId(),
+                request.deviceId(),
+                request.idempotencyKey(),
+                request.biometricSignature(),
+                request.scamAdvisoryAcknowledged(),
+                "AURABANK",
+                request.senderName(),
+                null
+        );
+        cbsService.postToCbs(leg1Req, txId, inCoolOff);
+        log.info("Interbank Leg 1 committed on CBS: {} debited into ACC-NOSTRO-BANK-B", request.sourceAccountId());
+
+        // Leg 2: Outward HTTP Wire Dispatch
+        InterbankWireRequest wireReq = new InterbankWireRequest(
+                txId,
+                "AURABANK",
+                request.senderName() != null ? request.senderName() : "AuraBank Customer",
+                request.sourceAccountId(),
+                request.destinationAccountId(),
+                request.amount(),
+                request.currency() != null ? request.currency() : "PHP",
+                Instant.now().toString()
+        );
+
+        try {
+            InterbankWireResponse wireResp = wireClient.dispatchWire(wireReq, request.simulationMode());
+            if (wireResp != null && "SETTLED".equalsIgnoreCase(wireResp.status())) {
+                log.info("Interbank transfer settled by partner: txId={}, partnerRef={}", txId, wireResp.partnerReference());
+                return new TransferInitiationResponse(
+                        txId,
+                        TransactionStatus.Posted,
+                        request.amount(),
+                        request.currency() != null ? request.currency() : "PHP",
+                        request.sourceAccountId(),
+                        request.destinationAccountId(),
+                        "Inter-bank transfer executed and settled by " + request.destinationBank() + " (Partner Ref: " + wireResp.partnerReference() + ")",
+                        false,
+                        0L,
+                        false,
+                        null,
+                        Instant.now()
+                );
+            } else {
+                throw new IllegalStateException("Partner bank rejected wire settlement: " + (wireResp != null ? wireResp.message() : "Unknown"));
+            }
+        } catch (Exception e) {
+            log.warn("Interbank Leg 2 wire failed or timed out: {}. Triggering automated Saga Compensating Reversal...", e.getMessage());
+            cbsService.executeCompensatingReversal(txId, "INTERBANK_WIRE_FAILURE: " + e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Inter-bank transfer failed at partner bank; funds refunded via automated Saga rollback: " + e.getMessage());
         }
     }
 }

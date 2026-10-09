@@ -40,7 +40,7 @@ spring:
         - id: transfer-orchestrator
           uri: ${TRANSFER_ORCHESTRATOR_URI:http://localhost:8082}
           predicates:
-            - Path=/api/v1/transfers/**, /api/v1/reversals/**, /api/v1/holds/**
+            - Path=/api/v1/transfers/**, /api/v1/reversals/**, /api/v1/holds/**, /api/v1/interbank/**, /api/v1/mock-partner/**
           filters:
             - name: RequestRateLimiter
               args:
@@ -51,7 +51,7 @@ spring:
         - id: t24-mock-cbs-audit
           uri: ${CBS_SERVICE_URI:http://localhost:8085}
           predicates:
-            - Path=/api/v1/cbs/audit/**
+            - Path=/api/v1/cbs/**
           filters:
             - name: RequestRateLimiter
               args:

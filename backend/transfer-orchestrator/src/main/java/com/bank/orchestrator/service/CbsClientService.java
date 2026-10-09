@@ -217,4 +217,22 @@ public class CbsClientService {
             return Map.of("STATUS", "FAILED", "ERROR", e.getMessage());
         }
     }
+
+    public void executeCompensatingReversal(String originalTxId, String reason) {
+        log.warn("Executing automated Saga compensating reversal for originalTxId={}: reason={}", originalTxId, reason);
+        try {
+            String ofsPayload = OfsMessageUtil.buildFundsTransferReversal(originalTxId, "SAGA-REV-" + System.currentTimeMillis(), "SAGA_ORCHESTRATOR");
+            String ofsResponse = webClient.post()
+                    .uri("/api/v1/cbs/reversal")
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
+                    .bodyValue(ofsPayload)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofMillis(4000))
+                    .block();
+            log.info("CBS Saga reversal completed for {}: {}", originalTxId, ofsResponse);
+        } catch (Exception e) {
+            log.error("CRITICAL: Failed to execute automated Saga reversal on CBS for {}: {}", originalTxId, e.getMessage(), e);
+        }
+    }
 }

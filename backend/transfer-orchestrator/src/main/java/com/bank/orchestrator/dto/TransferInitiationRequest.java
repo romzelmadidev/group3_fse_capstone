@@ -19,5 +19,23 @@ public record TransferInitiationRequest(
         String deviceId,
         String idempotencyKey,
         String biometricSignature,
-        boolean scamAdvisoryAcknowledged
-) {}
+        boolean scamAdvisoryAcknowledged,
+        String destinationBank,
+        String senderName,
+        String simulationMode
+) {
+    public TransferInitiationRequest(
+            String transactionId,
+            String sourceAccountId,
+            String destinationAccountId,
+            BigDecimal amount,
+            String currency,
+            String description,
+            String deviceId,
+            String idempotencyKey,
+            String biometricSignature,
+            boolean scamAdvisoryAcknowledged) {
+        this(transactionId, sourceAccountId, destinationAccountId, amount, currency, description,
+                deviceId, idempotencyKey, biometricSignature, scamAdvisoryAcknowledged, "AURABANK", null, null);
+    }
+}

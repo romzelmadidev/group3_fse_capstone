@@ -22,7 +22,9 @@ import {
   History,
   Clock,
   Play,
-  FileText
+  FileText,
+  Globe,
+  ArrowLeftRight
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -121,6 +123,32 @@ export default function T24TestConsole() {
   const [dlqIncidents, setDlqIncidents] = useState([]);
   const [isLoadingDlq, setIsLoadingDlq] = useState(false);
   const [replayResult, setReplayResult] = useState(null);
+
+  // Inter-Bank Corridor State
+  const [interbankForm, setInterbankForm] = useState({
+    sourceAccountId: 'acc-2002-chk-001',
+    destinationBank: 'BANK_B',
+    beneficiaryAccountId: 'B-ACC-998877',
+    amount: '1000.00',
+    currency: 'PHP',
+    senderName: 'Alice Guo',
+    simulationMode: '' // '' | 'TIMEOUT' | 'REJECT'
+  });
+  const [isInterbankExecuting, setIsInterbankExecuting] = useState(false);
+  const [interbankResult, setInterbankResult] = useState(null);
+
+  // Inward Inter-Bank Wire State
+  const [inwardForm, setInwardForm] = useState({
+    referenceId: 'WIRE-B-' + Math.floor(Math.random() * 900000 + 100000),
+    originatingBank: 'BANK_B',
+    senderName: 'Partner Customer (Bob)',
+    senderAccountId: 'B-ACC-887766',
+    beneficiaryAccountId: 'acc-2002-chk-001',
+    amount: '2500.00',
+    currency: 'PHP'
+  });
+  const [isInwardExecuting, setIsInwardExecuting] = useState(false);
+  const [inwardResult, setInwardResult] = useState(null);
 
   const showToast = (text, type = 'info') => {
     setToastMessage({ text, type });
@@ -539,6 +567,79 @@ export default function T24TestConsole() {
     }
   };
 
+  // Execute Outward Inter-Bank Wire
+  const handleExecuteInterbank = async (e) => {
+    e.preventDefault();
+    setIsInterbankExecuting(true);
+    setInterbankResult(null);
+    const txId = 'IB-OUT-' + Math.floor(Math.random() * 900000 + 100000);
+    try {
+      const payload = {
+        transactionId: txId,
+        sourceAccountId: interbankForm.sourceAccountId,
+        destinationAccountId: interbankForm.beneficiaryAccountId,
+        amount: parseFloat(interbankForm.amount),
+        currency: interbankForm.currency,
+        destinationBank: interbankForm.destinationBank,
+        senderName: interbankForm.senderName,
+        simulationMode: interbankForm.simulationMode || undefined
+      };
+      const res = await axios.post(`${API_BASE}/transfers`, payload);
+      setInterbankResult({ success: true, txId, data: res.data });
+      showToast(`Outward Inter-Bank wire settled by ${interbankForm.destinationBank}!`, 'success');
+      fetchBalance(activeAccount);
+    } catch (err) {
+      const errData = err.response?.data;
+      const isRollback = (errData?.message && (errData.message.includes('Saga rollback') || errData.message.includes('TimeoutException') || errData.message.includes('BAD_GATEWAY')));
+      setInterbankResult({
+        success: false,
+        txId,
+        error: errData?.message || errData?.error || err.message,
+        isRollback
+      });
+      showToast('Inter-bank transfer: ' + (isRollback ? 'Automated Saga Rollback executed' : (errData?.message || err.message)), isRollback ? 'info' : 'error');
+      fetchBalance(activeAccount);
+    } finally {
+      setIsInterbankExecuting(false);
+    }
+  };
+
+  // Simulate Inward Wire (Partner Bank B -> AuraBank)
+  const handleExecuteInwardWire = async (e) => {
+    e.preventDefault();
+    setIsInwardExecuting(true);
+    setInwardResult(null);
+    try {
+      const payload = {
+        referenceId: inwardForm.referenceId,
+        originatingBank: inwardForm.originatingBank,
+        senderName: inwardForm.senderName,
+        senderAccountId: inwardForm.senderAccountId,
+        beneficiaryAccountId: inwardForm.beneficiaryAccountId,
+        amount: parseFloat(inwardForm.amount),
+        currency: inwardForm.currency
+      };
+      const res = await axios.post(`${API_BASE}/interbank/transfers/inward`, payload, {
+        headers: { 'X-Interbank-API-Key': 'AURABANK-SECURE-KEY-2026' }
+      });
+      setInwardResult({ success: true, data: res.data });
+      showToast(`Inward wire settled! Credited to ${inwardForm.beneficiaryAccountId}`, 'success');
+      setInwardForm((prev) => ({
+        ...prev,
+        referenceId: 'WIRE-B-' + Math.floor(Math.random() * 900000 + 100000)
+      }));
+      fetchBalance(activeAccount);
+    } catch (err) {
+      setInwardResult({
+        success: false,
+        error: err.response?.data?.message || err.message
+      });
+      showToast('Inward wire rejected: ' + (err.response?.data?.message || err.message), 'error');
+    } finally {
+      setIsInwardExecuting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Toast alert */}
@@ -624,7 +725,7 @@ export default function T24TestConsole() {
             Select Test Account
           </label>
           <div className="mt-2.5 flex flex-col gap-1.5">
-            {['acc-2002-chk-001', 'acc-2001-sav-001', 'acc-2003-sav-002', '1000-2000-3001'].map((acc) => (
+            {['acc-2002-chk-001', 'acc-2001-sav-001', 'acc-2003-sav-002', 'ACC-NOSTRO-BANK-B', '1000-2000-3001'].map((acc) => (
               <button
                 key={acc}
                 onClick={() => {
@@ -640,7 +741,7 @@ export default function T24TestConsole() {
               >
                 <span>{acc}</span>
                 <span className={`text-2xs ${activeAccount === acc ? 'text-purple-700 font-semibold' : 'text-slate-400'}`}>
-                  {acc === 'acc-2002-chk-001' ? 'Checking (8.5M)' : acc === 'acc-2001-sav-001' ? 'Savings (25M)' : acc === 'acc-2003-sav-002' ? 'Savings (12.3M)' : 'Primary'}
+                  {acc === 'acc-2002-chk-001' ? 'Checking (8.5M)' : acc === 'acc-2001-sav-001' ? 'Savings (25M)' : acc === 'acc-2003-sav-002' ? 'Savings (12.3M)' : acc === 'ACC-NOSTRO-BANK-B' ? 'Nostro Bank B (5M)' : 'Primary'}
                 </span>
               </button>
             ))}
@@ -706,7 +807,8 @@ export default function T24TestConsole() {
           { id: 'reversal', label: '3. Reversal (Dual Control)', icon: RotateCcw },
           { id: 'ofs', label: '4. Raw Temenos OFS Terminal', icon: Terminal },
           { id: 'cob', label: '5. COB & EOD Lifecycle', icon: Moon },
-          { id: 'dlq', label: '6. DLQ Incident Replays', icon: AlertTriangle }
+          { id: 'dlq', label: '6. DLQ Incident Replays', icon: AlertTriangle },
+          { id: 'interbank', label: '7. Inter-Bank Corridor (Nostro-Vostro)', icon: ArrowLeftRight }
         ].map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
@@ -1551,6 +1653,484 @@ export default function T24TestConsole() {
               <p className="mt-1 text-2xs text-slate-400">Circuit breaker is CLOSED and all transfer pathways are healthy.</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* TAB 7: INTER-BANK CORRIDOR (BILATERAL NOSTRO-VOSTRO MODEL) */}
+      {activeTab === 'interbank' && (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 via-white to-purple-50/40 p-6 shadow-xs">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-100/70 px-2.5 py-0.5 font-mono text-2xs font-bold text-purple-900 uppercase tracking-wider">
+                  <ArrowLeftRight className="h-3 w-3 text-purple-700" /> Bilateral Settlement Model
+                </span>
+                <h2 className="mt-2 text-xl font-bold tracking-tight text-slate-900">
+                  Bilateral Nostro-Vostro Inter-Bank Corridor
+                </h2>
+                <p className="mt-1 max-w-3xl text-xs text-slate-600">
+                  Seamless bilateral fund transfers between <strong>AuraBank (Group 3)</strong> and <strong>Partner Bank B</strong>.
+                  Settlement liquidity is managed via our dedicated ledger account{' '}
+                  <code className="rounded bg-purple-100 px-1.5 py-0.5 font-mono text-2xs font-bold text-purple-900">
+                    ACC-NOSTRO-BANK-B
+                  </code>
+                  . Powered by an autonomous <strong>3-Leg Saga Orchestrator</strong> with automated 2-phase compensating reversal.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 rounded-xl border border-purple-100 bg-white p-3 shadow-2xs">
+                <div>
+                  <div className="text-2xs font-bold uppercase text-purple-900/70">Nostro Account</div>
+                  <div className="font-mono text-xs font-bold text-purple-950">ACC-NOSTRO-BANK-B</div>
+                </div>
+                <div className="h-7 w-px bg-purple-100" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveAccount('ACC-NOSTRO-BANK-B');
+                    fetchBalance('ACC-NOSTRO-BANK-B');
+                  }}
+                  className="rounded-lg bg-purple-100 px-2.5 py-1 text-2xs font-bold text-purple-900 hover:bg-purple-200 transition-colors"
+                >
+                  Inspect Balance
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* 1. OUTWARD WIRE WORKBENCH */}
+            <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <h3 className="flex items-center gap-2 text-base font-bold text-slate-900">
+                    <Send className="h-4 w-4 text-purple-700" /> Outward Inter-Bank Wire
+                  </h3>
+                  <span className="rounded-full bg-purple-50 border border-purple-200 px-2 py-0.5 font-mono text-2xs font-bold text-purple-800">
+                    AuraBank &rarr; Bank B
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Executes <strong>Leg 1</strong> (Debits sender, credits Nostro buffer) and <strong>Leg 2</strong> (Dispatches wire to Bank B).
+                  If partner fails or times out (&gt;4s), an automated <strong>Saga Compensating Reversal</strong> refunds sender.
+                </p>
+
+                <form onSubmit={handleExecuteInterbank} className="mt-4 space-y-3.5">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Source Account (AuraBank)
+                      </label>
+                      <input
+                        type="text"
+                        value={interbankForm.sourceAccountId}
+                        onChange={(e) => setInterbankForm({ ...interbankForm, sourceAccountId: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Sender Name
+                      </label>
+                      <input
+                        type="text"
+                        value={interbankForm.senderName}
+                        onChange={(e) => setInterbankForm({ ...interbankForm, senderName: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Destination Bank
+                      </label>
+                      <select
+                        value={interbankForm.destinationBank}
+                        onChange={(e) => setInterbankForm({ ...interbankForm, destinationBank: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs font-semibold text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                      >
+                        <option value="BANK_B">Partner Bank B (Primary)</option>
+                        <option value="METRO_BANK_B">Metro Partner Bank B</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Beneficiary Account (Bank B)
+                      </label>
+                      <input
+                        type="text"
+                        value={interbankForm.beneficiaryAccountId}
+                        onChange={(e) => setInterbankForm({ ...interbankForm, beneficiaryAccountId: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Wire Amount (PHP)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={interbankForm.amount}
+                        onChange={(e) => setInterbankForm({ ...interbankForm, amount: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 font-mono text-xs font-bold text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Currency
+                      </label>
+                      <input
+                        type="text"
+                        value={interbankForm.currency}
+                        readOnly
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 font-mono text-xs font-semibold text-slate-600 cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Partner Bank Simulation Mode */}
+                  <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-3">
+                    <label className="block text-2xs font-bold uppercase tracking-wider text-purple-900">
+                      Partner Simulation Mode (Offline Sandbox)
+                    </label>
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-2xs">
+                      <label
+                        className={`flex cursor-pointer flex-col rounded-lg border p-2 text-center font-medium transition-all ${
+                          interbankForm.simulationMode === ''
+                            ? 'border-emerald-500 bg-emerald-50/80 text-emerald-900 font-bold'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="simulationMode"
+                          value=""
+                          checked={interbankForm.simulationMode === ''}
+                          onChange={() => setInterbankForm({ ...interbankForm, simulationMode: '' })}
+                          className="sr-only"
+                        />
+                        <span>SETTLED</span>
+                        <span className="text-3xs opacity-80 mt-0.5">Happy Path (200 OK)</span>
+                      </label>
+
+                      <label
+                        className={`flex cursor-pointer flex-col rounded-lg border p-2 text-center font-medium transition-all ${
+                          interbankForm.simulationMode === 'TIMEOUT'
+                            ? 'border-amber-500 bg-amber-50/80 text-amber-900 font-bold'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="simulationMode"
+                          value="TIMEOUT"
+                          checked={interbankForm.simulationMode === 'TIMEOUT'}
+                          onChange={() => setInterbankForm({ ...interbankForm, simulationMode: 'TIMEOUT' })}
+                          className="sr-only"
+                        />
+                        <span>TIMEOUT</span>
+                        <span className="text-3xs opacity-80 mt-0.5">Test Saga Rollback</span>
+                      </label>
+
+                      <label
+                        className={`flex cursor-pointer flex-col rounded-lg border p-2 text-center font-medium transition-all ${
+                          interbankForm.simulationMode === 'REJECT'
+                            ? 'border-rose-500 bg-rose-50/80 text-rose-900 font-bold'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="simulationMode"
+                          value="REJECT"
+                          checked={interbankForm.simulationMode === 'REJECT'}
+                          onChange={() => setInterbankForm({ ...interbankForm, simulationMode: 'REJECT' })}
+                          className="sr-only"
+                        />
+                        <span>REJECT</span>
+                        <span className="text-3xs opacity-80 mt-0.5">Test Partner 400</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isInterbankExecuting}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-4 py-2.5 font-mono text-xs font-bold text-white shadow-sm transition-all disabled:opacity-50"
+                  >
+                    {isInterbankExecuting ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" /> Orchestrating 3-Leg Saga...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4" /> Dispatch Outward Inter-Bank Wire
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
+
+              {/* Execution Result Box */}
+              {interbankResult && (
+                <div
+                  className={`mt-4 rounded-xl border p-4 text-xs transition-all ${
+                    interbankResult.success
+                      ? 'border-emerald-200 bg-emerald-50/60 text-emerald-950'
+                      : interbankResult.isRollback
+                      ? 'border-amber-200 bg-amber-50/60 text-amber-950'
+                      : 'border-rose-200 bg-rose-50/60 text-rose-950'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 font-bold">
+                    {interbankResult.success ? (
+                      <>
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        <span>Wire Settled & Finalized</span>
+                      </>
+                    ) : interbankResult.isRollback ? (
+                      <>
+                        <RotateCcw className="h-4 w-4 text-amber-600" />
+                        <span>Partner Timeout &rarr; Automated Saga Rollback Completed</span>
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="h-4 w-4 text-rose-600" />
+                        <span>Inter-Bank Transfer Rejected</span>
+                      </>
+                    )}
+                  </div>
+                  <p className="mt-1.5 text-2xs opacity-90 leading-relaxed font-mono">
+                    {interbankResult.success
+                      ? interbankResult.data?.message
+                      : interbankResult.error}
+                  </p>
+                  {interbankResult.txId && (
+                    <div className="mt-2 text-3xs font-mono opacity-70">
+                      Transaction ID: {interbankResult.txId}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 2. INWARD WIRE SIMULATOR */}
+            <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <h3 className="flex items-center gap-2 text-base font-bold text-slate-900">
+                    <ArrowLeftRight className="h-4 w-4 text-purple-700" /> Inward Wire Ingestion Simulator
+                  </h3>
+                  <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 font-mono text-2xs font-bold text-emerald-800">
+                    Bank B &rarr; AuraBank
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Simulates incoming HTTP wire calls from Partner Bank B into{' '}
+                  <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-2xs">POST /api/v1/interbank/transfers/inward</code>.
+                  Debits Nostro buffer account and credits local AuraBank customer.
+                </p>
+
+                <form onSubmit={handleExecuteInwardWire} className="mt-4 space-y-3.5">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Wire Reference ID
+                      </label>
+                      <input
+                        type="text"
+                        value={inwardForm.referenceId}
+                        onChange={(e) => setInwardForm({ ...inwardForm, referenceId: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Originating Bank
+                      </label>
+                      <input
+                        type="text"
+                        value={inwardForm.originatingBank}
+                        onChange={(e) => setInwardForm({ ...inwardForm, originatingBank: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Sender Account (Bank B)
+                      </label>
+                      <input
+                        type="text"
+                        value={inwardForm.senderAccountId}
+                        onChange={(e) => setInwardForm({ ...inwardForm, senderAccountId: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Sender Customer Name
+                      </label>
+                      <input
+                        type="text"
+                        value={inwardForm.senderName}
+                        onChange={(e) => setInwardForm({ ...inwardForm, senderName: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Beneficiary (AuraBank)
+                      </label>
+                      <input
+                        type="text"
+                        value={inwardForm.beneficiaryAccountId}
+                        onChange={(e) => setInwardForm({ ...inwardForm, beneficiaryAccountId: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Wire Amount (PHP)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={inwardForm.amount}
+                        onChange={(e) => setInwardForm({ ...inwardForm, amount: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 font-mono text-xs font-bold text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                    <div className="text-2xs font-semibold text-slate-700">Leg 3 Accounting Impact:</div>
+                    <ul className="mt-1 list-disc list-inside text-3xs text-slate-500 space-y-0.5 font-mono">
+                      <li>Debit: ACC-NOSTRO-BANK-B (Reduces bilateral buffer liability)</li>
+                      <li>Credit: {inwardForm.beneficiaryAccountId} (Instantly spendable funds)</li>
+                      <li>Authorization: Enforced via `X-Interbank-API-Key`</li>
+                    </ul>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isInwardExecuting}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 px-4 py-2.5 font-mono text-xs font-bold text-white shadow-sm transition-all disabled:opacity-50"
+                  >
+                    {isInwardExecuting ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" /> Ingesting Inward Wire...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-4 w-4" /> Ingest Inward Wire from Bank B
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
+
+              {/* Inward Result Box */}
+              {inwardResult && (
+                <div
+                  className={`mt-4 rounded-xl border p-4 text-xs transition-all ${
+                    inwardResult.success
+                      ? 'border-emerald-200 bg-emerald-50/60 text-emerald-950'
+                      : 'border-rose-200 bg-rose-50/60 text-rose-950'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 font-bold">
+                    {inwardResult.success ? (
+                      <>
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        <span>Inward Wire Posted & Cleared</span>
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="h-4 w-4 text-rose-600" />
+                        <span>Inward Wire Ingestion Failed</span>
+                      </>
+                    )}
+                  </div>
+                  <p className="mt-1.5 text-2xs opacity-90 leading-relaxed font-mono">
+                    {inwardResult.success
+                      ? inwardResult.data?.message + ' (Ref: ' + inwardResult.data?.partnerReference + ')'
+                      : inwardResult.error}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Architecture & Ledger Matrix Reference */}
+          <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm">
+            <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900 uppercase tracking-wider">
+              <Database className="h-4 w-4 text-purple-700" /> Bilateral Nostro-Vostro Accounting Lifecycle
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Deterministic double-entry book balancing across bilateral banking corridors.
+            </p>
+
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="rounded-xl border border-purple-100 bg-purple-50/40 p-4">
+                <div className="font-bold text-xs text-purple-950">Leg 1: Outward Initiation</div>
+                <div className="mt-1 font-mono text-2xs text-purple-900">
+                  AuraBank Customer &rarr; Nostro Buffer
+                </div>
+                <div className="mt-2.5 space-y-1 text-3xs font-mono text-slate-600">
+                  <div>Debit: Customer Account (PHP 1,000)</div>
+                  <div>Credit: ACC-NOSTRO-BANK-B (PHP 1,000)</div>
+                  <div className="text-emerald-700 font-semibold mt-1">&check; Atomic CBS row locks applied</div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-purple-100 bg-purple-50/40 p-4">
+                <div className="font-bold text-xs text-purple-950">Leg 2: Bilateral Dispatch</div>
+                <div className="mt-1 font-mono text-2xs text-purple-900">
+                  HTTP Wire &rarr; Bank B Gateway
+                </div>
+                <div className="mt-2.5 space-y-1 text-3xs font-mono text-slate-600">
+                  <div>Protocol: JSON over TLS / Mutual API Key</div>
+                  <div>Timeout: Strict 4.0s Client Timeout</div>
+                  <div className="text-purple-700 font-semibold mt-1">&check; Triggers Saga if partner lags</div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-purple-100 bg-purple-50/40 p-4">
+                <div className="font-bold text-xs text-purple-950">Leg 3: Inward Settlement</div>
+                <div className="mt-1 font-mono text-2xs text-purple-900">
+                  Bank B Wire &rarr; AuraBank Customer
+                </div>
+                <div className="mt-2.5 space-y-1 text-3xs font-mono text-slate-600">
+                  <div>Debit: ACC-NOSTRO-BANK-B (PHP 2,500)</div>
+                  <div>Credit: Customer Account (PHP 2,500)</div>
+                  <div className="text-emerald-700 font-semibold mt-1">&check; Zero float, instant settlement</div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

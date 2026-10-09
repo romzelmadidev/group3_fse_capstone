@@ -338,7 +338,12 @@ VALUES ('1000-2000-3008', 'usr-2007-cst-007', '1000-2000-3008', 'SAVINGS', 'ACTI
 INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
 VALUES ('1000-2000-3009', 'usr-2008-cst-008', '1000-2000-3009', 'SAVINGS', 'ACTIVE', 0.0000);
 
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
+VALUES ('ACC-NOSTRO-BANK-B', 'usr-1005-boo-001', '900100000001', 'CHECKING', 'ACTIVE', 0.0000);
+
 -- 3. Balance Master (Exact 4-decimal precision)
+INSERT INTO balance_master (account_id, balance_amount, hold_amount)
+VALUES ('ACC-NOSTRO-BANK-B', 5000000.0000, 0.0000);
 INSERT INTO balance_master (account_id, balance_amount, hold_amount)
 VALUES ('1000-2000-3001', 25000000.0000, 0.0000);
 
