@@ -1,6 +1,7 @@
 import 'package:aurabank_core/services/auth_api_service.dart';
 import 'package:aurabank_core/services/bank_service.dart';
 import 'package:aurabank_core/services/notification_stream_service.dart';
+import 'package:aurabank_core/theme/aura_theme.dart';
 import 'package:flutter/material.dart';
 
 import 'screens/web/analytics/web_analytics_screen.dart';
@@ -21,7 +22,12 @@ class WebShell extends StatefulWidget {
   State<WebShell> createState() => _WebShellState();
 }
 
-class _WebShellState extends State<WebShell> {
+class _WebShellState extends State<WebShell>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _tabFade = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 300), value: 1);
+  late final Animation<double> _tabCurve =
+      CurvedAnimation(parent: _tabFade, curve: AuraMotion.emphasized);
   late int _currentIndex;
   QuickTransferDraft? _quickTransferDraft;
 
@@ -37,12 +43,23 @@ class _WebShellState extends State<WebShell> {
   @override
   void dispose() {
     NotificationStreamService().disconnect();
+    _tabFade.dispose();
     super.dispose();
   }
 
   void _onNavigateTab(int index) {
+    if (index == _currentIndex) return;
     setState(() => _currentIndex = index);
+    if (!AuraMotion.reduced(context)) _tabFade.forward(from: 0);
   }
+
+  /// Fade-through on the whole stack, so tab state is kept but the switch reads.
+  Widget _fade(Widget child) => FadeTransition(
+        opacity: _tabCurve,
+        child: ScaleTransition(
+            scale: Tween(begin: 0.985, end: 1.0).animate(_tabCurve),
+            child: child),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -67,7 +84,7 @@ class _WebShellState extends State<WebShell> {
     ];
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFB),
+      backgroundColor: AuraColors.canvas,
       body: Row(
         children: [
           WebSidebar(
@@ -77,6 +94,7 @@ class _WebShellState extends State<WebShell> {
               Navigator.of(context).pushReplacementNamed('/login');
             },
           ),
+          const VerticalDivider(width: 1),
           Expanded(
             child: Column(
               children: [
@@ -87,10 +105,10 @@ class _WebShellState extends State<WebShell> {
                   },
                 ),
                 Expanded(
-                  child: IndexedStack(
+                  child: _fade(IndexedStack(
                     index: _currentIndex.clamp(0, webScreens.length - 1),
                     children: webScreens,
-                  ),
+                  )),
                 ),
               ],
             ),

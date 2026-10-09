@@ -16,7 +16,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 
 @Entity
@@ -51,10 +50,6 @@ public class AccountEntity {
     @Builder.Default
     private String currency = "PHP";
 
-    @Column(name = "credit_limit", precision = 18, scale = 4, nullable = false)
-    @Builder.Default
-    private BigDecimal creditLimit = BigDecimal.ZERO.setScale(4);
-
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -70,11 +65,6 @@ public class AccountEntity {
         this.updatedAt = now;
         if (this.status == null) {
             this.status = AccountStatus.ACTIVE;
-        }
-        if (this.creditLimit == null) {
-            this.creditLimit = BigDecimal.ZERO.setScale(4);
-        } else {
-            this.creditLimit = this.creditLimit.setScale(4);
         }
     }
 
