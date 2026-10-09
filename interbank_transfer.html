@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bilateral Inter-Bank Transfer - Interactive Flow & Traceability Visualizer</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes pulse-node {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.4); }
+      50% { box-shadow: 0 0 0 8px rgba(168, 85, 247, 0); }
+    }
+    @keyframes flow-dash {
+      to { stroke-dashoffset: -24; }
+    }
+    .pulse-active {
+      animation: pulse-node 2s infinite;
+    }
+    .flow-line-active {
+      stroke-dasharray: 6;
+      animation: flow-dash 1.2s linear infinite;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(147, 51, 234, 0.3);
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: rgba(147, 51, 234, 0.5);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-purple-500 selection:text-white">
+
+  <!-- TOP APP BAR -->
+  <header class="border-b border-purple-900/40 bg-slate-900/90 backdrop-blur-md sticky top-0 z-50 px-6 py-3.5">
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="h-10 w-10 rounded-xl bg-gradient-to-tr from-purple-700 to-indigo-500 flex items-center justify-center shadow-lg shadow-purple-900/40">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base font-bold text-white tracking-tight">Inter-Bank Wire Corridor: Interactive Flow Visualizer</h1>
+            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/30">Nostro-Vostro Model</span>
+          </div>
+          <p class="text-xs text-slate-400">Click sequential nodes to execute steps &bull; Enforces strict prerequisites &bull; Branching Saga compensation</p>
+        </div>
+      </div>
+
+      <!-- WORKBENCH CONTROLS -->
+      <div class="flex items-center gap-2">
+        <button onclick="resetFlow()" class="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition-all flex items-center gap-1.5 shadow-sm">
+          <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Reset Flow
+        </button>
+        <button onclick="autoWalkHappy()" class="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-xs font-semibold text-white transition-all shadow-sm flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span>
+          Auto-Walk: Settled
+        </button>
+        <button onclick="autoWalkTimeout()" class="px-3 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 text-xs font-semibold text-white transition-all shadow-sm flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-amber-300 animate-pulse"></span>
+          Auto-Walk: Timeout Rollback
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN DUAL-VIEW WORKBENCH -->
+  <main class="max-w-7xl mx-auto p-6 space-y-6">
+
+    <!-- PREREQUISITE ALERT BANNER (DYNAMIC TOAST) -->
+    <div id="prereq-alert" class="hidden rounded-xl border border-rose-500/40 bg-rose-950/80 p-3.5 text-xs text-rose-200 flex items-center justify-between shadow-lg transition-all">
+      <div class="flex items-center gap-2.5">
+        <svg class="w-4 h-4 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <span id="prereq-alert-msg font-medium">Prerequisite step required before proceeding to this node.</span>
+      </div>
+      <button onclick="dismissAlert()" class="text-rose-400 hover:text-white text-xs font-bold px-2 py-0.5">&times;</button>
+    </div>
+
+    <!-- LIVE METRIC SUMMARY CARDS -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-md">
+        <div class="flex items-center justify-between text-xs font-medium text-slate-400">
+          <span>Customer (Alice) Balance</span>
+          <span class="text-purple-400 font-mono text-[11px]">acc-2002-chk-001</span>
+        </div>
+        <div class="mt-2 font-mono text-xl font-bold text-white" id="stat-alice-bal">PHP 8,618,600.00</div>
+        <div class="text-[11px] text-slate-400 mt-1 flex items-center gap-1.5" id="stat-alice-sub">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Spendable Checking &bull; Initial
+        </div>
+      </div>
+
+      <div class="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-md">
+        <div class="flex items-center justify-between text-xs font-medium text-slate-400">
+          <span>Nostro Buffer Balance</span>
+          <span class="text-purple-400 font-mono text-[11px]">ACC-NOSTRO-BANK-B</span>
+        </div>
+        <div class="mt-2 font-mono text-xl font-bold text-purple-300" id="stat-nostro-bal">PHP 4,999,590.00</div>
+        <div class="text-[11px] text-slate-400 mt-1 flex items-center gap-1.5" id="stat-nostro-sub">
+          <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span> Oracle XE Ledger &bull; Balanced
+        </div>
+      </div>
+
+      <div class="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-md">
+        <div class="flex items-center justify-between text-xs font-medium text-slate-400">
+          <span>Active Execution Node</span>
+          <span class="text-emerald-400 font-mono text-[11px]" id="stat-active-step-num">STEP 1</span>
+        </div>
+        <div class="mt-2 font-mono text-base font-bold text-white flex items-center gap-2" id="stat-step-title">
+          <span class="px-2 py-0.5 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs">READY: STEP 1</span>
+        </div>
+        <div class="text-[11px] text-slate-400 mt-1" id="stat-step-sub">Awaiting client wire initiation</div>
+      </div>
+
+      <div class="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-md">
+        <div class="flex items-center justify-between text-xs font-medium text-slate-400">
+          <span>Corridor Liquidity Delta</span>
+          <span class="text-amber-400 font-mono text-[11px]">Bilateral State</span>
+        </div>
+        <div class="mt-2 font-mono text-xl font-bold text-emerald-400" id="stat-delta">PHP 0.00</div>
+        <div class="text-[11px] text-slate-400 mt-1" id="stat-delta-sub">Zero float imbalance maintained</div>
+      </div>
+    </div>
+
+    <!-- DUAL-PANE VIEW: LEFT = INTERACTIVE GRAPH / RIGHT = DEVICE SCREEN & TRACEABILITY -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- LEFT SIDE: INTERACTIVE FLOW GRAPH WITH PREREQUISITE ENFORCEMENT (7 COLS) -->
+      <div class="lg:col-span-7 space-y-4">
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            <div>
+              <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Step-by-Step Interactive Graph
+              </h2>
+              <p class="text-xs text-slate-400 mt-0.5">Click highlighted node to execute. Preceding steps must pass before advancing.</p>
+            </div>
+            <div class="flex items-center gap-1.5 text-2xs font-mono">
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Passed</span>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">Active</span>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">Locked</span>
+            </div>
+          </div>
+
+          <!-- NODE CONTAINER -->
+          <div class="relative space-y-3 py-1">
+
+            <!-- ================= NODE 1: WIRE INITIATION ================= -->
+            <div id="node-1" onclick="handleNodeClick(1)" class="node-card cursor-pointer rounded-xl border border-purple-500/50 bg-slate-900/90 p-4 transition-all duration-200 hover:border-purple-400 pulse-active shadow-md">
+              <div class="flex items-start justify-between">
+                <div class="flex items-center gap-3">
+                  <div id="node-1-icon" class="w-9 h-9 rounded-xl bg-purple-600/20 border border-purple-500/40 flex items-center justify-center font-mono text-xs font-bold text-purple-300">
+                    01
+                  </div>
+                  <div>
+                    <div class="text-xs font-bold text-white flex items-center gap-2">
+                      Node 1: Transfer Initiation & Edge Ingress
+                      <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-purple-300 border border-purple-500/30">Port :8080 &rarr; :8082</span>
+                    </div>
+                    <div class="text-[11px] text-slate-400 mt-0.5">
+                      Client sends <code class="text-purple-300 font-mono">POST /api/v1/transfers</code> with <code class="text-purple-300 font-mono">destBank: "BANK_B"</code>
+                    </div>
+                  </div>
+                </div>
+                <span id="node-1-badge" class="px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">CLICK TO EXECUTE</span>
+              </div>
+
+              <!-- ACTION PANEL FOR NODE 1 -->
+              <div id="node-1-actions" class="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
+                <span class="text-[11px] text-slate-400">Action: Verify Request Payload & Lock Idempotency</span>
+                <div class="flex items-center gap-2">
+                  <button onclick="executeNode1(true, event)" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-[11px] font-bold rounded-lg transition-all shadow-sm">
+                    &check; Pass (Valid Request)
+                  </button>
+                  <button onclick="executeNode1(false, event)" class="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white font-mono text-[11px] font-bold rounded-lg transition-all shadow-sm">
+                    &times; Fail (Duplicate / Malformed)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- ARROW 1 -> 2 -->
+            <div class="flex justify-center -my-1.5">
+              <svg class="w-6 h-6 text-slate-700" id="arrow-1-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              </svg>
+            </div>
+
+            <!-- ================= NODE 2: LEG 1 CBS NOSTRO MUTATION ================= -->
+            <div id="node-2" onclick="handleNodeClick(2)" class="node-card cursor-not-allowed rounded-xl border border-slate-800 bg-slate-950/60 p-4 transition-all duration-200 opacity-60">
+              <div class="flex items-start justify-between">
+                <div class="flex items-center gap-3">
+                  <div id="node-2-icon" class="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-mono text-xs font-bold text-slate-400">
+                    <svg class="w-4 h-4 text-slate-400" id="node-2-lock" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    <span id="node-2-num" class="hidden">02</span>
+                  </div>
+                  <div>
+                    <div class="text-xs font-bold text-white flex items-center gap-2">
+                      Node 2: Leg 1 Local Nostro Booking (T24 OFS)
+                      <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700">Port :8085</span>
+                    </div>
+                    <div class="text-[11px] text-slate-400 mt-0.5">
+                      Debits customer checking &bull; Credits <code class="text-indigo-300 font-mono">ACC-NOSTRO-BANK-B</code> with row-level locks
+                    </div>
+                  </div>
+                </div>
+                <span id="node-2-badge" class="px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-slate-800 text-slate-500 border border-slate-700">LOCKED (Prereq: Node 1)</span>
+              </div>
+
+              <!-- ACTION PANEL FOR NODE 2 (HIDDEN UNTIL UNLOCKED) -->
+              <div id="node-2-actions" class="hidden mt-3 pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
+                <span class="text-[11px] text-slate-400">Action: Post OFS Funds Transfer to Core CBS</span>
+                <div class="flex items-center gap-2">
+                  <button onclick="executeNode2(true, event)" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-[11px] font-bold rounded-lg transition-all shadow-sm">
+                    &check; Pass (Debit Alice / Credit Nostro)
+                  </button>
+                  <button onclick="executeNode2(false, event)" class="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white font-mono text-[11px] font-bold rounded-lg transition-all shadow-sm">
+                    &times; Fail (Insufficient Solvency)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- ARROW 2 -> 3 -->
+            <div class="flex justify-center -my-1.5">
+              <svg class="w-6 h-6 text-slate-700" id="arrow-2-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              </svg>
+            </div>
+
+            <!-- ================= NODE 3: LEG 2 BILATERAL HTTP WIRE DISPATCH ================= -->
+            <div id="node-3" onclick="handleNodeClick(3)" class="node-card cursor-not-allowed rounded-xl border border-slate-800 bg-slate-950/60 p-4 transition-all duration-200 opacity-60">
+              <div class="flex items-start justify-between">
+                <div class="flex items-center gap-3">
+                  <div id="node-3-icon" class="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-mono text-xs font-bold text-slate-400">
+                    <svg class="w-4 h-4 text-slate-400" id="node-3-lock" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    <span id="node-3-num" class="hidden">03</span>
+                  </div>
+                  <div>
+                    <div class="text-xs font-bold text-white flex items-center gap-2">
+                      Node 3: Leg 2 Bilateral HTTP Wire Dispatch
+                      <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700">Timeout Guard: 4.0s</span>
+                    </div>
+                    <div class="text-[11px] text-slate-400 mt-0.5">
+                      Dispatches outward JSON wire payload to Partner Bank B Gateway
+                    </div>
+                  </div>
+                </div>
+                <span id="node-3-badge" class="px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-slate-800 text-slate-500 border border-slate-700">LOCKED (Prereq: Node 2)</span>
+              </div>
+
+              <!-- ACTION PANEL FOR NODE 3 (HIDDEN UNTIL UNLOCKED) -->
+              <div id="node-3-actions" class="hidden mt-3 pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2">
+                <span class="text-[11px] text-slate-400">Action: Choose Partner Bank B Response Outcome:</span>
+                <div class="flex items-center gap-1.5">
+                  <button onclick="executeNode3('settled', event)" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-[10px] font-bold rounded-lg transition-all shadow-sm">
+                    &check; 200 Settled
+                  </button>
+                  <button onclick="executeNode3('timeout', event)" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-mono text-[10px] font-bold rounded-lg transition-all shadow-sm">
+                    &bull; 4s Timeout (Saga)
+                  </button>
+                  <button onclick="executeNode3('reject', event)" class="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white font-mono text-[10px] font-bold rounded-lg transition-all shadow-sm">
+                    &times; 400 Rejected
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- BRANCHING FORK CONNECTOR (SVG) -->
+            <div class="relative h-10 -my-1">
+              <svg class="w-full h-full" viewBox="0 0 400 40" preserveAspectRatio="none">
+                <!-- Left Branch: To Success 4A -->
+                <path id="branch-path-success" d="M 200,0 L 200,12 L 100,24 L 100,40" fill="none" stroke="#334155" stroke-width="2" />
+                <!-- Right Branch: To Saga Rollback 4B -->
+                <path id="branch-path-rollback" d="M 200,0 L 200,12 L 300,24 L 300,40" fill="none" stroke="#334155" stroke-width="2" stroke-dasharray="4" />
+              </svg>
+            </div>
+
+            <!-- BRANCHING GRID: 4A (HAPPY PATH) VS 4B (SAGA COMPENSATING ROLLBACK) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+
+              <!-- ================= NODE 4A: PARTNER SETTLEMENT FINALITY ================= -->
+              <div id="node-4a" onclick="handleNodeClick('4a')" class="node-card cursor-not-allowed rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 transition-all duration-200 opacity-60">
+                <div class="flex items-start justify-between">
+                  <div class="flex items-center gap-2.5">
+                    <div id="node-4a-icon" class="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center font-mono text-2xs font-bold text-slate-400">
+                      4A
+                    </div>
+                    <div>
+                      <div class="text-xs font-bold text-white flex items-center gap-1.5">
+                        Node 4A: Final Settlement
+                      </div>
+                      <div class="text-[10px] text-slate-400">
+                        Beneficiary credited &bull; Both books balanced
+                      </div>
+                    </div>
+                  </div>
+                  <span id="node-4a-badge" class="px-1.5 py-0.5 text-[9px] font-mono font-semibold rounded bg-slate-800 text-slate-500 border border-slate-700">LOCKED</span>
+                </div>
+                <div id="node-4a-actions" class="hidden mt-2.5 pt-2.5 border-t border-slate-800 text-right">
+                  <button onclick="executeNode4A(event)" class="w-full py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-[10px] font-bold rounded-lg transition-all shadow-sm">
+                    Finalize Transaction &bull; Mark Posted
+                  </button>
+                </div>
+              </div>
+
+              <!-- ================= NODE 4B: SAGA COMPENSATING REVERSAL ================= -->
+              <div id="node-4b" onclick="handleNodeClick('4b')" class="node-card cursor-not-allowed rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 transition-all duration-200 opacity-60">
+                <div class="flex items-start justify-between">
+                  <div class="flex items-center gap-2.5">
+                    <div id="node-4b-icon" class="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center font-mono text-2xs font-bold text-slate-400">
+                      4B
+                    </div>
+                    <div>
+                      <div class="text-xs font-bold text-white flex items-center gap-1.5">
+                        Node 4B: Saga Compensation
+                      </div>
+                      <div class="text-[10px] text-slate-400">
+                        Reverses Leg 1 &bull; Fully refunds Alice
+                      </div>
+                    </div>
+                  </div>
+                  <span id="node-4b-badge" class="px-1.5 py-0.5 text-[9px] font-mono font-semibold rounded bg-slate-800 text-slate-500 border border-slate-700">LOCKED</span>
+                </div>
+                <div id="node-4b-actions" class="hidden mt-2.5 pt-2.5 border-t border-slate-800 text-right">
+                  <button onclick="executeNode4B(event)" class="w-full py-1 bg-amber-600 hover:bg-amber-500 text-white font-mono text-[10px] font-bold rounded-lg transition-all shadow-sm">
+                    Execute Saga Rollback (POST /reversal)
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+          <!-- TRACEABILITY STREAM TERMINAL -->
+          <div class="mt-4 pt-3.5 border-t border-slate-800">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Execution Traceability Log
+              </span>
+              <span class="text-[10px] font-mono text-purple-400" id="live-trace-id">TraceId: TRACE-IB-7721</span>
+            </div>
+            <div id="trace-terminal" class="bg-black/70 rounded-xl p-3 font-mono text-[11px] text-slate-300 space-y-1 h-36 overflow-y-auto custom-scrollbar border border-slate-900">
+              <div class="text-slate-500">[SYSTEM READY] Bilateral inter-bank wire simulator initialized. Click Node 1 to begin.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT SIDE: SIMULATED CLIENT INTERFACE & CBS AUDIT SCREEN (5 COLS) -->
+      <div class="lg:col-span-5 space-y-5">
+        
+        <!-- SIMULATED MOBILE BANKING SCREEN -->
+        <div class="bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border border-slate-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+          
+          <!-- AMBIENT GLOW -->
+          <div id="ambient-glow" class="absolute -top-24 -right-24 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl pointer-events-none transition-all duration-500"></div>
+
+          <!-- DEVICE NOTCH & HEADER -->
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400" id="device-dot"></span>
+              <span class="font-bold text-xs uppercase tracking-wider text-slate-300">AuraBank Mobile Portal</span>
+            </div>
+            <span class="text-[11px] font-mono text-slate-500" id="clock-display">17:26 PM &bull; 5G SECURE</span>
+          </div>
+
+          <!-- RECEIPT CARD BODY -->
+          <div class="text-center py-2">
+            
+            <!-- STATUS ICON -->
+            <div id="ui-icon-box" class="mx-auto w-16 h-16 rounded-2xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 mb-3 transition-all duration-300 shadow-md">
+              <svg id="ui-icon-svg" class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+
+            <h3 id="ui-title" class="text-lg font-extrabold text-white tracking-tight">Wire Transfer Ready</h3>
+            <p id="ui-subtitle" class="text-xs text-slate-400 mt-0.5">Click Node 1 to initiate verification</p>
+
+            <!-- AMOUNT CARD -->
+            <div class="my-4 py-3 px-5 rounded-2xl bg-slate-950/80 border border-slate-800/80">
+              <div class="text-2xs font-semibold uppercase tracking-wider text-slate-400">Transfer Principal</div>
+              <div id="ui-amount" class="text-3xl font-extrabold font-mono text-white mt-1">PHP 1,000.00</div>
+              <div class="text-2xs text-purple-400 font-mono mt-0.5" id="ui-fee-badge">&check; Bilateral Nostro Clearing Corridor</div>
+            </div>
+
+            <!-- KEY METADATA TABLE -->
+            <div class="space-y-2 text-left text-xs bg-slate-950/50 rounded-xl p-3.5 border border-slate-800/80 font-mono">
+              <div class="flex items-center justify-between py-1 border-b border-slate-900">
+                <span class="text-slate-400 font-sans">Transaction Reference:</span>
+                <span class="font-bold text-purple-300" id="ui-ref-id">IB-OUT-9901</span>
+              </div>
+              <div class="flex items-center justify-between py-1 border-b border-slate-900">
+                <span class="text-slate-400 font-sans">Originating Debtor:</span>
+                <span class="font-semibold text-slate-200">Alice (acc-2002-chk-001)</span>
+              </div>
+              <div class="flex items-center justify-between py-1 border-b border-slate-900">
+                <span class="text-slate-400 font-sans">Destination Creditor:</span>
+                <span class="font-semibold text-slate-200">Partner Bank B (B-ACC-998877)</span>
+              </div>
+              <div class="flex items-center justify-between py-1 border-b border-slate-900">
+                <span class="text-slate-400 font-sans">Partner Settlement Ref:</span>
+                <span class="font-semibold text-slate-500" id="ui-partner-ref">-- Pending Leg 2 --</span>
+              </div>
+              <div class="flex items-center justify-between py-1">
+                <span class="text-slate-400 font-sans">Orchestrator Stage:</span>
+                <span class="font-semibold text-purple-400" id="ui-stage-label">0/4 Ready</span>
+              </div>
+            </div>
+
+            <!-- ALERT CALLOUT -->
+            <div id="ui-callout" class="mt-4 p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-left flex items-start gap-2.5">
+              <svg id="ui-callout-icon" class="w-4 h-4 text-purple-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div class="text-[11px] text-purple-200 leading-relaxed font-sans" id="ui-callout-msg">
+                Step 1 prerequisite pending: verify payload and lock idempotency key to prevent double spending.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- DOUBLE-ENTRY T-ACCOUNT MATRIX -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg">
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3 flex items-center justify-between">
+            <span class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+              </svg>
+              Double-Entry T-Account Balancing
+            </span>
+            <span class="text-[10px] font-mono text-purple-400">Oracle XE Master</span>
+          </h4>
+          <div class="grid grid-cols-2 gap-3 text-xs font-mono">
+            <div class="bg-slate-950/70 border border-slate-800 p-3 rounded-xl">
+              <div class="text-slate-400 font-bold border-b border-slate-800 pb-1 flex justify-between text-[11px]">
+                <span>Alice Checking</span>
+                <span class="text-purple-400">acc-2002</span>
+              </div>
+              <div class="mt-2 space-y-1 text-[11px]" id="ledger-alice">
+                <div class="flex justify-between text-slate-400">
+                  <span>Balance:</span>
+                  <span>PHP 8,618,600.00</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-slate-950/70 border border-slate-800 p-3 rounded-xl">
+              <div class="text-slate-400 font-bold border-b border-slate-800 pb-1 flex justify-between text-[11px]">
+                <span>Nostro Buffer</span>
+                <span class="text-indigo-400">BANK-B</span>
+              </div>
+              <div class="mt-2 space-y-1 text-[11px]" id="ledger-nostro">
+                <div class="flex justify-between text-slate-400">
+                  <span>Balance:</span>
+                  <span>PHP 4,999,590.00</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- JAVASCRIPT STATE MACHINE & PREREQUISITE ENGINE -->
+  <script>
+    // State Tracker
+    const state = {
+      step: 1, // 1 -> 2 -> 3 -> (4a or 4b) -> done
+      history: [],
+      aliceBal: 8618600.0,
+      nostroBal: 4999590.0,
+      initialAliceBal: 8618600.0,
+      initialNostroBal: 4999590.0,
+      transferAmount: 1000.0,
+      txId: 'IB-OUT-9901',
+      partnerRef: null,
+      status: 'IDLE' // IDLE | LEG1_COMMITTED | DISPATCHING | SETTLED | SAGA_ROLLBACK | FAILED
+    };
+
+    function logTerminal(msg, type = 'info') {
+      const term = document.getElementById('trace-terminal');
+      const time = new Date().toTimeString().split(' ')[0] + '.' + String(Date.now() % 1000).padStart(3, '0');
+      let colorClass = 'text-slate-300';
+      if (type === 'success') colorClass = 'text-emerald-400 font-semibold';
+      if (type === 'warn') colorClass = 'text-amber-400 font-semibold';
+      if (type === 'error') colorClass = 'text-rose-400 font-semibold';
+      if (type === 'highlight') colorClass = 'text-purple-300';
+
+      const line = document.createElement('div');
+      line.className = colorClass;
+      line.innerHTML = `[${time}] ${msg}`;
+      term.appendChild(line);
+      term.scrollTop = term.scrollHeight;
+    }
+
+    function showAlert(msg) {
+      const alert = document.getElementById('prereq-alert');
+      alert.querySelector('span').innerText = msg;
+      alert.classList.remove('hidden');
+      setTimeout(() => alert.classList.add('hidden'), 5000);
+    }
+
+    function dismissAlert() {
+      document.getElementById('prereq-alert').classList.add('hidden');
+    }
+
+    function updateBalanceCards() {
+      document.getElementById('stat-alice-bal').innerText = 'PHP ' + state.aliceBal.toLocaleString('en-US', { minimumFractionDigits: 2 });
+      document.getElementById('stat-nostro-bal').innerText = 'PHP ' + state.nostroBal.toLocaleString('en-US', { minimumFractionDigits: 2 });
+      
+      const aliceDiff = state.aliceBal - state.initialAliceBal;
+      const nostroDiff = state.nostroBal - state.initialNostroBal;
+      const netDelta = aliceDiff + nostroDiff;
+      document.getElementById('stat-delta').innerText = 'PHP ' + Math.abs(netDelta).toLocaleString('en-US', { minimumFractionDigits: 2 });
+      document.getElementById('stat-delta-sub').innerText = netDelta === 0 ? 'Zero float imbalance (Balanced)' : 'Active transit float';
+
+      // Update T-accounts
+      document.getElementById('ledger-alice').innerHTML = `
+        <div class="flex justify-between ${aliceDiff < 0 ? 'text-rose-400' : 'text-slate-300'}">
+          <span>Current Bal:</span>
+          <span>PHP ${state.aliceBal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+        </div>
+        ${aliceDiff !== 0 ? `<div class="text-[10px] ${aliceDiff < 0 ? 'text-rose-400' : 'text-emerald-400'}">Delta: ${aliceDiff < 0 ? '-' : '+'}PHP ${Math.abs(aliceDiff).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>` : ''}
+      `;
+
+      document.getElementById('ledger-nostro').innerHTML = `
+        <div class="flex justify-between ${nostroDiff > 0 ? 'text-emerald-400' : 'text-slate-300'}">
+          <span>Current Bal:</span>
+          <span>PHP ${state.nostroBal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+        </div>
+        ${nostroDiff !== 0 ? `<div class="text-[10px] ${nostroDiff > 0 ? 'text-emerald-400' : 'text-rose-400'}">Delta: ${nostroDiff > 0 ? '+' : '-'}PHP ${Math.abs(nostroDiff).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>` : ''}
+      `;
+    }
+
+    // USER CLICKS A NODE DIRECTLY: CHECK PREREQUISITES
+    function handleNodeClick(targetStep) {
+      if (targetStep === 1) {
+        if (state.step !== 1) {
+          showAlert('Node 1 has already been processed. Reset the flow to start fresh.');
+        }
+        return;
+      }
+
+      if (targetStep === 2) {
+        if (state.step < 2) {
+          showAlert('Prerequisite Missing: You must execute and PASS Node 1 (Idempotency & Perimeter) before entering Node 2!');
+          return;
+        }
+      }
+
+      if (targetStep === 3) {
+        if (state.step < 3) {
+          showAlert('Prerequisite Missing: You must commit Node 2 (Leg 1 Local Nostro Booking) before dispatching the wire in Node 3!');
+          return;
+        }
+      }
+
+      if (targetStep === '4a') {
+        if (state.step !== '4a') {
+          showAlert('Prerequisite Missing: Node 4A can only be executed after Node 3 succeeds with "200 Settled"!');
+          return;
+        }
+      }
+
+      if (targetStep === '4b') {
+        if (state.step !== '4b') {
+          showAlert('Prerequisite Missing: Node 4B (Saga Compensation) can only be executed after Node 3 encounters a Timeout or Rejection!');
+          return;
+        }
+      }
+    }
+
+    // ================= NODE 1 EXECUTION =================
+    function executeNode1(pass, e) {
+      if (e) e.stopPropagation();
+      if (state.step !== 1) return;
+
+      if (!pass) {
+        state.status = 'FAILED';
+        document.getElementById('node-1').className = 'node-card rounded-xl border border-rose-500/60 bg-rose-950/20 p-4 transition-all';
+        document.getElementById('node-1-badge').className = 'px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        document.getElementById('node-1-badge').innerText = 'FAILED (REJECTED)';
+        document.getElementById('node-1-actions').classList.add('hidden');
+
+        logTerminal('POST /api/v1/transfers: Duplicate idempotency key or malformed body detected. Request dropped with 409 Conflict.', 'error');
+        
+        document.getElementById('ui-title').innerText = 'Initiation Blocked';
+        document.getElementById('ui-subtitle').innerText = 'Duplicate or malformed transfer request';
+        document.getElementById('ui-callout-msg').innerText = 'Request was blocked at API Gateway perimeter. No funds were debited.';
+        document.getElementById('ui-icon-box').className = 'mx-auto w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 mb-3';
+        document.getElementById('ui-icon-svg').innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />';
+        return;
+      }
+
+      // Passed Node 1
+      logTerminal('Node 1 Passed: Acquired Redis idempotency lock for key "IB-OUT-9901". Device signature verified. Risk engine clean.', 'success');
+      state.step = 2;
+      
+      // Update Node 1 UI to completed
+      document.getElementById('node-1').className = 'node-card rounded-xl border border-emerald-500/50 bg-slate-900/90 p-4 transition-all shadow-sm';
+      document.getElementById('node-1-badge').className = 'px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+      document.getElementById('node-1-badge').innerText = 'PASSED';
+      document.getElementById('node-1-actions').classList.add('hidden');
+
+      // Highlight arrow 1 -> 2
+      document.getElementById('arrow-1-2').classList.add('text-purple-400', 'animate-bounce');
+
+      // Unlock Node 2
+      const node2 = document.getElementById('node-2');
+      node2.classList.remove('cursor-not-allowed', 'opacity-60', 'bg-slate-950/60');
+      node2.classList.add('cursor-pointer', 'border-purple-500/50', 'bg-slate-900/90', 'pulse-active');
+      document.getElementById('node-2-icon').className = 'w-9 h-9 rounded-xl bg-purple-600/20 border border-purple-500/40 flex items-center justify-center font-mono text-xs font-bold text-purple-300';
+      document.getElementById('node-2-lock').classList.add('hidden');
+      document.getElementById('node-2-num').classList.remove('hidden');
+      document.getElementById('node-2-badge').className = 'px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-purple-500/20 text-purple-300 border border-purple-500/30';
+      document.getElementById('node-2-badge').innerText = 'READY TO EXECUTE';
+      document.getElementById('node-2-actions').classList.remove('hidden');
+
+      // Update right display
+      document.getElementById('stat-active-step-num').innerText = 'STEP 2';
+      document.getElementById('stat-step-title').innerHTML = '<span class="px-2 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs">ACTIVE: NODE 2</span>';
+      document.getElementById('stat-step-sub').innerText = 'Awaiting Leg 1 CBS local Nostro booking';
+      document.getElementById('ui-stage-label').innerText = '1/4 Validated';
+      document.getElementById('ui-subtitle').innerText = 'Step 1 complete. Click Node 2 to execute CBS ledger mutation.';
+      document.getElementById('ui-callout-msg').innerText = 'Node 1 prerequisite satisfied. Next step will acquire Oracle row lock on Nostro account.';
+    }
+
+    // ================= NODE 2 EXECUTION =================
+    function executeNode2(pass, e) {
+      if (e) e.stopPropagation();
+      if (state.step !== 2) return;
+
+      if (!pass) {
+        state.status = 'FAILED';
+        document.getElementById('node-2').className = 'node-card rounded-xl border border-rose-500/60 bg-rose-950/20 p-4 transition-all';
+        document.getElementById('node-2-badge').className = 'px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        document.getElementById('node-2-badge').innerText = 'FAILED: INSUFFICIENT SOLVENCY';
+        document.getElementById('node-2-actions').classList.add('hidden');
+
+        logTerminal('POST /api/v1/cbs/funds-transfer: Solvency check rejected. Available balance below requested PHP 1,000.00. OFS: //-1,FAILURE,ERROR=INSUFFICIENT_FUNDS', 'error');
+        
+        document.getElementById('ui-title').innerText = 'Transfer Failed: Insufficient Balance';
+        document.getElementById('ui-subtitle').innerText = 'Cannot debit Alice checking account';
+        document.getElementById('ui-callout-msg').innerText = 'CBS rejected Leg 1 mutation. No funds were debited and Nostro buffer balance remains untouched.';
+        document.getElementById('ui-icon-box').className = 'mx-auto w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 mb-3';
+        document.getElementById('ui-icon-svg').innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />';
+        return;
+      }
+
+      // Passed Node 2: Debit Customer, Credit Nostro Buffer
+      state.aliceBal -= state.transferAmount;
+      state.nostroBal += state.transferAmount;
+      updateBalanceCards();
+
+      logTerminal('Leg 1 OFS Command Dispatched: FUNDS.TRANSFER,INITIATE/I/PROCESS//IB-OUT-9901,USER01/123456,DEBIT=acc-2002-chk-001,CREDIT=ACC-NOSTRO-BANK-B,AMOUNT=1000.00', 'highlight');
+      logTerminal('Leg 1 Committed: Alice debited ₱1,000.00 &bull; ACC-NOSTRO-BANK-B credited ₱1,000.00 &bull; Status: COMMITTED', 'success');
+
+      state.step = 3;
+      state.status = 'LEG1_COMMITTED';
+
+      // Update Node 2 UI
+      document.getElementById('node-2').className = 'node-card rounded-xl border border-emerald-500/50 bg-slate-900/90 p-4 transition-all shadow-sm';
+      document.getElementById('node-2-badge').className = 'px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+      document.getElementById('node-2-badge').innerText = 'LEG 1 COMMITTED';
+      document.getElementById('node-2-actions').classList.add('hidden');
+      document.getElementById('arrow-1-2').classList.remove('animate-bounce');
+
+      // Highlight arrow 2 -> 3
+      document.getElementById('arrow-2-3').classList.add('text-purple-400', 'animate-bounce');
+
+      // Unlock Node 3
+      const node3 = document.getElementById('node-3');
+      node3.classList.remove('cursor-not-allowed', 'opacity-60', 'bg-slate-950/60');
+      node3.classList.add('cursor-pointer', 'border-purple-500/50', 'bg-slate-900/90', 'pulse-active');
+      document.getElementById('node-3-icon').className = 'w-9 h-9 rounded-xl bg-purple-600/20 border border-purple-500/40 flex items-center justify-center font-mono text-xs font-bold text-purple-300';
+      document.getElementById('node-3-lock').classList.add('hidden');
+      document.getElementById('node-3-num').classList.remove('hidden');
+      document.getElementById('node-3-badge').className = 'px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-purple-500/20 text-purple-300 border border-purple-500/30';
+      document.getElementById('node-3-badge').innerText = 'READY TO DISPATCH';
+      document.getElementById('node-3-actions').classList.remove('hidden');
+
+      // Update right display
+      document.getElementById('stat-active-step-num').innerText = 'STEP 3';
+      document.getElementById('stat-step-title').innerHTML = '<span class="px-2 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs">ACTIVE: NODE 3</span>';
+      document.getElementById('stat-step-sub').innerText = 'Awaiting bilateral HTTP wire dispatch';
+      document.getElementById('ui-stage-label').innerText = '2/4 Leg 1 Booked';
+      document.getElementById('ui-subtitle').innerText = 'Leg 1 Nostro buffer credited. Click Node 3 to dispatch wire to Bank B.';
+      document.getElementById('ui-callout-msg').innerText = 'Leg 1 holds funds in Nostro buffer. If wire to Bank B fails, an automated Saga rollback will reverse this entry.';
+    }
+
+    // ================= NODE 3 EXECUTION (BRANCHING) =================
+    function executeNode3(outcome, e) {
+      if (e) e.stopPropagation();
+      if (state.step !== 3) return;
+
+      document.getElementById('node-3-actions').classList.add('hidden');
+      document.getElementById('arrow-2-3').classList.remove('animate-bounce');
+
+      if (outcome === 'settled') {
+        // Happy Path -> Unlocks 4A
+        state.partnerRef = 'B-TXN-1791534975631';
+        logTerminal('Dispatched Outward HTTP Wire to Partner Bank B: POST /mock-partner/transfers (Timeout: 4000ms)', 'highlight');
+        logTerminal('Partner Bank B responded 200 OK: {status: "SETTLED", partnerReference: "B-TXN-1791534975631"}', 'success');
+
+        state.step = '4a';
+        state.status = 'DISPATCHED_SETTLED';
+
+        document.getElementById('node-3').className = 'node-card rounded-xl border border-emerald-500/50 bg-slate-900/90 p-4 transition-all';
+        document.getElementById('node-3-badge').className = 'px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+        document.getElementById('node-3-badge').innerText = 'WIRE SETTLED (200 OK)';
+
+        // Highlight branch path to 4A
+        document.getElementById('branch-path-success').setAttribute('stroke', '#10b981');
+        document.getElementById('branch-path-success').setAttribute('stroke-width', '3');
+
+        // Unlock Node 4A
+        const node4a = document.getElementById('node-4a');
+        node4a.classList.remove('cursor-not-allowed', 'opacity-60', 'bg-slate-950/60');
+        node4a.classList.add('cursor-pointer', 'border-emerald-500/50', 'bg-slate-900/90', 'pulse-active');
+        document.getElementById('node-4a-icon').className = 'w-7 h-7 rounded-lg bg-emerald-600/20 border border-emerald-500/40 flex items-center justify-center font-mono text-2xs font-bold text-emerald-300';
+        document.getElementById('node-4a-badge').className = 'px-1.5 py-0.5 text-[9px] font-mono font-semibold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+        document.getElementById('node-4a-badge').innerText = 'READY';
+        document.getElementById('node-4a-actions').classList.remove('hidden');
+
+        // Update right display
+        document.getElementById('stat-active-step-num').innerText = 'STEP 4A';
+        document.getElementById('stat-step-title').innerHTML = '<span class="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs">READY: 4A FINALITY</span>';
+        document.getElementById('stat-step-sub').innerText = 'Partner settlement acknowledged';
+        document.getElementById('ui-stage-label').innerText = '3/4 Wire Settled';
+        document.getElementById('ui-partner-ref').innerText = state.partnerRef;
+        document.getElementById('ui-partner-ref').className = 'font-semibold text-emerald-400';
+        document.getElementById('ui-subtitle').innerText = 'Partner cleared funds. Click Node 4A to finalize ledger.';
+        document.getElementById('ui-callout-msg').innerText = 'Partner Bank confirmed credit to beneficiary B-ACC-998877. Final step will seal audit trail.';
+
+      } else if (outcome === 'timeout') {
+        // Timeout Path -> Unlocks 4B
+        logTerminal('Dispatched Outward Wire. Simulating partner network hang (>4000ms delay)...', 'highlight');
+        logTerminal('java.util.concurrent.TimeoutException: Did not observe response within 4000ms threshold in WebClient', 'warn');
+        logTerminal('Client timeout tripped! Automated 2-phase Saga Rollback required. Routing flow to Node 4B...', 'warn');
+
+        state.step = '4b';
+        state.status = 'TIMED_OUT';
+
+        document.getElementById('node-3').className = 'node-card rounded-xl border border-amber-500/60 bg-amber-950/20 p-4 transition-all';
+        document.getElementById('node-3-badge').className = 'px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-amber-500/20 text-amber-400 border border-amber-500/30';
+        document.getElementById('node-3-badge').innerText = 'TIMED OUT (4.0s)';
+
+        // Highlight branch path to 4B
+        document.getElementById('branch-path-rollback').setAttribute('stroke', '#f59e0b');
+        document.getElementById('branch-path-rollback').setAttribute('stroke-width', '3');
+        document.getElementById('branch-path-rollback').classList.add('flow-line-active');
+
+        // Unlock Node 4B
+        const node4b = document.getElementById('node-4b');
+        node4b.classList.remove('cursor-not-allowed', 'opacity-60', 'bg-slate-950/60');
+        node4b.classList.add('cursor-pointer', 'border-amber-500/50', 'bg-slate-900/90', 'pulse-active');
+        document.getElementById('node-4b-icon').className = 'w-7 h-7 rounded-lg bg-amber-600/20 border border-amber-500/40 flex items-center justify-center font-mono text-2xs font-bold text-amber-300';
+        document.getElementById('node-4b-badge').className = 'px-1.5 py-0.5 text-[9px] font-mono font-semibold rounded bg-amber-500/20 text-amber-400 border border-amber-500/30';
+        document.getElementById('node-4b-badge').innerText = 'ROLLBACK REQUIRED';
+        document.getElementById('node-4b-actions').classList.remove('hidden');
+
+        // Update right display
+        document.getElementById('stat-active-step-num').innerText = 'STEP 4B';
+        document.getElementById('stat-step-title').innerHTML = '<span class="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs">REVERSAL REQUIRED</span>';
+        document.getElementById('stat-step-sub').innerText = 'Network lag triggered Saga rollback';
+        document.getElementById('ui-stage-label').innerText = 'Timeout Detected';
+        document.getElementById('ui-partner-ref').innerText = 'TIMED OUT (4005ms)';
+        document.getElementById('ui-partner-ref').className = 'font-semibold text-amber-400';
+        document.getElementById('ui-title').innerText = 'Partner Network Timeout';
+        document.getElementById('ui-subtitle').innerText = 'Click Node 4B to execute automated Saga reversal on CBS';
+        document.getElementById('ui-callout-msg').innerText = 'Network delay exceeded 4000ms. Node 4B will execute a compensating reversal to return the ₱1,000 back to Alice.';
+        document.getElementById('ui-icon-box').className = 'mx-auto w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 mb-3';
+        document.getElementById('ui-icon-svg').innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />';
+
+      } else if (outcome === 'reject') {
+        // Reject Path -> Unlocks 4B
+        logTerminal('Dispatched Outward Wire. Partner Bank returned HTTP 400 Bad Request: BENEFICIARY_ACCOUNT_NOT_FOUND', 'error');
+        logTerminal('Payee rejection detected. Automated 2-phase Saga Rollback required. Routing flow to Node 4B...', 'warn');
+
+        state.step = '4b';
+        state.status = 'REJECTED';
+
+        document.getElementById('node-3').className = 'node-card rounded-xl border border-rose-500/60 bg-rose-950/20 p-4 transition-all';
+        document.getElementById('node-3-badge').className = 'px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        document.getElementById('node-3-badge').innerText = 'REJECTED (400 BAD REQUEST)';
+
+        // Highlight branch path to 4B
+        document.getElementById('branch-path-rollback').setAttribute('stroke', '#f43f5e');
+        document.getElementById('branch-path-rollback').setAttribute('stroke-width', '3');
+        document.getElementById('branch-path-rollback').classList.add('flow-line-active');
+
+        // Unlock Node 4B
+        const node4b = document.getElementById('node-4b');
+        node4b.classList.remove('cursor-not-allowed', 'opacity-60', 'bg-slate-950/60');
+        node4b.classList.add('cursor-pointer', 'border-rose-500/50', 'bg-slate-900/90', 'pulse-active');
+        document.getElementById('node-4b-icon').className = 'w-7 h-7 rounded-lg bg-rose-600/20 border border-rose-500/40 flex items-center justify-center font-mono text-2xs font-bold text-rose-300';
+        document.getElementById('node-4b-badge').className = 'px-1.5 py-0.5 text-[9px] font-mono font-semibold rounded bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        document.getElementById('node-4b-badge').innerText = 'ROLLBACK REQUIRED';
+        document.getElementById('node-4b-actions').classList.remove('hidden');
+
+        // Update right display
+        document.getElementById('stat-active-step-num').innerText = 'STEP 4B';
+        document.getElementById('stat-step-title').innerHTML = '<span class="px-2 py-0.5 rounded-lg bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs">REVERSAL REQUIRED</span>';
+        document.getElementById('stat-step-sub').innerText = 'Beneficiary account rejected by Bank B';
+        document.getElementById('ui-stage-label').innerText = 'Partner 400 Reject';
+        document.getElementById('ui-partner-ref').innerText = 'REJECTED: NO_PAYEE';
+        document.getElementById('ui-partner-ref').className = 'font-semibold text-rose-400';
+        document.getElementById('ui-title').innerText = 'Beneficiary Account Not Found';
+        document.getElementById('ui-subtitle').innerText = 'Click Node 4B to execute automated Saga reversal on CBS';
+        document.getElementById('ui-callout-msg').innerText = 'Partner Bank does not recognize account B-ACC-998877. Node 4B will refund all reserved funds to Alice.';
+        document.getElementById('ui-icon-box').className = 'mx-auto w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 mb-3';
+        document.getElementById('ui-icon-svg').innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />';
+      }
+    }
+
+    // ================= NODE 4A EXECUTION (FINAL SUCCESS) =================
+    function executeNode4A(e) {
+      if (e) e.stopPropagation();
+      if (state.step !== '4a') return;
+
+      state.status = 'SETTLED';
+      logTerminal('Executing Node 4A: Appending SHA-256 Merkle root to PostgreSQL immutable audit vault.', 'highlight');
+      logTerminal('Inter-Bank Transaction Fully Settled: TxId=IB-OUT-9901 &bull; PartnerRef=' + state.partnerRef + ' &bull; Status: POSTED_SUCCESSFULLY', 'success');
+
+      document.getElementById('node-4a').className = 'node-card rounded-xl border border-emerald-500/70 bg-emerald-950/20 p-3.5 transition-all shadow-md';
+      document.getElementById('node-4a-badge').className = 'px-1.5 py-0.5 text-[9px] font-mono font-semibold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+      document.getElementById('node-4a-badge').innerText = 'FINALIZED';
+      document.getElementById('node-4a-actions').classList.add('hidden');
+
+      // Update Top Stats
+      document.getElementById('stat-active-step-num').innerText = 'COMPLETED';
+      document.getElementById('stat-step-title').innerHTML = '<span class="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs">200 SETTLED</span>';
+      document.getElementById('stat-step-sub').innerText = 'Bilateral settlement finalized';
+
+      // Update Right Display
+      document.getElementById('ui-title').innerText = 'Inter-Bank Transfer Settled!';
+      document.getElementById('ui-subtitle').innerText = 'Funds credited to Beneficiary at Partner Bank B';
+      document.getElementById('ui-stage-label').innerText = '4/4 Finalized';
+      document.getElementById('ui-callout-msg').innerText = 'Transaction completed with high-speed finality. Customer debited ₱1,000 and Partner Nostro buffer holds ₱1,000 liability.';
+      document.getElementById('ui-icon-box').className = 'mx-auto w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 mb-3 shadow-lg';
+      document.getElementById('ui-icon-svg').innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />';
+      document.getElementById('ambient-glow').className = 'absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none transition-all duration-500';
+    }
+
+    // ================= NODE 4B EXECUTION (SAGA ROLLBACK) =================
+    function executeNode4B(e) {
+      if (e) e.stopPropagation();
+      if (state.step !== '4b') return;
+
+      // Reverse Leg 1: Refund Alice, Debit Nostro buffer back to original
+      state.aliceBal += state.transferAmount;
+      state.nostroBal -= state.transferAmount;
+      updateBalanceCards();
+
+      logTerminal('Executing Node 4B: POST /api/v1/cbs/reversal &bull; OriginalFtNo=IB-OUT-9901 &bull; Reason=INTERBANK_WIRE_FAILURE', 'warn');
+      logTerminal('T24 Core Banking Compensating Reversal Approved: //1,SUCCESS,TXN.ID=REV-SAGA-9901,MESSAGE=REVERSAL_APPROVED_AND_SETTLED', 'success');
+      logTerminal('Alice checking account fully refunded (+₱1,000.00). Nostro buffer liability restored. Zero loss of funds.', 'success');
+
+      state.status = 'SAGA_COMPENSATED';
+
+      document.getElementById('node-4b').className = 'node-card rounded-xl border border-amber-500/70 bg-amber-950/20 p-3.5 transition-all shadow-md';
+      document.getElementById('node-4b-badge').className = 'px-1.5 py-0.5 text-[9px] font-mono font-semibold rounded bg-amber-500/20 text-amber-400 border border-amber-500/30';
+      document.getElementById('node-4b-badge').innerText = 'COMPENSATED';
+      document.getElementById('node-4b-actions').classList.add('hidden');
+
+      // Update Top Stats
+      document.getElementById('stat-active-step-num').innerText = 'COMPENSATED';
+      document.getElementById('stat-step-title').innerHTML = '<span class="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs">SAGA ROLLBACK</span>';
+      document.getElementById('stat-step-sub').innerText = 'Full refund credited to Alice';
+
+      // Update Right Display
+      document.getElementById('ui-title').innerText = 'Transfer Refunded (Saga Rollback)';
+      document.getElementById('ui-subtitle').innerText = 'Automated 2-phase reversal restored all customer funds';
+      document.getElementById('ui-stage-label').innerText = 'Compensated';
+      document.getElementById('ui-callout-msg').innerText = 'Automated compensating reversal completed successfully. Alice balance restored to PHP 8,618,600.00 with zero financial discrepancy.';
+      document.getElementById('ui-icon-box').className = 'mx-auto w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 mb-3 shadow-lg';
+      document.getElementById('ui-icon-svg').innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />';
+      document.getElementById('ambient-glow').className = 'absolute -top-24 -right-24 w-48 h-48 bg-amber-500/20 rounded-full blur-3xl pointer-events-none transition-all duration-500';
+    }
+
+    // ================= RESET FLOW =================
+    function resetFlow() {
+      state.step = 1;
+      state.status = 'IDLE';
+      state.aliceBal = state.initialAliceBal;
+      state.nostroBal = state.initialNostroBal;
+      state.partnerRef = null;
+      updateBalanceCards();
+
+      // Reset Node 1
+      document.getElementById('node-1').className = 'node-card cursor-pointer rounded-xl border border-purple-500/50 bg-slate-900/90 p-4 transition-all duration-200 hover:border-purple-400 pulse-active shadow-md';
+      document.getElementById('node-1-badge').className = 'px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-purple-500/20 text-purple-300 border border-purple-500/30';
+      document.getElementById('node-1-badge').innerText = 'CLICK TO EXECUTE';
+      document.getElementById('node-1-actions').classList.remove('hidden');
+
+      // Reset Node 2
+      const node2 = document.getElementById('node-2');
+      node2.className = 'node-card cursor-not-allowed rounded-xl border border-slate-800 bg-slate-950/60 p-4 transition-all duration-200 opacity-60';
+      document.getElementById('node-2-icon').className = 'w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-mono text-xs font-bold text-slate-400';
+      document.getElementById('node-2-lock').classList.remove('hidden');
+      document.getElementById('node-2-num').classList.add('hidden');
+      document.getElementById('node-2-badge').className = 'px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-slate-800 text-slate-500 border border-slate-700';
+      document.getElementById('node-2-badge').innerText = 'LOCKED (Prereq: Node 1)';
+      document.getElementById('node-2-actions').classList.add('hidden');
+
+      // Reset Node 3
+      const node3 = document.getElementById('node-3');
+      node3.className = 'node-card cursor-not-allowed rounded-xl border border-slate-800 bg-slate-950/60 p-4 transition-all duration-200 opacity-60';
+      document.getElementById('node-3-icon').className = 'w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-mono text-xs font-bold text-slate-400';
+      document.getElementById('node-3-lock').classList.remove('hidden');
+      document.getElementById('node-3-num').classList.add('hidden');
+      document.getElementById('node-3-badge').className = 'px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-slate-800 text-slate-500 border border-slate-700';
+      document.getElementById('node-3-badge').innerText = 'LOCKED (Prereq: Node 2)';
+      document.getElementById('node-3-actions').classList.add('hidden');
+
+      // Reset Arrows
+      document.getElementById('arrow-1-2').className = 'w-6 h-6 text-slate-700';
+      document.getElementById('arrow-2-3').className = 'w-6 h-6 text-slate-700';
+      document.getElementById('branch-path-success').setAttribute('stroke', '#334155');
+      document.getElementById('branch-path-success').setAttribute('stroke-width', '2');
+      document.getElementById('branch-path-rollback').setAttribute('stroke', '#334155');
+      document.getElementById('branch-path-rollback').setAttribute('stroke-width', '2');
+      document.getElementById('branch-path-rollback').classList.remove('flow-line-active');
+
+      // Reset Node 4A & 4B
+      const node4a = document.getElementById('node-4a');
+      node4a.className = 'node-card cursor-not-allowed rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 transition-all duration-200 opacity-60';
+      document.getElementById('node-4a-icon').className = 'w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center font-mono text-2xs font-bold text-slate-400';
+      document.getElementById('node-4a-badge').innerText = 'LOCKED';
+      document.getElementById('node-4a-badge').className = 'px-1.5 py-0.5 text-[9px] font-mono font-semibold rounded bg-slate-800 text-slate-500 border border-slate-700';
+      document.getElementById('node-4a-actions').classList.add('hidden');
+
+      const node4b = document.getElementById('node-4b');
+      node4b.className = 'node-card cursor-not-allowed rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 transition-all duration-200 opacity-60';
+      document.getElementById('node-4b-icon').className = 'w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center font-mono text-2xs font-bold text-slate-400';
+      document.getElementById('node-4b-badge').innerText = 'LOCKED';
+      document.getElementById('node-4b-badge').className = 'px-1.5 py-0.5 text-[9px] font-mono font-semibold rounded bg-slate-800 text-slate-500 border border-slate-700';
+      document.getElementById('node-4b-actions').classList.add('hidden');
+
+      // Reset Top Metrics
+      document.getElementById('stat-active-step-num').innerText = 'STEP 1';
+      document.getElementById('stat-step-title').innerHTML = '<span class="px-2 py-0.5 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs">READY: STEP 1</span>';
+      document.getElementById('stat-step-sub').innerText = 'Awaiting client wire initiation';
+
+      // Reset Right Screen
+      document.getElementById('ui-title').innerText = 'Wire Transfer Ready';
+      document.getElementById('ui-subtitle').innerText = 'Click Node 1 to initiate verification';
+      document.getElementById('ui-partner-ref').innerText = '-- Pending Leg 2 --';
+      document.getElementById('ui-partner-ref').className = 'font-semibold text-slate-500';
+      document.getElementById('ui-stage-label').innerText = '0/4 Ready';
+      document.getElementById('ui-callout-msg').innerText = 'Step 1 prerequisite pending: verify payload and lock idempotency key to prevent double spending.';
+      document.getElementById('ui-icon-box').className = 'mx-auto w-16 h-16 rounded-2xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 mb-3';
+      document.getElementById('ui-icon-svg').innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />';
+      document.getElementById('ambient-glow').className = 'absolute -top-24 -right-24 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl pointer-events-none transition-all duration-500';
+
+      // Reset Terminal
+      document.getElementById('trace-terminal').innerHTML = '<div class="text-slate-500">[RESET] Flow reset to initial state. Click Node 1 to begin.</div>';
+    }
+
+    // ================= AUTOMATED WALKTHROUGHS =================
+    function autoWalkHappy() {
+      resetFlow();
+      setTimeout(() => executeNode1(true), 400);
+      setTimeout(() => executeNode2(true), 1200);
+      setTimeout(() => executeNode3('settled'), 2000);
+      setTimeout(() => executeNode4A(), 2800);
+    }
+
+    function autoWalkTimeout() {
+      resetFlow();
+      setTimeout(() => executeNode1(true), 400);
+      setTimeout(() => executeNode2(true), 1200);
+      setTimeout(() => executeNode3('timeout'), 2000);
+      setTimeout(() => executeNode4B(), 2900);
+    }
+
+    // Initialize balance cards
+    updateBalanceCards();
+  </script>
+</body>
+</html>
