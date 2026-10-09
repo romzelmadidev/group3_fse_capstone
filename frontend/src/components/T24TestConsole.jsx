@@ -108,7 +108,7 @@ export default function T24TestConsole() {
 
   // OFS Terminal State
   const [ofsInput, setOfsInput] = useState(
-    'AC.LOCKED.EVENTS,INPUT/I/PROCESS/0/1,USER01/123456,,ACCOUNT.NUMBER=ACC-1001,FROM.DATE=20261008,TO.DATE=20261009,LOCKED.AMOUNT=5000.00,HOLD.REASON=MAKER_CHECKER_HOLD,EXT.REF=OFS-DEMO-01'
+    'FUNDS.TRANSFER,INITIATE/I/PROCESS//TX-9901,USER01/123456,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=acc-2002-chk-001,CREDIT.ACCT.NO=acc-2003-sav-002,AMOUNT=2500.00,CURRENCY=PHP,VALUE.DATE=20261008'
   );
   const [ofsResponse, setOfsResponse] = useState('');
   const [isExecutingOfs, setIsExecutingOfs] = useState(false);
@@ -544,12 +544,12 @@ export default function T24TestConsole() {
       {/* Toast alert */}
       {toastMessage && (
         <div
-          className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 border px-4 py-3 shadow-xl backdrop-blur-md transition-all ${
+          className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-3.5 shadow-2xl backdrop-blur-md transition-all ${
             toastMessage.type === 'success'
-              ? 'border-emerald-500/50 bg-emerald-950/80 text-emerald-200'
+              ? 'border-emerald-500/40 bg-emerald-950/90 text-emerald-100'
               : toastMessage.type === 'error'
-              ? 'border-rose-500/50 bg-rose-950/80 text-rose-200'
-              : 'border-cyan-500/50 bg-cyan-950/80 text-cyan-200'
+              ? 'border-rose-500/40 bg-rose-950/90 text-rose-100'
+              : 'border-purple-500/40 bg-[#250C5C]/95 text-purple-100'
           }`}
         >
           {toastMessage.type === 'success' ? (
@@ -557,48 +557,48 @@ export default function T24TestConsole() {
           ) : toastMessage.type === 'error' ? (
             <XCircle className="h-5 w-5 text-rose-400" />
           ) : (
-            <Activity className="h-5 w-5 text-cyan-400" />
+            <Activity className="h-5 w-5 text-purple-300" />
           )}
           <span className="text-sm font-medium">{toastMessage.text}</span>
         </div>
       )}
 
       {/* Hero Header */}
-      <div className="flex flex-col justify-between gap-4 border border-line bg-surface p-6 sm:flex-row sm:items-center">
+      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-purple-100 bg-white p-6 shadow-sm sm:flex-row sm:items-center">
         <div>
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 font-mono text-2xs uppercase tracking-wider text-cyan-400">
-              <Database className="h-3 w-3" /> T24 CBS Core
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 font-mono text-2xs font-semibold uppercase tracking-wider text-purple-900">
+              <Database className="h-3 w-3 text-purple-700" /> T24 CBS Core
             </span>
-            <span className="inline-flex items-center gap-1 border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-2xs uppercase tracking-wider text-emerald-400">
-              <Activity className="h-3 w-3" /> Mock Runtime :8085
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 font-mono text-2xs font-semibold uppercase tracking-wider text-emerald-800">
+              <Activity className="h-3 w-3 text-emerald-600" /> Mock Runtime :8085
             </span>
           </div>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight text-fg">
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
             T24 Mock CBS Test Laboratory
           </h1>
-          <p className="mt-1 text-sm text-fg-muted">
-            Interactive control cockpit for validating Funds Transfers, Amount Holds (`AC.LOCKED.EVENTS`),
-            Maker-Checker Reversals, Raw OFS wire strings, COB lifecycle, and DLQ replays.
+          <p className="mt-1 text-sm text-slate-500">
+            Aura Bank interactive workbench for validating Funds Transfers, Amount Holds (`AC.LOCKED.EVENTS`),
+            Maker-Checker Reversals, Temenos OFS wire strings, COB lifecycle, and DLQ incident replays.
           </p>
         </div>
 
         {/* Live CBS System State */}
-        <div className="flex items-center gap-4 rounded border border-line bg-sunken p-3">
+        <div className="flex items-center gap-4 rounded-xl border border-purple-100 bg-purple-50/60 p-3.5 shadow-xs">
           <div>
-            <div className="text-2xs uppercase tracking-wider text-fg-subtle">Business Date (T)</div>
-            <div className="font-mono text-sm font-semibold text-fg">{systemDate.businessDate}</div>
+            <div className="text-2xs font-semibold uppercase tracking-wider text-purple-900/70">Business Date (T)</div>
+            <div className="font-mono text-sm font-bold text-purple-950">{systemDate.businessDate}</div>
           </div>
-          <div className="h-8 w-px bg-line" />
+          <div className="h-8 w-px bg-purple-200" />
           <div>
-            <div className="text-2xs uppercase tracking-wider text-fg-subtle">Posting Window</div>
-            <div className="flex items-center gap-1.5 font-mono text-sm font-semibold">
+            <div className="text-2xs font-semibold uppercase tracking-wider text-purple-900/70">Posting Window</div>
+            <div className="flex items-center gap-1.5 font-mono text-sm font-bold">
               <span
-                className={`h-2 w-2 rounded-full ${
-                  systemDate.postingWindowOpen ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
+                className={`h-2.5 w-2.5 rounded-full ${
+                  systemDate.postingWindowOpen ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'
                 }`}
               />
-              <span className={systemDate.postingWindowOpen ? 'text-emerald-400' : 'text-rose-400'}>
+              <span className={systemDate.postingWindowOpen ? 'text-emerald-700' : 'text-rose-700'}>
                 {systemDate.status}
               </span>
             </div>
@@ -608,7 +608,7 @@ export default function T24TestConsole() {
               fetchSystemDate();
               fetchBalance();
             }}
-            className="rounded border border-line bg-surface p-2 text-fg-subtle hover:bg-surface-raised hover:text-fg"
+            className="rounded-lg border border-purple-200 bg-white p-2 text-purple-800 shadow-xs hover:bg-purple-100/60 hover:text-purple-950 transition-colors"
             title="Refresh System Status"
           >
             <RefreshCw className={`h-4 w-4 ${isLoadingBalance ? 'animate-spin' : ''}`} />
@@ -619,11 +619,11 @@ export default function T24TestConsole() {
       {/* Account Balances Card with Live Inspector */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
         {/* Account Selector */}
-        <div className="border border-line bg-surface p-4">
-          <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
+        <div className="rounded-2xl border border-purple-100 bg-white p-5 shadow-sm">
+          <label className="block text-2xs font-bold uppercase tracking-wider text-purple-900">
             Select Test Account
           </label>
-          <div className="mt-2 flex flex-col gap-1.5">
+          <div className="mt-2.5 flex flex-col gap-1.5">
             {['acc-2002-chk-001', 'acc-2001-sav-001', 'acc-2003-sav-002', '1000-2000-3001'].map((acc) => (
               <button
                 key={acc}
@@ -632,14 +632,14 @@ export default function T24TestConsole() {
                   setTransferForm((prev) => ({ ...prev, sourceAccountId: acc }));
                   setHoldForm((prev) => ({ ...prev, accountId: acc }));
                 }}
-                className={`flex items-center justify-between px-3 py-2 text-left font-mono text-xs transition-colors ${
+                className={`flex items-center justify-between rounded-xl px-3 py-2 text-left font-mono text-xs transition-all ${
                   activeAccount === acc
-                    ? 'border-l-2 border-accent bg-accent/10 font-medium text-accent-text'
-                    : 'border-l-2 border-transparent bg-sunken text-fg-muted hover:bg-surface-raised'
+                    ? 'border border-purple-300 bg-purple-50/80 font-bold text-purple-950 shadow-xs'
+                    : 'border border-transparent bg-slate-50 text-slate-600 hover:bg-purple-50/40 hover:text-purple-900'
                 }`}
               >
                 <span>{acc}</span>
-                <span className="text-2xs text-fg-subtle">
+                <span className={`text-2xs ${activeAccount === acc ? 'text-purple-700 font-semibold' : 'text-slate-400'}`}>
                   {acc === 'acc-2002-chk-001' ? 'Checking (8.5M)' : acc === 'acc-2001-sav-001' ? 'Savings (25M)' : acc === 'acc-2003-sav-002' ? 'Savings (12.3M)' : 'Primary'}
                 </span>
               </button>
@@ -648,46 +648,58 @@ export default function T24TestConsole() {
         </div>
 
         {/* Working Balance (Ledger Master) */}
-        <div className="border border-line bg-surface p-4">
-          <div className="flex items-center justify-between text-2xs uppercase tracking-wider text-fg-subtle">
-            <span>Working Balance</span>
-            <Database className="h-3.5 w-3.5 text-blue-400" />
+        <div className="rounded-2xl border border-purple-100 bg-white p-5 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-2xs font-bold uppercase tracking-wider text-purple-900">
+              <span>Working Balance</span>
+              <div className="h-7 w-7 rounded-lg bg-purple-100 flex items-center justify-center text-purple-800">
+                <Database className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="mt-3 font-mono text-2xl font-bold tracking-tight text-slate-900">
+              PHP {(balanceData?.balanceAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </div>
           </div>
-          <div className="mt-2 font-mono text-xl font-bold text-fg">
-            PHP {(balanceData?.balanceAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-          </div>
-          <p className="mt-1 text-2xs text-fg-subtle">Total authoritative ledger balance in `balance_master`</p>
+          <p className="mt-2 text-2xs text-slate-500">Authoritative master balance in `balance_master`</p>
         </div>
 
         {/* Amount Hold (Locked Events) */}
-        <div className="border border-line bg-surface p-4">
-          <div className="flex items-center justify-between text-2xs uppercase tracking-wider text-fg-subtle">
-            <span>Locked / Held Funds</span>
-            <Lock className="h-3.5 w-3.5 text-amber-400" />
+        <div className="rounded-2xl border border-amber-100 bg-white p-5 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-2xs font-bold uppercase tracking-wider text-amber-900">
+              <span>Locked / Held Funds</span>
+              <div className="h-7 w-7 rounded-lg bg-amber-100 flex items-center justify-center text-amber-800">
+                <Lock className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="mt-3 font-mono text-2xl font-bold tracking-tight text-amber-600">
+              PHP {(balanceData?.holdAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </div>
           </div>
-          <div className="mt-2 font-mono text-xl font-bold text-amber-400">
-            PHP {(balanceData?.holdAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-          </div>
-          <p className="mt-1 text-2xs text-fg-subtle">
+          <p className="mt-2 text-2xs text-slate-500">
             {activeHolds.length} active hold(s) via `AC.LOCKED.EVENTS`
           </p>
         </div>
 
         {/* Spendable Available Balance */}
-        <div className="border border-line bg-surface p-4">
-          <div className="flex items-center justify-between text-2xs uppercase tracking-wider text-fg-subtle">
-            <span>Available to Spend</span>
-            <DollarSign className="h-3.5 w-3.5 text-emerald-400" />
+        <div className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-2xs font-bold uppercase tracking-wider text-emerald-900">
+              <span>Available to Spend</span>
+              <div className="h-7 w-7 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-800">
+                <DollarSign className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="mt-3 font-mono text-2xl font-bold tracking-tight text-emerald-600">
+              PHP {(balanceData?.availableBalance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </div>
           </div>
-          <div className="mt-2 font-mono text-xl font-bold text-emerald-400">
-            PHP {(balanceData?.availableBalance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-          </div>
-          <p className="mt-1 text-2xs text-fg-subtle">Solvency check: (Working - Hold). Protected from overdraft.</p>
+          <p className="mt-2 text-2xs text-slate-500">Solvency formula: (Working - Hold)</p>
         </div>
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex flex-wrap gap-1 border-b border-line">
+      <div className="flex flex-wrap gap-2 rounded-2xl bg-purple-50/70 p-2 border border-purple-100 shadow-2xs">
         {[
           { id: 'transfer', label: '1. Funds Transfer', icon: Send },
           { id: 'hold', label: '2. Amount Hold (AC.LOCKED.EVENTS)', icon: Lock },
@@ -705,10 +717,10 @@ export default function T24TestConsole() {
                 setActiveTab(tab.id);
                 if (tab.id === 'dlq') fetchDlqIncidents();
               }}
-              className={`flex items-center gap-2 px-4 py-3 text-xs font-semibold uppercase tracking-wider transition-colors ${
+              className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold tracking-wide transition-all ${
                 active
-                  ? 'border-b-2 border-accent bg-surface text-accent-text'
-                  : 'text-fg-subtle hover:bg-surface-raised hover:text-fg'
+                  ? 'bg-[#311075] text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-white hover:text-purple-950'
               }`}
             >
               <Icon className="h-4 w-4" />
@@ -721,45 +733,45 @@ export default function T24TestConsole() {
       {/* TAB 1: FUNDS TRANSFER */}
       {activeTab === 'transfer' && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div className="border border-line bg-surface p-6">
-            <h2 className="flex items-center gap-2 text-base font-semibold text-fg">
-              <Send className="h-4 w-4 text-accent" /> Execute Funds Transfer (`FUNDS.TRANSFER`)
+          <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm">
+            <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
+              <Send className="h-4 w-4 text-purple-700" /> Execute Funds Transfer (`FUNDS.TRANSFER`)
             </h2>
-            <p className="mt-1 text-xs text-fg-muted">
-              Sends an intra-bank transfer payload directly to CBS Core (`POST /api/v1/cbs/postings/transfer`).
-              Enforces posting window cutoff, row lock ordering, and solvency check against available balance.
+            <p className="mt-1 text-xs text-slate-500">
+              Direct intra-bank transfer dispatched to CBS Core (`POST /api/v1/cbs/postings/transfer`).
+              Enforces posting window checks, alphabetical row lock ordering, and liquid solvency.
             </p>
 
-            <form onSubmit={handleExecuteTransfer} className="mt-4 space-y-4">
+            <form onSubmit={handleExecuteTransfer} className="mt-5 space-y-4">
               <div>
-                <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
+                <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
                   Debit / Source Account
                 </label>
                 <input
                   type="text"
                   value={transferForm.sourceAccountId}
                   onChange={(e) => setTransferForm({ ...transferForm, sourceAccountId: e.target.value })}
-                  className="mt-1 w-full border border-line bg-sunken px-3 py-2 font-mono text-xs text-fg focus:border-accent focus:outline-none"
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
+                <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
                   Credit / Destination Account
                 </label>
                 <input
                   type="text"
                   value={transferForm.destinationAccountId}
                   onChange={(e) => setTransferForm({ ...transferForm, destinationAccountId: e.target.value })}
-                  className="mt-1 w-full border border-line bg-sunken px-3 py-2 font-mono text-xs text-fg focus:border-accent focus:outline-none"
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
                   required
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
+                  <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
                     Amount (PHP)
                   </label>
                   <input
@@ -767,39 +779,39 @@ export default function T24TestConsole() {
                     step="0.01"
                     value={transferForm.amount}
                     onChange={(e) => setTransferForm({ ...transferForm, amount: e.target.value })}
-                    className="mt-1 w-full border border-line bg-sunken px-3 py-2 font-mono text-xs text-fg focus:border-accent focus:outline-none"
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
+                  <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
                     Currency
                   </label>
                   <input
                     type="text"
                     value={transferForm.currency}
                     readOnly
-                    className="mt-1 w-full border border-line bg-sunken px-3 py-2 font-mono text-xs text-fg-subtle"
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-100/70 px-3.5 py-2 font-mono text-xs text-slate-500 cursor-not-allowed"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
+                <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
                   Description / Remarks
                 </label>
                 <input
                   type="text"
                   value={transferForm.description}
                   onChange={(e) => setTransferForm({ ...transferForm, description: e.target.value })}
-                  className="mt-1 w-full border border-line bg-sunken px-3 py-2 text-xs text-fg focus:border-accent focus:outline-none"
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={isTransferring}
-                className="flex w-full items-center justify-center gap-2 border border-accent bg-accent px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-fg-inverse hover:opacity-90 disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-5 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-xs hover:shadow-md transition-all disabled:opacity-50"
               >
                 {isTransferring ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                 Post to CBS Core
@@ -808,35 +820,40 @@ export default function T24TestConsole() {
           </div>
 
           {/* Response Inspector */}
-          <div className="border border-line bg-surface p-6">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-fg-subtle">
-              CBS Core Execution Trace
-            </h3>
-            {transferResult ? (
-              <div className="mt-4 space-y-3">
-                <div
-                  className={`flex items-center gap-2 border p-3 ${
-                    transferResult.success
-                      ? 'border-emerald-500/30 bg-emerald-950/20 text-emerald-400'
-                      : 'border-rose-500/30 bg-rose-950/20 text-rose-400'
-                  }`}
-                >
-                  {transferResult.success ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-                  <span className="font-mono text-xs font-semibold">
-                    {transferResult.success ? 'HTTP 200 OK — POSTED' : 'TRANSFER REJECTED'}
-                  </span>
-                </div>
+          <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm flex flex-col justify-between">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-purple-950">
+                CBS Core Execution Trace
+              </h3>
+              {transferResult ? (
+                <div className="mt-4 space-y-3">
+                  <div
+                    className={`flex items-center gap-2 rounded-xl border p-3.5 ${
+                      transferResult.success
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                        : 'border-rose-200 bg-rose-50 text-rose-800'
+                    }`}
+                  >
+                    {transferResult.success ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <XCircle className="h-4 w-4 text-rose-600" />}
+                    <span className="font-mono text-xs font-bold">
+                      {transferResult.success ? 'HTTP 200 OK — POSTED SUCCESSFULLY' : 'TRANSFER REJECTED BY CBS'}
+                    </span>
+                  </div>
 
-                <pre className="overflow-x-auto rounded border border-line bg-sunken p-4 font-mono text-2xs text-fg">
-                  {JSON.stringify(transferResult, null, 2)}
-                </pre>
-              </div>
-            ) : (
-              <div className="mt-8 flex flex-col items-center justify-center text-center text-fg-subtle">
-                <Send className="h-8 w-8 text-line" />
-                <p className="mt-2 text-xs">Execute a transfer to inspect response payload and OFS return string.</p>
-              </div>
-            )}
+                  <pre className="overflow-x-auto rounded-xl border border-purple-900/40 bg-[#120B24] p-4 font-mono text-2xs text-purple-200 shadow-inner">
+                    {JSON.stringify(transferResult, null, 2)}
+                  </pre>
+                </div>
+              ) : (
+                <div className="mt-12 flex flex-col items-center justify-center text-center text-slate-400">
+                  <div className="h-12 w-12 rounded-2xl bg-purple-50 flex items-center justify-center text-purple-400 mb-2">
+                    <Send className="h-6 w-6" />
+                  </div>
+                  <p className="text-xs font-medium text-slate-600">No active trace yet</p>
+                  <p className="mt-1 text-2xs text-slate-400 max-w-xs">Execute a transfer to inspect response payload and OFS return string.</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -845,53 +862,54 @@ export default function T24TestConsole() {
       {activeTab === 'hold' && (
         <div className="space-y-6">
           {/* Architecture Explanatory Banner */}
-          <div className="border border-amber-500/30 bg-amber-950/20 p-4 text-xs text-amber-200">
-            <div className="font-semibold uppercase tracking-wider text-amber-300">
+          <div className="rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 via-white to-purple-50/50 p-5 shadow-xs">
+            <div className="font-bold text-xs uppercase tracking-wider text-purple-950 flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-purple-700" />
               Two-Phase Transfer Lifecycle: Reserve &rarr; Capture / Release
             </div>
-            <p className="mt-1 text-fg-subtle">
-              In transaction orchestration, an Amount Hold is not just an isolated freeze&mdash;it is{' '}
-              <strong className="text-amber-300">Phase 1 (Provisional Reservation)</strong> of a pending transfer.
-              Available balance drops to prevent double-spending while fraud/maker-checker checks execute. Once verified,{' '}
-              <strong className="text-emerald-400">Phase 2 (Capture & Settle)</strong> debits the source, credits the beneficiary, and clears the hold into a posted transfer.
+            <p className="mt-1.5 text-xs text-slate-600 leading-relaxed">
+              In modern core banking orchestration, an Amount Hold is not just an isolated freeze&mdash;it represents{' '}
+              <strong className="text-purple-900 font-semibold">Phase 1 (Provisional Reservation)</strong> of a high-value or risk-evaluated transfer.
+              Available balance drops immediately to prevent double-spending while fraud or maker-checker checks execute. Once verified,{' '}
+              <strong className="text-emerald-700 font-semibold">Phase 2 (Capture & Settle)</strong> debits the source, credits the beneficiary, and clears the hold into a posted transfer.
             </p>
           </div>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {/* Phase 1: Reserve Funds Form */}
-            <div className="border border-line bg-surface p-6">
-              <div className="flex items-center gap-2 border-b border-line pb-3">
-                <span className="border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-mono text-2xs uppercase text-amber-400">
+            <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm">
+              <div className="flex items-center gap-2 border-b border-purple-100/70 pb-3.5">
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 font-mono text-2xs font-bold uppercase text-amber-900">
                   Phase 1: Reserve
                 </span>
-                <h2 className="text-sm font-semibold text-fg">
+                <h2 className="text-sm font-bold text-slate-900">
                   Reserve Funds for Transfer (`RESERVED`)
                 </h2>
               </div>
 
-              <form onSubmit={handlePlaceHold} className="mt-4 space-y-4">
+              <form onSubmit={handlePlaceHold} className="mt-5 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
+                    <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
                       Source Account
                     </label>
                     <input
                       type="text"
                       value={holdForm.accountId}
                       onChange={(e) => setHoldForm({ ...holdForm, accountId: e.target.value })}
-                      className="mt-1 w-full border border-line bg-sunken px-3 py-2 font-mono text-xs text-fg focus:border-accent focus:outline-none"
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
                       required
                     />
                   </div>
                   <div>
-                    <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
+                    <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
                       Beneficiary Account
                     </label>
                     <input
                       type="text"
                       value={holdForm.targetAccountId}
                       onChange={(e) => setHoldForm({ ...holdForm, targetAccountId: e.target.value })}
-                      className="mt-1 w-full border border-line bg-sunken px-3 py-2 font-mono text-xs text-fg focus:border-accent focus:outline-none"
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
                       required
                     />
                   </div>
@@ -899,19 +917,19 @@ export default function T24TestConsole() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
+                    <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
                       Transaction Reference ID
                     </label>
                     <input
                       type="text"
                       value={holdForm.transactionId}
                       onChange={(e) => setHoldForm({ ...holdForm, transactionId: e.target.value })}
-                      className="mt-1 w-full border border-line bg-sunken px-3 py-2 font-mono text-xs text-accent-text focus:border-accent focus:outline-none"
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-purple-900 font-semibold focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
                       required
                     />
                   </div>
                   <div>
-                    <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
+                    <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
                       Hold / Transfer Amount (PHP)
                     </label>
                     <input
@@ -919,20 +937,20 @@ export default function T24TestConsole() {
                       step="0.01"
                       value={holdForm.holdAmount}
                       onChange={(e) => setHoldForm({ ...holdForm, holdAmount: e.target.value })}
-                      className="mt-1 w-full border border-line bg-sunken px-3 py-2 font-mono text-xs text-fg focus:border-accent focus:outline-none"
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
                       required
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
+                  <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
                     Reservation Purpose / Reason
                   </label>
                   <select
                     value={holdForm.reason}
                     onChange={(e) => setHoldForm({ ...holdForm, reason: e.target.value })}
-                    className="mt-1 w-full border border-line bg-sunken px-3 py-2 text-xs text-fg focus:border-accent focus:outline-none"
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
                   >
                     <option value="PRE_AUTHORIZATION">PRE_AUTHORIZATION (Payment / Wire Reservation)</option>
                     <option value="MAKER_CHECKER_HOLD">MAKER_CHECKER_HOLD (Pending Dual Authorization)</option>
@@ -945,7 +963,7 @@ export default function T24TestConsole() {
                 <button
                   type="submit"
                   disabled={isHolding}
-                  className="flex w-full items-center justify-center gap-2 border border-amber-500/50 bg-amber-500/20 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-amber-300 hover:bg-amber-500/30 disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-5 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-xs hover:shadow-md transition-all disabled:opacity-50"
                 >
                   {isHolding ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
                   Step 1: Reserve Funds via AC.LOCKED.EVENTS
@@ -954,112 +972,117 @@ export default function T24TestConsole() {
             </div>
 
             {/* Phase 2: Active Reservations & Settlement Actions */}
-            <div className="border border-line bg-surface p-6">
-              <div className="flex items-center justify-between border-b border-line pb-3">
-                <div className="flex items-center gap-2">
-                  <span className="border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-2xs uppercase text-emerald-400">
-                    Phase 2: Capture / Cancel
-                  </span>
-                  <h3 className="text-sm font-semibold text-fg">Active Holds on `{activeAccount}`</h3>
+            <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between border-b border-purple-100/70 pb-3.5">
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 font-mono text-2xs font-bold uppercase text-emerald-900">
+                      Phase 2: Capture / Cancel
+                    </span>
+                    <h3 className="text-sm font-bold text-slate-900">Active Holds on `{activeAccount}`</h3>
+                  </div>
+                  <button
+                    onClick={() => fetchHolds(activeAccount)}
+                    className="text-xs font-semibold text-purple-700 hover:text-purple-950 transition-colors"
+                  >
+                    Refresh Holds
+                  </button>
                 </div>
-                <button
-                  onClick={() => fetchHolds(activeAccount)}
-                  className="text-2xs text-accent-text hover:underline"
-                >
-                  Refresh Holds
-                </button>
-              </div>
 
-              {activeHolds.length > 0 ? (
-                <div className="mt-4 space-y-3">
-                  {activeHolds.map((h) => {
-                    const ext = h.externalReference || '';
-                    const linkedTx = ext.includes('|') ? ext.split('|')[0] : ext;
-                    const beneficiaryAcc = ext.includes('|') ? ext.split('|')[1] : 'ACC-1002';
+                {activeHolds.length > 0 ? (
+                  <div className="mt-4 space-y-3">
+                    {activeHolds.map((h) => {
+                      const ext = h.externalReference || '';
+                      const linkedTx = ext.includes('|') ? ext.split('|')[0] : ext;
+                      const beneficiaryAcc = ext.includes('|') ? ext.split('|')[1] : 'ACC-1002';
 
-                    return (
-                      <div key={h.holdId} className="border border-line bg-sunken p-3">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <div className="flex items-center gap-2 font-mono text-xs font-semibold text-fg">
-                              <span className="text-amber-400">{h.holdId}</span>
-                              <span className="border border-line bg-surface px-1.5 py-0.5 text-2xs text-fg-subtle">
-                                {h.t24LockReference}
-                              </span>
-                              <span className={`px-1.5 py-0.5 text-2xs font-mono uppercase ${
-                                h.status === 'ACTIVE'
-                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                                  : h.status === 'CAPTURED'
-                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                  : 'bg-zinc-800 text-fg-subtle'
-                              }`}>
-                                {h.status}
-                              </span>
+                      return (
+                        <div key={h.holdId} className="rounded-xl border border-purple-100 bg-purple-50/40 p-4 transition-all">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <div className="flex items-center gap-2 font-mono text-xs font-semibold text-slate-900">
+                                <span className="text-purple-900 font-bold">{h.holdId}</span>
+                                <span className="rounded border border-purple-200 bg-white px-2 py-0.5 text-2xs text-purple-700 font-medium">
+                                  {h.t24LockReference}
+                                </span>
+                                <span className={`px-2 py-0.5 rounded-full text-2xs font-mono uppercase ${
+                                  h.status === 'ACTIVE'
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-200 font-bold'
+                                    : h.status === 'CAPTURED'
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold'
+                                    : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                }`}>
+                                  {h.status}
+                                </span>
+                              </div>
+
+                              <div className="mt-1.5 font-mono text-xs text-slate-700">
+                                Reserved: <strong className="text-slate-900">PHP {parseFloat(h.holdAmount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>
+                                {' '}&bull; Linked Tx: <span className="text-purple-700 font-medium">{linkedTx || 'N/A'}</span>
+                                {' '}&bull; Beneficiary: <span className="text-indigo-700 font-medium">{beneficiaryAcc}</span>
+                              </div>
+                              <div className="text-2xs text-slate-500 mt-1">Reason: {h.reason}</div>
                             </div>
-
-                            <div className="mt-1 font-mono text-2xs text-fg-muted">
-                              Reserved: <strong>PHP {parseFloat(h.holdAmount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>
-                              {' '}&bull; Linked Tx: <span className="text-accent-text">{linkedTx || 'N/A'}</span>
-                              {' '}&bull; Beneficiary: <span className="text-purple-300">{beneficiaryAcc}</span>
-                            </div>
-                            <div className="text-2xs text-fg-subtle mt-0.5">Reason: {h.reason}</div>
                           </div>
+
+                          {h.status === 'ACTIVE' && (
+                            <div className="mt-3.5 flex items-center justify-end gap-2.5 border-t border-purple-100/70 pt-2.5">
+                              <button
+                                onClick={() => handleReleaseHold(h.holdId)}
+                                className="flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 shadow-2xs transition-all"
+                                title="Cancel hold and restore customer available balance"
+                              >
+                                <Unlock className="h-3.5 w-3.5" /> Cancel & Void
+                              </button>
+                              <button
+                                onClick={() => handleCaptureHold(h.holdId, beneficiaryAcc, h.holdAmount)}
+                                disabled={isCapturing}
+                                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs transition-all"
+                                title="Debit source, credit beneficiary, clear hold, and mark transfer POSTED"
+                              >
+                                {isCapturing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                                Capture & Settle Transfer
+                              </button>
+                            </div>
+                          )}
                         </div>
-
-                        {h.status === 'ACTIVE' && (
-                          <div className="mt-3 flex items-center justify-end gap-2 border-t border-line/50 pt-2">
-                            <button
-                              onClick={() => handleReleaseHold(h.holdId)}
-                              className="flex items-center gap-1 border border-rose-500/30 bg-rose-950/20 px-2.5 py-1 text-2xs font-semibold text-rose-300 hover:bg-rose-900/40"
-                              title="Cancel hold and restore customer available balance"
-                            >
-                              <Unlock className="h-3 w-3" /> Cancel & Void
-                            </button>
-                            <button
-                              onClick={() => handleCaptureHold(h.holdId, beneficiaryAcc, h.holdAmount)}
-                              disabled={isCapturing}
-                              className="flex items-center gap-1 border border-emerald-500/40 bg-emerald-950/30 px-3 py-1 text-2xs font-semibold text-emerald-300 hover:bg-emerald-900/50"
-                              title="Debit source, credit beneficiary, clear hold, and mark transfer POSTED"
-                            >
-                              {isCapturing ? <RefreshCw className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
-                              Capture & Settle Transfer
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="mt-8 flex flex-col items-center justify-center text-center text-fg-subtle">
-                  <Unlock className="h-8 w-8 text-line" />
-                  <p className="mt-2 text-xs">No active holds on this account. Funds are 100% available.</p>
-                </div>
-              )}
-
-              {/* Settlement / Capture Trace Inspector */}
-              {captureResult && (
-                <div className="mt-4 rounded border border-emerald-500/30 bg-emerald-950/20 p-3">
-                  <div className="flex items-center justify-between text-2xs uppercase tracking-wider text-emerald-400">
-                    <span>Capture Execution Result</span>
-                    <span className="font-mono">HTTP 200 OK &mdash; POSTED</span>
+                      );
+                    })}
                   </div>
-                  <pre className="mt-2 overflow-x-auto font-mono text-2xs text-emerald-300">
-                    {JSON.stringify(captureResult.data, null, 2)}
-                  </pre>
-                </div>
-              )}
-
-              {holdResult && !captureResult && (
-                <div className="mt-4 rounded border border-amber-500/30 bg-amber-950/20 p-3">
-                  <div className="text-2xs uppercase tracking-wider text-amber-400">
-                    Provisional Reservation Confirmed
+                ) : (
+                  <div className="mt-12 flex flex-col items-center justify-center text-center text-slate-400">
+                    <div className="h-12 w-12 rounded-2xl bg-purple-50 flex items-center justify-center text-purple-400 mb-2">
+                      <Unlock className="h-6 w-6" />
+                    </div>
+                    <p className="text-xs font-medium text-slate-600">No active holds on this account</p>
+                    <p className="mt-1 text-2xs text-slate-400">Funds are 100% available to spend.</p>
                   </div>
-                  <pre className="mt-2 overflow-x-auto font-mono text-2xs text-amber-300">
-                    {JSON.stringify(holdResult.data, null, 2)}
-                  </pre>
-                </div>
-              )}
+                )}
+
+                {/* Settlement / Capture Trace Inspector */}
+                {captureResult && (
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5">
+                    <div className="flex items-center justify-between text-2xs font-bold uppercase tracking-wider text-emerald-800">
+                      <span>Capture Execution Result</span>
+                      <span className="font-mono">HTTP 200 OK &mdash; POSTED</span>
+                    </div>
+                    <pre className="mt-2 overflow-x-auto rounded-lg border border-emerald-300/40 bg-[#120B24] p-3 font-mono text-2xs text-emerald-300">
+                      {JSON.stringify(captureResult.data, null, 2)}
+                    </pre>
+                  </div>
+                )}
+
+                {holdResult && !captureResult && (
+                  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-3.5">
+                    <div className="text-2xs font-bold uppercase tracking-wider text-amber-800">
+                      Provisional Reservation Confirmed
+                    </div>
+                    <pre className="mt-2 overflow-x-auto rounded-lg border border-amber-300/40 bg-[#120B24] p-3 font-mono text-2xs text-amber-300">
+                      {JSON.stringify(holdResult.data, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1070,17 +1093,17 @@ export default function T24TestConsole() {
       {activeTab === 'reversal' && (
         <div className="space-y-6">
           {/* Dual-Endpoint 2 Saga Compensation Quick Trigger */}
-          <div className="border border-purple-500/30 bg-purple-950/20 p-5">
+          <div className="rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 via-white to-purple-50/60 p-5 shadow-xs">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="border border-purple-400/40 bg-purple-500/20 px-2 py-0.5 font-mono text-2xs uppercase text-purple-300">
+                <span className="rounded-full border border-purple-300 bg-purple-100 px-2.5 py-0.5 font-mono text-2xs font-bold uppercase text-purple-950">
                   Dual Architecture Endpoint 2
                 </span>
-                <h3 className="text-sm font-semibold text-fg">Automated Saga Compensating Reversal (`POST /t24/reversal`)</h3>
+                <h3 className="text-sm font-bold text-slate-900">Automated Saga Compensating Reversal (`POST /t24/reversal`)</h3>
               </div>
-              <span className="font-mono text-2xs text-fg-subtle">ACID Rollback</span>
+              <span className="font-mono text-2xs font-semibold text-purple-800 bg-purple-100/60 px-2 py-0.5 rounded">ACID Rollback</span>
             </div>
-            <p className="mt-1 text-xs text-fg-muted">
+            <p className="mt-1.5 text-xs text-slate-600 leading-relaxed">
               Instantly reverses transaction balances in the Oracle Master DB and commits audit records to the PostgreSQL Audit Vault without requiring manual teller maker-checker approval. Invoked by Saga Coordinator on downstream pipeline failure.
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -1089,13 +1112,13 @@ export default function T24TestConsole() {
                 placeholder="Transaction ID to reverse (e.g. FT123456 or TXN-...)"
                 value={reversalForm.originalTransactionId}
                 onChange={(e) => setReversalForm({ ...reversalForm, originalTransactionId: e.target.value })}
-                className="flex-1 min-w-[240px] border border-line bg-sunken px-3 py-2 font-mono text-xs text-fg focus:border-accent focus:outline-none"
+                className="flex-1 min-w-[240px] rounded-xl border border-slate-200 bg-white px-3.5 py-2 font-mono text-xs text-slate-900 focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
               />
               <button
                 type="button"
                 onClick={handleCompensatingReversal}
                 disabled={isReversing}
-                className="flex items-center gap-2 border border-purple-500/60 bg-purple-600/30 px-4 py-2 font-mono text-xs font-semibold uppercase text-purple-200 hover:bg-purple-600/40 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-5 py-2.5 font-mono text-xs font-bold uppercase text-white shadow-xs hover:shadow-md transition-all disabled:opacity-50"
               >
                 {isReversing ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                 Execute EP2 Compensating Reversal
@@ -1105,17 +1128,17 @@ export default function T24TestConsole() {
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {/* Maker Dispute Request */}
-            <div className="border border-line bg-surface p-6">
-              <div className="flex items-center gap-2 border-b border-line pb-3">
-                <span className="border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 font-mono text-2xs uppercase text-blue-400">
+            <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm">
+              <div className="flex items-center gap-2 border-b border-purple-100/70 pb-3.5">
+                <span className="rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 font-mono text-2xs font-bold uppercase text-purple-900">
                   Step 1: Maker Role
                 </span>
-                <h2 className="text-sm font-semibold text-fg">Initiate Dispute Reversal Ticket</h2>
+                <h2 className="text-sm font-bold text-slate-900">Initiate Dispute Reversal Ticket</h2>
               </div>
 
-            <form onSubmit={handleRequestReversal} className="mt-4 space-y-4">
+            <form onSubmit={handleRequestReversal} className="mt-5 space-y-4">
               <div>
-                <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
+                <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
                   Original Transaction ID to Reverse
                 </label>
                 <input
@@ -1123,32 +1146,32 @@ export default function T24TestConsole() {
                   placeholder="e.g. TX-123456"
                   value={reversalForm.originalTransactionId}
                   onChange={(e) => setReversalForm({ ...reversalForm, originalTransactionId: e.target.value })}
-                  className="mt-1 w-full border border-line bg-sunken px-3 py-2 font-mono text-xs text-fg focus:border-accent focus:outline-none"
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
+                <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
                   Maker ID (Operator)
                 </label>
                 <input
                   type="text"
                   value={reversalForm.makerId}
                   onChange={(e) => setReversalForm({ ...reversalForm, makerId: e.target.value })}
-                  className="mt-1 w-full border border-line bg-sunken px-3 py-2 font-mono text-xs text-fg focus:border-accent focus:outline-none"
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
+                <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
                   Dispute Reason
                 </label>
                 <select
                   value={reversalForm.reason}
                   onChange={(e) => setReversalForm({ ...reversalForm, reason: e.target.value })}
-                  className="mt-1 w-full border border-line bg-sunken px-3 py-2 text-xs text-fg focus:border-accent focus:outline-none"
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
                 >
                   <option value="CUSTOMER_DISPUTE">CUSTOMER_DISPUTE (Customer Filed Unauthorized Debit)</option>
                   <option value="OPERATIONAL_ERROR">OPERATIONAL_ERROR (Duplicate Operator Posting)</option>
@@ -1157,21 +1180,21 @@ export default function T24TestConsole() {
               </div>
 
               <div>
-                <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
+                <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
                   Maker Notes
                 </label>
                 <textarea
                   rows="2"
                   value={reversalForm.notes}
                   onChange={(e) => setReversalForm({ ...reversalForm, notes: e.target.value })}
-                  className="mt-1 w-full border border-line bg-sunken px-3 py-2 text-xs text-fg focus:border-accent focus:outline-none"
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={isReversing}
-                className="flex w-full items-center justify-center gap-2 border border-blue-500/50 bg-blue-500/20 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-blue-300 hover:bg-blue-500/30 disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-5 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-xs hover:shadow-md transition-all disabled:opacity-50"
               >
                 {isReversing ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                 File Reversal Dispute Ticket
@@ -1180,87 +1203,89 @@ export default function T24TestConsole() {
           </div>
 
           {/* Checker Authorization */}
-          <div className="border border-line bg-surface p-6">
-            <div className="flex items-center gap-2 border-b border-line pb-3">
-              <span className="border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-2xs uppercase text-emerald-400">
-                Step 2: Checker Role
-              </span>
-              <h2 className="text-sm font-semibold text-fg">Dual-Control Approval (Segregation of Duties)</h2>
-            </div>
-
-            <div className="mt-4 space-y-4">
-              <div>
-                <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
-                  Dispute Ticket ID
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ticket ID from Step 1"
-                  value={checkerForm.ticketId}
-                  onChange={(e) => setCheckerForm({ ...checkerForm, ticketId: e.target.value })}
-                  className="mt-1 w-full border border-line bg-sunken px-3 py-2 font-mono text-xs text-fg focus:border-accent focus:outline-none"
-                />
+          <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-2 border-b border-purple-100/70 pb-3.5">
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 font-mono text-2xs font-bold uppercase text-emerald-900">
+                  Step 2: Checker Role
+                </span>
+                <h2 className="text-sm font-bold text-slate-900">Dual-Control Approval (Segregation of Duties)</h2>
               </div>
 
-              <div>
-                <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
-                  Checker ID (Must Differ from Maker)
-                </label>
-                <input
-                  type="text"
-                  value={checkerForm.checkerId}
-                  onChange={(e) => setCheckerForm({ ...checkerForm, checkerId: e.target.value })}
-                  className="mt-1 w-full border border-line bg-sunken px-3 py-2 font-mono text-xs text-fg focus:border-accent focus:outline-none"
-                />
-                <p className="mt-1 text-2xs text-amber-400">
-                  Dual Control Law: If Checker == `{reversalForm.makerId}`, CBS will reject with error.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
-                  Checker Authorization Notes
-                </label>
-                <input
-                  type="text"
-                  value={checkerForm.checkerNotes}
-                  onChange={(e) => setCheckerForm({ ...checkerForm, checkerNotes: e.target.value })}
-                  className="mt-1 w-full border border-line bg-sunken px-3 py-2 text-xs text-fg focus:border-accent focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={handleApproveReversal}
-                  disabled={isReversing || !checkerForm.ticketId}
-                  className="flex items-center justify-center gap-2 border border-emerald-500/50 bg-emerald-500/20 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
-                >
-                  <CheckCircle2 className="h-4 w-4" /> Approve Reversal
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleRejectReversal}
-                  disabled={isReversing || !checkerForm.ticketId}
-                  className="flex items-center justify-center gap-2 border border-rose-500/50 bg-rose-500/20 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-rose-300 hover:bg-rose-500/30 disabled:opacity-50"
-                >
-                  <XCircle className="h-4 w-4" /> Reject Ticket
-                </button>
-              </div>
-            </div>
-
-            {/* Reversal Result Inspector */}
-            {reversalResult && (
-              <div className="mt-4 space-y-2 rounded border border-line bg-sunken p-3">
-                <div className="font-mono text-2xs font-semibold text-fg">
-                  Result Step: {reversalResult.step || 'Error'}
+              <div className="mt-5 space-y-4">
+                <div>
+                  <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                    Dispute Ticket ID
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ticket ID from Step 1"
+                    value={checkerForm.ticketId}
+                    onChange={(e) => setCheckerForm({ ...checkerForm, ticketId: e.target.value })}
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
+                  />
                 </div>
-                <pre className="overflow-x-auto text-2xs text-fg-muted">
-                  {JSON.stringify(reversalResult, null, 2)}
-                </pre>
+
+                <div>
+                  <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                    Checker ID (Must Differ from Maker)
+                  </label>
+                  <input
+                    type="text"
+                    value={checkerForm.checkerId}
+                    onChange={(e) => setCheckerForm({ ...checkerForm, checkerId: e.target.value })}
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
+                  />
+                  <p className="mt-1.5 text-2xs font-medium text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                    Dual Control Rule: If Checker == `{reversalForm.makerId}`, CBS will reject with error.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                    Checker Authorization Notes
+                  </label>
+                  <input
+                    type="text"
+                    value={checkerForm.checkerNotes}
+                    onChange={(e) => setCheckerForm({ ...checkerForm, checkerNotes: e.target.value })}
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleApproveReversal}
+                    disabled={isReversing || !checkerForm.ticketId}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-xs transition-all disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="h-4 w-4" /> Approve Reversal
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleRejectReversal}
+                    disabled={isReversing || !checkerForm.ticketId}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white hover:bg-rose-50 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-rose-700 shadow-2xs transition-all disabled:opacity-50"
+                  >
+                    <XCircle className="h-4 w-4" /> Reject Ticket
+                  </button>
+                </div>
               </div>
-            )}
+
+              {/* Reversal Result Inspector */}
+              {reversalResult && (
+                <div className="mt-4 space-y-2 rounded-xl border border-purple-200 bg-purple-50/60 p-3.5">
+                  <div className="font-mono text-2xs font-bold text-purple-950">
+                    Result Step: {reversalResult.step || 'Error'}
+                  </div>
+                  <pre className="overflow-x-auto rounded-lg border border-purple-300/40 bg-[#120B24] p-3 text-2xs text-purple-200">
+                    {JSON.stringify(reversalResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1268,13 +1293,13 @@ export default function T24TestConsole() {
 
       {/* TAB 4: RAW TEMENOS OFS PROTOCOL TERMINAL */}
       {activeTab === 'ofs' && (
-        <div className="space-y-4 border border-line bg-surface p-6">
-          <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+        <div className="space-y-5 rounded-2xl border border-purple-100 bg-white p-6 shadow-sm">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <div>
-              <h2 className="flex items-center gap-2 text-base font-semibold text-fg">
-                <Terminal className="h-4 w-4 text-accent" /> Temenos Open Financial Services (OFS) Wire Playground
+              <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
+                <Terminal className="h-4 w-4 text-purple-700" /> Temenos Open Financial Services (OFS) Wire Playground
               </h2>
-              <p className="mt-1 text-xs text-fg-muted">
+              <p className="mt-1 text-xs text-slate-500">
                 Direct wire protocol endpoint (`POST /api/v1/cbs/ofs` with `Content-Type: text/plain`).
               </p>
             </div>
@@ -1284,7 +1309,7 @@ export default function T24TestConsole() {
               {[
                 {
                   label: 'FT INITIATE',
-                  cmd: 'FUNDS.TRANSFER,INITIATE/I/PROCESS//TX-9901,USER01/123456,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=ACC-1001,CREDIT.ACCT.NO=ACC-1002,AMOUNT=2500.00,CURRENCY=PHP,VALUE.DATE=20261008'
+                  cmd: 'FUNDS.TRANSFER,INITIATE/I/PROCESS//TX-9901,USER01/123456,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=acc-2002-chk-001,CREDIT.ACCT.NO=acc-2003-sav-002,AMOUNT=2500.00,CURRENCY=PHP,VALUE.DATE=20261008'
                 },
                 {
                   label: 'FT REVERSAL',
@@ -1292,22 +1317,22 @@ export default function T24TestConsole() {
                 },
                 {
                   label: 'HOLD INPUT',
-                  cmd: 'AC.LOCKED.EVENTS,INPUT/I/PROCESS/0/1,USER01/123456,,ACCOUNT.NUMBER=ACC-1001,FROM.DATE=20261008,TO.DATE=20261009,LOCKED.AMOUNT=4000.00,HOLD.REASON=MAKER_CHECKER_HOLD,EXT.REF=OFS-HLD'
+                  cmd: 'AC.LOCKED.EVENTS,INPUT/I/PROCESS/0/1,USER01/123456,,ACCOUNT.NUMBER=acc-2002-chk-001,FROM.DATE=20261008,TO.DATE=20261009,LOCKED.AMOUNT=4000.00,HOLD.REASON=MAKER_CHECKER_HOLD,EXT.REF=OFS-HLD-01'
                 },
                 {
                   label: 'HOLD REVERSE',
-                  cmd: 'AC.LOCKED.EVENTS,REVERSE/I/PROCESS/0/1,USER01/123456,,HOLD.REF=HLD-DEMO,ACCOUNT.NUMBER=ACC-1001'
+                  cmd: 'AC.LOCKED.EVENTS,REVERSE/I/PROCESS/0/1,USER01/123456,,HOLD.REF=HLD-DEMO,ACCOUNT.NUMBER=acc-2002-chk-001'
                 },
                 {
                   label: 'ENQUIRY',
-                  cmd: 'ENQUIRY.SELECT,,USER01/123456,ACCOUNT.NUMBER:EQ=ACC-1001'
+                  cmd: 'ENQUIRY.SELECT,,USER01/123456,ACCOUNT.NUMBER:EQ=acc-2002-chk-001'
                 }
               ].map((tmpl) => (
                 <button
                   key={tmpl.label}
                   type="button"
                   onClick={() => setOfsInput(tmpl.cmd)}
-                  className="rounded border border-line bg-sunken px-2 py-1 font-mono text-2xs text-fg-subtle hover:bg-surface-raised hover:text-fg"
+                  className="rounded-lg border border-purple-200 bg-purple-50/70 px-2.5 py-1 font-mono text-2xs font-semibold text-purple-900 hover:bg-purple-100 transition-colors"
                 >
                   {tmpl.label}
                 </button>
@@ -1315,30 +1340,30 @@ export default function T24TestConsole() {
             </div>
           </div>
 
-          <div className="mt-4">
-            <label className="block text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
+          <div className="mt-3">
+            <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
               OFS Wire Payload String
             </label>
             <textarea
               rows="4"
               value={ofsInput}
               onChange={(e) => setOfsInput(e.target.value)}
-              className="mt-1 w-full border border-line bg-sunken p-3 font-mono text-xs text-accent-text focus:border-accent focus:outline-none"
+              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 font-mono text-xs text-purple-950 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
             />
           </div>
 
           <div className="flex justify-end gap-3">
             <button
               onClick={() => copyToClipboard(ofsInput)}
-              className="flex items-center gap-1.5 border border-line bg-sunken px-3 py-2 text-xs font-semibold text-fg-subtle hover:bg-surface-raised"
+              className="flex items-center gap-1.5 rounded-xl border border-purple-200 bg-white px-4 py-2.5 text-xs font-semibold text-purple-900 hover:bg-purple-50 shadow-2xs transition-all"
             >
-              {copiedText ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+              {copiedText ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
               Copy Wire String
             </button>
             <button
               onClick={handleExecuteOfs}
               disabled={isExecutingOfs}
-              className="flex items-center gap-2 border border-accent bg-accent px-5 py-2 text-xs font-semibold uppercase tracking-wider text-fg-inverse hover:opacity-90 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-xs hover:shadow-md transition-all disabled:opacity-50"
             >
               {isExecutingOfs ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               Transmit OFS Payload
@@ -1347,12 +1372,12 @@ export default function T24TestConsole() {
 
           {/* Response Terminal */}
           {ofsResponse && (
-            <div className="mt-4 rounded border border-line bg-sunken p-4">
-              <div className="flex items-center justify-between text-2xs uppercase tracking-wider text-fg-subtle">
+            <div className="mt-4 rounded-xl border border-purple-900/40 bg-[#120B24] p-4 shadow-inner">
+              <div className="flex items-center justify-between text-2xs uppercase tracking-wider text-purple-300">
                 <span>Temenos Wire Protocol Response</span>
-                <span className="font-mono text-emerald-400">HTTP 200 OK</span>
+                <span className="font-mono text-emerald-400 font-bold">HTTP 200 OK</span>
               </div>
-              <pre className="mt-2 overflow-x-auto font-mono text-xs text-emerald-400">
+              <pre className="mt-2.5 overflow-x-auto font-mono text-xs text-emerald-300">
                 {ofsResponse}
               </pre>
             </div>
@@ -1362,13 +1387,13 @@ export default function T24TestConsole() {
 
       {/* TAB 5: COB & EOD LIFECYCLE */}
       {activeTab === 'cob' && (
-        <div className="space-y-6 border border-line bg-surface p-6">
+        <div className="space-y-6 rounded-2xl border border-purple-100 bg-white p-6 shadow-sm">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div>
-              <h2 className="flex items-center gap-2 text-base font-semibold text-fg">
-                <Moon className="h-4 w-4 text-purple-400" /> Close of Business (COB) & EOD Batch Simulation
+              <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
+                <Moon className="h-4 w-4 text-purple-700" /> Close of Business (COB) & EOD Batch Simulation
               </h2>
-              <p className="mt-1 text-xs text-fg-muted">
+              <p className="mt-1 text-xs text-slate-500">
                 Executes the 5-phase COB sequence: Cutoff &rarr; Zero-overdraft fee collection &rarr; BIR 20%
                 tax withholding & interest accrual &rarr; EOD snapshot & GL reconciliation &rarr; Rollover to T+1.
               </p>
@@ -1377,7 +1402,7 @@ export default function T24TestConsole() {
             <button
               onClick={handleRunCob}
               disabled={isExecutingCob}
-              className="flex items-center gap-2 border border-purple-500/50 bg-purple-500/20 px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-purple-300 hover:bg-purple-500/30 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-6 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-xs hover:shadow-md transition-all disabled:opacity-50"
             >
               {isExecutingCob ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               Run Full COB Sequence
@@ -1385,43 +1410,43 @@ export default function T24TestConsole() {
           </div>
 
           {/* Phase progression cards */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
+          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-5">
             {[
               { phase: 'Phase 0', title: 'Cutoff Posting Window', desc: 'Closes window, sets EOD_CUTOFF' },
               { phase: 'Phase 1', title: 'Zero-Overdraft Fees', desc: 'Accounts < 5000 ADB, arrears safe' },
               { phase: 'Phase 2', title: 'Interest & BIR 20% Tax', desc: 'Daily accrual & 20% tax withhold' },
               { phase: 'Phase 3', title: 'GL Reconciliation', desc: 'Sum debits == credits check' },
               { phase: 'Phase 4', title: 'Rollover to T+1', desc: 'Advances system date to next day' }
-            ].map((p, idx) => (
-              <div key={p.phase} className="border border-line bg-sunken p-3">
-                <div className="font-mono text-2xs text-purple-400">{p.phase}</div>
-                <div className="mt-1 text-xs font-semibold text-fg">{p.title}</div>
-                <div className="mt-1 text-2xs text-fg-subtle">{p.desc}</div>
+            ].map((p) => (
+              <div key={p.phase} className="rounded-xl border border-purple-100 bg-purple-50/40 p-4 shadow-2xs hover:bg-purple-50/70 transition-colors">
+                <div className="font-mono text-2xs font-bold text-purple-700">{p.phase}</div>
+                <div className="mt-1.5 text-xs font-bold text-slate-900">{p.title}</div>
+                <div className="mt-1 text-2xs text-slate-500 leading-snug">{p.desc}</div>
               </div>
             ))}
           </div>
 
           {cobResult && (
-            <div className="rounded border border-line bg-sunken p-4">
-              <div className="font-mono text-xs font-semibold text-purple-400">
+            <div className="rounded-xl border border-purple-900/40 bg-[#120B24] p-4 shadow-inner">
+              <div className="font-mono text-xs font-bold text-purple-300">
                 COB Execution Summary
               </div>
-              <pre className="mt-2 overflow-x-auto font-mono text-2xs text-fg">
+              <pre className="mt-2 overflow-x-auto font-mono text-2xs text-purple-200">
                 {JSON.stringify(cobResult, null, 2)}
               </pre>
             </div>
           )}
 
           {/* Azurite Reports Link */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-line/60 pt-4">
-            <span className="text-xs text-fg-muted">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-purple-100 pt-4">
+            <span className="text-xs text-slate-500">
               Generated BIR 2306 tax certificates, customer statements, and GL reconciliation reports are saved in Azurite Blob Storage:
             </span>
             <a
               href="/azurite-drive"
-              className="flex items-center gap-2 border border-purple-500/40 bg-purple-950/20 px-3 py-1.5 text-xs font-semibold text-purple-300 hover:bg-purple-900/40"
+              className="flex items-center gap-2 rounded-xl border border-purple-200 bg-purple-50 px-4 py-2 text-xs font-bold text-purple-900 hover:bg-purple-100 shadow-2xs transition-all"
             >
-              <FileText className="h-4 w-4" /> Open Azurite Drive Storage
+              <FileText className="h-4 w-4 text-purple-700" /> Open Azurite Drive Storage
             </a>
           </div>
         </div>
@@ -1429,38 +1454,38 @@ export default function T24TestConsole() {
 
       {/* TAB 6: DLQ & CIRCUIT BREAKER REPLAYS */}
       {activeTab === 'dlq' && (
-        <div className="space-y-4 border border-line bg-surface p-6">
+        <div className="space-y-5 rounded-2xl border border-purple-100 bg-white p-6 shadow-sm">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div>
-              <h2 className="flex items-center gap-2 text-base font-semibold text-fg">
-                <AlertTriangle className="h-4 w-4 text-rose-400" /> Dead Letter Queue (DLQ) Incident Replays &amp; Failed Transactions
+              <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
+                <AlertTriangle className="h-4 w-4 text-rose-500" /> Dead Letter Queue (DLQ) Incident Replays &amp; Failed Transactions
               </h2>
-              <p className="mt-1 text-xs text-fg-muted">
+              <p className="mt-1 text-xs text-slate-500">
                 Transactions queued to `banking.transfers.dlq` when CBS is unavailable, times out, or trips the circuit breaker.
               </p>
             </div>
             <button
               onClick={fetchDlqIncidents}
-              className="flex items-center gap-1.5 border border-line bg-sunken px-3 py-1.5 text-xs text-fg-subtle hover:bg-surface-raised hover:text-fg"
+              className="flex items-center gap-1.5 rounded-xl border border-purple-200 bg-white px-3.5 py-2 text-xs font-semibold text-purple-900 hover:bg-purple-50 shadow-2xs transition-all"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isLoadingDlq ? 'animate-spin' : ''}`} /> Refresh Incidents
             </button>
           </div>
 
           {/* Failure Injection & Simulation Bar */}
-          <div className="border border-line bg-sunken p-4 space-y-2">
-            <div className="text-2xs font-semibold uppercase tracking-wider text-rose-400">
-              ⚡ Failure Injection &amp; Telemetry Testing
+          <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-4 space-y-2.5">
+            <div className="text-2xs font-bold uppercase tracking-wider text-purple-950 flex items-center gap-1.5">
+              <span>⚡ Failure Injection &amp; Telemetry Testing</span>
             </div>
-            <p className="text-2xs text-fg-muted">
+            <p className="text-2xs text-slate-600">
               Inject simulated failure modes into the core ledger to observe circuit breaker trips, retry telemetry, and manual remediation:
             </p>
-            <div className="flex flex-wrap gap-2 pt-1">
+            <div className="flex flex-wrap gap-2.5 pt-1">
               <button
                 type="button"
                 onClick={() => handleSimulateFailure('NETWORK_TIMEOUT', 'HTTP_504', 'OPEN')}
                 disabled={isSimulatingFailure}
-                className="flex items-center gap-1.5 border border-rose-500/40 bg-rose-950/20 px-3 py-1.5 text-2xs font-semibold text-rose-300 hover:bg-rose-900/40 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-2xs font-bold text-rose-700 hover:bg-rose-100 shadow-2xs transition-all disabled:opacity-50"
               >
                 <AlertTriangle className="h-3.5 w-3.5" /> Simulate Network Timeout (HTTP 504 / Circuit Breaker OPEN)
               </button>
@@ -1468,7 +1493,7 @@ export default function T24TestConsole() {
                 type="button"
                 onClick={() => handleSimulateFailure('CBS_CUTOFF_REJECTION', 'EOD_CUTOFF_IN_PROGRESS', 'HALF_OPEN')}
                 disabled={isSimulatingFailure}
-                className="flex items-center gap-1.5 border border-amber-500/40 bg-amber-950/20 px-3 py-1.5 text-2xs font-semibold text-amber-300 hover:bg-amber-900/40 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-2xs font-bold text-amber-800 hover:bg-amber-100 shadow-2xs transition-all disabled:opacity-50"
               >
                 <Moon className="h-3.5 w-3.5" /> Simulate Posting Cutoff Rejection (EOD_CUTOFF)
               </button>
@@ -1476,7 +1501,7 @@ export default function T24TestConsole() {
                 type="button"
                 onClick={() => handleSimulateFailure('CORE_DOWN_503', 'HTTP_503', 'OPEN')}
                 disabled={isSimulatingFailure}
-                className="flex items-center gap-1.5 border border-purple-500/40 bg-purple-950/20 px-3 py-1.5 text-2xs font-semibold text-purple-300 hover:bg-purple-900/40 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-100/70 px-3 py-1.5 text-2xs font-bold text-purple-900 hover:bg-purple-200 shadow-2xs transition-all disabled:opacity-50"
               >
                 <RotateCcw className="h-3.5 w-3.5" /> Simulate CBS Core Down (HTTP 503 / Trip Circuit Breaker)
               </button>
@@ -1484,32 +1509,32 @@ export default function T24TestConsole() {
           </div>
 
           {dlqIncidents.length > 0 ? (
-            <div className="overflow-x-auto border border-line">
+            <div className="overflow-x-auto rounded-xl border border-purple-100 bg-white shadow-2xs">
               <table className="w-full text-left font-mono text-xs">
-                <thead className="bg-sunken text-2xs uppercase text-fg-subtle">
+                <thead className="bg-purple-50/80 text-2xs uppercase text-purple-950 font-bold border-b border-purple-100">
                   <tr>
-                    <th className="p-3">Incident / Transfer ID</th>
-                    <th className="p-3">Error / Reason</th>
-                    <th className="p-3">Circuit Breaker</th>
-                    <th className="p-3">Timestamp</th>
-                    <th className="p-3 text-right">Action</th>
+                    <th className="p-3.5">Incident / Transfer ID</th>
+                    <th className="p-3.5">Error / Reason</th>
+                    <th className="p-3.5">Circuit Breaker</th>
+                    <th className="p-3.5">Timestamp</th>
+                    <th className="p-3.5 text-right">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-line bg-surface text-fg">
+                <tbody className="divide-y divide-purple-50 bg-white text-slate-800">
                   {dlqIncidents.map((inc) => (
-                    <tr key={inc.incidentId || inc.transactionId} className="hover:bg-sunken">
-                      <td className="p-3 font-semibold">{inc.transactionId || inc.incidentId}</td>
-                      <td className="p-3 text-2xs text-rose-400">{inc.errorType || 'CBS_TIMEOUT'}</td>
-                      <td className="p-3">
-                        <span className="border border-rose-500/30 bg-rose-500/10 px-1.5 py-0.5 text-2xs text-rose-400">
+                    <tr key={inc.incidentId || inc.transactionId} className="hover:bg-purple-50/40 transition-colors">
+                      <td className="p-3.5 font-bold text-slate-900">{inc.transactionId || inc.incidentId}</td>
+                      <td className="p-3.5 text-2xs font-semibold text-rose-600">{inc.errorType || 'CBS_TIMEOUT'}</td>
+                      <td className="p-3.5">
+                        <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-2xs font-bold text-rose-700">
                           {inc.circuitBreakerState || 'OPEN'}
                         </span>
                       </td>
-                      <td className="p-3 text-2xs text-fg-subtle">{inc.failureTimestampUtc || 'Just now'}</td>
-                      <td className="p-3 text-right">
+                      <td className="p-3.5 text-2xs text-slate-500">{inc.failureTimestampUtc || 'Just now'}</td>
+                      <td className="p-3.5 text-right">
                         <button
                           onClick={() => handleReplayDlq(inc.transactionId || inc.incidentId)}
-                          className="border border-accent bg-accent/10 px-2.5 py-1 text-2xs font-semibold uppercase text-accent-text hover:bg-accent/20"
+                          className="rounded-lg bg-[#311075] hover:bg-[#250C5C] px-3.5 py-1 text-2xs font-bold uppercase text-white shadow-2xs transition-all"
                         >
                           Replay
                         </button>
@@ -1520,9 +1545,10 @@ export default function T24TestConsole() {
               </table>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center p-8 text-center text-fg-subtle">
-              <CheckCircle2 className="h-8 w-8 text-emerald-400" />
-              <p className="mt-2 text-xs">No pending DLQ incidents. Circuit breaker is CLOSED and healthy.</p>
+            <div className="flex flex-col items-center justify-center p-10 text-center text-slate-400">
+              <CheckCircle2 className="h-10 w-10 text-emerald-500 mb-2" />
+              <p className="text-xs font-semibold text-slate-700">No pending DLQ incidents</p>
+              <p className="mt-1 text-2xs text-slate-400">Circuit breaker is CLOSED and all transfer pathways are healthy.</p>
             </div>
           )}
         </div>
