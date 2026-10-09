@@ -520,11 +520,20 @@ class CardTilt extends StatefulWidget {
 class _CardTiltState extends State<CardTilt>
     with SingleTickerProviderStateMixin {
   final ValueNotifier<Offset> _tilt = ValueNotifier(Offset.zero);
-  late final AnimationController _settle = AnimationController(
-      vsync: this, duration: AuraMotion.medium)
-    ..addListener(() => _tilt.value = Offset.lerp(
-        _from, Offset.zero, AuraMotion.emphasized.transform(_settle.value))!);
+  late final AnimationController _settle;
   Offset _from = Offset.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _settle = AnimationController(vsync: this, duration: AuraMotion.medium)
+      ..addListener(() {
+        if (mounted) {
+          _tilt.value = Offset.lerp(
+              _from, Offset.zero, AuraMotion.emphasized.transform(_settle.value))!;
+        }
+      });
+  }
 
   void _track(Offset local, Size size) {
     _settle.stop();

@@ -30,8 +30,8 @@ class PessimisticLockConcurrencyTest {
     @Autowired
     private BalanceMasterRepository balanceRepository;
 
-    private static final String SENDER_ID = "acc-2001-sav-001";
-    private static final String RECEIVER_ID = "acc-2002-chk-001";
+    private static final String SENDER_ID = "1000-2000-3001";
+    private static final String RECEIVER_ID = "1000-2000-3002";
 
     @BeforeEach
     void setupAccounts() {
@@ -47,22 +47,18 @@ class PessimisticLockConcurrencyTest {
         }
 
         // Reset Sender with exactly PHP 10,000.00
-        BalanceMaster sender = balanceRepository.findById(SENDER_ID).orElseGet(() ->
-                BalanceMaster.builder().accountId(SENDER_ID).build());
+        BalanceMaster sender = balanceRepository.findByAccountId(SENDER_ID).orElseThrow();
         sender.setBalanceAmount(new BigDecimal("10000.0000"));
         sender.setHoldAmount(BigDecimal.ZERO);
         sender.setAvailableBalance(new BigDecimal("10000.0000"));
-        sender.setCreatedAt(Instant.now());
         sender.setUpdatedAt(Instant.now());
         balanceRepository.saveAndFlush(sender);
 
         // Reset Receiver with exactly PHP 5,000.00
-        BalanceMaster receiver = balanceRepository.findById(RECEIVER_ID).orElseGet(() ->
-                BalanceMaster.builder().accountId(RECEIVER_ID).build());
+        BalanceMaster receiver = balanceRepository.findByAccountId(RECEIVER_ID).orElseThrow();
         receiver.setBalanceAmount(new BigDecimal("5000.0000"));
         receiver.setHoldAmount(BigDecimal.ZERO);
         receiver.setAvailableBalance(new BigDecimal("5000.0000"));
-        receiver.setCreatedAt(Instant.now());
         receiver.setUpdatedAt(Instant.now());
         balanceRepository.saveAndFlush(receiver);
     }
@@ -115,8 +111,8 @@ class PessimisticLockConcurrencyTest {
         startLatch.countDown();
         finishLatch.await(10, TimeUnit.SECONDS);
 
-        BalanceMaster finalSender = balanceRepository.findById(SENDER_ID).orElseThrow();
-        BalanceMaster finalReceiver = balanceRepository.findById(RECEIVER_ID).orElseThrow();
+        BalanceMaster finalSender = balanceRepository.findByAccountId(SENDER_ID).orElseThrow();
+        BalanceMaster finalReceiver = balanceRepository.findByAccountId(RECEIVER_ID).orElseThrow();
 
         System.out.println("==========================================================");
         System.out.println(">>> PESSIMISTIC LOCK CONCURRENCY TEST RESULTS <<<");

@@ -50,7 +50,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Welcome Back!'), findsOneWidget);
+    expect(find.textContaining('Welcome back'), findsOneWidget);
     expect(find.text('elijahriley.montefalco@gmail.com'), findsOneWidget);
     expect(find.text('Sign in'), findsOneWidget);
 
@@ -476,11 +476,14 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         navigatorKey: rootNavigatorKey,
+        routes: {
+          '/login': (context) => const LoginScreen(),
+        },
         home: const LoginScreen(),
       ),
     );
 
-    expect(find.text('Welcome Back!'), findsOneWidget);
+    expect(find.textContaining('Welcome back'), findsOneWidget);
 
     // Inject a DEVICE_REVOKED event
     NotificationStreamService().injectDeviceApprovalEvent({
@@ -492,7 +495,7 @@ void main() {
 
     // Verify unauthenticated client does NOT display revoked banner
     expect(find.text('Access revoked. You have been logged out of this session.'), findsNothing);
-    expect(find.text('Welcome Back!'), findsOneWidget);
+    expect(find.textContaining('Welcome back'), findsOneWidget);
   });
 
   testWidgets('Authenticated session suppresses duplicate DEVICE_REVOKED events',
@@ -503,6 +506,9 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         navigatorKey: rootNavigatorKey,
+        routes: {
+          '/login': (context) => const LoginScreen(),
+        },
         home: const Scaffold(
           body: Text('Active Session Screen'),
         ),

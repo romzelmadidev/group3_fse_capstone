@@ -13,6 +13,8 @@ ALTER SESSION SET CONTAINER = XEPDB1;
 ALTER SESSION SET CURRENT_SCHEMA = fse_user;
 
 -- Drop existing tables in reverse dependency order
+DROP TABLE reversal_requests CASCADE CONSTRAINTS;
+DROP TABLE transaction_status_history CASCADE CONSTRAINTS;
 DROP TABLE outbox_events CASCADE CONSTRAINTS;
 DROP TABLE notifications CASCADE CONSTRAINTS;
 DROP TABLE auth_sessions CASCADE CONSTRAINTS;
@@ -228,6 +230,40 @@ CREATE TABLE device_push_tokens (
     CONSTRAINT chk_push_platform CHECK (platform IN ('ANDROID', 'IOS', 'WEB'))
 );
 
+-- ==============================================================================
+-- 9. Table: reversal_requests (Dual-Control Maker-Checker Reversals)
+-- ==============================================================================
+CREATE TABLE reversal_requests (
+    ticket_id                VARCHAR2(64) PRIMARY KEY,
+    original_transaction_id  VARCHAR2(64) NOT NULL,
+    maker_id                 VARCHAR2(64) NOT NULL,
+    checker_id               VARCHAR2(64),
+    status                   VARCHAR2(30) DEFAULT 'PENDING' NOT NULL,
+    dispute_reason           VARCHAR2(100) NOT NULL,
+    maker_notes              VARCHAR2(255),
+    checker_notes            VARCHAR2(255),
+    reversal_transaction_id  VARCHAR2(64),
+    created_at               TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    resolved_at              TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT chk_rev_status CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED'))
+);
+
+-- ==============================================================================
+-- 10. Table: transaction_status_history (Audit Trail for Transfer Lifecycle)
+-- ==============================================================================
+CREATE TABLE transaction_status_history (
+    history_id      VARCHAR2(64) PRIMARY KEY,
+    transaction_id  VARCHAR2(64) NOT NULL,
+    from_status     VARCHAR2(30),
+    to_status       VARCHAR2(30) NOT NULL,
+    change_reason   VARCHAR2(50) NOT NULL,
+    reason_details  VARCHAR2(255),
+    actor_id        VARCHAR2(64) NOT NULL,
+    actor_type      VARCHAR2(30) NOT NULL,
+    changed_at      TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT fk_tsh_tx FOREIGN KEY (transaction_id) REFERENCES transactions(transaction_id)
+);
+
 -- Note: Authentication session tokens and revocations are persisted in Redis (redis-cache).
 
 -- ==============================================================================
@@ -242,6 +278,9 @@ CREATE INDEX idx_notif_user ON notifications(user_id, sent_at DESC);
 CREATE INDEX idx_kyc_status ON kyc_submissions(status, created_at);
 CREATE INDEX idx_kyc_user ON kyc_submissions(user_id, created_at DESC);
 CREATE INDEX idx_push_user ON device_push_tokens(user_id);
+CREATE INDEX idx_rev_status ON reversal_requests(status, created_at DESC);
+CREATE INDEX idx_rev_orig_tx ON reversal_requests(original_transaction_id);
+CREATE INDEX idx_tsh_tx ON transaction_status_history(transaction_id, changed_at ASC);
 
 -- ==============================================================================
 -- Seed Population: Realistic Banking Dataset
