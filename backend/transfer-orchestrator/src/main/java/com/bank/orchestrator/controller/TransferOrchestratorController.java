@@ -1,6 +1,7 @@
 package com.bank.orchestrator.controller;
 
 import com.bank.ledger.contracts.dto.AccountTransactionDto;
+import com.bank.ledger.contracts.dto.TransactionStatusHistoryDto;
 import com.bank.orchestrator.dto.*;
 import com.bank.orchestrator.service.BiometricChallengeService;
 import com.bank.orchestrator.service.CoolOffService;
@@ -53,6 +54,17 @@ public class TransferOrchestratorController {
         int safeSize = Math.min(Math.max(1, size), 100);
         List<AccountTransactionDto> transactions = cbsService.getAccountTransactions(accountId, safePage, safeSize);
         return ResponseEntity.ok(transactions);
+    }
+
+    @GetMapping({"/transactions/{transactionId}/status-history", "/{transactionId}/status-history"})
+    public ResponseEntity<List<TransactionStatusHistoryDto>> getTransactionStatusHistory(
+            @PathVariable String transactionId,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        List<TransactionStatusHistoryDto> history = cbsService.getTransactionStatusHistory(transactionId, safePage, safeSize);
+        return ResponseEntity.ok(history);
     }
 
     @GetMapping("/accounts/{accountId}/balance")

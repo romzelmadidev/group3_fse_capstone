@@ -1,5 +1,6 @@
 package com.bank.orchestrator.controller;
 
+import com.bank.ledger.contracts.dto.ReversalTicketDto;
 import com.bank.ledger.contracts.ofs.OfsMessageUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -9,6 +10,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Duration;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -21,6 +24,35 @@ public class ReversalOrchestratorController {
             WebClient.Builder webClientBuilder,
             @Value("${services.cbs.url:http://localhost:8085}") String cbsServiceUrl) {
         this.cbsWebClient = webClientBuilder.baseUrl(cbsServiceUrl).build();
+    }
+
+    @GetMapping
+    public ResponseEntity<List<ReversalTicketDto>> getReversalRequests(
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        try {
+            String ofsResp = cbsWebClient.get()
+                    .uri(uriBuilder -> {
+                        var b = uriBuilder.path("/api/v1/cbs/reversals")
+                                .queryParam("page", safePage)
+                                .queryParam("size", safeSize);
+                        if (status != null && !status.isBlank()) {
+                            b.queryParam("status", status.trim().toUpperCase());
+                        }
+                        return b.build();
+                    })
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofMillis(3000))
+                    .block();
+            List<ReversalTicketDto> tickets = OfsMessageUtil.parseReversalListResponse(ofsResp);
+            return ResponseEntity.ok(tickets != null ? tickets : Collections.emptyList());
+        } catch (Exception e) {
+            return ResponseEntity.ok(Collections.emptyList());
+        }
     }
 
     @PostMapping("/request")

@@ -12,8 +12,10 @@ The T24 Mock CBS (`backend/t24-mock-cbs`) acts as a canonical Temenos T24 host. 
 | Category | T24 Mock CBS Endpoint | Method | Format | Mapped Orchestrator Endpoint | Orchestrator Format |
 | :--- | :--- | :---: | :---: | :--- | :---: |
 | **Transaction History** | `/api/v1/cbs/accounts/{accountId}/transactions` | `GET` | OFS (`text/plain`) | `/api/v1/transfers/accounts/{accountId}/transactions` | JSON Array (`AccountTransactionDto[]`) |
+| **Status History** | `/api/v1/cbs/transactions/{transactionId}/status-history` | `GET` | OFS (`text/plain`) | `/api/v1/transfers/transactions/{transactionId}/status-history` | JSON Array (`TransactionStatusHistoryDto[]`) |
 | **Funds Transfer** | `/api/v1/cbs/funds-transfer` | `POST` | OFS (`text/plain`) | `/api/v1/transfers` | JSON (`TransferInitiationRequest` / `Response`) |
 | **Direct / Saga Reversal** | `/api/v1/cbs/reversal` | `POST` | OFS (`text/plain`) | `/api/v1/reversals/direct` (or `/compensate`) | JSON Map |
+| **Reversals List** | `/api/v1/cbs/reversals` | `GET` | OFS (`text/plain`) | `/api/v1/reversals` | JSON Array (`ReversalTicketDto[]`) |
 | **Dual-Control Request** | `/api/v1/cbs/reversals/request` | `POST` | OFS (`text/plain`) | `/api/v1/reversals/request` | JSON Map |
 | **Dual-Control Approve** | `/api/v1/cbs/reversals/approve` | `POST` | OFS (`text/plain`) | `/api/v1/reversals/approve` | JSON Map |
 | **Dual-Control Reject** | `/api/v1/cbs/reversals/reject` | `POST` | OFS (`text/plain`) | `/api/v1/reversals/reject` | JSON Map |
@@ -78,6 +80,64 @@ The T24 Mock CBS (`backend/t24-mock-cbs`) acts as a canonical Temenos T24 host. 
   ```
 
 *(Note: T24 Mock CBS also implements an immutable compliance audit endpoint [`GET /api/v1/cbs/audit/accounts/{accountId}/mutations`](/backend/t24-mock-cbs/src/main/java/com/bank/cbs/controller/CbsAuditController.java#L29-L35) for querying audit entries from PostgreSQL. This is mapped to `compliance-service`, rather than `transfer-orchestrator`.)*
+
+---
+
+### 1B. Getting Transaction Status History (Audit Trail of Transitions)
+
+#### T24 Mock CBS Endpoint
+* **Endpoint:** `GET /api/v1/cbs/transactions/{transactionId}/status-history`
+* **Controller:** [`CbsPostingController.getTransactionStatusHistory()`](/backend/t24-mock-cbs/src/main/java/com/bank/cbs/controller/CbsPostingController.java#L150-L180)
+* **Repository:** [`TransactionStatusHistoryMasterRepository.findByTransactionIdOrderByChangedAtAsc()`](/backend/t24-mock-cbs/src/main/java/com/bank/cbs/repository/master/TransactionStatusHistoryMasterRepository.java)
+* **Purpose:** Queries chronological state transition records (`TransactionStatusHistoryMaster` table) for a specific transaction (e.g., when it moved from `INITIATED` to `PROCESSING`, `POSTED`, or `REVERSED`), returning an OFS-formatted audit trail.
+* **HTTP Method:** `GET`
+* **Path Variable:** `transactionId` (String)
+* **Query Parameters:**
+  * `page` (int, default: `0`)
+  * `size` (int, default: `20`, max: `100`)
+* **Request Payload:** None (HTTP GET).
+* **CBS Response Payload (`text/plain`, OFS syntax):**
+  ```text
+  //1,SUCCESS,TRANSACTION.ID=TXN-1001,PAGE=0,SIZE=20,TOTAL=2,DATA=HISTORY.ID=HIST-01:TRANSACTION.ID=TXN-1001:FROM.STATUS=INITIATED:TO.STATUS=PROCESSING:CHANGE.REASON=ORCHESTRATOR_DISPATCH:REASON.DETAILS=Forwarded to CBS:ACTOR.ID=ORCHESTRATOR:ACTOR.TYPE=SERVICE:CHANGED.AT=2026-10-09T08:00:00Z;;HISTORY.ID=HIST-02:TRANSACTION.ID=TXN-1001:FROM.STATUS=PROCESSING:TO.STATUS=POSTED:CHANGE.REASON=CBS_POSTING_CONFIRMED:REASON.DETAILS=Ledger balances updated:ACTOR.ID=CBS_POSTING_ENGINE:ACTOR.TYPE=SYSTEM:CHANGED.AT=2026-10-09T08:00:01Z;;
+  ```
+  *Format structure:* `//1,SUCCESS,TRANSACTION.ID={txId},PAGE={page},SIZE={size},TOTAL={count},DATA=HISTORY.ID={id}:TRANSACTION.ID={txId}:FROM.STATUS={from}:TO.STATUS={to}:CHANGE.REASON={reason}:REASON.DETAILS={details}:ACTOR.ID={actorId}:ACTOR.TYPE={actorType}:CHANGED.AT={timestamp};;...`
+
+---
+
+#### Mapped Equivalent in Orchestrator: **YES**
+
+* **Orchestrator Endpoint:** `GET /api/v1/transfers/transactions/{transactionId}/status-history` *(or alias `GET /api/v1/transfers/{transactionId}/status-history`)*
+* **Controller:** [`TransferOrchestratorController.getTransactionStatusHistory()`](/backend/transfer-orchestrator/src/main/java/com/bank/orchestrator/controller/TransferOrchestratorController.java#L59-L68)
+* **Service:** [`CbsClientService.getTransactionStatusHistory()`](/backend/transfer-orchestrator/src/main/java/com/bank/orchestrator/service/CbsClientService.java#L115-L136)
+* **How it Maps:** The orchestrator invokes the CBS OFS endpoint, parses the OFS string using [`OfsMessageUtil.parseStatusHistoryResponse()`](/backend/common-contracts/src/main/java/com/bank/ledger/contracts/ofs/OfsMessageUtil.java#L508-L542), and converts each record into a JSON [`TransactionStatusHistoryDto`](/backend/common-contracts/src/main/java/com/bank/ledger/contracts/dto/TransactionStatusHistoryDto.java).
+* **Orchestrator Request Payload:** None (HTTP GET with query parameters `page` and `size`).
+* **Orchestrator Response Payload (`application/json`):**
+  ```json
+  [
+    {
+      "historyId": "HIST-01",
+      "transactionId": "TXN-1001",
+      "fromStatus": "INITIATED",
+      "toStatus": "PROCESSING",
+      "changeReason": "ORCHESTRATOR_DISPATCH",
+      "reasonDetails": "Forwarded to CBS",
+      "actorId": "ORCHESTRATOR",
+      "actorType": "SERVICE",
+      "changedAt": "2026-10-09T08:00:00Z"
+    },
+    {
+      "historyId": "HIST-02",
+      "transactionId": "TXN-1001",
+      "fromStatus": "PROCESSING",
+      "toStatus": "POSTED",
+      "changeReason": "CBS_POSTING_CONFIRMED",
+      "reasonDetails": "Ledger balances updated",
+      "actorId": "CBS_POSTING_ENGINE",
+      "actorType": "SYSTEM",
+      "changedAt": "2026-10-09T08:00:01Z"
+    }
+  ]
+  ```
 
 ---
 
@@ -328,4 +388,49 @@ Three separate endpoints are implemented in [`CbsReversalController`](/backend/t
       "ORIGINAL.FT.NO": "TXN-9001",
       "MESSAGE": "Reversal rejected"
     }
+    ```
+
+---
+
+#### 4. Query Reversal Requests (Back-Office / Checker Queue)
+* **T24 Mock Endpoint:** `GET /api/v1/cbs/reversals`
+* **Controller:** [`CbsReversalController.getReversalRequests()`](/backend/t24-mock-cbs/src/main/java/com/bank/cbs/controller/CbsReversalController.java#L34-L57)
+* **Service:** [`CbsReversalService.getReversalRequests()`](/backend/t24-mock-cbs/src/main/java/com/bank/cbs/service/CbsReversalService.java#L47-L59)
+* **Repository:** [`ReversalRequestMasterRepository.findAllByOrderByCreatedAtDesc()` / `findByStatusOrderByCreatedAtDesc()`](/backend/t24-mock-cbs/src/main/java/com/bank/cbs/repository/master/ReversalRequestMasterRepository.java)
+* **Purpose:** Queries dual-control reversal tickets (`ReversalRequestMaster` table) with pagination, allowing back-office supervisors or auditors to view the queue of pending, approved, or rejected disputes.
+* **HTTP Method:** `GET`
+* **Query Parameters:**
+  * `status` (String, optional): Filter by status (`PENDING`, `APPROVED`, `REJECTED`). If omitted, returns all.
+  * `page` (int, default: `0`)
+  * `size` (int, default: `20`, max: `100`)
+* **Request Payload:** None (HTTP GET).
+* **CBS Response Payload (`text/plain`, OFS syntax):**
+  ```text
+  //1,SUCCESS,PAGE=0,SIZE=20,TOTAL=1,DATA=TICKET.ID=REV-TKT-100:ORIGINAL.TX.ID=TXN-ORIG-100:MAKER.ID=MAKER01:CHECKER.ID=CHECKER01:STATUS=PENDING:DISPUTE.REASON=DUPLICATE_CHARGE:MAKER.NOTES=Customer reported double swipe:CHECKER.NOTES=:REVERSAL.TX.ID=:CREATED.AT=2026-10-09T08:30:00Z:RESOLVED.AT=;;
+  ```
+  *Format structure:* `//1,SUCCESS,PAGE={page},SIZE={size},TOTAL={count},DATA=TICKET.ID={ticketId}:ORIGINAL.TX.ID={origTxId}:MAKER.ID={makerId}:CHECKER.ID={checkerId}:STATUS={status}:DISPUTE.REASON={reason}:MAKER.NOTES={makerNotes}:CHECKER.NOTES={checkerNotes}:REVERSAL.TX.ID={revTxId}:CREATED.AT={createdAt}:RESOLVED.AT={resolvedAt};;...`
+
+* **Mapped Equivalent in Orchestrator:** **YES**
+  * **Orchestrator Endpoint:** `GET /api/v1/reversals`
+  * **Controller:** [`ReversalOrchestratorController.getReversalRequests()`](/backend/transfer-orchestrator/src/main/java/com/bank/orchestrator/controller/ReversalOrchestratorController.java#L29-L56)
+  * **Service:** [`CbsClientService.getReversalRequests()`](/backend/transfer-orchestrator/src/main/java/com/bank/orchestrator/service/CbsClientService.java#L90-L113)
+  * **How it Maps:** The orchestrator queries the CBS OFS endpoint, parses the OFS records using [`OfsMessageUtil.parseReversalListResponse()`](/backend/common-contracts/src/main/java/com/bank/ledger/contracts/ofs/OfsMessageUtil.java#L471-L505), and returns a JSON array of [`ReversalTicketDto`](/backend/common-contracts/src/main/java/com/bank/ledger/contracts/dto/ReversalTicketDto.java).
+  * **Orchestrator Request Payload:** None (HTTP GET with query parameters `status`, `page`, and `size`).
+  * **Orchestrator Response Payload (`application/json`):**
+    ```json
+    [
+      {
+        "ticketId": "REV-TKT-100",
+        "originalTransactionId": "TXN-ORIG-100",
+        "makerId": "MAKER01",
+        "checkerId": "CHECKER01",
+        "status": "PENDING",
+        "disputeReason": "DUPLICATE_CHARGE",
+        "makerNotes": "Customer reported double swipe",
+        "checkerNotes": null,
+        "reversalTransactionId": null,
+        "createdAt": "2026-10-09T08:30:00Z",
+        "resolvedAt": null
+      }
+    ]
     ```

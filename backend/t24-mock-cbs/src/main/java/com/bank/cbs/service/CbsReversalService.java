@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +24,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -56,6 +58,17 @@ public class CbsReversalService {
         this.outboxRepository = outboxRepository;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
+    }
+
+    @Transactional(value = "masterTransactionManager", readOnly = true)
+    public List<ReversalRequestMaster> getReversalRequests(String status, int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        PageRequest pageRequest = PageRequest.of(safePage, safeSize);
+        if (status != null && !status.isBlank()) {
+            return reversalRequestRepository.findByStatusOrderByCreatedAtDesc(status.trim().toUpperCase(), pageRequest).getContent();
+        }
+        return reversalRequestRepository.findAllByOrderByCreatedAtDesc(pageRequest).getContent();
     }
 
     @Transactional("masterTransactionManager")

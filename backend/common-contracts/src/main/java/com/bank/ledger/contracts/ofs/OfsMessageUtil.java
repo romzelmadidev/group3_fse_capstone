@@ -1,6 +1,8 @@
 package com.bank.ledger.contracts.ofs;
 
 import com.bank.ledger.contracts.dto.AccountTransactionDto;
+import com.bank.ledger.contracts.dto.ReversalTicketDto;
+import com.bank.ledger.contracts.dto.TransactionStatusHistoryDto;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -435,6 +437,156 @@ public final class OfsMessageUtil {
                     dto.setCreatedAt(Instant.parse(cols[7]));
                 } catch (Exception ignored) {}
             }
+            list.add(dto);
+        }
+        return list;
+    }
+
+    /**
+     * Builds an OFS reversal list enquiry response string with pagination metadata.
+     */
+    public static String buildReversalListResponse(List<ReversalTicketDto> tickets, int page, int size) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("//1,SUCCESS,OPERATION=REVERSAL.LIST,PAGE=%d,SIZE=%d,COUNT=%d,DATA=",
+                Math.max(0, page), Math.max(1, size), tickets != null ? tickets.size() : 0));
+        if (tickets != null && !tickets.isEmpty()) {
+            for (int i = 0; i < tickets.size(); i++) {
+                ReversalTicketDto t = tickets.get(i);
+                if (i > 0) {
+                    sb.append(";;");
+                }
+                String reason = t.getDisputeReason() != null ? t.getDisputeReason().replace(":", "-").replace(";", ",") : "";
+                String mNotes = t.getMakerNotes() != null ? t.getMakerNotes().replace(":", "-").replace(";", ",") : "";
+                String cNotes = t.getCheckerNotes() != null ? t.getCheckerNotes().replace(":", "-").replace(";", ",") : "";
+                sb.append(t.getTicketId() != null ? t.getTicketId() : "").append(":")
+                  .append(t.getOriginalTransactionId() != null ? t.getOriginalTransactionId() : "").append(":")
+                  .append(t.getMakerId() != null ? t.getMakerId() : "").append(":")
+                  .append(t.getCheckerId() != null ? t.getCheckerId() : "").append(":")
+                  .append(t.getStatus() != null ? t.getStatus() : "").append(":")
+                  .append(reason).append(":")
+                  .append(mNotes).append(":")
+                  .append(cNotes).append(":")
+                  .append(t.getReversalTransactionId() != null ? t.getReversalTransactionId() : "").append(":")
+                  .append(t.getCreatedAt() != null ? t.getCreatedAt().toString() : "").append(":")
+                  .append(t.getResolvedAt() != null ? t.getResolvedAt().toString() : "");
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Parses an OFS reversal list enquiry response string into DTOs.
+     */
+    public static List<ReversalTicketDto> parseReversalListResponse(String ofsResponse) {
+        List<ReversalTicketDto> list = new ArrayList<>();
+        if (ofsResponse == null || ofsResponse.isBlank() || !ofsResponse.startsWith("//1,SUCCESS")) {
+            return list;
+        }
+
+        int dataIdx = ofsResponse.indexOf("DATA=");
+        if (dataIdx < 0) {
+            return list;
+        }
+
+        String data = ofsResponse.substring(dataIdx + 5).trim();
+        if (data.isEmpty()) {
+            return list;
+        }
+
+        String[] records = data.split(";;");
+        for (String record : records) {
+            if (record.isBlank()) continue;
+            String[] cols = record.split(":");
+            ReversalTicketDto dto = new ReversalTicketDto();
+            if (cols.length > 0) dto.setTicketId(cols[0]);
+            if (cols.length > 1) dto.setOriginalTransactionId(cols[1]);
+            if (cols.length > 2) dto.setMakerId(cols[2]);
+            if (cols.length > 3) dto.setCheckerId(cols[3]);
+            if (cols.length > 4) dto.setStatus(cols[4]);
+            if (cols.length > 5) dto.setDisputeReason(cols[5]);
+            if (cols.length > 6) dto.setMakerNotes(cols[6]);
+            if (cols.length > 7) dto.setCheckerNotes(cols[7]);
+            if (cols.length > 8) dto.setReversalTransactionId(cols[8]);
+            if (cols.length > 9 && !cols[9].isBlank()) {
+                try {
+                    dto.setCreatedAt(Instant.parse(cols[9]));
+                } catch (Exception ignored) {}
+            }
+            if (cols.length > 10 && !cols[10].isBlank()) {
+                try {
+                    dto.setResolvedAt(Instant.parse(cols[10]));
+                } catch (Exception ignored) {}
+            }
+            list.add(dto);
+        }
+        return list;
+    }
+
+    /**
+     * Builds an OFS transaction status history response string with pagination metadata.
+     */
+    public static String buildStatusHistoryResponse(String transactionId, List<TransactionStatusHistoryDto> history, int page, int size) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("//1,SUCCESS,OPERATION=STATUS.HISTORY,TRANSACTION.ID=%s,PAGE=%d,SIZE=%d,COUNT=%d,DATA=",
+                transactionId, Math.max(0, page), Math.max(1, size), history != null ? history.size() : 0));
+        if (history != null && !history.isEmpty()) {
+            for (int i = 0; i < history.size(); i++) {
+                TransactionStatusHistoryDto h = history.get(i);
+                if (i > 0) {
+                    sb.append(";;");
+                }
+                String details = h.getReasonDetails() != null ? h.getReasonDetails().replace(":", "-").replace(";", ",") : "";
+                sb.append(h.getHistoryId() != null ? h.getHistoryId() : "").append(":")
+                  .append(h.getTransactionId() != null ? h.getTransactionId() : "").append(":")
+                  .append(h.getFromStatus() != null ? h.getFromStatus() : "").append(":")
+                  .append(h.getToStatus() != null ? h.getToStatus() : "").append(":")
+                  .append(h.getChangeReason() != null ? h.getChangeReason() : "").append(":")
+                  .append(h.getActorId() != null ? h.getActorId() : "").append(":")
+                  .append(h.getActorType() != null ? h.getActorType() : "").append(":")
+                  .append(h.getChangedAt() != null ? h.getChangedAt().toString() : "").append(":")
+                  .append(details);
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Parses an OFS transaction status history response string into DTOs.
+     */
+    public static List<TransactionStatusHistoryDto> parseStatusHistoryResponse(String ofsResponse) {
+        List<TransactionStatusHistoryDto> list = new ArrayList<>();
+        if (ofsResponse == null || ofsResponse.isBlank() || !ofsResponse.startsWith("//1,SUCCESS")) {
+            return list;
+        }
+
+        int dataIdx = ofsResponse.indexOf("DATA=");
+        if (dataIdx < 0) {
+            return list;
+        }
+
+        String data = ofsResponse.substring(dataIdx + 5).trim();
+        if (data.isEmpty()) {
+            return list;
+        }
+
+        String[] records = data.split(";;");
+        for (String record : records) {
+            if (record.isBlank()) continue;
+            String[] cols = record.split(":");
+            TransactionStatusHistoryDto dto = new TransactionStatusHistoryDto();
+            if (cols.length > 0) dto.setHistoryId(cols[0]);
+            if (cols.length > 1) dto.setTransactionId(cols[1]);
+            if (cols.length > 2) dto.setFromStatus(cols[2]);
+            if (cols.length > 3) dto.setToStatus(cols[3]);
+            if (cols.length > 4) dto.setChangeReason(cols[4]);
+            if (cols.length > 5) dto.setActorId(cols[5]);
+            if (cols.length > 6) dto.setActorType(cols[6]);
+            if (cols.length > 7 && !cols[7].isBlank()) {
+                try {
+                    dto.setChangedAt(Instant.parse(cols[7]));
+                } catch (Exception ignored) {}
+            }
+            if (cols.length > 8) dto.setReasonDetails(cols[8]);
             list.add(dto);
         }
         return list;

@@ -95,7 +95,7 @@ class CbsCoreBankingServiceTest {
         );
 
         postingController = new com.bank.cbs.controller.CbsPostingController(
-                transferService, reversalService
+                transferService, reversalService, statusHistoryRepository
         );
     }
 

@@ -1,6 +1,8 @@
 package com.bank.orchestrator.service;
 
 import com.bank.ledger.contracts.dto.AccountTransactionDto;
+import com.bank.ledger.contracts.dto.ReversalTicketDto;
+import com.bank.ledger.contracts.dto.TransactionStatusHistoryDto;
 import com.bank.ledger.contracts.dto.events.TransferFailedToDlqEvent;
 import com.bank.ledger.contracts.ofs.OfsMessageUtil;
 import com.bank.orchestrator.dto.TransferInitiationRequest;
@@ -81,6 +83,56 @@ public class CbsClientService {
 
     public List<AccountTransactionDto> getAccountTransactions(String accountId) {
         return getAccountTransactions(accountId, 0, 20);
+    }
+
+    public List<ReversalTicketDto> getReversalRequests(String status, int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        log.info("Querying CBS reversal requests (status={}, page={}, size={})", status, safePage, safeSize);
+        try {
+            String ofsResp = webClient.get()
+                    .uri(uriBuilder -> {
+                        var builder = uriBuilder.path("/api/v1/cbs/reversals")
+                                .queryParam("page", safePage)
+                                .queryParam("size", safeSize);
+                        if (status != null && !status.isBlank()) {
+                            builder.queryParam("status", status.trim().toUpperCase());
+                        }
+                        return builder.build();
+                    })
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofMillis(3000))
+                    .block();
+            List<ReversalTicketDto> list = OfsMessageUtil.parseReversalListResponse(ofsResp);
+            return list != null ? list : Collections.emptyList();
+        } catch (Exception e) {
+            log.error("Failed to query CBS reversal requests: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    public List<TransactionStatusHistoryDto> getTransactionStatusHistory(String transactionId, int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        log.info("Querying CBS status history for transactionId={} (page={}, size={})", transactionId, safePage, safeSize);
+        try {
+            String ofsResp = webClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/api/v1/cbs/transactions/{transactionId}/status-history")
+                            .queryParam("page", safePage)
+                            .queryParam("size", safeSize)
+                            .build(transactionId))
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofMillis(3000))
+                    .block();
+            List<TransactionStatusHistoryDto> list = OfsMessageUtil.parseStatusHistoryResponse(ofsResp);
+            return list != null ? list : Collections.emptyList();
+        } catch (Exception e) {
+            log.error("Failed to query CBS status history for transactionId={}: {}", transactionId, e.getMessage());
+            return Collections.emptyList();
+        }
     }
 
     public TransferInitiationResponse postToCbs(TransferInitiationRequest request, String txId) {
