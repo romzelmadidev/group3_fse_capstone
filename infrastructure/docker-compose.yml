@@ -298,6 +298,9 @@ services:
       - SPRING_DATA_REDIS_HOST=redis-cache
       - SPRING_DATA_REDIS_PORT=6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:29092
+      - CBS_COB_SCHEDULER_ENABLED=${CBS_COB_SCHEDULER_ENABLED:-true}
+      - CBS_COB_SCHEDULER_CRON=${CBS_COB_SCHEDULER_CRON:-0 0 21 * * *}
+      - CBS_COB_SCHEDULER_ZONE=${CBS_COB_SCHEDULER_ZONE:-Asia/Manila}
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "t24-mock-cbs"}]'
     networks:

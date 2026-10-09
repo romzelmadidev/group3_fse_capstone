@@ -626,5 +626,25 @@ class CbsCoreBankingServiceTest {
         assertEquals(new BigDecimal("50.00"), pendingFee.getAmountCollected());
         verify(uncollectedFeeRepository, atLeastOnce()).save(pendingFee);
     }
+
+    @Test
+    void testCobBatch_WhenAlreadyProcessing_SkipsDuplicateExecution() {
+        LocalDate cobDate = LocalDate.of(2026, 10, 8);
+        SystemDateMaster sysDate = SystemDateMaster.builder()
+                .systemDateId("SYS-1")
+                .businessDate(cobDate)
+                .status("COB_PROCESSING")
+                .postingWindowOpen(false)
+                .build();
+        when(systemDateRepository.findTopByOrderBySystemDateIdAsc()).thenReturn(Optional.of(sysDate));
+
+        var resp = cobBatchService.runCobBatch();
+
+        assertEquals("COB_PROCESSING", resp.status());
+        assertEquals(cobDate, resp.businessDate());
+        assertFalse(resp.postingWindowOpen());
+        assertTrue(resp.phaseResults().isEmpty());
+        verify(balanceRepository, never()).findAll();
+    }
 }
 

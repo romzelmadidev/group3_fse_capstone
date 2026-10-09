@@ -17,6 +17,7 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -74,6 +75,11 @@ public class CbsCobBatchService {
                 });
 
         LocalDate cobDate = sysDate.getBusinessDate();
+        if ("COB_PROCESSING".equalsIgnoreCase(sysDate.getStatus()) || "EOD_CUTOFF".equalsIgnoreCase(sysDate.getStatus())) {
+            log.warn("COB execution already in progress for business date: {}. Skipping duplicate trigger.", cobDate);
+            return new CobExecutionResponseDto(sysDate.getBusinessDate(), sysDate.getStatus(), sysDate.getPostingWindowOpen(), Collections.emptyList());
+        }
+
         log.info("Starting Close of Business (COB) execution for date: {}", cobDate);
 
         List<CobExecutionResponseDto.CobPhaseResultDto> phaseResults = new ArrayList<>();
