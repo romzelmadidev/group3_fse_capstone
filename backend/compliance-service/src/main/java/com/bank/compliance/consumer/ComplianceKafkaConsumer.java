@@ -154,7 +154,14 @@ public class ComplianceKafkaConsumer {
         registerReportMetadata(bDate, "GL_TRIAL_BALANCE_EXCEL", "gl-trial-balance-" + bDate + ".xlsx",
                 excelUpload.storageUri(), excelUpload.sha256Checksum(), excelBytes.length, (long) entries.size());
 
-        // 2. Generate & Upload BIR Form 2306 Withholding Certificate PDF
+        // 2. Generate & Upload GL EOD Reconciliation PDF
+        byte[] glPdfBytes = glGenerator.generatePdf(bDate, entries);
+        String glPdfBlob = "eod/gl_eod_reconciliation_" + bDate + ".pdf";
+        AzuriteBlobStorageService.UploadResult glPdfUpload = azuriteService.uploadArtifact(glPdfBlob, glPdfBytes, "application/pdf");
+        registerReportMetadata(bDate, "GL_EOD_RECONCILIATION_PDF", "gl_eod_reconciliation_" + bDate + ".pdf",
+                glPdfUpload.storageUri(), glPdfUpload.sha256Checksum(), glPdfBytes.length, (long) entries.size());
+
+        // 3. Generate & Upload BIR Form 2306 Withholding Certificate PDF
         byte[] birBytes = birGenerator.generateBir2306Certificate(
                 String.valueOf(bDate.getYear()),
                 bDate.withDayOfMonth(1),

@@ -2,7 +2,6 @@ package com.bank.compliance.controller;
 
 import com.bank.compliance.generator.CustomerStatementPdfGenerator;
 import com.bank.compliance.service.AzuriteBlobStorageService;
-import com.bank.compliance.service.ComplianceReportSeedService;
 import com.bank.ledger.contracts.ofs.OfsMessageUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,20 +26,17 @@ public class ComplianceController {
 
     private final AzuriteBlobStorageService azuriteService;
     private final CustomerStatementPdfGenerator statementPdfGenerator;
-    private final ComplianceReportSeedService seedService;
     private final WebClient cbsWebClient;
     private final WebClient orchestratorWebClient;
 
     public ComplianceController(
             AzuriteBlobStorageService azuriteService,
             CustomerStatementPdfGenerator statementPdfGenerator,
-            ComplianceReportSeedService seedService,
             WebClient.Builder webClientBuilder,
             @Value("${services.cbs.url:http://localhost:8085}") String cbsServiceUrl,
             @Value("${services.orchestrator.url:http://localhost:8082}") String orchestratorUrl) {
         this.azuriteService = azuriteService;
         this.statementPdfGenerator = statementPdfGenerator;
-        this.seedService = seedService;
         this.cbsWebClient = webClientBuilder.baseUrl(cbsServiceUrl).build();
         this.orchestratorWebClient = webClientBuilder.baseUrl(orchestratorUrl).build();
     }
@@ -55,13 +51,6 @@ public class ComplianceController {
                 .timeout(Duration.ofSeconds(3))
                 .block();
         return ResponseEntity.ok(reports);
-    }
-
-    @PostMapping(path = {"/reports/generate-sample", "/reports/generate"})
-    @GetMapping(path = {"/reports/generate-sample", "/reports/generate"})
-    public ResponseEntity<List<AzuriteBlobStorageService.BlobItemDto>> generateSampleReports() {
-        seedService.seedDefaultReportsIfMissing();
-        return ResponseEntity.ok(azuriteService.listArtifacts());
     }
 
     @GetMapping({"/reports/download", "/storage/download/**"})
@@ -97,7 +86,7 @@ public class ComplianceController {
             if (matching.isPresent()) {
                 content = azuriteService.downloadArtifact(matching.get().blobName());
             } else {
-                content = seedService.generateArtifactOnDemand(blobName);
+                return ResponseEntity.notFound().build();
             }
         }
 

@@ -53,11 +53,8 @@
     <!-- Left Navigation Sidebar -->
     <aside class="w-64 bg-white border-r border-gray-200 p-4 flex flex-col justify-between shrink-0">
       <div class="space-y-3">
-        <button onclick="generateStatement()" class="w-full flex items-center justify-center gap-2 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-sm transition">
-          <i class="fa-solid fa-plus"></i> Generate Statement PDF
-        </button>
-        <button onclick="generateEodReports()" class="w-full flex items-center justify-center gap-2 py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-sm transition">
-          <i class="fa-solid fa-rotate"></i> Generate EOD Reports
+        <button onclick="triggerCobBatch()" class="w-full flex items-center justify-center gap-2 py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-sm transition">
+          <i class="fa-solid fa-rotate"></i> Run COB Batch
         </button>
 
         <nav class="space-y-1 text-sm">
@@ -142,48 +139,17 @@
     let allBlobs = [];
     let currentFolder = 'ALL';
 
-    const SAMPLE_FALLBACK = [
-      {
-        blobName: 'eod/2026-10-08/bir_2306_withholding_2026-10-08.pdf',
-        storageUri: 'azure-blob://compliance-vault/eod/2026-10-08/bir_2306_withholding_2026-10-08.pdf',
-        sizeBytes: 245760,
-        contentType: 'application/pdf',
-        lastModified: '2026-10-08T14:00:00Z'
-      },
-      {
-        blobName: 'eod/2026-10-08/amla_ctr_filing_2026-10-08.xlsx',
-        storageUri: 'azure-blob://compliance-vault/eod/2026-10-08/amla_ctr_filing_2026-10-08.xlsx',
-        sizeBytes: 182300,
-        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        lastModified: '2026-10-08T14:00:00Z'
-      },
-      {
-        blobName: 'eod/2026-10-08/gl_eod_reconciliation_2026-10-08.pdf',
-        storageUri: 'azure-blob://compliance-vault/eod/2026-10-08/gl_eod_reconciliation_2026-10-08.pdf',
-        sizeBytes: 198400,
-        contentType: 'application/pdf',
-        lastModified: '2026-10-08T14:00:00Z'
-      },
-      {
-        blobName: 'statements/ACC-1001/statement-2026-10-08.pdf',
-        storageUri: 'azure-blob://compliance-vault/statements/ACC-1001/statement-2026-10-08.pdf',
-        sizeBytes: 154200,
-        contentType: 'application/pdf',
-        lastModified: '2026-10-08T13:45:00Z'
-      }
-    ];
-
     async function fetchBlobs() {
       try {
         const res = await fetch('/api/v1/compliance/azurite/blobs');
         if (res.ok) {
           const data = await res.json();
-          allBlobs = (Array.isArray(data) && data.length > 0) ? data : SAMPLE_FALLBACK;
+          allBlobs = Array.isArray(data) ? data : [];
         } else {
-          allBlobs = SAMPLE_FALLBACK;
+          allBlobs = [];
         }
       } catch (e) {
-        allBlobs = SAMPLE_FALLBACK;
+        allBlobs = [];
       }
       render();
     }
@@ -229,32 +195,48 @@
 
       // Render Suggested
       const suggestedContainer = document.getElementById('suggested-container');
-      suggestedContainer.innerHTML = filtered.slice(0, 3).map(b => {
-        const isExcel = b.blobName.endsWith('.xlsx');
-        const iconClass = isExcel ? 'fa-file-excel text-emerald-500' : 'fa-file-pdf text-red-500';
-        const fileName = b.blobName.split('/').pop();
-        return `
-          <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm hover:border-blue-400 hover:shadow-md transition">
-            <div class="flex items-start justify-between">
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-xl">
-                  <i class="fa-solid ${iconClass}"></i>
+      if (filtered.length === 0) {
+        suggestedContainer.innerHTML = '<div class="col-span-3 text-center py-4 text-xs text-gray-400">No suggested files</div>';
+      } else {
+        suggestedContainer.innerHTML = filtered.slice(0, 3).map(b => {
+          const isExcel = b.blobName.endsWith('.xlsx');
+          const iconClass = isExcel ? 'fa-file-excel text-emerald-500' : 'fa-file-pdf text-red-500';
+          const fileName = b.blobName.split('/').pop();
+          return `
+            <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm hover:border-blue-400 hover:shadow-md transition">
+              <div class="flex items-start justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-xl">
+                    <i class="fa-solid ${iconClass}"></i>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="font-semibold text-gray-900 truncate max-w-[150px] text-xs">${fileName}</p>
+                    <p class="text-2xs text-gray-400 font-mono">${(b.sizeBytes / 1024).toFixed(1)} KB</p>
+                  </div>
                 </div>
-                <div class="min-w-0">
-                  <p class="font-semibold text-gray-900 truncate max-w-[150px] text-xs">${fileName}</p>
-                  <p class="text-2xs text-gray-400 font-mono">${(b.sizeBytes / 1024).toFixed(1)} KB</p>
-                </div>
+                <button onclick="downloadBlob('${encodeURIComponent(b.blobName)}')" class="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-gray-50">
+                  <i class="fa-solid fa-download"></i>
+                </button>
               </div>
-              <button onclick="downloadBlob('${encodeURIComponent(b.blobName)}')" class="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-gray-50">
-                <i class="fa-solid fa-download"></i>
-              </button>
             </div>
-          </div>
-        `;
-      }).join('');
+          `;
+        }).join('');
+      }
 
       // Render Table
       const tbody = document.getElementById('file-table-body');
+      if (filtered.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="5" class="text-center py-12 text-sm text-gray-400">
+              <i class="fa-solid fa-folder-open text-2xl mb-2 block text-gray-300"></i>
+              No files in Azurite storage yet. Files are automatically generated during Close of Business (COB) execution.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
       tbody.innerHTML = filtered.map(b => {
         const isExcel = b.blobName.endsWith('.xlsx');
         const iconClass = isExcel ? 'fa-file-excel text-emerald-500' : 'fa-file-pdf text-red-500';
@@ -285,23 +267,16 @@
       window.location.href = `/api/v1/compliance/reports/download?blobName=${encodedName}`;
     }
 
-    async function generateStatement() {
+    async function triggerCobBatch() {
       try {
-        await fetch('/api/v1/compliance/statements/ACC-1001/pdf');
-        await fetchBlobs();
+        const res = await fetch('/api/v1/cbs/cob/run', { method: 'POST' });
+        if (res.ok) {
+          setTimeout(fetchBlobs, 1500);
+        } else {
+          alert('COB batch failed: ' + (await res.text()));
+        }
       } catch (e) {
-        alert('Statement generation request sent!');
-        fetchBlobs();
-      }
-    }
-
-    async function generateEodReports() {
-      try {
-        await fetch('/api/v1/compliance/reports/generate-sample', { method: 'POST' });
-        await fetchBlobs();
-      } catch (e) {
-        alert('EOD reports generation request sent!');
-        fetchBlobs();
+        alert('Could not trigger COB batch: ' + e.message);
       }
     }
 

@@ -37,35 +37,19 @@ export default function AzuriteDrive() {
   const [selectedBlob, setSelectedBlob] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(null);
 
-  // Fetch blobs from Compliance Service / Azurite
+  // Fetch blobs strictly from Azurite storage
   const fetchBlobs = async () => {
     setIsLoading(true);
     try {
-      // 1. Fetch from azurite blobs endpoint
       const res = await axios.get(`${API_BASE}/compliance/azurite/blobs`);
-      if (Array.isArray(res.data) && res.data.length > 0) {
+      if (Array.isArray(res.data)) {
         setBlobs(res.data);
       } else {
-        // Fallback to compliance reports list
-        const reportsRes = await axios.get(`${API_BASE}/compliance/reports`);
-        if (Array.isArray(reportsRes.data) && reportsRes.data.length > 0) {
-          const mapped = reportsRes.data.map((r) => ({
-            blobName: r.fileName ? `eod/${r.fileName}` : r.blobName || 'report.pdf',
-            storageUri: r.storageUri || `azure-blob://compliance-vault/eod/${r.fileName}`,
-            sizeBytes: r.fileSize || 145000,
-            contentType: (r.fileName || '').endsWith('.xlsx')
-              ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-              : 'application/pdf',
-            lastModified: r.generatedAt || new Date().toISOString()
-          }));
-          setBlobs(mapped);
-        } else {
-          // Provide default sample files so drive is never empty for testing
-          setBlobs(SAMPLE_FILES);
-        }
+        setBlobs([]);
       }
-    } catch {
-      setBlobs(SAMPLE_FILES);
+    } catch (err) {
+      console.error('Failed to fetch Azurite blobs:', err);
+      setBlobs([]);
     } finally {
       setIsLoading(false);
     }
@@ -110,21 +94,19 @@ export default function AzuriteDrive() {
     }
   };
 
-  // Generate Sample Report into Azurite
-  const handleGenerateSample = async (type) => {
+  // Trigger Close of Business (COB) Batch to generate EOD reports
+  const handleRunCob = async () => {
     setIsLoading(true);
     try {
-      if (type === 'STATEMENT') {
-        await axios.get(`${API_BASE}/compliance/statements/ACC-1001/pdf`);
-      } else {
-        // Trigger EOD reports generation
-        await axios.post(`${API_BASE}/compliance/reports/generate-sample`);
-      }
-      await fetchBlobs();
+      await axios.post(`${API_BASE}/cbs/cob/run`);
+      // Wait for Kafka batch events and EOD report upload to complete
+      setTimeout(async () => {
+        await fetchBlobs();
+        setIsLoading(false);
+      }, 1500);
     } catch (e) {
-      console.warn('Sample generation notice:', e);
-      await fetchBlobs();
-    } finally {
+      console.error('COB execution notice:', e);
+      alert('COB batch trigger failed: ' + (e.response?.data || e.message));
       setIsLoading(false);
     }
   };
@@ -203,19 +185,15 @@ export default function AzuriteDrive() {
         {/* Left Sidebar */}
         <div className="flex w-64 flex-col justify-between border-r border-line bg-sunken/40 p-4">
           <div className="space-y-4">
-            {/* Quick Action Buttons */}
+            {/* Quick Action Button */}
             <div className="space-y-2">
               <button
-                onClick={() => handleGenerateSample('STATEMENT')}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-surface py-2 text-xs font-semibold text-fg shadow-sm hover:bg-surface-raised"
+                onClick={handleRunCob}
+                disabled={isLoading}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-surface py-2 text-xs font-semibold text-fg shadow-sm hover:bg-surface-raised disabled:opacity-50"
+                title="Execute Close of Business (COB) batch to generate EOD compliance filings"
               >
-                <Plus className="h-4 w-4 text-blue-500" /> Generate Statement PDF
-              </button>
-              <button
-                onClick={() => handleGenerateSample('EOD')}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-surface py-2 text-xs font-semibold text-fg shadow-sm hover:bg-surface-raised"
-              >
-                <RefreshCw className="h-4 w-4 text-emerald-500" /> Generate EOD Reports
+                <RefreshCw className={`h-4 w-4 text-emerald-500 ${isLoading ? 'animate-spin' : ''}`} /> Run COB Batch
               </button>
             </div>
 
@@ -285,56 +263,58 @@ export default function AzuriteDrive() {
             )}
           </div>
 
-          {/* Suggested / Quick Access Cards */}
-          <div className="mt-4">
-            <h2 className="text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
-              Suggested Documents & Reports
-            </h2>
-            <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {filteredBlobs.slice(0, 3).map((blob) => {
-                const isExcel = blob.blobName.endsWith('.xlsx');
-                return (
-                  <div
-                    key={blob.blobName}
-                    onClick={() => setSelectedBlob(blob)}
-                    className="cursor-pointer rounded-xl border border-line bg-surface p-4 shadow-sm transition-all hover:border-accent hover:shadow-md"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2">
-                        {isExcel ? (
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
-                            <FileSpreadsheet className="h-4 w-4" />
+          {/* Suggested / Quick Access Cards (only when files exist) */}
+          {filteredBlobs.length > 0 && (
+            <div className="mt-4">
+              <h2 className="text-2xs font-semibold uppercase tracking-wider text-fg-subtle">
+                Suggested Documents & Reports
+              </h2>
+              <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {filteredBlobs.slice(0, 3).map((blob) => {
+                  const isExcel = blob.blobName.endsWith('.xlsx');
+                  return (
+                    <div
+                      key={blob.blobName}
+                      onClick={() => setSelectedBlob(blob)}
+                      className="cursor-pointer rounded-xl border border-line bg-surface p-4 shadow-sm transition-all hover:border-accent hover:shadow-md"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-2">
+                          {isExcel ? (
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+                              <FileSpreadsheet className="h-4 w-4" />
+                            </div>
+                          ) : (
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-500/10 text-rose-500">
+                              <FileText className="h-4 w-4" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-semibold text-fg">
+                              {blob.blobName.split('/').pop()}
+                            </p>
+                            <p className="text-2xs text-fg-subtle font-mono">
+                              {(blob.sizeBytes / 1024).toFixed(1)} KB
+                            </p>
                           </div>
-                        ) : (
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-500/10 text-rose-500">
-                            <FileText className="h-4 w-4" />
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-semibold text-fg">
-                            {blob.blobName.split('/').pop()}
-                          </p>
-                          <p className="text-2xs text-fg-subtle font-mono">
-                            {(blob.sizeBytes / 1024).toFixed(1)} KB
-                          </p>
                         </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownload(blob);
+                          }}
+                          className="rounded p-1 text-fg-subtle hover:bg-sunken hover:text-fg"
+                          title="Download File"
+                        >
+                          <Download className="h-4 w-4" />
+                        </button>
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDownload(blob);
-                        }}
-                        className="rounded p-1 text-fg-subtle hover:bg-sunken hover:text-fg"
-                        title="Download File"
-                      >
-                        <Download className="h-4 w-4" />
-                      </button>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Files List / Grid */}
           <div className="mt-6 flex-1">
@@ -342,7 +322,17 @@ export default function AzuriteDrive() {
               All Artifacts ({filteredBlobs.length})
             </h2>
 
-            {viewMode === 'list' ? (
+            {filteredBlobs.length === 0 ? (
+              <div className="mt-6 flex flex-col items-center justify-center rounded-2xl border border-dashed border-line bg-surface/50 p-12 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sunken text-fg-subtle/50 mb-3">
+                  <Folder className="h-7 w-7" />
+                </div>
+                <p className="text-sm font-semibold text-fg">No files in Azurite storage</p>
+                <p className="mt-1 max-w-sm text-xs text-fg-subtle">
+                  Compliance artifacts and reports are generated when Close of Business (COB) is executed. Click "Run COB Batch" to process COB and generate EOD filings.
+                </p>
+              </div>
+            ) : viewMode === 'list' ? (
               <div className="mt-2 overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
                 <table className="w-full text-left text-xs">
                   <thead className="border-b border-line bg-sunken text-2xs uppercase text-fg-subtle">
@@ -505,35 +495,3 @@ export default function AzuriteDrive() {
     </div>
   );
 }
-
-// Fallback sample files for demonstration
-const SAMPLE_FILES = [
-  {
-    blobName: 'eod/2026-10-08/bir_2306_withholding_2026-10-08.pdf',
-    storageUri: 'azure-blob://compliance-vault/eod/2026-10-08/bir_2306_withholding_2026-10-08.pdf',
-    sizeBytes: 245760,
-    contentType: 'application/pdf',
-    lastModified: '2026-10-08T14:00:00.000Z'
-  },
-  {
-    blobName: 'eod/2026-10-08/amla_ctr_filing_2026-10-08.xlsx',
-    storageUri: 'azure-blob://compliance-vault/eod/2026-10-08/amla_ctr_filing_2026-10-08.xlsx',
-    sizeBytes: 182300,
-    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    lastModified: '2026-10-08T14:00:00.000Z'
-  },
-  {
-    blobName: 'eod/2026-10-08/gl_eod_reconciliation_2026-10-08.pdf',
-    storageUri: 'azure-blob://compliance-vault/eod/2026-10-08/gl_eod_reconciliation_2026-10-08.pdf',
-    sizeBytes: 198400,
-    contentType: 'application/pdf',
-    lastModified: '2026-10-08T14:00:00.000Z'
-  },
-  {
-    blobName: 'statements/ACC-1001/statement-2026-10-08.pdf',
-    storageUri: 'azure-blob://compliance-vault/statements/ACC-1001/statement-2026-10-08.pdf',
-    sizeBytes: 154200,
-    contentType: 'application/pdf',
-    lastModified: '2026-10-08T13:45:00.000Z'
-  }
-];
