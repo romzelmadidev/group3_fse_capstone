@@ -253,6 +253,44 @@ public class CbsReversalService {
                 .build();
         statusHistoryRepository.save(statusHistory);
 
+        // Status history for compensating reversal transaction
+        List<TransactionStatusHistoryMaster> revStatusHistory = List.of(
+                TransactionStatusHistoryMaster.builder()
+                        .historyId(UUID.randomUUID().toString())
+                        .transactionId(reversalTxId)
+                        .fromStatus(null)
+                        .toStatus(TransactionStatus.Initiated.name())
+                        .changeReason(ChangeReasonCode.CHECKER_REVERSAL_APPROVED_SETTLED)
+                        .reasonDetails("Compensating reversal transaction initiated")
+                        .actorId(action.checkerId())
+                        .actorType(ActorType.MANAGER_CHECKER.name())
+                        .changedAt(now.minusMillis(20))
+                        .build(),
+                TransactionStatusHistoryMaster.builder()
+                        .historyId(UUID.randomUUID().toString())
+                        .transactionId(reversalTxId)
+                        .fromStatus(TransactionStatus.Initiated.name())
+                        .toStatus(TransactionStatus.Processing.name())
+                        .changeReason(ChangeReasonCode.CBS_OFS_PROCESSING)
+                        .reasonDetails("Compensating reversal ledger processing")
+                        .actorId("SYSTEM")
+                        .actorType(ActorType.SYSTEM_CBS.name())
+                        .changedAt(now.minusMillis(10))
+                        .build(),
+                TransactionStatusHistoryMaster.builder()
+                        .historyId(UUID.randomUUID().toString())
+                        .transactionId(reversalTxId)
+                        .fromStatus(TransactionStatus.Processing.name())
+                        .toStatus(TransactionStatus.Reversed.name())
+                        .changeReason(ChangeReasonCode.CHECKER_REVERSAL_APPROVED_SETTLED)
+                        .reasonDetails("Compensating reversal ledger committed")
+                        .actorId(action.checkerId())
+                        .actorType(ActorType.MANAGER_CHECKER.name())
+                        .changedAt(now)
+                        .build()
+        );
+        statusHistoryRepository.saveAll(revStatusHistory);
+
         // Events
         TransferReversedEvent reversedEvent = TransferReversedEvent.builder()
                 .eventId(UUID.randomUUID().toString())
@@ -460,6 +498,44 @@ public class CbsReversalService {
                 .changedAt(now)
                 .build();
         statusHistoryRepository.save(statusHistory);
+
+        // Status history for compensating reversal transaction
+        List<TransactionStatusHistoryMaster> revStatusHistory = List.of(
+                TransactionStatusHistoryMaster.builder()
+                        .historyId(UUID.randomUUID().toString())
+                        .transactionId(reversalTxId)
+                        .fromStatus(null)
+                        .toStatus(TransactionStatus.Initiated.name())
+                        .changeReason(ChangeReasonCode.CHECKER_REVERSAL_APPROVED_SETTLED)
+                        .reasonDetails("Compensating reversal transaction initiated")
+                        .actorId(actor)
+                        .actorType(ActorType.SYSTEM_ORCH.name())
+                        .changedAt(now.minusMillis(20))
+                        .build(),
+                TransactionStatusHistoryMaster.builder()
+                        .historyId(UUID.randomUUID().toString())
+                        .transactionId(reversalTxId)
+                        .fromStatus(TransactionStatus.Initiated.name())
+                        .toStatus(TransactionStatus.Processing.name())
+                        .changeReason(ChangeReasonCode.CBS_OFS_PROCESSING)
+                        .reasonDetails("Compensating reversal ledger processing")
+                        .actorId("SYSTEM")
+                        .actorType(ActorType.SYSTEM_CBS.name())
+                        .changedAt(now.minusMillis(10))
+                        .build(),
+                TransactionStatusHistoryMaster.builder()
+                        .historyId(UUID.randomUUID().toString())
+                        .transactionId(reversalTxId)
+                        .fromStatus(TransactionStatus.Processing.name())
+                        .toStatus(TransactionStatus.Reversed.name())
+                        .changeReason(ChangeReasonCode.CHECKER_REVERSAL_APPROVED_SETTLED)
+                        .reasonDetails("Compensating reversal ledger committed")
+                        .actorId(actor)
+                        .actorType(ActorType.SYSTEM_ORCH.name())
+                        .changedAt(now)
+                        .build()
+        );
+        statusHistoryRepository.saveAll(revStatusHistory);
 
         // Events
         TransferReversedEvent reversedEvent = TransferReversedEvent.builder()

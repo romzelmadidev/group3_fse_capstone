@@ -16,12 +16,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -198,35 +204,122 @@ public class CbsFundsTransferService {
         updateGlBalance("20100", request.amount(), request.amount());
 
         // 6. Record transaction master
-        TransactionMaster tx = TransactionMaster.builder()
-                .transactionId(txId)
-                .idempotencyKey(request.idempotencyKey())
-                .sourceAccountId(sourceId)
-                .targetAccountId(destId)
-                .amount(request.amount())
-                .currency(request.currency() != null ? request.currency() : "PHP")
-                .transactionType("INTRA_BANK")
-                .status(TransactionStatus.Posted.name())
-                .requiresMakerChecker(0)
-                .memo(request.description() != null ? request.description() : "Funds Transfer")
-                .createdAt(now)
-                .updatedAt(now)
-                .build();
+        TransactionMaster tx = transactionRepository.findById(txId).orElse(null);
+        if (tx == null) {
+            tx = TransactionMaster.builder()
+                    .transactionId(txId)
+                    .idempotencyKey(request.idempotencyKey())
+                    .sourceAccountId(sourceId)
+                    .targetAccountId(destId)
+                    .amount(request.amount())
+                    .currency(request.currency() != null ? request.currency() : "PHP")
+                    .transactionType("INTRA_BANK")
+                    .status(TransactionStatus.Posted.name())
+                    .requiresMakerChecker(0)
+                    .memo(request.description() != null ? request.description() : "Funds Transfer")
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build();
+        } else {
+            tx.setStatus(TransactionStatus.Posted.name());
+            tx.setUpdatedAt(now);
+        }
         transactionRepository.save(tx);
 
-        // 7. Status history record
-        TransactionStatusHistoryMaster statusHistory = TransactionStatusHistoryMaster.builder()
-                .historyId(UUID.randomUUID().toString())
-                .transactionId(txId)
-                .fromStatus(null)
-                .toStatus(TransactionStatus.Posted.name())
-                .changeReason(ChangeReasonCode.ACID_LEDGER_COMMITTED)
-                .reasonDetails("Posted via CBS core engine")
-                .actorId("SYSTEM")
-                .actorType(ActorType.SYSTEM_CBS.name())
-                .changedAt(now)
-                .build();
-        statusHistoryRepository.save(statusHistory);
+        // 7. Status history record - record entry for each status in lifecycle
+        List<TransactionStatusHistoryMaster> existingHistory = getExistingStatusHistory(txId);
+
+        List<TransactionStatusHistoryMaster> newHistoryList = new ArrayList<>();
+        if (existingHistory.isEmpty()) {
+            newHistoryList.add(TransactionStatusHistoryMaster.builder()
+                    .historyId(UUID.randomUUID().toString())
+                    .transactionId(txId)
+                    .fromStatus(null)
+                    .toStatus(TransactionStatus.Initiated.name())
+                    .changeReason(ChangeReasonCode.API_INGESTION)
+                    .reasonDetails("Transfer initiated via API ingestion")
+                    .actorId(sourceId)
+                    .actorType(ActorType.SYSTEM_ORCH.name())
+                    .changedAt(now.minusMillis(40))
+                    .build());
+
+            newHistoryList.add(TransactionStatusHistoryMaster.builder()
+                    .historyId(UUID.randomUUID().toString())
+                    .transactionId(txId)
+                    .fromStatus(TransactionStatus.Initiated.name())
+                    .toStatus(TransactionStatus.Authorized.name())
+                    .changeReason(ChangeReasonCode.BIOMETRIC_AUTH_VERIFIED)
+                    .reasonDetails("Customer authorization and risk validation passed")
+                    .actorId(sourceId)
+                    .actorType(ActorType.CUSTOMER.name())
+                    .changedAt(now.minusMillis(30))
+                    .build());
+
+            newHistoryList.add(TransactionStatusHistoryMaster.builder()
+                    .historyId(UUID.randomUUID().toString())
+                    .transactionId(txId)
+                    .fromStatus(TransactionStatus.Authorized.name())
+                    .toStatus(TransactionStatus.Reserved.name())
+                    .changeReason(ChangeReasonCode.FUNDS_RESERVATION_EARMARKED)
+                    .reasonDetails("Funds reservation earmarked in core balance")
+                    .actorId("SYSTEM_CBS")
+                    .actorType(ActorType.SYSTEM_CBS.name())
+                    .changedAt(now.minusMillis(20))
+                    .build());
+
+            newHistoryList.add(TransactionStatusHistoryMaster.builder()
+                    .historyId(UUID.randomUUID().toString())
+                    .transactionId(txId)
+                    .fromStatus(TransactionStatus.Reserved.name())
+                    .toStatus(TransactionStatus.Processing.name())
+                    .changeReason(ChangeReasonCode.CBS_OFS_PROCESSING)
+                    .reasonDetails("Core OFS transaction processing initiated")
+                    .actorId("SYSTEM_CBS")
+                    .actorType(ActorType.SYSTEM_CBS.name())
+                    .changedAt(now.minusMillis(10))
+                    .build());
+
+            newHistoryList.add(TransactionStatusHistoryMaster.builder()
+                    .historyId(UUID.randomUUID().toString())
+                    .transactionId(txId)
+                    .fromStatus(TransactionStatus.Processing.name())
+                    .toStatus(TransactionStatus.Posted.name())
+                    .changeReason(ChangeReasonCode.ACID_LEDGER_COMMITTED)
+                    .reasonDetails("ACID double-entry ledger posting committed")
+                    .actorId("SYSTEM_CBS")
+                    .actorType(ActorType.SYSTEM_CBS.name())
+                    .changedAt(now)
+                    .build());
+        } else {
+            String lastStatus = existingHistory.get(existingHistory.size() - 1).getToStatus();
+            if (!TransactionStatus.Posted.name().equalsIgnoreCase(lastStatus)) {
+                if (!TransactionStatus.Processing.name().equalsIgnoreCase(lastStatus)) {
+                    newHistoryList.add(TransactionStatusHistoryMaster.builder()
+                            .historyId(UUID.randomUUID().toString())
+                            .transactionId(txId)
+                            .fromStatus(lastStatus)
+                            .toStatus(TransactionStatus.Processing.name())
+                            .changeReason(ChangeReasonCode.CBS_OFS_PROCESSING)
+                            .reasonDetails("Core OFS transaction processing resumed after hold")
+                            .actorId("SYSTEM_CBS")
+                            .actorType(ActorType.SYSTEM_CBS.name())
+                            .changedAt(now.minusMillis(10))
+                            .build());
+                }
+                newHistoryList.add(TransactionStatusHistoryMaster.builder()
+                        .historyId(UUID.randomUUID().toString())
+                        .transactionId(txId)
+                        .fromStatus(TransactionStatus.Processing.name())
+                        .toStatus(TransactionStatus.Posted.name())
+                        .changeReason(ChangeReasonCode.ACID_LEDGER_COMMITTED)
+                        .reasonDetails("ACID double-entry ledger posting committed")
+                        .actorId("SYSTEM_CBS")
+                        .actorType(ActorType.SYSTEM_CBS.name())
+                        .changedAt(now)
+                        .build());
+            }
+        }
+        statusHistoryRepository.saveAll(newHistoryList);
 
         // 8. Outbox & Kafka event publication
         TransferExecutedEvent transferEvent = TransferExecutedEvent.builder()
@@ -243,26 +336,32 @@ public class CbsFundsTransferService {
                 .destinationBalanceAfter(destBal.getBalanceAmount())
                 .executedAtUtc(now)
                 .build();
-
-        TransactionStatusChangedEvent statusEvent = TransactionStatusChangedEvent.builder()
-                .eventId(UUID.randomUUID().toString())
-                .eventType("TransactionStatusChangedEvent")
-                .version("1.0")
-                .transactionId(txId)
-                .fromStatus(null)
-                .toStatus(TransactionStatus.Posted)
-                .changeReason(ChangeReasonCode.ACID_LEDGER_COMMITTED)
-                .actorId("SYSTEM")
-                .actorType(ActorType.SYSTEM_CBS)
-                .changedAt(now)
-                .build();
-
         saveOutbox("TransferExecutedEvent", txId, transferEvent);
-        saveOutbox("TransactionStatusChangedEvent", txId, statusEvent);
+
+        for (TransactionStatusHistoryMaster hist : newHistoryList) {
+            TransactionStatusChangedEvent statusEvent = TransactionStatusChangedEvent.builder()
+                    .eventId(UUID.randomUUID().toString())
+                    .eventType("TransactionStatusChangedEvent")
+                    .version("1.0")
+                    .transactionId(txId)
+                    .fromStatus(hist.getFromStatus() != null ? TransactionStatus.valueOf(hist.getFromStatus()) : null)
+                    .toStatus(TransactionStatus.valueOf(hist.getToStatus()))
+                    .changeReason(hist.getChangeReason())
+                    .actorId(hist.getActorId())
+                    .actorType(ActorType.valueOf(hist.getActorType()))
+                    .changedAt(hist.getChangedAt())
+                    .build();
+
+            saveOutbox("TransactionStatusChangedEvent", txId, statusEvent);
+            try {
+                kafkaTemplate.send(KafkaConfig.TOPIC_TRANSFERS_EVENTS, txId, statusEvent);
+            } catch (Exception e) {
+                log.warn("Kafka async publish deferred to outbox relay: {}", e.getMessage());
+            }
+        }
 
         try {
             kafkaTemplate.send(KafkaConfig.TOPIC_TRANSFERS_EVENTS, txId, transferEvent);
-            kafkaTemplate.send(KafkaConfig.TOPIC_TRANSFERS_EVENTS, txId, statusEvent);
         } catch (Exception e) {
             log.warn("Kafka async publish deferred to outbox relay: {}", e.getMessage());
         }
@@ -320,5 +419,281 @@ public class CbsFundsTransferService {
         } catch (Exception e) {
             log.error("Failed to serialize outbox event: {}", e.getMessage());
         }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, transactionManager = "masterTransactionManager")
+    public void recordFailedTransfer(TransferRequestDto request, String failureReason) {
+        String txId = request.transactionId() != null ? request.transactionId() : UUID.randomUUID().toString();
+        Instant now = Instant.now();
+
+        TransactionMaster tx = transactionRepository.findById(txId).orElse(null);
+        if (tx == null) {
+            tx = TransactionMaster.builder()
+                    .transactionId(txId)
+                    .idempotencyKey(request.idempotencyKey())
+                    .sourceAccountId(request.sourceAccountId())
+                    .targetAccountId(request.destinationAccountId())
+                    .amount(request.amount())
+                    .currency(request.currency() != null ? request.currency() : "PHP")
+                    .transactionType("INTRA_BANK")
+                    .status(TransactionStatus.Failed.name())
+                    .requiresMakerChecker(0)
+                    .memo(request.description() != null ? request.description() : "Funds Transfer Failed")
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build();
+        } else {
+            tx.setStatus(TransactionStatus.Failed.name());
+            tx.setUpdatedAt(now);
+        }
+        transactionRepository.save(tx);
+
+        List<TransactionStatusHistoryMaster> existingHistory = getExistingStatusHistory(txId);
+
+        List<TransactionStatusHistoryMaster> newHistoryList = new ArrayList<>();
+        if (existingHistory.isEmpty()) {
+            newHistoryList.add(TransactionStatusHistoryMaster.builder()
+                    .historyId(UUID.randomUUID().toString())
+                    .transactionId(txId)
+                    .fromStatus(null)
+                    .toStatus(TransactionStatus.Initiated.name())
+                    .changeReason(ChangeReasonCode.API_INGESTION)
+                    .reasonDetails("Transfer initiated via API ingestion")
+                    .actorId(request.sourceAccountId() != null ? request.sourceAccountId() : "SYSTEM_ORCH")
+                    .actorType(ActorType.SYSTEM_ORCH.name())
+                    .changedAt(now.minusMillis(30))
+                    .build());
+
+            newHistoryList.add(TransactionStatusHistoryMaster.builder()
+                    .historyId(UUID.randomUUID().toString())
+                    .transactionId(txId)
+                    .fromStatus(TransactionStatus.Initiated.name())
+                    .toStatus(TransactionStatus.Authorized.name())
+                    .changeReason(ChangeReasonCode.BIOMETRIC_AUTH_VERIFIED)
+                    .reasonDetails("Customer authorization passed")
+                    .actorId(request.sourceAccountId() != null ? request.sourceAccountId() : "CUSTOMER")
+                    .actorType(ActorType.CUSTOMER.name())
+                    .changedAt(now.minusMillis(20))
+                    .build());
+
+            newHistoryList.add(TransactionStatusHistoryMaster.builder()
+                    .historyId(UUID.randomUUID().toString())
+                    .transactionId(txId)
+                    .fromStatus(TransactionStatus.Authorized.name())
+                    .toStatus(TransactionStatus.Processing.name())
+                    .changeReason(ChangeReasonCode.CBS_OFS_PROCESSING)
+                    .reasonDetails("Core OFS transaction processing initiated")
+                    .actorId("SYSTEM_CBS")
+                    .actorType(ActorType.SYSTEM_CBS.name())
+                    .changedAt(now.minusMillis(10))
+                    .build());
+
+            newHistoryList.add(TransactionStatusHistoryMaster.builder()
+                    .historyId(UUID.randomUUID().toString())
+                    .transactionId(txId)
+                    .fromStatus(TransactionStatus.Processing.name())
+                    .toStatus(TransactionStatus.Failed.name())
+                    .changeReason(failureReason != null && failureReason.toLowerCase().contains("insufficient")
+                            ? ChangeReasonCode.CBS_SOLVENCY_DEFICIT
+                            : ChangeReasonCode.CIRCUIT_BREAKER_TRIPPED_DLQ)
+                    .reasonDetails(failureReason != null ? failureReason : "Transfer processing failed")
+                    .actorId("SYSTEM_CBS")
+                    .actorType(ActorType.SYSTEM_CBS.name())
+                    .changedAt(now)
+                    .build());
+        } else {
+            String lastStatus = existingHistory.get(existingHistory.size() - 1).getToStatus();
+            newHistoryList.add(TransactionStatusHistoryMaster.builder()
+                    .historyId(UUID.randomUUID().toString())
+                    .transactionId(txId)
+                    .fromStatus(lastStatus)
+                    .toStatus(TransactionStatus.Failed.name())
+                    .changeReason(failureReason != null && failureReason.toLowerCase().contains("insufficient")
+                            ? ChangeReasonCode.CBS_SOLVENCY_DEFICIT
+                            : ChangeReasonCode.CIRCUIT_BREAKER_TRIPPED_DLQ)
+                    .reasonDetails(failureReason != null ? failureReason : "Transfer processing failed")
+                    .actorId("SYSTEM_CBS")
+                    .actorType(ActorType.SYSTEM_CBS.name())
+                    .changedAt(now)
+                    .build());
+        }
+        statusHistoryRepository.saveAll(newHistoryList);
+
+        for (TransactionStatusHistoryMaster hist : newHistoryList) {
+            TransactionStatusChangedEvent statusEvent = TransactionStatusChangedEvent.builder()
+                    .eventId(UUID.randomUUID().toString())
+                    .eventType("TransactionStatusChangedEvent")
+                    .version("1.0")
+                    .transactionId(txId)
+                    .fromStatus(hist.getFromStatus() != null ? TransactionStatus.valueOf(hist.getFromStatus()) : null)
+                    .toStatus(TransactionStatus.valueOf(hist.getToStatus()))
+                    .changeReason(hist.getChangeReason())
+                    .actorId(hist.getActorId())
+                    .actorType(ActorType.valueOf(hist.getActorType()))
+                    .changedAt(hist.getChangedAt())
+                    .build();
+            saveOutbox("TransactionStatusChangedEvent", txId, statusEvent);
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, transactionManager = "masterTransactionManager")
+    public void recordCancelledTransfer(String txId, String sourceAccountId, String destAccountId, BigDecimal amount, String currency, String cancelReason, String reasonDetails, String actorId, String actorType) {
+        Instant now = Instant.now();
+        TransactionMaster tx = transactionRepository.findById(txId).orElse(null);
+        if (tx == null) {
+            tx = TransactionMaster.builder()
+                    .transactionId(txId)
+                    .sourceAccountId(sourceAccountId != null ? sourceAccountId : "ACC-UNKNOWN")
+                    .targetAccountId(destAccountId != null ? destAccountId : "ACC-UNKNOWN")
+                    .amount(amount != null ? amount : BigDecimal.ZERO)
+                    .currency(currency != null ? currency : "PHP")
+                    .transactionType("INTRA_BANK")
+                    .status(TransactionStatus.Cancelled.name())
+                    .requiresMakerChecker(0)
+                    .memo(reasonDetails != null ? reasonDetails : "Transfer Cancelled")
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build();
+        } else {
+            tx.setStatus(TransactionStatus.Cancelled.name());
+            tx.setUpdatedAt(now);
+        }
+        transactionRepository.save(tx);
+
+        List<TransactionStatusHistoryMaster> existingHistory = getExistingStatusHistory(txId);
+
+        List<TransactionStatusHistoryMaster> newHistoryList = new ArrayList<>();
+        String fromStatus = existingHistory.isEmpty() ? TransactionStatus.Initiated.name() : existingHistory.get(existingHistory.size() - 1).getToStatus();
+
+        if (existingHistory.isEmpty()) {
+            newHistoryList.add(TransactionStatusHistoryMaster.builder()
+                    .historyId(UUID.randomUUID().toString())
+                    .transactionId(txId)
+                    .fromStatus(null)
+                    .toStatus(TransactionStatus.Initiated.name())
+                    .changeReason(ChangeReasonCode.API_INGESTION)
+                    .reasonDetails("Transfer initiated via API ingestion")
+                    .actorId(actorId != null ? actorId : "SYSTEM_ORCH")
+                    .actorType(actorType != null ? actorType : ActorType.SYSTEM_ORCH.name())
+                    .changedAt(now.minusMillis(20))
+                    .build());
+        }
+
+        newHistoryList.add(TransactionStatusHistoryMaster.builder()
+                .historyId(UUID.randomUUID().toString())
+                .transactionId(txId)
+                .fromStatus(fromStatus)
+                .toStatus(TransactionStatus.Cancelled.name())
+                .changeReason(cancelReason != null ? cancelReason : ChangeReasonCode.USER_COOL_OFF_CANCELLED)
+                .reasonDetails(reasonDetails != null ? reasonDetails : "Transaction cancelled by user or security policy")
+                .actorId(actorId != null ? actorId : "CUSTOMER")
+                .actorType(actorType != null ? actorType : ActorType.CUSTOMER.name())
+                .changedAt(now)
+                .build());
+
+        statusHistoryRepository.saveAll(newHistoryList);
+
+        for (TransactionStatusHistoryMaster hist : newHistoryList) {
+            TransactionStatusChangedEvent statusEvent = TransactionStatusChangedEvent.builder()
+                    .eventId(UUID.randomUUID().toString())
+                    .eventType("TransactionStatusChangedEvent")
+                    .version("1.0")
+                    .transactionId(txId)
+                    .fromStatus(hist.getFromStatus() != null ? TransactionStatus.valueOf(hist.getFromStatus()) : null)
+                    .toStatus(TransactionStatus.valueOf(hist.getToStatus()))
+                    .changeReason(hist.getChangeReason())
+                    .actorId(hist.getActorId())
+                    .actorType(ActorType.valueOf(hist.getActorType()))
+                    .changedAt(hist.getChangedAt())
+                    .build();
+            saveOutbox("TransactionStatusChangedEvent", txId, statusEvent);
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, transactionManager = "masterTransactionManager")
+    public void recordReservedTransfer(String txId, String sourceAccountId, String destAccountId, BigDecimal amount, String currency, String memo) {
+        Instant now = Instant.now();
+        TransactionMaster tx = transactionRepository.findById(txId).orElse(null);
+        if (tx == null) {
+            tx = TransactionMaster.builder()
+                    .transactionId(txId)
+                    .sourceAccountId(sourceAccountId != null ? sourceAccountId : "ACC-UNKNOWN")
+                    .targetAccountId(destAccountId != null ? destAccountId : "ACC-UNKNOWN")
+                    .amount(amount != null ? amount : BigDecimal.ZERO)
+                    .currency(currency != null ? currency : "PHP")
+                    .transactionType("INTRA_BANK")
+                    .status(TransactionStatus.Reserved.name())
+                    .requiresMakerChecker(0)
+                    .memo(memo != null ? memo : "Funds Reserved during Cooling-Off")
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build();
+        } else {
+            tx.setStatus(TransactionStatus.Reserved.name());
+            tx.setUpdatedAt(now);
+        }
+        transactionRepository.save(tx);
+
+        List<TransactionStatusHistoryMaster> existingHistory = getExistingStatusHistory(txId);
+
+        if (existingHistory.isEmpty()) {
+            List<TransactionStatusHistoryMaster> newHistoryList = List.of(
+                    TransactionStatusHistoryMaster.builder()
+                            .historyId(UUID.randomUUID().toString())
+                            .transactionId(txId)
+                            .fromStatus(null)
+                            .toStatus(TransactionStatus.Initiated.name())
+                            .changeReason(ChangeReasonCode.API_INGESTION)
+                            .reasonDetails("Transfer initiated via API ingestion")
+                            .actorId(sourceAccountId != null ? sourceAccountId : "SYSTEM_ORCH")
+                            .actorType(ActorType.SYSTEM_ORCH.name())
+                            .changedAt(now.minusMillis(20))
+                            .build(),
+                    TransactionStatusHistoryMaster.builder()
+                            .historyId(UUID.randomUUID().toString())
+                            .transactionId(txId)
+                            .fromStatus(TransactionStatus.Initiated.name())
+                            .toStatus(TransactionStatus.Authorized.name())
+                            .changeReason(ChangeReasonCode.BIOMETRIC_AUTH_VERIFIED)
+                            .reasonDetails("Customer authorization and risk validation passed")
+                            .actorId(sourceAccountId != null ? sourceAccountId : "CUSTOMER")
+                            .actorType(ActorType.CUSTOMER.name())
+                            .changedAt(now.minusMillis(10))
+                            .build(),
+                    TransactionStatusHistoryMaster.builder()
+                            .historyId(UUID.randomUUID().toString())
+                            .transactionId(txId)
+                            .fromStatus(TransactionStatus.Authorized.name())
+                            .toStatus(TransactionStatus.Reserved.name())
+                            .changeReason(ChangeReasonCode.FUNDS_RESERVATION_EARMARKED)
+                            .reasonDetails(memo != null ? memo : "Funds reservation earmarked in core balance")
+                            .actorId("SYSTEM_CBS")
+                            .actorType(ActorType.SYSTEM_CBS.name())
+                            .changedAt(now)
+                            .build()
+            );
+            statusHistoryRepository.saveAll(newHistoryList);
+
+            for (TransactionStatusHistoryMaster hist : newHistoryList) {
+                TransactionStatusChangedEvent statusEvent = TransactionStatusChangedEvent.builder()
+                        .eventId(UUID.randomUUID().toString())
+                        .eventType("TransactionStatusChangedEvent")
+                        .version("1.0")
+                        .transactionId(txId)
+                        .fromStatus(hist.getFromStatus() != null ? TransactionStatus.valueOf(hist.getFromStatus()) : null)
+                        .toStatus(TransactionStatus.valueOf(hist.getToStatus()))
+                        .changeReason(hist.getChangeReason())
+                        .actorId(hist.getActorId())
+                        .actorType(ActorType.valueOf(hist.getActorType()))
+                        .changedAt(hist.getChangedAt())
+                        .build();
+                saveOutbox("TransactionStatusChangedEvent", txId, statusEvent);
+            }
+        }
+    }
+
+    private List<TransactionStatusHistoryMaster> getExistingStatusHistory(String txId) {
+        Page<TransactionStatusHistoryMaster> page = statusHistoryRepository.findByTransactionIdOrderByChangedAtAsc(txId, PageRequest.of(0, 10));
+        return (page != null && page.getContent() != null) ? page.getContent() : Collections.emptyList();
     }
 }

@@ -70,6 +70,7 @@ public class TransferOrchestrationService {
 
             if ("BLOCK".equalsIgnoreCase(riskResp.decision())) {
                 log.warn("Transfer {} blocked by Fraud Engine: {}", txId, riskResp.riskReason());
+                cbsService.notifyCancelled(txId, "FRAUD_POLICY_CIRCUIT_CUT", riskResp.riskReason());
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Transaction could not be processed at this time. Please contact customer support.");
             }
 
@@ -122,6 +123,11 @@ public class TransferOrchestrationService {
             if (request.amount().compareTo(COOL_OFF_THRESHOLD) >= 0 && !inCoolOff) {
                 String payloadJson = objectMapper.writeValueAsString(request);
                 coolOffService.putInCoolOff(txId, payloadJson);
+                cbsService.notifyReserved(
+                        txId, request.sourceAccountId(), request.destinationAccountId(),
+                        request.amount(), request.currency() != null ? request.currency() : "PHP",
+                        "High-value transaction queued into cooling-off period"
+                );
                 log.info("Transfer {} queued into 10-minute cooling-off period", txId);
                 return new TransferInitiationResponse(
                         txId,

@@ -10,6 +10,8 @@ import com.bank.cbs.repository.master.TransactionStatusHistoryMasterRepository;
 import com.bank.cbs.service.CbsFundsTransferService;
 import com.bank.cbs.service.CbsReversalService;
 import com.bank.ledger.contracts.dto.TransactionStatusHistoryDto;
+import com.bank.ledger.contracts.enums.ActorType;
+import com.bank.ledger.contracts.enums.ChangeReasonCode;
 import com.bank.ledger.contracts.ofs.OfsMessageUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,6 +65,7 @@ public class CbsPostingController {
             return ResponseEntity.badRequest().body(OfsMessageUtil.buildOfsResponse(false, "INVALID_FORMAT", "Payload must be plain-text Temenos OFS syntax"));
         }
 
+        TransferRequestDto req = null;
         try {
             Map<String, String> fields = OfsMessageUtil.parseOfsFields(ofsMessage);
 
@@ -86,7 +89,7 @@ public class CbsPostingController {
             String desc = fields.getOrDefault("DESCRIPTION", fields.getOrDefault("PAYMENT.DETAILS", "T24 Funds Transfer"));
             String idempotencyKey = fields.getOrDefault("IDEMPOTENCY.KEY", txId);
 
-            TransferRequestDto req = new TransferRequestDto(
+            req = new TransferRequestDto(
                     txId,
                     debitAcct,
                     creditAcct,
@@ -101,6 +104,13 @@ public class CbsPostingController {
             return ResponseEntity.ok(response.ofsResponse());
         } catch (Exception e) {
             log.error("Failed to execute OFS funds transfer: {}", e.getMessage(), e);
+            if (req != null) {
+                try {
+                    transferService.recordFailedTransfer(req, e.getMessage());
+                } catch (Exception ex) {
+                    log.error("Failed to record failed status history: {}", ex.getMessage());
+                }
+            }
             return ResponseEntity.badRequest().body(OfsMessageUtil.buildOfsResponse(false, "ERROR", e.getMessage()));
         }
     }
@@ -176,5 +186,46 @@ public class CbsPostingController {
                 .toList();
         String ofs = OfsMessageUtil.buildStatusHistoryResponse(transactionId, dtos, safePage, safeSize);
         return ResponseEntity.ok(ofs);
+    }
+
+    /**
+     * Dedicated Transaction Reservation Endpoint (e.g. for high-value cooling-off hold).
+     */
+    @PostMapping(value = "/transactions/{transactionId}/reserve")
+    public ResponseEntity<String> reserveTransaction(
+            @PathVariable String transactionId,
+            @RequestParam(required = false) String sourceAccountId,
+            @RequestParam(required = false) String destinationAccountId,
+            @RequestParam(required = false) BigDecimal amount,
+            @RequestParam(required = false) String currency,
+            @RequestParam(required = false) String memo) {
+        transferService.recordReservedTransfer(
+                transactionId, sourceAccountId, destinationAccountId, amount, currency, memo
+        );
+        return ResponseEntity.ok(OfsMessageUtil.buildOfsResponse(true, transactionId, "RESERVED_SUCCESSFULLY"));
+    }
+
+    /**
+     * Dedicated Transaction Cancellation Endpoint.
+     */
+    @PostMapping(value = "/transactions/{transactionId}/cancel")
+    public ResponseEntity<String> cancelTransaction(
+            @PathVariable String transactionId,
+            @RequestParam(required = false) String sourceAccountId,
+            @RequestParam(required = false) String destinationAccountId,
+            @RequestParam(required = false) BigDecimal amount,
+            @RequestParam(required = false) String currency,
+            @RequestParam(required = false) String reason,
+            @RequestParam(required = false) String details,
+            @RequestParam(required = false) String actorId,
+            @RequestParam(required = false) String actorType) {
+        transferService.recordCancelledTransfer(
+                transactionId, sourceAccountId, destinationAccountId, amount, currency,
+                reason != null ? reason : ChangeReasonCode.USER_COOL_OFF_CANCELLED,
+                details != null ? details : "Cancelled",
+                actorId != null ? actorId : "CUSTOMER",
+                actorType != null ? actorType : ActorType.CUSTOMER.name()
+        );
+        return ResponseEntity.ok(OfsMessageUtil.buildOfsResponse(true, transactionId, "CANCELLED_SUCCESSFULLY"));
     }
 }
