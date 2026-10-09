@@ -40,7 +40,7 @@ spring:
         - id: transfer-orchestrator
           uri: ${TRANSFER_ORCHESTRATOR_URI:http://localhost:8082}
           predicates:
-            - Path=/api/v1/transfers/**, /api/v1/transfers, /api/v1/reversals/**, /api/v1/reversals, /api/v1/holds/**, /api/v1/holds
+            - Path=/api/v1/transfers/**, /api/v1/transfers, /api/v1/reversals/**, /api/v1/reversals
           filters:
             - name: RequestRateLimiter
               args:

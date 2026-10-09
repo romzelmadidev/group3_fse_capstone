@@ -40,13 +40,11 @@ public class TransferOrchestratorController {
         this.objectMapper = objectMapper;
     }
     
-    @GetMapping({"/accounts/{accountId}/transactions", "/transactions"})
+    @GetMapping("/accounts/{accountId}/transactions")
     public ResponseEntity<List<AccountTransactionDto>> getAccountTransactions(
-            @PathVariable(value = "accountId", required = false) String pathAccountId,
-            @RequestParam(value = "accountId", required = false) String queryAccountId,
+            @PathVariable String accountId,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size) {
-        String accountId = (pathAccountId != null && !pathAccountId.isBlank()) ? pathAccountId : queryAccountId;
         if (accountId == null || accountId.isBlank()) {
             return ResponseEntity.badRequest().build();
         }
@@ -56,7 +54,7 @@ public class TransferOrchestratorController {
         return ResponseEntity.ok(transactions);
     }
 
-    @GetMapping({"/transactions/{transactionId}/status-history", "/{transactionId}/status-history"})
+    @GetMapping("/transactions/{transactionId}/status-history")
     public ResponseEntity<List<TransactionStatusHistoryDto>> getTransactionStatusHistory(
             @PathVariable String transactionId,
             @RequestParam(value = "page", defaultValue = "0") int page,

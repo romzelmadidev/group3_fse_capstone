@@ -61,7 +61,7 @@ class TransferOrchestratorTransactionEnquiryTest {
 
         when(cbsService.getAccountTransactions("ACC-100001", 0, 20)).thenReturn(List.of(tx1));
 
-        ResponseEntity<List<AccountTransactionDto>> response = controller.getAccountTransactions("ACC-100001", null, 0, 20);
+        ResponseEntity<List<AccountTransactionDto>> response = controller.getAccountTransactions("ACC-100001", 0, 20);
 
         assertNotNull(response.getBody());
         assertEquals(1, response.getBody().size());
@@ -94,7 +94,7 @@ class TransferOrchestratorTransactionEnquiryTest {
 
         when(cbsService.getAccountTransactions("ACC-100001", 2, 5)).thenReturn(List.of(tx2));
 
-        ResponseEntity<List<AccountTransactionDto>> response = controller.getAccountTransactions("ACC-100001", null, 2, 5);
+        ResponseEntity<List<AccountTransactionDto>> response = controller.getAccountTransactions("ACC-100001", 2, 5);
 
         assertNotNull(response.getBody());
         assertEquals(1, response.getBody().size());

@@ -130,7 +130,7 @@ public class ReversalOrchestratorController {
         }
     }
 
-    @PostMapping({"/direct", "/compensate"})
+    @PostMapping("/direct")
     public ResponseEntity<Map<?, ?>> directReversal(@RequestBody Map<String, Object> request) {
         String origTx = String.valueOf(request.getOrDefault("originalTransactionId", request.getOrDefault("originalFtNo", request.get("originalTxId"))));
         String reason = String.valueOf(request.getOrDefault("reason", request.getOrDefault("reversalReason", "SAGA_COMPENSATION")));
