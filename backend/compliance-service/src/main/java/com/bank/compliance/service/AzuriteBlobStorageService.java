@@ -70,6 +70,15 @@ public class AzuriteBlobStorageService {
         return new UploadResult(blobName, uri, checksum, data.length);
     }
 
+    public boolean exists(String blobName) {
+        try {
+            ensureContainerExists();
+            return containerClient.getBlobClient(blobName).exists();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public byte[] downloadArtifact(String blobName) {
         ensureContainerExists();
         BlobClient blobClient = containerClient.getBlobClient(blobName);

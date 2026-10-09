@@ -55,10 +55,13 @@ public class ComplianceKafkaConsumer {
     }
 
     @KafkaListener(topics = "banking.transfers.events", groupId = "compliance-service-workers")
-    public void consumeTransferEvents(String messagePayload) {
+    public void consumeTransferEvents(@org.springframework.messaging.handler.annotation.Payload(required = false) Object rawPayload) {
         try {
+            Object actual = rawPayload instanceof org.apache.kafka.clients.consumer.ConsumerRecord<?, ?> cr ? cr.value() : rawPayload;
+            if (actual == null) return;
+            String messagePayload = actual instanceof String str ? str : objectMapper.writeValueAsString(actual);
             JsonNode node = objectMapper.readTree(messagePayload);
-            if (node.has("amount") && node.has("sourceAccountId") && node.has("destinationAccountId")) {
+            if (node.has("amount") && (node.has("sourceAccountId") || node.has("sourceAccount"))) {
                 TransferExecutedEvent event = objectMapper.treeToValue(node, TransferExecutedEvent.class);
                 if (event.getAmount() != null && event.getAmount().compareTo(AMLA_CTR_THRESHOLD) >= 0) {
                     log.info("Transaction {} exceeds AMLA CTR threshold ({} >= 500,000). Generating filing package.",
@@ -72,13 +75,18 @@ public class ComplianceKafkaConsumer {
     }
 
     @KafkaListener(topics = "banking.batch.events", groupId = "compliance-service-workers")
-    public void consumeBatchEvents(String messagePayload) {
+    public void consumeBatchEvents(@org.springframework.messaging.handler.annotation.Payload(required = false) Object rawPayload) {
         try {
+            Object actual = rawPayload instanceof org.apache.kafka.clients.consumer.ConsumerRecord<?, ?> cr ? cr.value() : rawPayload;
+            if (actual == null) return;
+            String messagePayload = actual instanceof String str ? str : objectMapper.writeValueAsString(actual);
             JsonNode node = objectMapper.readTree(messagePayload);
             if (node.has("snapshotsCount")) {
                 BalanceSnapshotFrozenEvent event = objectMapper.treeToValue(node, BalanceSnapshotFrozenEvent.class);
                 log.info("Batch snapshot frozen event received for date {}. Generating EOD artifacts.", event.getBusinessDate());
                 handleEodArtifactGeneration(event.getBusinessDate(), event.getSnapshotsCount());
+            } else {
+                log.debug("Batch event received, skipping non-snapshot event: {}", messagePayload);
             }
         } catch (Exception e) {
             log.error("Failed to process batch event in compliance consumer: {}", e.getMessage(), e);
@@ -126,7 +134,7 @@ public class ComplianceKafkaConsumer {
         }
     }
 
-    private void handleEodArtifactGeneration(String businessDateStr, int accountCount) {
+    public void handleEodArtifactGeneration(String businessDateStr, int accountCount) {
         LocalDate bDate = LocalDate.parse(businessDateStr);
 
         // 1. Generate & Upload GL Trial Balance Excel

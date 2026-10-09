@@ -2,6 +2,7 @@ package com.bank.compliance.controller;
 
 import com.bank.compliance.generator.CustomerStatementPdfGenerator;
 import com.bank.compliance.service.AzuriteBlobStorageService;
+import com.bank.compliance.service.ComplianceReportSeedService;
 import com.bank.ledger.contracts.ofs.OfsMessageUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,17 +27,20 @@ public class ComplianceController {
 
     private final AzuriteBlobStorageService azuriteService;
     private final CustomerStatementPdfGenerator statementPdfGenerator;
+    private final ComplianceReportSeedService seedService;
     private final WebClient cbsWebClient;
     private final WebClient orchestratorWebClient;
 
     public ComplianceController(
             AzuriteBlobStorageService azuriteService,
             CustomerStatementPdfGenerator statementPdfGenerator,
+            ComplianceReportSeedService seedService,
             WebClient.Builder webClientBuilder,
             @Value("${services.cbs.url:http://localhost:8085}") String cbsServiceUrl,
             @Value("${services.orchestrator.url:http://localhost:8082}") String orchestratorUrl) {
         this.azuriteService = azuriteService;
         this.statementPdfGenerator = statementPdfGenerator;
+        this.seedService = seedService;
         this.cbsWebClient = webClientBuilder.baseUrl(cbsServiceUrl).build();
         this.orchestratorWebClient = webClientBuilder.baseUrl(orchestratorUrl).build();
     }
@@ -53,15 +57,58 @@ public class ComplianceController {
         return ResponseEntity.ok(reports);
     }
 
-    @GetMapping("/reports/download")
-    public ResponseEntity<byte[]> downloadReport(@RequestParam("blobName") String blobName) {
-        byte[] content = azuriteService.downloadArtifact(blobName);
-        String contentType = blobName.endsWith(".pdf")
+    @PostMapping(path = {"/reports/generate-sample", "/reports/generate"})
+    @GetMapping(path = {"/reports/generate-sample", "/reports/generate"})
+    public ResponseEntity<List<AzuriteBlobStorageService.BlobItemDto>> generateSampleReports() {
+        seedService.seedDefaultReportsIfMissing();
+        return ResponseEntity.ok(azuriteService.listArtifacts());
+    }
+
+    @GetMapping({"/reports/download", "/storage/download/**"})
+    public ResponseEntity<byte[]> downloadReport(
+            @RequestParam(name = "blobName", required = false) String blobNameParam,
+            jakarta.servlet.http.HttpServletRequest request) {
+
+        String blobName = blobNameParam;
+        if (blobName == null || blobName.isBlank()) {
+            String path = request.getRequestURI();
+            String prefix = "/compliance/storage/download/";
+            int idx = path.indexOf(prefix);
+            if (idx != -1) {
+                blobName = path.substring(idx + prefix.length());
+            }
+        }
+        if (blobName == null || blobName.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (blobName.startsWith("/")) {
+            blobName = blobName.substring(1);
+        }
+
+        byte[] content;
+        if (azuriteService.exists(blobName)) {
+            content = azuriteService.downloadArtifact(blobName);
+        } else {
+            String finalBlobName = blobName;
+            String fileNameOnly = blobName.contains("/") ? blobName.substring(blobName.lastIndexOf('/') + 1) : blobName;
+            var matching = azuriteService.listArtifacts().stream()
+                    .filter(b -> b.blobName().equalsIgnoreCase(finalBlobName) || b.blobName().endsWith("/" + fileNameOnly))
+                    .findFirst();
+            if (matching.isPresent()) {
+                content = azuriteService.downloadArtifact(matching.get().blobName());
+            } else {
+                content = seedService.generateArtifactOnDemand(blobName);
+            }
+        }
+
+        String fileName = blobName.contains("/") ? blobName.substring(blobName.lastIndexOf('/') + 1) : blobName;
+        String contentType = fileName.endsWith(".pdf")
                 ? "application/pdf"
-                : (blobName.endsWith(".xlsx") ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/octet-stream");
+                : (fileName.endsWith(".xlsx") ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                : (fileName.endsWith(".xml") ? "application/xml" : "application/octet-stream"));
 
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + blobName.substring(blobName.lastIndexOf('/') + 1) + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
                 .contentType(MediaType.parseMediaType(contentType))
                 .body(content);
     }

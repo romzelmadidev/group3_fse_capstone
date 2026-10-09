@@ -82,16 +82,31 @@ export default function AzuriteDrive() {
         `${API_BASE}/compliance/reports/download?blobName=${encodeURIComponent(blob.blobName)}`,
         { responseType: 'blob' }
       );
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const contentType = blob.contentType || response.headers['content-type'] || 'application/octet-stream';
+      const fileBlob = new Blob([response.data], { type: contentType });
+      const url = window.URL.createObjectURL(fileBlob);
       const link = document.createElement('a');
       link.href = url;
       const fileName = blob.blobName.split('/').pop() || 'download';
       link.setAttribute('download', fileName);
       document.body.appendChild(link);
       link.click();
-      link.remove();
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }, 150);
     } catch (e) {
-      alert('Could not download blob from Azurite directly: ' + e.message);
+      let errMsg = e.message;
+      if (e.response?.data instanceof Blob) {
+        try {
+          const txt = await e.response.data.text();
+          const parsed = JSON.parse(txt);
+          errMsg = parsed.message || parsed.error || txt;
+        } catch {
+          // ignore parsing error
+        }
+      }
+      alert('Could not download blob from Azurite directly: ' + errMsg);
     }
   };
 
@@ -102,12 +117,13 @@ export default function AzuriteDrive() {
       if (type === 'STATEMENT') {
         await axios.get(`${API_BASE}/compliance/statements/ACC-1001/pdf`);
       } else {
-        // Trigger EOD reports
-        await axios.get(`${API_BASE}/compliance/reports?eodDate=2026-10-08`);
+        // Trigger EOD reports generation
+        await axios.post(`${API_BASE}/compliance/reports/generate-sample`);
       }
       await fetchBlobs();
-    } catch {
-      fetchBlobs();
+    } catch (e) {
+      console.warn('Sample generation notice:', e);
+      await fetchBlobs();
     } finally {
       setIsLoading(false);
     }
@@ -187,13 +203,19 @@ export default function AzuriteDrive() {
         {/* Left Sidebar */}
         <div className="flex w-64 flex-col justify-between border-r border-line bg-sunken/40 p-4">
           <div className="space-y-4">
-            {/* Quick Action Button */}
-            <div className="relative">
+            {/* Quick Action Buttons */}
+            <div className="space-y-2">
               <button
                 onClick={() => handleGenerateSample('STATEMENT')}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-surface py-2.5 text-xs font-semibold text-fg shadow-sm hover:bg-surface-raised"
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-surface py-2 text-xs font-semibold text-fg shadow-sm hover:bg-surface-raised"
               >
                 <Plus className="h-4 w-4 text-blue-500" /> Generate Statement PDF
+              </button>
+              <button
+                onClick={() => handleGenerateSample('EOD')}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-surface py-2 text-xs font-semibold text-fg shadow-sm hover:bg-surface-raised"
+              >
+                <RefreshCw className="h-4 w-4 text-emerald-500" /> Generate EOD Reports
               </button>
             </div>
 
