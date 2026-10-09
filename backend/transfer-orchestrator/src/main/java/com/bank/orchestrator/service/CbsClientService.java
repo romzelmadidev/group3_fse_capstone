@@ -135,43 +135,6 @@ public class CbsClientService {
         }
     }
 
-    public void notifyReserved(String txId, String sourceAccountId, String destAccountId, BigDecimal amount, String currency, String memo) {
-        try {
-            webClient.post()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/api/v1/cbs/transactions/{transactionId}/reserve")
-                            .queryParam("sourceAccountId", sourceAccountId)
-                            .queryParam("destinationAccountId", destAccountId)
-                            .queryParam("amount", amount)
-                            .queryParam("currency", currency != null ? currency : "PHP")
-                            .queryParam("memo", memo)
-                            .build(txId))
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .timeout(Duration.ofMillis(3000))
-                    .block();
-        } catch (Exception e) {
-            log.warn("Failed to notify CBS of transfer reservation for {}: {}", txId, e.getMessage());
-        }
-    }
-
-    public void notifyCancelled(String txId, String reason, String details) {
-        try {
-            webClient.post()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/api/v1/cbs/transactions/{transactionId}/cancel")
-                            .queryParam("reason", reason)
-                            .queryParam("details", details)
-                            .build(txId))
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .timeout(Duration.ofMillis(3000))
-                    .block();
-        } catch (Exception e) {
-            log.warn("Failed to notify CBS of transfer cancellation for {}: {}", txId, e.getMessage());
-        }
-    }
-
     public TransferInitiationResponse postToCbs(TransferInitiationRequest request, String txId) {
         return postToCbs(request, txId, false);
     }

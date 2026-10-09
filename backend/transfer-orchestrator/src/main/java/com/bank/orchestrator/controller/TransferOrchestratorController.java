@@ -157,9 +157,6 @@ public class TransferOrchestratorController {
     public ResponseEntity<Map<String, Object>> cancelTransferDuringCoolOff(
             @Valid @RequestBody CoolOffCancelRequest request) {
         boolean cancelled = coolOffService.cancelCoolOff(request.transactionId());
-        if (cancelled) {
-            cbsService.notifyCancelled(request.transactionId(), "USER_COOL_OFF_CANCELLED", "Transfer cancelled during cooling-off window");
-        }
         return ResponseEntity.ok(Map.of(
                 "transactionId", request.transactionId(),
                 "cancelled", cancelled,
