@@ -57,6 +57,8 @@ public class BalanceMutationService {
     private org.springframework.data.redis.core.StringRedisTemplate redisTemplate;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private RiskEngineClient riskEngineClient;
+    @jakarta.persistence.PersistenceContext(unitName = "oracleMasterUnit")
+    private jakarta.persistence.EntityManager entityManager;
 
     @Value("${app.maker-checker.threshold:50000.0000}")
     private BigDecimal makerCheckerThreshold;
@@ -89,8 +91,14 @@ public class BalanceMutationService {
 
         BalanceMaster firstAccount = balanceRepository.findByAccountIdWithLock(firstLockId)
                 .orElseThrow(() -> new IllegalArgumentException("Account not found: " + firstLockId));
+        if (entityManager != null) {
+            entityManager.refresh(firstAccount);
+        }
         BalanceMaster secondAccount = balanceRepository.findByAccountIdWithLock(secondLockId)
                 .orElseThrow(() -> new IllegalArgumentException("Account not found: " + secondLockId));
+        if (entityManager != null) {
+            entityManager.refresh(secondAccount);
+        }
 
         BalanceMaster sender = sourceId.equals(firstLockId) ? firstAccount : secondAccount;
         BalanceMaster receiver = targetId.equals(firstLockId) ? firstAccount : secondAccount;
@@ -98,12 +106,21 @@ public class BalanceMutationService {
         // =========================================================================
         // STEP 2: AVAILABLE BALANCE FINANCIAL SANITY CHECK
         // =========================================================================
-        if (sender.getAvailableBalance().compareTo(amount) < 0) {
-            log.error("[MUTATION REJECTED] Insufficient funds: Account {} available PHP {}, requested PHP {}",
-                    sourceId, sender.getAvailableBalance(), amount);
+        BigDecimal hold = sender.getHoldAmount() != null ? sender.getHoldAmount() : BigDecimal.ZERO;
+        BigDecimal spendableBalance = sender.getBalanceAmount().subtract(hold);
+        if (spendableBalance.compareTo(BigDecimal.ZERO) < 0) {
+            spendableBalance = BigDecimal.ZERO;
+        }
+        BigDecimal effectiveAvailable = sender.getAvailableBalance() != null 
+                ? sender.getAvailableBalance().min(spendableBalance) 
+                : spendableBalance;
+
+        if (effectiveAvailable.compareTo(amount) < 0) {
+            log.error("[MUTATION REJECTED] Insufficient funds: Account {} available PHP {} (balance: {}, hold: {}), requested PHP {}",
+                    sourceId, effectiveAvailable, sender.getBalanceAmount(), hold, amount);
             throw new InsufficientFundsException(
                     String.format("Insufficient funds in account %s. Available: PHP %s, Requested: PHP %s",
-                            sourceId, sender.getAvailableBalance(), amount));
+                            sourceId, effectiveAvailable, amount));
         }
 
         BigDecimal senderBefore = sender.getBalanceAmount();
@@ -144,6 +161,40 @@ public class BalanceMutationService {
                     riskResult.getThreatCategory(), riskResult.getCauseOfSuspicion(), riskResult.getSarReportId());
             throw new SecurityException("Transaction blocked by security risk engine: " + riskResult.getPrimaryFlag()
                     + (riskResult.getCauseOfSuspicion() != null ? " (" + riskResult.getCauseOfSuspicion() + ")" : ""));
+        }
+
+        // Check ADVISORY_WARNING
+        boolean isAdvisoryWarning = "ADVISORY_WARNING".equalsIgnoreCase(riskResult.getDecision());
+        boolean advisoryAcknowledged = Boolean.TRUE.equals(request.getScamAdvisoryAcknowledged());
+
+        if (isAdvisoryWarning && !advisoryAcknowledged) {
+            log.info("[ADVISORY_WARNING TRIGGERED] Transfer of PHP {} triggered {} warning ({}). Returning cooling-off requirement.",
+                    amount, riskResult.getThreatCategory(), riskResult.getWarningTitle());
+
+            return MutationResponse.builder()
+                    .transactionId(request.getTransactionId())
+                    .accountId(sourceId)
+                    .status("ADVISORY_WARNING")
+                    .mutationAmount(amount)
+                    .balanceBefore(senderBefore)
+                    .balanceAfter(senderBefore)
+                    .availableBalance(sender.getAvailableBalance())
+                    .timestamp(Instant.now())
+                    .processedAt(Instant.now())
+                    .traceId(UUID.randomUUID().toString())
+                    .riskDecision("ADVISORY_WARNING")
+                    .riskScore(riskResult.getFraudScore())
+                    .warningTitle(riskResult.getWarningTitle())
+                    .warningMessage(riskResult.getWarningMessage())
+                    .threatCategory(riskResult.getThreatCategory())
+                    .causeOfSuspicion(riskResult.getCauseOfSuspicion())
+                    .sarDraftCreated(riskResult.isSarDraftCreated())
+                    .sarReportId(riskResult.getSarReportId())
+                    .coolingOffRequired(true)
+                    .coolingOffExpiresInSeconds(600)
+                    .biometricRequired(true)
+                    .message(riskResult.getWarningMessage() != null ? riskResult.getWarningMessage() : "Advisory warning triggered. 10-minute hold or acknowledgment required.")
+                    .build();
         }
 
         boolean isHighValue = amount.compareTo(makerCheckerThreshold) > 0;
@@ -269,7 +320,7 @@ public class BalanceMutationService {
         BigDecimal receiverAfter = receiverBefore.add(amount);
 
         sender.setBalanceAmount(senderAfter);
-        sender.setAvailableBalance(sender.getAvailableBalance().subtract(amount));
+        sender.setAvailableBalance(senderAfter.subtract(hold).max(BigDecimal.ZERO));
         sender.setUpdatedAt(Instant.now());
 
         receiver.setBalanceAmount(receiverAfter);
@@ -1558,21 +1609,21 @@ public class BalanceMutationService {
      */
     public String resolveInternalAccountId(String sourceId, String userId) {
         if (sourceId != null && !sourceId.isBlank()) {
-            if (balanceRepository.findByAccountId(sourceId).isPresent()) {
+            if (balanceRepository.existsById(sourceId)) {
                 return sourceId;
             }
             Optional<AccountMaster> byNum = accountRepository.findByAccountNumber(sourceId);
-            if (byNum.isPresent() && balanceRepository.findByAccountId(byNum.get().getAccountId()).isPresent()) {
+            if (byNum.isPresent() && balanceRepository.existsById(byNum.get().getAccountId())) {
                 return byNum.get().getAccountId();
             }
         }
         if (userId != null && !userId.isBlank()) {
             Optional<AccountMaster> byUser = accountRepository.findFirstByUserId(userId);
-            if (byUser.isPresent() && balanceRepository.findByAccountId(byUser.get().getAccountId()).isPresent()) {
+            if (byUser.isPresent() && balanceRepository.existsById(byUser.get().getAccountId())) {
                 return byUser.get().getAccountId();
             }
         }
-        if (balanceRepository.findByAccountId("1000-2000-3001").isPresent()) {
+        if (balanceRepository.existsById("1000-2000-3001")) {
             return "1000-2000-3001";
         }
         return sourceId != null ? sourceId : "1000-2000-3001";

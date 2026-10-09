@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../services/bank_service.dart';
+import '../../services/biometric_service.dart';
 import '../../services/security_service.dart';
 import '../../theme/aura_theme.dart';
 import '../../widgets/require_device_approval.dart';
@@ -77,6 +78,14 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
           break;
         case 'BLOCK':
           _currentRemarks = 'Emergency investment deposit';
+          break;
+        case 'GEO_ANOMALY':
+          _currentRemarks = 'Overseas fund movement';
+          _bankService.updateCustomerLocation(
+            latitude: 51.5074,
+            longitude: -0.1278,
+            locationName: 'London, United Kingdom (Impossible Travel)',
+          );
           break;
         case 'AUTO':
         default:
@@ -188,6 +197,7 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
                       _buildSimulationOption('HOOKING', 'Frida / Xposed Hooking', 'Simulates memory hooking frameworks detected', Icons.memory_rounded),
                       _buildSimulationOption('CANARY', 'HTTP Canary Sniffer', 'Simulates packet inspection / MITM tool active', Icons.network_check_rounded),
                       _buildSimulationOption('CALL', 'Active Call', 'Simulates active phone call during transaction', Icons.phone_in_talk_outlined),
+                      _buildSimulationOption('GEO_ANOMALY', 'Location Anomaly (London / Impossible Travel)', 'Simulates instant change of customer location to London, UK', Icons.wrong_location_rounded),
                       _buildSimulationOption('BLOCK', 'High Risk Block', 'Simulates restricted device or severe anomaly', Icons.block_flipped),
                       const SizedBox(height: 12),
                     ],
@@ -782,7 +792,8 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
         _riskScenario == 'REMOTE' ||
         _riskScenario == 'ANYDESK' ||
         _riskScenario == 'CANARY' ||
-        _riskScenario == 'CALL';
+        _riskScenario == 'CALL' ||
+        _riskScenario == 'GEO_ANOMALY';
     final bool isBlockScenario = _riskScenario == 'BLOCK' || _riskScenario == 'HOOKING';
 
     final List<String> runningPkgs = [];
@@ -810,6 +821,9 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
     } else if (_riskScenario == 'CALL') {
       activeCall = true;
       threats.add('ACTIVE_VOICE_CALL_COERCION');
+    } else if (_riskScenario == 'GEO_ANOMALY') {
+      threats.add('IMPOSSIBLE_TRAVEL_GEO_ANOMALY');
+      threats.add('UNRECOGNIZED_OVERSEAS_LOCATION');
     } else if (_riskScenario == 'BLOCK') {
       isEmulator = true;
       rooted = true;
@@ -963,8 +977,31 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
                   elevation: 0,
                 ),
                 onPressed: () async {
-                  Navigator.of(ctx).pop();
-                  await _executeTransferAndNavigate();
+                  final biometric = BiometricService();
+                  final bool canAuth = await biometric.canAuthenticate();
+                  if (canAuth) {
+                    final bool verified = await biometric.authenticate(
+                      reason: 'Authorize transfer of PHP ${widget.amount.toStringAsFixed(2)} to ${widget.recipientName}',
+                      biometricOnly: false,
+                    );
+                    if (!verified) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Biometric authorization was cancelled or unverified.'),
+                            backgroundColor: Color(0xFF6B7280),
+                          ),
+                        );
+                      }
+                      return;
+                    }
+                  }
+                  if (ctx.mounted) {
+                    Navigator.of(ctx).pop();
+                  }
+                  if (mounted) {
+                    await _executeTransferAndNavigate();
+                  }
                 },
                 child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -1456,8 +1493,31 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
                     elevation: 0,
                   ),
                   onPressed: () async {
-                    Navigator.of(ctx).pop();
-                    await _executeTransferAndNavigate();
+                    final biometric = BiometricService();
+                    final bool canAuth = await biometric.canAuthenticate();
+                    if (canAuth) {
+                      final bool verified = await biometric.authenticate(
+                        reason: 'Authorize transfer of PHP ${widget.amount.toStringAsFixed(2)} to ${widget.recipientName}',
+                        biometricOnly: false,
+                      );
+                      if (!verified) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Biometric authorization was cancelled or unverified.'),
+                              backgroundColor: Color(0xFF6B7280),
+                            ),
+                          );
+                        }
+                        return;
+                      }
+                    }
+                    if (ctx.mounted) {
+                      Navigator.of(ctx).pop();
+                    }
+                    if (mounted) {
+                      await _executeTransferAndNavigate();
+                    }
                   },
                   child: const Text('Authorize with Biometrics', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                 ),
@@ -1568,6 +1628,24 @@ class _RiskScanDialogState extends State<_RiskScanDialog> {
         'primary_flag': 'HIGH_RISK_SUSPICIOUS_ENVIRONMENT',
         'threat_category': 'SUSPICIOUS_ACTIVITY',
         'cause_of_suspicion': 'Suspicious device environment detected',
+      });
+      return;
+    }
+
+    if (widget.detectedThreats != null && widget.detectedThreats!.contains('IMPOSSIBLE_TRAVEL_GEO_ANOMALY')) {
+      Navigator.of(context).pop({
+        ...apiRes,
+        'decision': 'ADVISORY_WARNING',
+        'fraud_score': 85,
+        'primary_flag': 'GEO_VELOCITY_IMPOSSIBLE_TRAVEL',
+        'threat_category': 'LOCATION_ANOMALY',
+        'cause_of_suspicion': 'Impossible travel velocity detected: Location changed instantaneously to London, United Kingdom while registered baseline is Manila, Philippines.',
+        'warning_dialog': {
+          'title': 'Location Anomaly Detected',
+          'threat_category': 'IMPOSSIBLE_TRAVEL',
+          'body_message': 'Our security risk engine detected an impossible travel anomaly. Your session is currently reporting from London, United Kingdom, which deviates significantly from your baseline profile in Manila, Philippines.',
+          'checkbox_acknowledgment_text': 'I verify that this location change is legitimate and I authorize this funds transfer.',
+        },
       });
       return;
     }

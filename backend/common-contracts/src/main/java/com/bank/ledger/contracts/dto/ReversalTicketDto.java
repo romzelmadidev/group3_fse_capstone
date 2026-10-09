@@ -1,5 +1,6 @@
 package com.bank.ledger.contracts.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,36 +18,46 @@ import java.time.Instant;
 @AllArgsConstructor
 public class ReversalTicketDto {
 
-    @JsonProperty("ticket_id")
+    @JsonProperty("ticketId")
+    @JsonAlias("ticket_id")
     private String ticketId;
 
-    @JsonProperty("original_transaction_id")
+    @JsonProperty("originalTransactionId")
+    @JsonAlias("original_transaction_id")
     private String originalTransactionId;
 
-    @JsonProperty("maker_id")
+    @JsonProperty("makerId")
+    @JsonAlias("maker_id")
     private String makerId;
 
-    @JsonProperty("checker_id")
+    @JsonProperty("checkerId")
+    @JsonAlias("checker_id")
     private String checkerId;
 
     @JsonProperty("status")
     private String status;
 
-    @JsonProperty("dispute_reason")
+    @JsonProperty("disputeReason")
+    @JsonAlias("dispute_reason")
     private String disputeReason;
 
-    @JsonProperty("maker_notes")
+    @JsonProperty("makerNotes")
+    @JsonAlias("maker_notes")
     private String makerNotes;
 
-    @JsonProperty("checker_notes")
+    @JsonProperty("checkerNotes")
+    @JsonAlias("checker_notes")
     private String checkerNotes;
 
-    @JsonProperty("reversal_transaction_id")
+    @JsonProperty("reversalTransactionId")
+    @JsonAlias("reversal_transaction_id")
     private String reversalTransactionId;
 
-    @JsonProperty("created_at")
+    @JsonProperty("createdAt")
+    @JsonAlias("created_at")
     private Instant createdAt;
 
-    @JsonProperty("resolved_at")
+    @JsonProperty("resolvedAt")
+    @JsonAlias("resolved_at")
     private Instant resolvedAt;
 }

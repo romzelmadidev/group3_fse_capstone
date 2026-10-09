@@ -49,6 +49,8 @@ CREATE TABLE users (
     max_concurrent_sessions NUMBER(3) DEFAULT 3 NOT NULL,
     failed_login_attempts   NUMBER(3) DEFAULT 0 NOT NULL,
     status                  VARCHAR2(20) DEFAULT 'ACTIVE' NOT NULL,
+    kyc_status              VARCHAR2(30) DEFAULT 'PENDING' NOT NULL,
+    kyc_review_reason       VARCHAR2(500),
     last_known_latitude     NUMBER(10, 6) DEFAULT 14.5995,
     last_known_longitude    NUMBER(10, 6) DEFAULT 120.9842,
     last_known_location_name VARCHAR2(100) DEFAULT 'Manila, Philippines',
@@ -71,6 +73,7 @@ CREATE TABLE accounts (
     user_id        VARCHAR2(64) NOT NULL,
     account_number VARCHAR2(32) NOT NULL UNIQUE,
     account_type   VARCHAR2(20) NOT NULL,
+    currency       VARCHAR2(3) DEFAULT 'PHP' NOT NULL,
     status         VARCHAR2(20) DEFAULT 'ACTIVE' NOT NULL,
     credit_limit   NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
     created_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -84,9 +87,11 @@ CREATE TABLE accounts (
 -- ==============================================================================
 -- 3. Table: balance_master
 -- Strict numeric parameters: NUMBER(18, 4) with mathematical sanity checks
+-- Surrogate balance_id PK eliminates shared-key anti-pattern
 -- ==============================================================================
 CREATE TABLE balance_master (
-    account_id        VARCHAR2(64) PRIMARY KEY,
+    balance_id        VARCHAR2(64) PRIMARY KEY,
+    account_id        VARCHAR2(64) NOT NULL UNIQUE,
     balance_amount    NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
     hold_amount       NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
     available_balance NUMBER(18, 4) GENERATED ALWAYS AS (balance_amount - hold_amount) VIRTUAL,
@@ -107,17 +112,29 @@ CREATE TABLE transactions (
     from_account_id        VARCHAR2(64) NOT NULL,
     to_account_id          VARCHAR2(64),
     type                   VARCHAR2(30) NOT NULL,
+    currency               VARCHAR2(3) DEFAULT 'PHP' NOT NULL,
     amount                 NUMBER(18, 4) NOT NULL,
     before_balance         NUMBER(18, 4) NOT NULL,
     after_balance          NUMBER(18, 4) NOT NULL,
     status                 VARCHAR2(30) NOT NULL,
     requires_2fa_otp       NUMBER(1) DEFAULT 0 NOT NULL,
     approved_by_user_id    VARCHAR2(64),
+    memo                   VARCHAR2(255),
+    latitude               NUMBER(10, 6),
+    longitude              NUMBER(10, 6),
+    location_name          VARCHAR2(100),
+    ip_address             VARCHAR2(45),
+    risk_score             NUMBER(5, 2),
+    risk_reason            VARCHAR2(255),
+    reversed_by_user_id    VARCHAR2(64),
+    reversal_reason        VARCHAR2(100),
+    reversal_memo          VARCHAR2(255),
     created_at             TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at             TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT fk_tx_from_account FOREIGN KEY (from_account_id) REFERENCES accounts(account_id),
     CONSTRAINT fk_tx_to_account FOREIGN KEY (to_account_id) REFERENCES accounts(account_id),
     CONSTRAINT fk_tx_approved_by FOREIGN KEY (approved_by_user_id) REFERENCES users(user_id),
+    CONSTRAINT fk_tx_reversed_by FOREIGN KEY (reversed_by_user_id) REFERENCES users(user_id),
     CONSTRAINT chk_tx_type CHECK (type IN ('DEPOSIT', 'WITHDRAWAL', 'TRANSFER', 'REVERSAL')),
     CONSTRAINT chk_tx_status CHECK (status IN ('PENDING_APPROVAL', 'COMMITTED', 'FAILED', 'REJECTED_FRAUD', 'REVERSED', 'CANCELLED', 'POSTED', 'INITIATED', 'PROCESSING')),
     CONSTRAINT chk_tx_2fa_otp CHECK (requires_2fa_otp IN (0, 1)),
@@ -304,21 +321,12 @@ INSERT INTO users (
     13.7565, 121.0583, 'Batangas City, Philippines', '112.198.54.33'
 );
 
--- 2. Accounts (Savings Only)
+-- 2. Accounts (Savings Only: Exactly 1 per Customer)
 INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
 VALUES ('1000-2000-3001', 'usr-1001-cst-001', '1000-2000-3001', 'SAVINGS', 'ACTIVE', 0.0000);
 
 INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
 VALUES ('1000-2000-3002', 'usr-1002-cst-002', '1000-2000-3002', 'SAVINGS', 'ACTIVE', 0.0000);
-
-INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
-VALUES ('acc-2001-sav-001', 'usr-1001-cst-001', '100100001234', 'SAVINGS', 'ACTIVE', 0.0000);
-
-INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
-VALUES ('acc-2002-sav-001', 'usr-1001-cst-001', '100100005678', 'SAVINGS', 'ACTIVE', 0.0000);
-
-INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
-VALUES ('acc-2003-sav-002', 'usr-1002-cst-002', '100200009999', 'SAVINGS', 'ACTIVE', 0.0000);
 
 INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
 VALUES ('1000-2000-3004', 'usr-2003-cst-003', '1000-2000-3004', 'SAVINGS', 'ACTIVE', 0.0000);
@@ -338,30 +346,30 @@ VALUES ('1000-2000-3008', 'usr-2007-cst-007', '1000-2000-3008', 'SAVINGS', 'ACTI
 INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
 VALUES ('1000-2000-3009', 'usr-2008-cst-008', '1000-2000-3009', 'SAVINGS', 'ACTIVE', 0.0000);
 
--- 3. Balance Master (Exact 4-decimal precision)
-INSERT INTO balance_master (account_id, balance_amount, hold_amount)
-VALUES ('1000-2000-3001', 25000000.0000, 0.0000);
+-- 3. Balance Master (Exact 4-decimal precision with Surrogate balance_id PK)
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3001', '1000-2000-3001', 25000000.0000, 0.0000);
 
-INSERT INTO balance_master (account_id, balance_amount, hold_amount)
-VALUES ('1000-2000-3002', 5000000.0000, 0.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3002', '1000-2000-3002', 5000000.0000, 0.0000);
 
-INSERT INTO balance_master (account_id, balance_amount, hold_amount)
-VALUES ('1000-2000-3004', 5200000.0000, 0.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3004', '1000-2000-3004', 5200000.0000, 0.0000);
 
-INSERT INTO balance_master (account_id, balance_amount, hold_amount)
-VALUES ('1000-2000-3005', 3750000.0000, 0.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3005', '1000-2000-3005', 3750000.0000, 0.0000);
 
-INSERT INTO balance_master (account_id, balance_amount, hold_amount)
-VALUES ('1000-2000-3006', 4200000.0000, 0.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3006', '1000-2000-3006', 4200000.0000, 0.0000);
 
-INSERT INTO balance_master (account_id, balance_amount, hold_amount)
-VALUES ('1000-2000-3007', 6800000.0000, 0.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3007', '1000-2000-3007', 6800000.0000, 0.0000);
 
-INSERT INTO balance_master (account_id, balance_amount, hold_amount)
-VALUES ('1000-2000-3008', 2950000.0000, 0.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3008', '1000-2000-3008', 2950000.0000, 0.0000);
 
-INSERT INTO balance_master (account_id, balance_amount, hold_amount)
-VALUES ('1000-2000-3009', 9100000.0000, 0.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3009', '1000-2000-3009', 9100000.0000, 0.0000);
 
 COMMIT;
 

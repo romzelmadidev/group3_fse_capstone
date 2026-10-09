@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/bank_service.dart';
+import '../../services/biometric_service.dart';
 import '../../theme/aura_theme.dart';
 import '../../widgets/aura_logo.dart';
 import 'devices_sessions_screen.dart';
@@ -7,6 +8,7 @@ import 'risk_showcase_screen.dart';
 import '../auth/security_gate_screen.dart';
 import '../auth/otp_verification_screen.dart';
 import '../auth/login_screen.dart';
+import '../kyc_wizard_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -19,6 +21,102 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final BankService _bankService = BankService();
+
+  Future<void> _toggleFaceId(bool val) async {
+    if (!val) {
+      setState(() => _bankService.user.faceIdEnabled = false);
+      await _bankService.setFaceIdEnabled(false);
+      return;
+    }
+
+    final biometric = BiometricService();
+    final canAuth = await biometric.canAuthenticate();
+    if (!canAuth) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Face ID is not supported or not enrolled on this device.'),
+            backgroundColor: Color(0xFFDC2626),
+          ),
+        );
+      }
+      return;
+    }
+
+    final success = await biometric.authenticate(
+      reason: 'Verify Face ID to enable biometric login for Aura Bank',
+      biometricOnly: false,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      setState(() => _bankService.user.faceIdEnabled = true);
+      await _bankService.setFaceIdEnabled(true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Face ID login enabled successfully.'),
+          backgroundColor: Color(0xFF10B981),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Face ID verification failed or was cancelled.'),
+          backgroundColor: Color(0xFF6B7280),
+        ),
+      );
+    }
+  }
+
+  Future<void> _toggleFingerprint(bool val) async {
+    if (!val) {
+      setState(() => _bankService.user.fingerprintEnabled = false);
+      await _bankService.setFingerprintEnabled(false);
+      return;
+    }
+
+    final biometric = BiometricService();
+    final canAuth = await biometric.canAuthenticate();
+    if (!canAuth) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Fingerprint sensor is not supported or not enrolled on this device.'),
+            backgroundColor: Color(0xFFDC2626),
+          ),
+        );
+      }
+      return;
+    }
+
+    final success = await biometric.authenticate(
+      reason: 'Scan your fingerprint to enable biometric login for Aura Bank',
+      biometricOnly: false,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      setState(() => _bankService.user.fingerprintEnabled = true);
+      await _bankService.setFingerprintEnabled(true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Fingerprint login enabled successfully.'),
+          backgroundColor: Color(0xFF10B981),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Fingerprint verification failed or was cancelled.'),
+          backgroundColor: Color(0xFF6B7280),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -283,24 +381,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 child: Column(
                   children: [
+                    _buildNavTile(
+                      title: 'Identity Verification (e-KYC)',
+                      subtitle: user.isKycVerified
+                          ? 'Philippine ID verified'
+                          : (user.kycStatus == 'PENDING_REVIEW'
+                              ? 'Application under compliance review'
+                              : 'Upload Philippine ID & selfie'),
+                      badgeText: user.isKycVerified ? 'Verified' : (user.kycStatus == 'PENDING_REVIEW' ? 'Review' : 'Required'),
+                      isPurpleBadge: !user.isKycVerified,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (context) => KycWizardScreen(onCompleted: () => setState(() {}))),
+                        );
+                      },
+                    ),
+                    const Divider(color: AuraColors.divider, height: 1),
                     _buildSwitchTile(
                       title: 'Biometric Login (Face ID)',
                       subtitle: 'Unlock app instantly with Face ID',
                       value: user.faceIdEnabled,
-                      onChanged: (val) {
-                        setState(() => user.faceIdEnabled = val);
-                        _bankService.setFaceIdEnabled(val);
-                      },
+                      onChanged: _toggleFaceId,
                     ),
                     const Divider(color: AuraColors.divider, height: 1),
                     _buildSwitchTile(
                       title: 'Biometric Login (Fingerprint)',
                       subtitle: 'Authenticate with Touch ID / Fingerprint',
                       value: user.fingerprintEnabled,
-                      onChanged: (val) {
-                        setState(() => user.fingerprintEnabled = val);
-                        _bankService.setFingerprintEnabled(val);
-                      },
+                      onChanged: _toggleFingerprint,
                     ),
                     const Divider(color: AuraColors.divider, height: 1),
                     _buildNavTile(

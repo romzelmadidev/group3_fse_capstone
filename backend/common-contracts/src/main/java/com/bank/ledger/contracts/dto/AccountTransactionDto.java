@@ -1,5 +1,6 @@
 package com.bank.ledger.contracts.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -19,12 +20,15 @@ import java.time.Instant;
 public class AccountTransactionDto {
 
     @JsonProperty("transaction_id")
+    @JsonAlias("transactionId")
     private String transactionId;
 
     @JsonProperty("source_account_id")
+    @JsonAlias("sourceAccountId")
     private String sourceAccountId;
 
     @JsonProperty("target_account_id")
+    @JsonAlias("targetAccountId")
     private String targetAccountId;
 
     @JsonProperty("amount")
@@ -34,6 +38,7 @@ public class AccountTransactionDto {
     private String currency;
 
     @JsonProperty("transaction_type")
+    @JsonAlias("transactionType")
     private String transactionType;
 
     @JsonProperty("status")
@@ -43,5 +48,6 @@ public class AccountTransactionDto {
     private String memo;
 
     @JsonProperty("created_at")
+    @JsonAlias("createdAt")
     private Instant createdAt;
 }

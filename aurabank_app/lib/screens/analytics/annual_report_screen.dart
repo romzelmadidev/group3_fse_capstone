@@ -1,25 +1,8 @@
 import '../../widgets/aura_logo.dart';
 import 'package:flutter/material.dart';
+import '../../models/annual_quarter_item.dart';
 import '../../services/bank_service.dart';
 import 'statement_preview_screen.dart';
-
-class AnnualQuarterItem {
-  final String id;
-  final String title;
-  final String subtitle;
-  final double amount;
-  final int settledCount;
-  final bool isIncoming;
-
-  const AnnualQuarterItem({
-    required this.id,
-    required this.title,
-    required this.subtitle,
-    required this.amount,
-    required this.settledCount,
-    this.isIncoming = true,
-  });
-}
 
 class AnnualReportScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -503,15 +486,15 @@ class _AnnualReportScreenState extends State<AnnualReportScreen> {
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
+                    children: [
+                      const Text(
                         'Account Holder',
                         style: TextStyle(fontSize: 10, color: textGray),
                       ),
-                      SizedBox(height: 2),
+                      const SizedBox(height: 2),
                       Text(
-                        'Elijah Riley Montefalco',
-                        style: TextStyle(
+                        _bankService.user.name.isNotEmpty ? _bankService.user.name : 'Juan Dela Cruz',
+                        style: const TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w700,
                           color: textDark,
@@ -519,10 +502,10 @@ class _AnnualReportScreenState extends State<AnnualReportScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      SizedBox(height: 2),
+                      const SizedBox(height: 2),
                       Text(
-                        '1584 4447 3697 1327 (Savings)',
-                        style: TextStyle(fontSize: 9.5, color: textGray),
+                        '${_bankService.savingsAccountNumber} (Savings)',
+                        style: const TextStyle(fontSize: 9.5, color: textGray),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),

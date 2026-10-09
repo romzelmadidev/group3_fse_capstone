@@ -1,5 +1,6 @@
 package com.bank.ledger.contracts.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,30 +18,39 @@ import java.time.Instant;
 @AllArgsConstructor
 public class TransactionStatusHistoryDto {
 
-    @JsonProperty("history_id")
+    @JsonProperty("historyId")
+    @JsonAlias("history_id")
     private String historyId;
 
-    @JsonProperty("transaction_id")
+    @JsonProperty("transactionId")
+    @JsonAlias("transaction_id")
     private String transactionId;
 
-    @JsonProperty("from_status")
+    @JsonProperty("fromStatus")
+    @JsonAlias("from_status")
     private String fromStatus;
 
-    @JsonProperty("to_status")
+    @JsonProperty("toStatus")
+    @JsonAlias("to_status")
     private String toStatus;
 
-    @JsonProperty("change_reason")
+    @JsonProperty("changeReason")
+    @JsonAlias("change_reason")
     private String changeReason;
 
-    @JsonProperty("reason_details")
+    @JsonProperty("reasonDetails")
+    @JsonAlias("reason_details")
     private String reasonDetails;
 
-    @JsonProperty("actor_id")
+    @JsonProperty("actorId")
+    @JsonAlias("actor_id")
     private String actorId;
 
-    @JsonProperty("actor_type")
+    @JsonProperty("actorType")
+    @JsonAlias("actor_type")
     private String actorType;
 
-    @JsonProperty("changed_at")
+    @JsonProperty("changedAt")
+    @JsonAlias("changed_at")
     private Instant changedAt;
 }

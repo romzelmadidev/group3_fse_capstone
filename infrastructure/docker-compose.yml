@@ -182,8 +182,6 @@ services:
       - redisinsight_data:/data
     networks:
       - banking-net
-    depends_on:
-      - redis-cache
 
   # ============================================================================
   # 8. Account & Identity Service (Spring Boot :8081)
@@ -215,6 +213,10 @@ services:
       - SPRING_DATA_REDIS_HOST=redis-cache
       - SPRING_DATA_REDIS_PORT=6379
       - NOTIFICATION_SERVICE_URL=http://notification-service:8083
+      - AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite-storage:10000/devstoreaccount1;
+      - AZURE_STORAGE_CONTAINER_NAME=kyc-vault
+      - AZURE_STORAGE_PUBLIC_ENDPOINT=http://localhost:10000/devstoreaccount1
+      - APP_SERVICES_RISK_SERVICE_URL=http://risk-service:8084
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "account-service"}]'
     networks:
@@ -222,6 +224,8 @@ services:
     depends_on:
       - oracle-xe-master
       - redis-cache
+      - azurite
+      - risk-service
       - dd-agent
 
   # ============================================================================
@@ -238,13 +242,15 @@ services:
       - "10000:10000"
       - "10001:10001"
       - "10002:10002"
-    command: "azurite-blob --blobHost 0.0.0.0 --blobPort 10000 -l /data"
+    command: ["azurite-blob", "--blobHost", "0.0.0.0", "--blobPort", "10000", "-l", "/data", "--skipApiVersionCheck"]
     volumes:
       - azurite_data:/data
     labels:
       com.datadoghq.ad.logs: '[{"source": "azure-storage", "service": "azurite-storage"}]'
     networks:
-      - banking-net
+      banking-net:
+        aliases:
+          - azurite-storage
 
   # ============================================================================
   # Azurite Drive Web GUI (Google Drive UI for Azurite Blob Storage)
@@ -407,6 +413,7 @@ services:
     volumes:
       - ../backend/risk-service/app:/app/app
       - ../backend/risk-service/data:/app/data
+      - ../backend/risk-service/tests:/app/tests
       - ../hybrid_bench:/app/hybrid_bench
     environment:
       - DD_AGENT_HOST=dd-agent
