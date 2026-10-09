@@ -158,12 +158,12 @@ export default function T24TestConsole() {
       let bal = 0, hld = 0, avail = 0;
       if (typeof res.data === 'string') {
         const ofs = parseOfsResponse(res.data);
-        bal = parseFloat(ofs['CURRENT.BALANCE'] || ofs['WORKING.BALANCE'] || 0);
+        bal = parseFloat(ofs['CURRENT.BALANCE'] || ofs['WORKING.BALANCE'] || ofs['BALANCE.AMOUNT'] || 0);
         hld = parseFloat(ofs['HOLD.AMOUNT'] || ofs['LOCKED.AMOUNT'] || 0);
         avail = parseFloat(ofs['AVAILABLE.BALANCE'] !== undefined ? ofs['AVAILABLE.BALANCE'] : (bal - hld));
       } else if (res.data) {
-        bal = parseFloat(res.data.balanceAmount ?? res.data.currentBalance ?? 0);
-        hld = parseFloat(res.data.holdAmount ?? 0);
+        bal = parseFloat(res.data.balanceAmount ?? res.data.currentBalance ?? res.data.balance ?? 0);
+        hld = parseFloat(res.data.holdAmount ?? res.data.heldAmount ?? 0);
         avail = parseFloat(res.data.availableBalance ?? (bal - hld));
       }
       setBalanceData({
@@ -173,13 +173,14 @@ export default function T24TestConsole() {
         availableBalance: isNaN(avail) ? 0 : avail
       });
     } catch (e) {
+      console.warn('Balance fetch error for', accId, e);
       // Fallback enquiry via OFS or simulated state
       try {
         const ofsRes = await axios.post(`${API_BASE}/cbs/ofs`, `ENQUIRY.SELECT,,USER01/123456,ACCOUNT.NUMBER:EQ=${accId}`, {
           headers: { 'Content-Type': 'text/plain' }
         });
         const ofs = parseOfsResponse(ofsRes.data);
-        const bal = parseFloat(ofs['CURRENT.BALANCE'] || ofs['WORKING.BALANCE'] || 0);
+        const bal = parseFloat(ofs['CURRENT.BALANCE'] || ofs['WORKING.BALANCE'] || ofs['BALANCE.AMOUNT'] || 0);
         const hld = parseFloat(ofs['HOLD.AMOUNT'] || ofs['LOCKED.AMOUNT'] || 0);
         const avail = parseFloat(ofs['AVAILABLE.BALANCE'] !== undefined ? ofs['AVAILABLE.BALANCE'] : (bal - hld));
         setBalanceData({
@@ -189,7 +190,13 @@ export default function T24TestConsole() {
           availableBalance: isNaN(avail) ? 0 : avail
         });
       } catch (err) {
-        console.warn('Balance fetch error:', err);
+        // Fallback: reset state to 0 for newly selected account rather than retaining previous account's balance
+        setBalanceData({
+          accountId: accId,
+          balanceAmount: 0,
+          holdAmount: 0,
+          availableBalance: 0
+        });
       }
     } finally {
       setIsLoadingBalance(false);
@@ -981,6 +988,7 @@ export default function T24TestConsole() {
                   setActiveAccount(acc);
                   setTransferForm((prev) => ({ ...prev, sourceAccountId: acc }));
                   setEnquiryAccount(acc);
+                  fetchBalance(acc);
                 }}
                 className={`flex items-center justify-between rounded-xl px-3 py-2 text-left font-mono text-xs transition-all ${
                   activeAccount === acc
@@ -990,7 +998,7 @@ export default function T24TestConsole() {
               >
                 <span>{acc}</span>
                 <span className={`text-2xs ${activeAccount === acc ? 'text-purple-700 font-semibold' : 'text-slate-400'}`}>
-                  {acc === 'acc-2002-chk-001' ? 'Checking (8.5M)' : acc === 'acc-2001-sav-001' ? 'Savings (25M)' : acc === 'acc-2003-sav-002' ? 'Savings (12.3M)' : 'Primary'}
+                  {acc === 'acc-2002-chk-001' ? 'Checking (8.5M)' : acc === 'acc-2001-sav-001' ? 'Savings (25.0M)' : acc === 'acc-2003-sav-002' ? 'Savings (3.2M)' : 'Corporate (25.0M)'}
                 </span>
               </button>
             ))}
@@ -1006,11 +1014,12 @@ export default function T24TestConsole() {
                 <Database className="h-4 w-4" />
               </div>
             </div>
-            <div className="mt-3 font-mono text-2xl font-bold tracking-tight text-slate-900">
-              PHP {(balanceData?.balanceAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            <div className="mt-3 font-mono text-2xl font-bold tracking-tight text-slate-900 flex items-baseline gap-2">
+              <span>PHP {(balanceData?.balanceAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+              {isLoadingBalance && <span className="text-2xs font-sans text-purple-600 animate-pulse font-normal">Syncing...</span>}
             </div>
           </div>
-          <p className="mt-2 text-2xs text-slate-500">Authoritative master balance in `balance_master`</p>
+          <p className="mt-2 text-2xs text-slate-500 font-mono">Master Ledger: <span className="font-semibold text-purple-950">{balanceData?.accountId || activeAccount}</span></p>
         </div>
 
         {/* Amount Hold (Restricted Funds) */}

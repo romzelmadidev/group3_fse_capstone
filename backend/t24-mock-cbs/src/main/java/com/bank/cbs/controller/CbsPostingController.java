@@ -44,12 +44,6 @@ public class CbsPostingController {
 
     public CbsPostingController(
             CbsFundsTransferService transferService,
-            CbsReversalService reversalService) {
-        this(transferService, reversalService, null);
-    }
-
-    public CbsPostingController(
-            CbsFundsTransferService transferService,
             CbsReversalService reversalService,
             TransactionStatusHistoryMasterRepository statusHistoryRepository) {
         this.transferService = transferService;
