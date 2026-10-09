@@ -376,7 +376,7 @@ public class CbsReversalService {
                 .fromStatus(TransactionStatus.PendingReversal.name())
                 .toStatus(TransactionStatus.Posted.name())
                 .changeReason(ChangeReasonCode.CHECKER_REVERSAL_REJECTED)
-                .reasonDetails("Reversal rejected by checker: " + action.checkerId() + ". Reason: " + action.rejectionReason())
+                .reasonDetails("Reversal rejected by checker: " + action.checkerId())
                 .actorId(action.checkerId())
                 .actorType(ActorType.MANAGER_CHECKER.name())
                 .changedAt(now)
