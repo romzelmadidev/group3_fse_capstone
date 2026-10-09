@@ -1,0 +1,1668 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Core Banking Platform: Interactive Schema-Segregated ERD Visualizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root, [data-theme="dark"] {
+      --bg: #090d16;
+      --bg-surface: #0f172a;
+      --bg-panel: rgba(15, 23, 42, 0.85);
+      --bg-card: #1e293b;
+      --bg-hover: #334155;
+      --border: #334155;
+      --border-accent: #475569;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+
+      --auth-primary: #38bdf8;
+      --auth-border: #0284c7;
+      --auth-bg: rgba(56, 189, 248, 0.12);
+
+      --core-primary: #fbbf24;
+      --core-border: #d97706;
+      --core-bg: rgba(251, 191, 36, 0.12);
+
+      --integration-primary: #c084fc;
+      --integration-border: #9333ea;
+      --integration-bg: rgba(192, 132, 252, 0.12);
+
+      --audit-primary: #4ade80;
+      --audit-border: #16a34a;
+      --audit-bg: rgba(74, 222, 128, 0.12);
+
+      --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+      --font-mono: 'JetBrains Mono', monospace;
+      --font-sans: 'Inter', system-ui, sans-serif;
+    }
+
+    [data-theme="light"] {
+      --bg: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-panel: rgba(255, 255, 255, 0.9);
+      --bg-card: #f1f5f9;
+      --bg-hover: #e2e8f0;
+      --border: #cbd5e1;
+      --border-accent: #94a3b8;
+      --text: #0f172a;
+      --text-muted: #475569;
+      --text-dim: #64748b;
+
+      --auth-primary: #0284c7;
+      --auth-border: #0369a1;
+      --auth-bg: rgba(2, 132, 199, 0.12);
+
+      --core-primary: #d97706;
+      --core-border: #b45309;
+      --core-bg: rgba(217, 119, 6, 0.12);
+
+      --integration-primary: #9333ea;
+      --integration-border: #7e22ce;
+      --integration-bg: rgba(147, 51, 234, 0.12);
+
+      --audit-primary: #16a34a;
+      --audit-border: #15803d;
+      --audit-bg: rgba(22, 163, 74, 0.12);
+
+      --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* HEADER */
+    header {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      z-index: 100;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .title-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-badge {
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      color: white;
+      font-weight: 800;
+      font-size: 14px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      letter-spacing: 0.5px;
+    }
+
+    .title-group h1 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .title-group .sub {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 7px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-accent);
+    }
+
+    .btn-primary {
+      background: #2563eb;
+      color: white;
+      border-color: #3b82f6;
+    }
+
+    .btn-primary:hover {
+      background: #1d4ed8;
+    }
+
+    /* MAIN CONTAINER */
+    .app-body {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 65px);
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* SIDEBAR */
+    aside {
+      width: 320px;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      z-index: 50;
+    }
+
+    .sidebar-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .search-input {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+
+    .schema-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .filter-chip {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 20px;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-muted);
+      transition: all 0.15s;
+    }
+
+    .filter-chip.active {
+      background: var(--text);
+      color: var(--bg);
+      border-color: var(--text);
+    }
+
+    .filter-chip.auth {
+      border-color: var(--auth-border);
+      color: var(--auth-primary);
+    }
+    .filter-chip.auth.active {
+      background: var(--auth-primary);
+      color: #030712;
+    }
+
+    .filter-chip.core {
+      border-color: var(--core-border);
+      color: var(--core-primary);
+    }
+    .filter-chip.core.active {
+      background: var(--core-primary);
+      color: #030712;
+    }
+
+    .filter-chip.integration {
+      border-color: var(--integration-border);
+      color: var(--integration-primary);
+    }
+    .filter-chip.integration.active {
+      background: var(--integration-primary);
+      color: #030712;
+    }
+
+    .filter-chip.audit {
+      border-color: var(--audit-border);
+      color: var(--audit-primary);
+    }
+    .filter-chip.audit.active {
+      background: var(--audit-primary);
+      color: #030712;
+    }
+
+    .table-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .table-item {
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: all 0.15s;
+      border: 1px solid transparent;
+    }
+
+    .table-item:hover {
+      background: var(--bg-hover);
+    }
+
+    .table-item.active {
+      background: var(--bg-card);
+      border-color: var(--border-accent);
+    }
+
+    .table-item-name {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .schema-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-auth { background: var(--auth-primary); }
+    .dot-core { background: var(--core-primary); }
+    .dot-integration { background: var(--integration-primary); }
+    .dot-audit { background: var(--audit-primary); }
+
+    .badge-count {
+      font-size: 10px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      background: var(--bg);
+      padding: 2px 6px;
+      border-radius: 10px;
+    }
+
+    /* DIAGRAM CANVAS */
+    .canvas-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: radial-gradient(circle at center, rgba(30, 41, 59, 0.25) 0%, transparent 80%), var(--bg);
+      cursor: grab;
+      user-select: none;
+    }
+
+    .canvas-container:active {
+      cursor: grabbing;
+    }
+
+    .canvas-toolbar {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      display: flex;
+      gap: 6px;
+      background: var(--bg-panel);
+      backdrop-filter: blur(8px);
+      padding: 6px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      z-index: 20;
+    }
+
+    .legend-bar {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      display: flex;
+      gap: 12px;
+      background: var(--bg-panel);
+      backdrop-filter: blur(8px);
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      font-size: 11px;
+      font-weight: 600;
+      z-index: 20;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #diagram-viewport {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: 0 0;
+      padding: 40px;
+    }
+
+    /* DETAILS DRAWER / INSPECTOR */
+    .inspector {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 440px;
+      height: 100%;
+      background: var(--bg-surface);
+      border-left: 1px solid var(--border);
+      box-shadow: -10px 0 25px rgba(0,0,0,0.5);
+      display: flex;
+      flex-direction: column;
+      z-index: 60;
+      transform: translateX(100%);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .inspector.open {
+      transform: translateX(0);
+    }
+
+    .inspector-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .inspector-title-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .inspector-title {
+      font-family: var(--font-mono);
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .schema-tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      width: fit-content;
+    }
+    .tag-auth { background: var(--auth-bg); color: var(--auth-primary); border: 1px solid var(--auth-border); }
+    .tag-core { background: var(--core-bg); color: var(--core-primary); border: 1px solid var(--core-border); }
+    .tag-integration { background: var(--integration-bg); color: var(--integration-primary); border: 1px solid var(--integration-border); }
+    .tag-audit { background: var(--audit-bg); color: var(--audit-primary); border: 1px solid var(--audit-border); }
+
+    .close-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 18px;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .close-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text);
+    }
+
+    .inspector-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .meta-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .meta-label {
+      color: var(--text-dim);
+      font-weight: 500;
+    }
+
+    .meta-val {
+      font-family: var(--font-mono);
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .columns-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      font-family: var(--font-mono);
+    }
+
+    .columns-table th {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      padding: 6px 8px;
+      text-align: left;
+      color: var(--text-muted);
+    }
+
+    .columns-table td {
+      border: 1px solid var(--border);
+      padding: 6px 8px;
+      vertical-align: top;
+    }
+
+    .key-badge {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: 800;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+    .badge-pk { background: #dc2626; color: white; }
+    .badge-fk { background: #2563eb; color: white; }
+    .badge-uk { background: #7c3aed; color: white; }
+    .badge-virtual { background: #d97706; color: white; }
+
+    .rel-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .rel-card:hover {
+      border-color: #3b82f6;
+      background: var(--bg-hover);
+    }
+
+    .rel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-weight: 600;
+    }
+
+    .rel-desc {
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    /* MODAL FOR MERMAID CODE */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(4px);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.open {
+      display: flex;
+    }
+
+    .modal-content {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: 720px;
+      max-width: 90vw;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+    }
+
+    .modal-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px;
+    }
+
+    .code-box {
+      width: 100%;
+      height: 380px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: #38bdf8;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 12px;
+      border-radius: 6px;
+      resize: none;
+      outline: none;
+      white-space: pre;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="title-group">
+      <div class="logo-badge">FSE ERD</div>
+      <div>
+        <h1>AuraBank &amp; Core CBS: Schema-Segregated Entity-Relationship Diagram</h1>
+        <div class="sub">Dual Architecture: Operational Master (Azure SQL / Oracle) &amp; Compliance Audit Vault (PostgreSQL)</div>
+      </div>
+    </div>
+    <div class="nav-actions">
+      <button class="btn" onclick="openCodeModal()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"></path></svg>
+        Mermaid Code
+      </button>
+      <button class="btn btn-primary" onclick="fitView()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.35-4.35"></path></svg>
+        Fit View
+      </button>
+      <button class="btn" onclick="toggleTheme()" id="themeBtn">
+        ☀️ Light
+      </button>
+    </div>
+  </header>
+
+  <div class="app-body">
+    <!-- SIDEBAR -->
+    <aside>
+      <div class="sidebar-header">
+        <input type="text" id="searchInput" class="search-input" placeholder="Search table or column..." oninput="onSearch(this.value)">
+        <div class="schema-filters">
+          <div class="filter-chip active" onclick="setSchemaFilter('all', this)">All (22)</div>
+          <div class="filter-chip auth" onclick="setSchemaFilter('auth_identity', this)">auth_identity (1)</div>
+          <div class="filter-chip core" onclick="setSchemaFilter('core', this)">core (13)</div>
+          <div class="filter-chip integration" onclick="setSchemaFilter('integration', this)">integration (2)</div>
+          <div class="filter-chip audit" onclick="setSchemaFilter('audit', this)">audit (6)</div>
+        </div>
+      </div>
+      <div class="table-list" id="tableListContainer">
+        <!-- Rendered via JS -->
+      </div>
+    </aside>
+
+    <!-- DIAGRAM VIEWPORT -->
+    <div class="canvas-container" id="canvasContainer">
+      <div class="canvas-toolbar">
+        <button class="btn" title="Zoom In" onclick="zoomIn()">+</button>
+        <button class="btn" title="Zoom Out" onclick="zoomOut()">−</button>
+        <button class="btn" title="Reset Zoom" onclick="resetZoom()">100%</button>
+      </div>
+
+      <div class="legend-bar">
+        <div class="legend-item"><div class="schema-dot dot-auth"></div> <span style="color:var(--auth-primary)">auth_identity (Blue)</span></div>
+        <div class="legend-item"><div class="schema-dot dot-core"></div> <span style="color:var(--core-primary)">core (Amber)</span></div>
+        <div class="legend-item"><div class="schema-dot dot-integration"></div> <span style="color:var(--integration-primary)">integration (Purple)</span></div>
+        <div class="legend-item"><div class="schema-dot dot-audit"></div> <span style="color:var(--audit-primary)">audit (Emerald)</span></div>
+      </div>
+
+      <div id="diagram-viewport">
+        <div class="mermaid" id="mermaidDiagram">
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "primaryColor": "#ffffff",
+    "lineColor": "#475569"
+  },
+  "themeCSS": "[id*=\"auth_identity_\"] .er.entityBox { fill: #dbeafe !important; stroke: #2563eb !important; stroke-width: 2px !important; } [id*=\"auth_identity_\"] .er.entityLabel { fill: #1e40af !important; font-weight: bold !important; } [id*=\"core_\"] .er.entityBox { fill: #fef3c7 !important; stroke: #d97706 !important; stroke-width: 2px !important; } [id*=\"core_\"] .er.entityLabel { fill: #92400e !important; font-weight: bold !important; } [id*=\"integration_\"] .er.entityBox { fill: #f3e8ff !important; stroke: #7e22ce !important; stroke-width: 2px !important; } [id*=\"integration_\"] .er.entityLabel { fill: #6b21a8 !important; font-weight: bold !important; } [id*=\"audit_\"] .er.entityBox { fill: #dcfce7 !important; stroke: #15803d !important; stroke-width: 2px !important; } [id*=\"audit_\"] .er.entityLabel { fill: #166534 !important; font-weight: bold !important; }"
+}}%%
+erDiagram
+
+    %% Cross-schema & Intra-schema Foreign Keys
+    auth_identity_users ||--o{ core_accounts : "owns account (fk_acc_user)"
+    auth_identity_users ||--o{ core_transactions : "approves maker-checker"
+    auth_identity_users ||--o{ core_reversal_requests : "maker / checker review"
+    auth_identity_users ||--o{ integration_notifications : "receives alerts (fk_notif_user)"
+
+    core_accounts ||--|| core_balance_master : "has live balance (fk_bm_account)"
+    core_accounts ||--o{ core_transactions : "source of debit (fk_tx_source)"
+    core_accounts ||--o{ core_transactions : "target of credit (fk_tx_target)"
+    core_accounts ||--o{ core_uncollected_fees : "incurs fee arrears (fk_uncol_acc)"
+    core_accounts ||--o{ core_interest_accruals : "daily interest accrual (fk_int_acc)"
+    core_accounts ||--o{ core_eod_balance_snapshots : "closing freeze (fk_snap_acc)"
+
+    core_transactions ||--o{ core_transaction_status_history : "tracks transition (fk_tsh_tx)"
+    core_transactions ||--o| core_reversal_requests : "disputed by (fk_rev_orig_tx)"
+    core_transactions ||--o{ core_gl_ledger : "generates GL entries (idx_gl_ledger_tx)"
+
+    core_gl_accounts ||--o{ core_gl_ledger : "posted entries (fk_gl_account)"
+    core_gl_accounts ||--o{ core_gl_balances : "period totals (fk_glb_account)"
+
+    core_system_dates ||--o{ core_cob_batch_log : "executes batch run"
+
+    core_transactions ||..o{ integration_outbox_events : "enqueues outbox event"
+    core_transactions ||..o{ audit_ledger_mutation_audit : "mirrors mutation leg"
+    core_transactions ||..o{ audit_transaction_status_audit : "immutable hash chain"
+    core_transactions ||..o{ audit_failed_transaction_audit : "DLQ incident telemetry"
+    core_transactions ||..o{ audit_compliance_filings : "AMLA CTR/STR filing"
+    core_system_dates ||..o{ audit_eod_reports_metadata : "produces EOD artifacts"
+    audit_ledger_mutation_audit ||--o{ audit_audit_block_anchor : "sealed in Merkle block"
+
+    %% auth_identity schema
+    auth_identity_users {
+        string user_id PK
+        string first_name
+        string middle_name
+        string last_name
+        string email UK
+        string phone_number UK
+        date dob
+        string government_id
+        string role
+        string password_hash
+        string pin_hash
+        int max_concurrent_sessions
+        int failed_login_attempts
+        string status
+        decimal last_known_latitude
+        decimal last_known_longitude
+        string last_known_location_name
+        string last_known_ip
+        timestamp last_geo_updated_at
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% core schema
+    core_accounts {
+        string account_id PK
+        string user_id FK
+        string account_number UK
+        string account_type
+        string status
+        decimal credit_limit
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    core_balance_master {
+        string account_id PK
+        decimal balance_amount
+        decimal hold_amount
+        decimal available_balance
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    core_transactions {
+        string transaction_id PK
+        string source_account_id FK
+        string target_account_id FK
+        decimal amount
+        string currency
+        string transaction_type
+        string status
+        int requires_maker_checker
+        string approved_by FK
+        string memo
+        string idempotency_key UK
+        decimal latitude
+        decimal longitude
+        string location_name
+        string ip_address
+        decimal risk_score
+        string risk_reason
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    core_transaction_status_history {
+        string history_id PK
+        string transaction_id FK
+        string from_status
+        string to_status
+        string change_reason
+        string reason_details
+        string actor_id
+        string actor_type
+        timestamp changed_at
+        string metadata_json
+    }
+
+    core_reversal_requests {
+        string ticket_id PK
+        string original_tx_id FK
+        string maker_id FK
+        string checker_id FK
+        string dispute_reason
+        string maker_notes
+        string checker_notes
+        string status
+        string reversal_tx_id
+        timestamp created_at
+        timestamp resolved_at
+    }
+
+    core_uncollected_fees {
+        string fee_id PK
+        string account_id FK
+        string fee_type
+        decimal amount_due
+        decimal amount_collected
+        int is_settled
+        timestamp created_at
+    }
+
+    core_interest_accruals {
+        string accrual_id PK
+        string account_id FK
+        date accrual_date
+        decimal daily_rate
+        decimal accrued_amount
+        decimal tax_withheld
+        decimal net_accrual
+        int is_capitalized
+        timestamp created_at
+    }
+
+    core_eod_balance_snapshots {
+        string snapshot_id PK
+        string account_id FK
+        date business_date
+        decimal closing_balance
+        timestamp frozen_at
+    }
+
+    core_system_dates {
+        string system_date_id PK
+        date business_date
+        string status
+        int posting_window_open
+        timestamp last_cob_completed_at
+        timestamp updated_at
+    }
+
+    core_cob_batch_log {
+        string batch_id PK
+        date business_date
+        timestamp started_at
+        timestamp completed_at
+        string status
+        string current_phase
+        int accounts_processed
+        decimal total_fees_collected
+        decimal total_interest_accrued
+        decimal total_tax_withheld
+        string error_message
+    }
+
+    core_gl_accounts {
+        string gl_code PK
+        string account_name
+        string account_type
+        string currency
+        int is_active
+    }
+
+    core_gl_ledger {
+        string journal_id PK
+        string transaction_id FK
+        string gl_code FK
+        decimal debit_amount
+        decimal credit_amount
+        date posting_date
+        timestamp created_at
+    }
+
+    core_gl_balances {
+        string gl_code PK
+        string fiscal_period PK
+        decimal total_debit
+        decimal total_credit
+        decimal net_balance
+        timestamp updated_at
+    }
+
+    %% integration schema
+    integration_outbox_events {
+        string event_id PK
+        string aggregate_type
+        string aggregate_id
+        string event_type
+        string kafka_topic
+        string payload
+        string status
+        int retry_count
+        timestamp created_at
+        timestamp processed_at
+    }
+
+    integration_notifications {
+        string notification_id PK
+        string user_id FK
+        string recipient_address
+        string notification_type
+        string channel
+        string subject
+        string content_payload
+        string dispatch_status
+        int delivery_attempts
+        timestamp created_at
+        timestamp dispatched_at
+    }
+
+    %% audit schema
+    audit_ledger_mutation_audit {
+        bigint audit_id PK
+        string transaction_id
+        string account_id
+        string mutation_type
+        decimal mutation_amount
+        decimal before_balance
+        decimal after_balance
+        string initiator_user_id
+        string approved_by_user_id
+        string status
+        timestamp created_at
+        string sha256_hash
+        string prev_hash
+    }
+
+    audit_transaction_status_audit {
+        bigint audit_id PK
+        string transaction_id
+        string from_status
+        string to_status
+        string change_reason
+        string reason_details
+        string actor_id
+        string actor_type
+        timestamp changed_at
+        string metadata_json
+        string prev_hash
+        string sha256_hash
+    }
+
+    audit_failed_transaction_audit {
+        string incident_id PK
+        string correlation_id
+        string transaction_id
+        string error_type
+        string error_code
+        string circuit_breaker_state
+        string payload_json
+        string stack_trace
+        string replay_status
+        timestamp failure_timestamp
+        timestamp resolved_at
+        string resolved_by
+    }
+
+    audit_audit_block_anchor {
+        bigint block_id PK
+        bigint block_number UK
+        bigint start_audit_id
+        bigint end_audit_id
+        int record_count
+        string merkle_root
+        string prev_block_root
+        string block_hash
+        timestamp created_at
+    }
+
+    audit_compliance_filings {
+        string filing_id PK
+        string filing_type
+        string business_date
+        string transaction_id
+        string payload_xml
+        string amlc_ref
+        timestamp filed_at
+    }
+
+    audit_eod_reports_metadata {
+        string report_id PK
+        string report_type
+        string business_date
+        string file_name
+        string storage_uri
+        string sha256_checksum
+        bigint file_size_bytes
+        bigint record_count
+        timestamp generated_at_utc
+        timestamp retention_expiry_date
+    }
+
+        </div>
+      </div>
+    </div>
+
+    <!-- INSPECTOR DRAWER -->
+    <div class="inspector" id="inspectorDrawer">
+      <div class="inspector-header">
+        <div class="inspector-title-group">
+          <div class="inspector-title" id="inspectTableName">core_accounts</div>
+          <div id="inspectSchemaBadge" class="schema-tag tag-core">core</div>
+        </div>
+        <button class="close-btn" onclick="closeInspector()">&times;</button>
+      </div>
+
+      <div class="inspector-body" id="inspectorBody">
+        <!-- Injected via JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- MERMAID CODE MODAL -->
+  <div class="modal-overlay" id="codeModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 style="font-size:14px; font-weight:700;">Mermaid.js Schema ERD Source Code</h3>
+        <button class="close-btn" onclick="closeCodeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <textarea class="code-box" readonly id="codeBox">%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "primaryColor": "#ffffff",
+    "lineColor": "#475569"
+  },
+  "themeCSS": "[id*=\"auth_identity_\"] .er.entityBox { fill: #dbeafe !important; stroke: #2563eb !important; stroke-width: 2px !important; } [id*=\"auth_identity_\"] .er.entityLabel { fill: #1e40af !important; font-weight: bold !important; } [id*=\"core_\"] .er.entityBox { fill: #fef3c7 !important; stroke: #d97706 !important; stroke-width: 2px !important; } [id*=\"core_\"] .er.entityLabel { fill: #92400e !important; font-weight: bold !important; } [id*=\"integration_\"] .er.entityBox { fill: #f3e8ff !important; stroke: #7e22ce !important; stroke-width: 2px !important; } [id*=\"integration_\"] .er.entityLabel { fill: #6b21a8 !important; font-weight: bold !important; } [id*=\"audit_\"] .er.entityBox { fill: #dcfce7 !important; stroke: #15803d !important; stroke-width: 2px !important; } [id*=\"audit_\"] .er.entityLabel { fill: #166534 !important; font-weight: bold !important; }"
+}}%%
+erDiagram
+
+    %% Cross-schema & Intra-schema Foreign Keys
+    auth_identity_users ||--o{ core_accounts : "owns account (fk_acc_user)"
+    auth_identity_users ||--o{ core_transactions : "approves maker-checker"
+    auth_identity_users ||--o{ core_reversal_requests : "maker / checker review"
+    auth_identity_users ||--o{ integration_notifications : "receives alerts (fk_notif_user)"
+
+    core_accounts ||--|| core_balance_master : "has live balance (fk_bm_account)"
+    core_accounts ||--o{ core_transactions : "source of debit (fk_tx_source)"
+    core_accounts ||--o{ core_transactions : "target of credit (fk_tx_target)"
+    core_accounts ||--o{ core_uncollected_fees : "incurs fee arrears (fk_uncol_acc)"
+    core_accounts ||--o{ core_interest_accruals : "daily interest accrual (fk_int_acc)"
+    core_accounts ||--o{ core_eod_balance_snapshots : "closing freeze (fk_snap_acc)"
+
+    core_transactions ||--o{ core_transaction_status_history : "tracks transition (fk_tsh_tx)"
+    core_transactions ||--o| core_reversal_requests : "disputed by (fk_rev_orig_tx)"
+    core_transactions ||--o{ core_gl_ledger : "generates GL entries (idx_gl_ledger_tx)"
+
+    core_gl_accounts ||--o{ core_gl_ledger : "posted entries (fk_gl_account)"
+    core_gl_accounts ||--o{ core_gl_balances : "period totals (fk_glb_account)"
+
+    core_system_dates ||--o{ core_cob_batch_log : "executes batch run"
+
+    core_transactions ||..o{ integration_outbox_events : "enqueues outbox event"
+    core_transactions ||..o{ audit_ledger_mutation_audit : "mirrors mutation leg"
+    core_transactions ||..o{ audit_transaction_status_audit : "immutable hash chain"
+    core_transactions ||..o{ audit_failed_transaction_audit : "DLQ incident telemetry"
+    core_transactions ||..o{ audit_compliance_filings : "AMLA CTR/STR filing"
+    core_system_dates ||..o{ audit_eod_reports_metadata : "produces EOD artifacts"
+    audit_ledger_mutation_audit ||--o{ audit_audit_block_anchor : "sealed in Merkle block"
+
+    %% auth_identity schema
+    auth_identity_users {
+        string user_id PK
+        string first_name
+        string middle_name
+        string last_name
+        string email UK
+        string phone_number UK
+        date dob
+        string government_id
+        string role
+        string password_hash
+        string pin_hash
+        int max_concurrent_sessions
+        int failed_login_attempts
+        string status
+        decimal last_known_latitude
+        decimal last_known_longitude
+        string last_known_location_name
+        string last_known_ip
+        timestamp last_geo_updated_at
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% core schema
+    core_accounts {
+        string account_id PK
+        string user_id FK
+        string account_number UK
+        string account_type
+        string status
+        decimal credit_limit
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    core_balance_master {
+        string account_id PK
+        decimal balance_amount
+        decimal hold_amount
+        decimal available_balance
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    core_transactions {
+        string transaction_id PK
+        string source_account_id FK
+        string target_account_id FK
+        decimal amount
+        string currency
+        string transaction_type
+        string status
+        int requires_maker_checker
+        string approved_by FK
+        string memo
+        string idempotency_key UK
+        decimal latitude
+        decimal longitude
+        string location_name
+        string ip_address
+        decimal risk_score
+        string risk_reason
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    core_transaction_status_history {
+        string history_id PK
+        string transaction_id FK
+        string from_status
+        string to_status
+        string change_reason
+        string reason_details
+        string actor_id
+        string actor_type
+        timestamp changed_at
+        string metadata_json
+    }
+
+    core_reversal_requests {
+        string ticket_id PK
+        string original_tx_id FK
+        string maker_id FK
+        string checker_id FK
+        string dispute_reason
+        string maker_notes
+        string checker_notes
+        string status
+        string reversal_tx_id
+        timestamp created_at
+        timestamp resolved_at
+    }
+
+    core_uncollected_fees {
+        string fee_id PK
+        string account_id FK
+        string fee_type
+        decimal amount_due
+        decimal amount_collected
+        int is_settled
+        timestamp created_at
+    }
+
+    core_interest_accruals {
+        string accrual_id PK
+        string account_id FK
+        date accrual_date
+        decimal daily_rate
+        decimal accrued_amount
+        decimal tax_withheld
+        decimal net_accrual
+        int is_capitalized
+        timestamp created_at
+    }
+
+    core_eod_balance_snapshots {
+        string snapshot_id PK
+        string account_id FK
+        date business_date
+        decimal closing_balance
+        timestamp frozen_at
+    }
+
+    core_system_dates {
+        string system_date_id PK
+        date business_date
+        string status
+        int posting_window_open
+        timestamp last_cob_completed_at
+        timestamp updated_at
+    }
+
+    core_cob_batch_log {
+        string batch_id PK
+        date business_date
+        timestamp started_at
+        timestamp completed_at
+        string status
+        string current_phase
+        int accounts_processed
+        decimal total_fees_collected
+        decimal total_interest_accrued
+        decimal total_tax_withheld
+        string error_message
+    }
+
+    core_gl_accounts {
+        string gl_code PK
+        string account_name
+        string account_type
+        string currency
+        int is_active
+    }
+
+    core_gl_ledger {
+        string journal_id PK
+        string transaction_id FK
+        string gl_code FK
+        decimal debit_amount
+        decimal credit_amount
+        date posting_date
+        timestamp created_at
+    }
+
+    core_gl_balances {
+        string gl_code PK
+        string fiscal_period PK
+        decimal total_debit
+        decimal total_credit
+        decimal net_balance
+        timestamp updated_at
+    }
+
+    %% integration schema
+    integration_outbox_events {
+        string event_id PK
+        string aggregate_type
+        string aggregate_id
+        string event_type
+        string kafka_topic
+        string payload
+        string status
+        int retry_count
+        timestamp created_at
+        timestamp processed_at
+    }
+
+    integration_notifications {
+        string notification_id PK
+        string user_id FK
+        string recipient_address
+        string notification_type
+        string channel
+        string subject
+        string content_payload
+        string dispatch_status
+        int delivery_attempts
+        timestamp created_at
+        timestamp dispatched_at
+    }
+
+    %% audit schema
+    audit_ledger_mutation_audit {
+        bigint audit_id PK
+        string transaction_id
+        string account_id
+        string mutation_type
+        decimal mutation_amount
+        decimal before_balance
+        decimal after_balance
+        string initiator_user_id
+        string approved_by_user_id
+        string status
+        timestamp created_at
+        string sha256_hash
+        string prev_hash
+    }
+
+    audit_transaction_status_audit {
+        bigint audit_id PK
+        string transaction_id
+        string from_status
+        string to_status
+        string change_reason
+        string reason_details
+        string actor_id
+        string actor_type
+        timestamp changed_at
+        string metadata_json
+        string prev_hash
+        string sha256_hash
+    }
+
+    audit_failed_transaction_audit {
+        string incident_id PK
+        string correlation_id
+        string transaction_id
+        string error_type
+        string error_code
+        string circuit_breaker_state
+        string payload_json
+        string stack_trace
+        string replay_status
+        timestamp failure_timestamp
+        timestamp resolved_at
+        string resolved_by
+    }
+
+    audit_audit_block_anchor {
+        bigint block_id PK
+        bigint block_number UK
+        bigint start_audit_id
+        bigint end_audit_id
+        int record_count
+        string merkle_root
+        string prev_block_root
+        string block_hash
+        timestamp created_at
+    }
+
+    audit_compliance_filings {
+        string filing_id PK
+        string filing_type
+        string business_date
+        string transaction_id
+        string payload_xml
+        string amlc_ref
+        timestamp filed_at
+    }
+
+    audit_eod_reports_metadata {
+        string report_id PK
+        string report_type
+        string business_date
+        string file_name
+        string storage_uri
+        string sha256_checksum
+        bigint file_size_bytes
+        bigint record_count
+        timestamp generated_at_utc
+        timestamp retention_expiry_date
+    }
+</textarea>
+        <div style="margin-top:12px; display:flex; justify-content:flex-end; gap:8px;">
+          <button class="btn btn-primary" onclick="copyMermaidCode()">Copy to Clipboard</button>
+          <button class="btn" onclick="closeCodeModal()">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const tablesData = [{"id": "auth_identity_users", "name": "users", "schema": "auth_identity", "storage": "Azure SQL / Oracle XE 21c", "sourceCode": "backend/account-service/.../UserEntity.java", "ddl": "01_azure_sql_master_schema.sql (L58)", "desc": "Master identity and credentials table storing customer/employee roles, bcrypt hashes, concurrent session limits, and risk engine geolocation coordinates.", "columns": [{"name": "user_id", "type": "NVARCHAR(64)", "key": "PK", "desc": "Primary user identifier (e.g. usr-1001-cst-001)"}, {"name": "first_name", "type": "NVARCHAR(100)", "key": "", "desc": "Legal first name"}, {"name": "middle_name", "type": "NVARCHAR(100)", "key": "", "desc": "Legal middle name (optional)"}, {"name": "last_name", "type": "NVARCHAR(100)", "key": "", "desc": "Legal surname"}, {"name": "email", "type": "NVARCHAR(255)", "key": "UK", "desc": "Normalized email address for login & OTP alerts"}, {"name": "phone_number", "type": "NVARCHAR(30)", "key": "UK", "desc": "E.164 formatted international mobile number"}, {"name": "dob", "type": "DATE", "key": "", "desc": "Date of birth"}, {"name": "government_id", "type": "NVARCHAR(100)", "key": "", "desc": "Passport, UMID, or Driver's License"}, {"name": "role", "type": "NVARCHAR(20)", "key": "", "desc": "CUSTOMER, TELLER, MANAGER, ADMIN"}, {"name": "password_hash", "type": "NVARCHAR(255)", "key": "", "desc": "Bcrypt password hash"}, {"name": "pin_hash", "type": "NVARCHAR(255)", "key": "", "desc": "Bcrypt PIN hash for quick transfers"}, {"name": "max_concurrent_sessions", "type": "SMALLINT", "key": "", "desc": "Max active sessions cap (default 3)"}, {"name": "failed_login_attempts", "type": "SMALLINT", "key": "", "desc": "Failed login counter; locks account at 5"}, {"name": "status", "type": "NVARCHAR(20)", "key": "", "desc": "ACTIVE, LOCKED, SUSPENDED"}, {"name": "last_known_latitude", "type": "DECIMAL(10,6)", "key": "", "desc": "Last device latitude for velocity/fraud detection"}, {"name": "last_known_longitude", "type": "DECIMAL(10,6)", "key": "", "desc": "Last device longitude for fraud detection"}, {"name": "last_known_location_name", "type": "NVARCHAR(100)", "key": "", "desc": "City / country reverse geocoded name"}, {"name": "last_known_ip", "type": "NVARCHAR(45)", "key": "", "desc": "IPv4 / IPv6 client network IP"}, {"name": "last_geo_updated_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Timestamp of most recent location ping"}, {"name": "created_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Registration timestamp"}, {"name": "updated_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Profile modification timestamp"}], "relationships": [{"target": "core_accounts", "type": "1:N", "role": "Owns one or multiple bank accounts", "constraint": "fk_acc_user"}, {"target": "integration_notifications", "type": "1:N", "role": "Receives real-time security & transactional notifications", "constraint": "fk_notif_user"}, {"target": "core_transactions", "type": "1:N", "role": "Maker-checker approver on transactions > PHP 50,000", "constraint": "fk_tx_approver"}, {"target": "core_reversal_requests", "type": "1:N", "role": "Maker or checker on dispute ticket", "constraint": "maker_id / checker_id"}]}, {"id": "core_accounts", "name": "accounts", "schema": "core", "storage": "Azure SQL / Oracle XE 21c", "sourceCode": "backend/account-service/.../AccountEntity.java", "ddl": "01_azure_sql_master_schema.sql (L82)", "desc": "Retail banking customer accounts repository holding account type, status, and credit/overdraft ceilings.", "columns": [{"name": "account_id", "type": "NVARCHAR(64)", "key": "PK", "desc": "UUID or business key (e.g. acc-2001-sav-001)"}, {"name": "user_id", "type": "NVARCHAR(64)", "key": "FK", "desc": "Owner reference -> auth_identity_users.user_id"}, {"name": "account_number", "type": "NVARCHAR(32)", "key": "UK", "desc": "Official customer account number (12 digits)"}, {"name": "account_type", "type": "NVARCHAR(20)", "key": "", "desc": "SAVINGS, CHECKING"}, {"name": "status", "type": "NVARCHAR(20)", "key": "", "desc": "ACTIVE, LOCKED, PENDING_APPROVAL"}, {"name": "credit_limit", "type": "DECIMAL(18,4)", "key": "", "desc": "Approved overdraft/credit ceiling (default 0.0000)"}, {"name": "created_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Account opening timestamp"}, {"name": "updated_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Account update timestamp"}], "relationships": [{"target": "auth_identity_users", "type": "N:1", "role": "Owned by customer", "constraint": "fk_acc_user"}, {"target": "core_balance_master", "type": "1:1", "role": "Target for pessimistic SELECT ... FOR UPDATE balance lock", "constraint": "fk_bm_account"}, {"target": "core_transactions", "type": "1:N", "role": "Source or target account for transfers", "constraint": "fk_tx_source / fk_tx_target"}, {"target": "core_uncollected_fees", "type": "1:N", "role": "Tracks fee arrears under zero-overdraft rules", "constraint": "fk_uncol_acc"}, {"target": "core_interest_accruals", "type": "1:N", "role": "Receives daily interest accruals & BIR withholding", "constraint": "fk_int_acc"}, {"target": "core_eod_balance_snapshots", "type": "1:N", "role": "Freezes closing state during COB cutoff", "constraint": "fk_snap_acc"}]}, {"id": "core_balance_master", "name": "balance_master", "schema": "core", "storage": "Azure SQL / Oracle XE 21c", "sourceCode": "backend/account-service/.../BalanceMasterEntity.java", "ddl": "01_azure_sql_master_schema.sql (L102)", "desc": "Pessimistic concurrency lock target maintaining live balance, provisional holds, and computed spendable funds.", "columns": [{"name": "account_id", "type": "NVARCHAR(64)", "key": "PK / FK", "desc": "References core_accounts.account_id"}, {"name": "balance_amount", "type": "DECIMAL(18,4)", "key": "", "desc": "Total ledger balance with 4 decimal places"}, {"name": "hold_amount", "type": "DECIMAL(18,4)", "key": "", "desc": "Frozen funds for high-value / provisional holds"}, {"name": "available_balance", "type": "DECIMAL(18,4)", "key": "VIRTUAL", "desc": "Generated column: (balance_amount - hold_amount)"}, {"name": "created_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Creation timestamp"}, {"name": "updated_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Updated by mutation trigger / write lock"}], "relationships": [{"target": "core_accounts", "type": "1:1", "role": "Strict one-to-one balance lock pairing", "constraint": "fk_bm_account"}]}, {"id": "core_transactions", "name": "transactions", "schema": "core", "storage": "Azure SQL / Oracle XE 21c", "sourceCode": "backend/ledger-mutation-engine/.../TransactionMaster.java", "ddl": "01_azure_sql_master_schema.sql (L119)", "desc": "Operational funds transfer and mutation ledger enforcing double debits protection via idempotency keys and ML risk scoring.", "columns": [{"name": "transaction_id", "type": "NVARCHAR(64)", "key": "PK", "desc": "UUID transaction identifier"}, {"name": "source_account_id", "type": "NVARCHAR(64)", "key": "FK", "desc": "Debit account -> core_accounts.account_id"}, {"name": "target_account_id", "type": "NVARCHAR(64)", "key": "FK", "desc": "Credit account -> core_accounts.account_id"}, {"name": "amount", "type": "DECIMAL(18,4)", "key": "", "desc": "Transfer amount (must be > 0.0000)"}, {"name": "currency", "type": "NVARCHAR(3)", "key": "", "desc": "ISO currency denomination (default PHP)"}, {"name": "transaction_type", "type": "NVARCHAR(20)", "key": "", "desc": "TRANSFER, DEPOSIT, WITHDRAWAL"}, {"name": "status", "type": "NVARCHAR(20)", "key": "", "desc": "PENDING, COMMITTED, FAILED"}, {"name": "requires_maker_checker", "type": "BIT / INT", "key": "", "desc": "1 = Flagged > PHP 50,000 threshold (requires 2FA OTP)"}, {"name": "approved_by", "type": "NVARCHAR(64)", "key": "FK", "desc": "Approving manager -> auth_identity_users.user_id"}, {"name": "memo", "type": "NVARCHAR(255)", "key": "", "desc": "User transfer purpose memo"}, {"name": "idempotency_key", "type": "NVARCHAR(64)", "key": "UK", "desc": "Distributed client idempotency token"}, {"name": "latitude", "type": "DECIMAL(10,6)", "key": "", "desc": "Geolocation coordinates of transfer"}, {"name": "longitude", "type": "DECIMAL(10,6)", "key": "", "desc": "Geolocation longitude"}, {"name": "location_name", "type": "NVARCHAR(100)", "key": "", "desc": "Location name"}, {"name": "ip_address", "type": "NVARCHAR(45)", "key": "", "desc": "Originating IP"}, {"name": "risk_score", "type": "DECIMAL(5,2)", "key": "", "desc": "ML fraud score (0.00 to 100.00)"}, {"name": "risk_reason", "type": "NVARCHAR(255)", "key": "", "desc": "Reasoning from risk engine"}, {"name": "created_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Initiation timestamp"}, {"name": "updated_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Completion timestamp"}], "relationships": [{"target": "core_accounts", "type": "N:1", "role": "Source and destination account references", "constraint": "fk_tx_source / fk_tx_target"}, {"target": "core_transaction_status_history", "type": "1:N", "role": "Chronological status audit transition", "constraint": "fk_tsh_tx"}, {"target": "core_reversal_requests", "type": "1:1", "role": "Dispute ticket and maker-checker reversal", "constraint": "fk_rev_orig_tx"}, {"target": "core_gl_ledger", "type": "1:N", "role": "Double-entry accounting journal postings", "constraint": "idx_gl_ledger_tx"}, {"target": "integration_outbox_events", "type": "1:N", "role": "Dispatches asynchronous events to Kafka", "constraint": "Logical outbox aggregation"}, {"target": "audit_ledger_mutation_audit", "type": "1:N", "role": "Synchronously mirrored to PostgreSQL audit vault", "constraint": "Logical audit trail"}]}, {"id": "core_transaction_status_history", "name": "transaction_status_history", "schema": "core", "storage": "Azure SQL / Oracle XE 21c", "sourceCode": "backend/t24-mock-cbs/.../TransactionStatusHistoryMaster.java", "ddl": "01_azure_sql_master_schema.sql (L333)", "desc": "Chronological operational status transition event log tracking state changes from INITIATED to POSTED or FAILED.", "columns": [{"name": "history_id", "type": "NVARCHAR(64)", "key": "PK", "desc": "Status event UUID"}, {"name": "transaction_id", "type": "NVARCHAR(64)", "key": "FK", "desc": "References core_transactions.transaction_id"}, {"name": "from_status", "type": "NVARCHAR(30)", "key": "", "desc": "Previous state (null if initial)"}, {"name": "to_status", "type": "NVARCHAR(30)", "key": "", "desc": "Target state"}, {"name": "change_reason", "type": "NVARCHAR(100)", "key": "", "desc": "Reason code / trigger descriptor"}, {"name": "reason_details", "type": "NVARCHAR(500)", "key": "", "desc": "Detailed explanation"}, {"name": "actor_id", "type": "NVARCHAR(64)", "key": "", "desc": "Actor user ID or microservice instance"}, {"name": "actor_type", "type": "NVARCHAR(30)", "key": "", "desc": "CUSTOMER, TELLER, SYSTEM_SERVICE"}, {"name": "changed_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Status change timestamp"}, {"name": "metadata_json", "type": "NVARCHAR(MAX)", "key": "", "desc": "Arbitrary diagnostic payload"}], "relationships": [{"target": "core_transactions", "type": "N:1", "role": "Belongs to transaction", "constraint": "fk_tsh_tx"}]}, {"id": "core_reversal_requests", "name": "reversal_requests", "schema": "core", "storage": "Azure SQL / Oracle XE 21c", "sourceCode": "backend/t24-mock-cbs/.../ReversalRequestMaster.java", "ddl": "01_azure_sql_master_schema.sql (L225)", "desc": "Maker-checker dispute workflow table governing transaction cancellations, errant transfer adjustments, and compensations.", "columns": [{"name": "ticket_id", "type": "NVARCHAR(64)", "key": "PK", "desc": "Dispute ticket identifier"}, {"name": "original_tx_id", "type": "NVARCHAR(64)", "key": "FK", "desc": "References core_transactions.transaction_id"}, {"name": "maker_id", "type": "NVARCHAR(64)", "key": "FK", "desc": "Teller or operator initiating dispute"}, {"name": "checker_id", "type": "NVARCHAR(64)", "key": "FK", "desc": "Manager approving or rejecting reversal"}, {"name": "dispute_reason", "type": "NVARCHAR(100)", "key": "", "desc": "CUSTOMER_DISPUTE, DUPLICATE_ENTRY"}, {"name": "maker_notes", "type": "NVARCHAR(500)", "key": "", "desc": "Maker justification notes"}, {"name": "checker_notes", "type": "NVARCHAR(500)", "key": "", "desc": "Checker review remarks"}, {"name": "status", "type": "NVARCHAR(20)", "key": "", "desc": "PENDING, APPROVED, REJECTED"}, {"name": "reversal_tx_id", "type": "NVARCHAR(64)", "key": "", "desc": "Compensating balance mutation transaction ID"}, {"name": "created_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Ticket creation timestamp"}, {"name": "resolved_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Resolution timestamp"}], "relationships": [{"target": "core_transactions", "type": "1:1", "role": "Reverses original transaction", "constraint": "fk_rev_orig_tx"}, {"target": "auth_identity_users", "type": "N:1", "role": "Maker and Checker roles", "constraint": "maker_id / checker_id"}]}, {"id": "core_uncollected_fees", "name": "uncollected_fees", "schema": "core", "storage": "Azure SQL / Oracle XE 21c", "sourceCode": "backend/t24-mock-cbs/.../UncollectedFeeMaster.java", "ddl": "01_azure_sql_master_schema.sql (L247)", "desc": "Enforces zero-overdraft protection by logging partial deductions and pending arrears when an account balance cannot cover fees.", "columns": [{"name": "fee_id", "type": "NVARCHAR(64)", "key": "PK", "desc": "Fee arrears record identifier"}, {"name": "account_id", "type": "NVARCHAR(64)", "key": "FK", "desc": "References core_accounts.account_id"}, {"name": "fee_type", "type": "NVARCHAR(50)", "key": "", "desc": "MAINTENANCE, LOW_BALANCE, DORMANCY"}, {"name": "amount_due", "type": "DECIMAL(18,4)", "key": "", "desc": "Total fee charged"}, {"name": "amount_collected", "type": "DECIMAL(18,4)", "key": "", "desc": "Partial fee amount successfully collected"}, {"name": "is_settled", "type": "BIT / INT", "key": "", "desc": "1 = Fully recovered; 0 = In arrears"}, {"name": "created_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Assessment timestamp"}], "relationships": [{"target": "core_accounts", "type": "N:1", "role": "Charged to account", "constraint": "fk_uncol_acc"}]}, {"id": "core_interest_accruals", "name": "interest_accruals", "schema": "core", "storage": "Azure SQL / Oracle XE 21c", "sourceCode": "backend/t24-mock-cbs/.../InterestAccrualMaster.java", "ddl": "01_azure_sql_master_schema.sql (L267)", "desc": "Daily accrued interest ledger tracking gross accrual, Philippine BIR 20% final withholding tax, and monthly capitalization.", "columns": [{"name": "accrual_id", "type": "NVARCHAR(64)", "key": "PK", "desc": "Daily accrual entry ID"}, {"name": "account_id", "type": "NVARCHAR(64)", "key": "FK", "desc": "References core_accounts.account_id"}, {"name": "accrual_date", "type": "DATE", "key": "", "desc": "Effective business date"}, {"name": "daily_rate", "type": "DECIMAL(12,8)", "key": "", "desc": "Annual interest rate / 365 days"}, {"name": "accrued_amount", "type": "DECIMAL(18,4)", "key": "", "desc": "Gross daily interest accrued"}, {"name": "tax_withheld", "type": "DECIMAL(18,4)", "key": "", "desc": "20% BIR withholding tax payable"}, {"name": "net_accrual", "type": "DECIMAL(18,4)", "key": "", "desc": "Net payable interest (accrued - tax)"}, {"name": "is_capitalized", "type": "BIT / INT", "key": "", "desc": "1 = Credited to principal; 0 = Accruing"}, {"name": "created_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Calculation timestamp"}], "relationships": [{"target": "core_accounts", "type": "N:1", "role": "Accrued on behalf of account", "constraint": "fk_int_acc"}]}, {"id": "core_eod_balance_snapshots", "name": "eod_balance_snapshots", "schema": "core", "storage": "Azure SQL / Oracle XE 21c", "sourceCode": "backend/t24-mock-cbs/.../EodBalanceSnapshotMaster.java", "ddl": "01_azure_sql_master_schema.sql (L286)", "desc": "Immutable closing balance state freeze generated at the Phase 0 COB posting cutoff for daily financial reporting.", "columns": [{"name": "snapshot_id", "type": "NVARCHAR(64)", "key": "PK", "desc": "Snapshot identifier"}, {"name": "account_id", "type": "NVARCHAR(64)", "key": "FK", "desc": "References core_accounts.account_id"}, {"name": "business_date", "type": "DATE", "key": "", "desc": "Business day of frozen state"}, {"name": "closing_balance", "type": "DECIMAL(18,4)", "key": "", "desc": "Reconciled ledger closing balance"}, {"name": "frozen_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Freeze timestamp"}], "relationships": [{"target": "core_accounts", "type": "N:1", "role": "Snapshot of account balance", "constraint": "fk_snap_acc"}]}, {"id": "core_system_dates", "name": "system_dates", "schema": "core", "storage": "Azure SQL / Oracle XE 21c", "sourceCode": "backend/t24-mock-cbs/.../SystemDateMaster.java", "ddl": "01_azure_sql_master_schema.sql (L300)", "desc": "Core business date and state machine controller toggling ONLINE STP processing, EOD CUTOFF freeze, and rollover.", "columns": [{"name": "system_date_id", "type": "NVARCHAR(64)", "key": "PK", "desc": "System state ID (e.g. SYS-DATE-001)"}, {"name": "business_date", "type": "DATE", "key": "", "desc": "Active core business date"}, {"name": "status", "type": "NVARCHAR(30)", "key": "", "desc": "ONLINE, EOD_CUTOFF, COB_PROCESSING, ROLLOVER"}, {"name": "posting_window_open", "type": "BIT / INT", "key": "", "desc": "1 = STP Online; 0 = Channel Freeze"}, {"name": "last_cob_completed_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Last successful COB execution timestamp"}, {"name": "updated_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Status change timestamp"}], "relationships": [{"target": "core_cob_batch_log", "type": "1:N", "role": "Triggers EOD batch run", "constraint": "business_date alignment"}, {"target": "audit_eod_reports_metadata", "type": "1:N", "role": "Drives EOD regulatory reporting window", "constraint": "business_date alignment"}]}, {"id": "core_cob_batch_log", "name": "cob_batch_log", "schema": "core", "storage": "Azure SQL / Oracle XE 21c", "sourceCode": "backend/t24-mock-cbs/.../CobBatchLogMaster.java", "ddl": "01_azure_sql_master_schema.sql (L313)", "desc": "Master operational audit log for End-of-Day batch runs recording phases 0 through 4 and aggregate financial metrics.", "columns": [{"name": "batch_id", "type": "NVARCHAR(64)", "key": "PK", "desc": "Batch execution UUID"}, {"name": "business_date", "type": "DATE", "key": "", "desc": "Batch accounting date"}, {"name": "started_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Batch initiation timestamp"}, {"name": "completed_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Batch completion timestamp"}, {"name": "status", "type": "NVARCHAR(20)", "key": "", "desc": "RUNNING, COMPLETED, FAILED"}, {"name": "current_phase", "type": "NVARCHAR(50)", "key": "", "desc": "PHASE_0_CUTOFF to PHASE_4_ROLLOVER"}, {"name": "accounts_processed", "type": "INT", "key": "", "desc": "Total processed account count"}, {"name": "total_fees_collected", "type": "DECIMAL(18,4)", "key": "", "desc": "Sum of collected fees"}, {"name": "total_interest_accrued", "type": "DECIMAL(18,4)", "key": "", "desc": "Sum of gross interest accruals"}, {"name": "total_tax_withheld", "type": "DECIMAL(18,4)", "key": "", "desc": "Sum of 20% BIR tax withheld"}, {"name": "error_message", "type": "NVARCHAR(1000)", "key": "", "desc": "Diagnostic failure trace"}], "relationships": [{"target": "core_system_dates", "type": "N:1", "role": "Associated with business date", "constraint": "business_date"}]}, {"id": "core_gl_accounts", "name": "gl_accounts", "schema": "core", "storage": "Azure SQL / Oracle XE 21c", "sourceCode": "backend/t24-mock-cbs/.../GlAccountMaster.java", "ddl": "01_azure_sql_master_schema.sql (L181)", "desc": "Master Chart of Accounts (COA) classifying general ledger accounts into Asset, Liability, Equity, Revenue, and Expense.", "columns": [{"name": "gl_code", "type": "NVARCHAR(32)", "key": "PK", "desc": "GL Code (e.g. 1010-CASH-VAULT, 2100-CUST-LIAB)"}, {"name": "account_name", "type": "NVARCHAR(100)", "key": "", "desc": "Chart of accounts title"}, {"name": "account_type", "type": "NVARCHAR(20)", "key": "", "desc": "ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE"}, {"name": "currency", "type": "NVARCHAR(3)", "key": "", "desc": "Denomination (PHP)"}, {"name": "is_active", "type": "BIT / INT", "key": "", "desc": "1 = Active, 0 = Inactive"}], "relationships": [{"target": "core_gl_ledger", "type": "1:N", "role": "Posted journal entries", "constraint": "fk_gl_account"}, {"target": "core_gl_balances", "type": "1:N", "role": "Period balance accumulations", "constraint": "fk_glb_account"}]}, {"id": "core_gl_ledger", "name": "gl_ledger", "schema": "core", "storage": "Azure SQL / Oracle XE 21c", "sourceCode": "backend/t24-mock-cbs/.../GlLedgerMaster.java", "ddl": "01_azure_sql_master_schema.sql (L193)", "desc": "Double-entry accounting journal postings recording debit and credit legs for each committed mutation.", "columns": [{"name": "journal_id", "type": "NVARCHAR(64)", "key": "PK", "desc": "Double-entry journal ID"}, {"name": "transaction_id", "type": "NVARCHAR(64)", "key": "FK", "desc": "References core_transactions.transaction_id"}, {"name": "gl_code", "type": "NVARCHAR(32)", "key": "FK", "desc": "References core_gl_accounts.gl_code"}, {"name": "debit_amount", "type": "DECIMAL(18,4)", "key": "", "desc": "Debited amount (>= 0)"}, {"name": "credit_amount", "type": "DECIMAL(18,4)", "key": "", "desc": "Credited amount (>= 0)"}, {"name": "posting_date", "type": "DATE", "key": "", "desc": "Effective financial date"}, {"name": "created_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Insertion timestamp"}], "relationships": [{"target": "core_transactions", "type": "N:1", "role": "Generated by transaction", "constraint": "idx_gl_ledger_tx"}, {"target": "core_gl_accounts", "type": "N:1", "role": "Posted against GL account", "constraint": "fk_gl_account"}]}, {"id": "core_gl_balances", "name": "gl_balances", "schema": "core", "storage": "Azure SQL / Oracle XE 21c", "sourceCode": "backend/t24-mock-cbs/.../GlBalanceMaster.java", "ddl": "01_azure_sql_master_schema.sql (L211)", "desc": "Real-time debit/credit accumulators aggregated by fiscal period (e.g. 2026-10) for trial balance reconciliation.", "columns": [{"name": "gl_code", "type": "NVARCHAR(32)", "key": "PK / FK", "desc": "References core_gl_accounts.gl_code"}, {"name": "fiscal_period", "type": "NVARCHAR(20)", "key": "PK", "desc": "Period identifier (e.g. 2026-10)"}, {"name": "total_debit", "type": "DECIMAL(18,4)", "key": "", "desc": "Total period debits"}, {"name": "total_credit", "type": "DECIMAL(18,4)", "key": "", "desc": "Total period credits"}, {"name": "net_balance", "type": "DECIMAL(18,4)", "key": "", "desc": "Net period balance"}, {"name": "updated_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Accumulation update timestamp"}], "relationships": [{"target": "core_gl_accounts", "type": "N:1", "role": "Rollup balance for GL account", "constraint": "fk_glb_account"}]}, {"id": "integration_outbox_events", "name": "outbox_events", "schema": "integration", "storage": "Azure SQL / Oracle XE 21c", "sourceCode": "backend/t24-mock-cbs/.../OutboxEventMaster.java", "ddl": "01_azure_sql_master_schema.sql (L141)", "desc": "Transactional Outbox table ensuring at-least-once guaranteed delivery of domain events to Apache Kafka without 2PC overhead.", "columns": [{"name": "event_id", "type": "NVARCHAR(64)", "key": "PK", "desc": "UUID event identifier"}, {"name": "aggregate_type", "type": "NVARCHAR(64)", "key": "", "desc": "Domain aggregate type (e.g. TRANSACTION)"}, {"name": "aggregate_id", "type": "NVARCHAR(64)", "key": "", "desc": "Aggregate root identifier"}, {"name": "event_type", "type": "NVARCHAR(64)", "key": "", "desc": "FUNDS_TRANSFERRED, HOLD_PLACED"}, {"name": "kafka_topic", "type": "NVARCHAR(100)", "key": "", "desc": "Target broker topic"}, {"name": "payload", "type": "NVARCHAR(MAX)", "key": "", "desc": "Complete serialized JSON event payload"}, {"name": "status", "type": "NVARCHAR(20)", "key": "", "desc": "PENDING, PUBLISHED, FAILED"}, {"name": "retry_count", "type": "INT", "key": "", "desc": "Broker dispatch retry count"}, {"name": "created_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Enqueue timestamp"}, {"name": "processed_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Kafka broker acknowledgment timestamp"}], "relationships": [{"target": "core_transactions", "type": "N:1", "role": "Originating transaction aggregate", "constraint": "aggregate_id"}]}, {"id": "integration_notifications", "name": "notifications", "schema": "integration", "storage": "Azure SQL / Oracle XE 21c", "sourceCode": "backend/notification-service/.../NotificationEntity.java", "ddl": "01_azure_sql_master_schema.sql (L156)", "desc": "Outbound omnichannel notifications repository tracking transactional receipts, OTP maker-checker challenges, and security notices.", "columns": [{"name": "notification_id", "type": "NVARCHAR(64)", "key": "PK", "desc": "Notification identifier"}, {"name": "user_id", "type": "NVARCHAR(64)", "key": "FK", "desc": "References auth_identity_users.user_id"}, {"name": "recipient_address", "type": "NVARCHAR(255)", "key": "", "desc": "Target email address or phone number"}, {"name": "notification_type", "type": "NVARCHAR(30)", "key": "", "desc": "TRANSACTION_ALERT, SECURITY_ALERT"}, {"name": "channel", "type": "NVARCHAR(20)", "key": "", "desc": "EMAIL, SMS, PUSH"}, {"name": "subject", "type": "NVARCHAR(255)", "key": "", "desc": "Notification subject title"}, {"name": "content_payload", "type": "NVARCHAR(MAX)", "key": "", "desc": "Rendered HTML/text alert payload"}, {"name": "dispatch_status", "type": "NVARCHAR(20)", "key": "", "desc": "PENDING, SENT, FAILED"}, {"name": "delivery_attempts", "type": "INT", "key": "", "desc": "Send retry counter"}, {"name": "created_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Enqueued timestamp"}, {"name": "dispatched_at", "type": "DATETIMEOFFSET", "key": "", "desc": "Delivered timestamp"}], "relationships": [{"target": "auth_identity_users", "type": "N:1", "role": "Target user recipient", "constraint": "fk_notif_user"}]}, {"id": "audit_ledger_mutation_audit", "name": "ledger_mutation_audit", "schema": "audit", "storage": "PostgreSQL 16 Flexible Server", "sourceCode": "backend/ledger-mutation-engine/.../LedgerMutationAudit.java", "ddl": "02_azure_postgres_audit_schema.sql (L12)", "desc": "Write-once append-only journal protected by database triggers blocking UPDATE and DELETE; mirrors debit and credit legs.", "columns": [{"name": "audit_id", "type": "BIGSERIAL", "key": "PK", "desc": "Monotonically increasing sequence ID"}, {"name": "transaction_id", "type": "VARCHAR(64)", "key": "", "desc": "Logical reference to core_transactions"}, {"name": "account_id", "type": "VARCHAR(36)", "key": "", "desc": "Logical reference to core_accounts"}, {"name": "mutation_type", "type": "VARCHAR(16)", "key": "", "desc": "TRANSFER, DEBIT, CREDIT, HOLD, RELEASE, REVERSAL"}, {"name": "mutation_amount", "type": "NUMERIC(18,4)", "key": "", "desc": "Amount of ledger mutation"}, {"name": "before_balance", "type": "NUMERIC(18,4)", "key": "", "desc": "Account balance immediately prior"}, {"name": "after_balance", "type": "NUMERIC(18,4)", "key": "", "desc": "Account balance immediately post"}, {"name": "initiator_user_id", "type": "VARCHAR(36)", "key": "", "desc": "User or process initiating transaction"}, {"name": "approved_by_user_id", "type": "VARCHAR(36)", "key": "", "desc": "Authorizing approver user ID"}, {"name": "status", "type": "VARCHAR(20)", "key": "", "desc": "COMMITTED, FAILED, ROLLED_BACK"}, {"name": "created_at", "type": "TIMESTAMPTZ", "key": "", "desc": "Immutable append timestamp"}, {"name": "sha256_hash", "type": "VARCHAR(64)", "key": "", "desc": "Cryptographic SHA-256 hash of entry"}, {"name": "prev_hash", "type": "VARCHAR(64)", "key": "", "desc": "Cryptographic hash of preceding audit entry"}], "relationships": [{"target": "core_transactions", "type": "N:1", "role": "Logical audit record of core transaction", "constraint": "transaction_id"}, {"target": "audit_audit_block_anchor", "type": "N:1", "role": "Sealed into Merkle tree block ranges", "constraint": "start_audit_id <= audit_id <= end_audit_id"}]}, {"id": "audit_transaction_status_audit", "name": "transaction_status_audit", "schema": "audit", "storage": "PostgreSQL 16 Flexible Server", "sourceCode": "backend/t24-mock-cbs/.../TransactionStatusAudit.java", "ddl": "02_azure_postgres_audit_schema.sql (L105)", "desc": "Hash-chained append-only canonical status change audit log in PostgreSQL vault, sealed against alteration.", "columns": [{"name": "audit_id", "type": "BIGSERIAL", "key": "PK", "desc": "Sequential audit identifier"}, {"name": "transaction_id", "type": "VARCHAR(64)", "key": "", "desc": "Transaction reference"}, {"name": "from_status", "type": "VARCHAR(30)", "key": "", "desc": "Starting status"}, {"name": "to_status", "type": "VARCHAR(30)", "key": "", "desc": "Resulting status"}, {"name": "change_reason", "type": "VARCHAR(100)", "key": "", "desc": "Trigger reason"}, {"name": "reason_details", "type": "VARCHAR(500)", "key": "", "desc": "Details"}, {"name": "actor_id", "type": "VARCHAR(64)", "key": "", "desc": "Actor"}, {"name": "actor_type", "type": "VARCHAR(30)", "key": "", "desc": "CLIENT, SERVICE, OPERATOR"}, {"name": "changed_at", "type": "TIMESTAMPTZ", "key": "", "desc": "Status change timestamp"}, {"name": "metadata_json", "type": "TEXT", "key": "", "desc": "Diagnostic metadata payload"}, {"name": "prev_hash", "type": "VARCHAR(64)", "key": "", "desc": "Previous hash in chain"}, {"name": "sha256_hash", "type": "VARCHAR(64)", "key": "", "desc": "Current record SHA-256 hash"}], "relationships": [{"target": "core_transactions", "type": "N:1", "role": "Tracks transition of transaction", "constraint": "transaction_id"}]}, {"id": "audit_failed_transaction_audit", "name": "failed_transaction_audit", "schema": "audit", "storage": "PostgreSQL 16 Flexible Server", "sourceCode": "backend/t24-mock-cbs/.../FailedTransactionAudit.java", "ddl": "02_azure_postgres_audit_schema.sql (L49)", "desc": "Dead Letter Queue (DLQ) failure ingestion vault capturing timeouts, circuit breaker states, and error payloads for forensic replay.", "columns": [{"name": "incident_id", "type": "VARCHAR(64)", "key": "PK", "desc": "Incident UUID"}, {"name": "correlation_id", "type": "VARCHAR(64)", "key": "", "desc": "Distributed trace correlation ID"}, {"name": "transaction_id", "type": "VARCHAR(64)", "key": "", "desc": "Failed transaction ID"}, {"name": "error_type", "type": "VARCHAR(100)", "key": "", "desc": "TIMEOUT, CIRCUIT_BREAKER, CORE_REJECT"}, {"name": "error_code", "type": "VARCHAR(50)", "key": "", "desc": "Standardized error code"}, {"name": "circuit_breaker_state", "type": "VARCHAR(20)", "key": "", "desc": "OPEN, HALF_OPEN, CLOSED"}, {"name": "payload_json", "type": "TEXT", "key": "", "desc": "Original inbound payload"}, {"name": "stack_trace", "type": "TEXT", "key": "", "desc": "System stack trace"}, {"name": "replay_status", "type": "VARCHAR(30)", "key": "", "desc": "PENDING_REPLAY, REPLAYED, DISCARDED"}, {"name": "failure_timestamp", "type": "TIMESTAMPTZ", "key": "", "desc": "Failure timestamp"}, {"name": "resolved_at", "type": "TIMESTAMPTZ", "key": "", "desc": "Resolution timestamp"}, {"name": "resolved_by", "type": "VARCHAR(64)", "key": "", "desc": "Resolving operator"}], "relationships": [{"target": "core_transactions", "type": "N:1", "role": "Incident generated by failed transaction", "constraint": "transaction_id"}]}, {"id": "audit_audit_block_anchor", "name": "audit_block_anchor", "schema": "audit", "storage": "PostgreSQL 16 Flexible Server", "sourceCode": "backend/t24-mock-cbs/.../AuditBlockAnchor.java", "ddl": "02_azure_postgres_audit_schema.sql (L152)", "desc": "Merkle-tree block anchors providing cryptographic proofs of audit log non-repudiation over batches of ledger mutations.", "columns": [{"name": "block_id", "type": "BIGSERIAL", "key": "PK", "desc": "Block identifier"}, {"name": "block_number", "type": "BIGINT", "key": "UK", "desc": "Monotonically increasing block number"}, {"name": "start_audit_id", "type": "BIGINT", "key": "", "desc": "First enclosed audit_id"}, {"name": "end_audit_id", "type": "BIGINT", "key": "", "desc": "Last enclosed audit_id"}, {"name": "record_count", "type": "INT", "key": "", "desc": "Enclosed record count"}, {"name": "merkle_root", "type": "VARCHAR(64)", "key": "", "desc": "Cryptographic Merkle tree root hash"}, {"name": "prev_block_root", "type": "VARCHAR(64)", "key": "", "desc": "Previous block Merkle root"}, {"name": "block_hash", "type": "VARCHAR(64)", "key": "", "desc": "SHA-256 digest of block parameters"}, {"name": "created_at", "type": "TIMESTAMPTZ", "key": "", "desc": "Block sealing timestamp"}], "relationships": [{"target": "audit_ledger_mutation_audit", "type": "1:N", "role": "Encloses sequential range of mutation records", "constraint": "start_audit_id - end_audit_id"}]}, {"id": "audit_compliance_filings", "name": "compliance_filings", "schema": "audit", "storage": "PostgreSQL 16 Flexible Server", "sourceCode": "backend/t24-mock-cbs/.../ComplianceFiling.java", "ddl": "02_azure_postgres_audit_schema.sql (L89)", "desc": "Anti-Money Laundering Act (AMLA) regulatory filings repository storing Covered Transaction Reports (CTR > PHP 500,000) and Suspicious Reports (STR).", "columns": [{"name": "filing_id", "type": "VARCHAR(64)", "key": "PK", "desc": "Regulatory submission ID"}, {"name": "filing_type", "type": "VARCHAR(30)", "key": "", "desc": "AMLA_CTR (> 500k PHP), AMLA_STR"}, {"name": "business_date", "type": "VARCHAR(20)", "key": "", "desc": "Effective transaction business date"}, {"name": "transaction_id", "type": "VARCHAR(64)", "key": "", "desc": "References core_transactions.transaction_id"}, {"name": "payload_xml", "type": "TEXT", "key": "", "desc": "AMLC XML submission payload"}, {"name": "amlc_ref", "type": "VARCHAR(64)", "key": "", "desc": "AMLC government confirmation receipt ref"}, {"name": "filed_at", "type": "TIMESTAMPTZ", "key": "", "desc": "Filing dispatch timestamp"}], "relationships": [{"target": "core_transactions", "type": "N:1", "role": "Regulatory filing for transaction", "constraint": "transaction_id"}]}, {"id": "audit_eod_reports_metadata", "name": "eod_reports_metadata", "schema": "audit", "storage": "PostgreSQL 16 Flexible Server", "sourceCode": "backend/t24-mock-cbs/.../EodReportsMetadata.java", "ddl": "02_azure_postgres_audit_schema.sql (L70)", "desc": "Cryptographic registry of generated End-of-Day artifacts (GL Trial Balance, Daily Transaction Journal) with SHA-256 checksums and 5-year retention.", "columns": [{"name": "report_id", "type": "VARCHAR(64)", "key": "PK", "desc": "Report artifact UUID"}, {"name": "report_type", "type": "VARCHAR(50)", "key": "", "desc": "GL_TRIAL_BALANCE, TXN_JOURNAL, BALANCE_SNAPSHOT"}, {"name": "business_date", "type": "VARCHAR(20)", "key": "", "desc": "Accounting business date"}, {"name": "file_name", "type": "VARCHAR(255)", "key": "", "desc": "Generated file name (CSV / PDF / XML)"}, {"name": "storage_uri", "type": "VARCHAR(500)", "key": "", "desc": "Azure Blob / storage path"}, {"name": "sha256_checksum", "type": "VARCHAR(64)", "key": "", "desc": "Cryptographic integrity checksum"}, {"name": "file_size_bytes", "type": "BIGINT", "key": "", "desc": "File size in bytes"}, {"name": "record_count", "type": "BIGINT", "key": "", "desc": "Total line items in report"}, {"name": "generated_at_utc", "type": "TIMESTAMPTZ", "key": "", "desc": "Generation timestamp"}, {"name": "retention_expiry_date", "type": "TIMESTAMPTZ", "key": "", "desc": "Mandatory 5-year retention cutoff"}], "relationships": [{"target": "core_system_dates", "type": "N:1", "role": "Generated during business date COB run", "constraint": "business_date"}]}];
+    let activeFilter = 'all';
+    let searchQuery = '';
+    let selectedTableId = null;
+
+    // Zoom & Pan state
+    let scale = 0.85;
+    let pointX = 20;
+    let pointY = 20;
+    let isPanning = false;
+    let startX = 0;
+    let startY = 0;
+
+    const viewport = document.getElementById('diagram-viewport');
+    const container = document.getElementById('canvasContainer');
+
+    function updateTransform() {
+      viewport.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`;
+    }
+
+    function zoomIn() {
+      scale = Math.min(scale * 1.2, 3.0);
+      updateTransform();
+    }
+
+    function zoomOut() {
+      scale = Math.max(scale / 1.2, 0.2);
+      updateTransform();
+    }
+
+    function resetZoom() {
+      scale = 0.85;
+      pointX = 20;
+      pointY = 20;
+      updateTransform();
+    }
+
+    function fitView() {
+      scale = 0.75;
+      pointX = 10;
+      pointY = 10;
+      updateTransform();
+    }
+
+    // Pan interactions
+    container.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.canvas-toolbar') || e.target.closest('.legend-bar')) return;
+      isPanning = true;
+      startX = e.clientX - pointX;
+      startY = e.clientY - pointY;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isPanning) return;
+      pointX = e.clientX - startX;
+      pointY = e.clientY - startY;
+      updateTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+      isPanning = false;
+    });
+
+    container.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const xs = (e.clientX - container.offsetLeft - pointX) / scale;
+      const ys = (e.clientY - container.offsetTop - pointY) / scale;
+      const delta = -e.deltaY;
+      
+      const newScale = delta > 0 ? scale * 1.1 : scale / 1.1;
+      if (newScale >= 0.2 && newScale <= 3.0) {
+        scale = newScale;
+        pointX = e.clientX - container.offsetLeft - xs * scale;
+        pointY = e.clientY - container.offsetTop - ys * scale;
+        updateTransform();
+      }
+    });
+
+    // Render Table List
+    function renderTableList() {
+      const listEl = document.getElementById('tableListContainer');
+      listEl.innerHTML = '';
+
+      const filtered = tablesData.filter(t => {
+        const matchesFilter = activeFilter === 'all' || t.schema === activeFilter;
+        const matchesSearch = !searchQuery || 
+          t.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
+          t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          t.columns.some(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()));
+        return matchesFilter && matchesSearch;
+      });
+
+      filtered.forEach(table => {
+        const item = document.createElement('div');
+        item.className = `table-item ${table.id === selectedTableId ? 'active' : ''}`;
+        item.onclick = () => inspectTable(table.id);
+
+        let dotClass = 'dot-core';
+        if (table.schema === 'auth_identity') dotClass = 'dot-auth';
+        else if (table.schema === 'integration') dotClass = 'dot-integration';
+        else if (table.schema === 'audit') dotClass = 'dot-audit';
+
+        item.innerHTML = `
+          <div class="table-item-name">
+            <span class="schema-dot ${dotClass}"></span>
+            <span>${table.id}</span>
+          </div>
+          <div class="badge-count">${table.columns.length} cols</div>
+        `;
+        listEl.appendChild(item);
+      });
+    }
+
+    function setSchemaFilter(schema, el) {
+      activeFilter = schema;
+      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+      renderTableList();
+    }
+
+    function onSearch(query) {
+      searchQuery = query;
+      renderTableList();
+    }
+
+    function inspectTable(tableId) {
+      selectedTableId = tableId;
+      renderTableList();
+
+      const table = tablesData.find(t => t.id === tableId);
+      if (!table) return;
+
+      const drawer = document.getElementById('inspectorDrawer');
+      const nameEl = document.getElementById('inspectTableName');
+      const badgeEl = document.getElementById('inspectSchemaBadge');
+      const bodyEl = document.getElementById('inspectorBody');
+
+      nameEl.textContent = table.id;
+      badgeEl.textContent = table.schema;
+      badgeEl.className = `schema-tag tag-${table.schema === 'auth_identity' ? 'auth' : table.schema}`;
+
+      let columnsHtml = table.columns.map(col => {
+        let keyBadge = '';
+        if (col.key === 'PK') keyBadge = '<span class="key-badge badge-pk">PK</span>';
+        else if (col.key === 'FK') keyBadge = '<span class="key-badge badge-fk">FK</span>';
+        else if (col.key === 'PK / FK') keyBadge = '<span class="key-badge badge-pk">PK</span> <span class="key-badge badge-fk">FK</span>';
+        else if (col.key === 'UK') keyBadge = '<span class="key-badge badge-uk">UK</span>';
+        else if (col.key === 'VIRTUAL') keyBadge = '<span class="key-badge badge-virtual">VIRTUAL</span>';
+
+        return `
+          <tr>
+            <td>
+              <strong style="color:var(--text)">${col.name}</strong>
+              ${keyBadge ? '<div style="margin-top:2px;">' + keyBadge + '</div>' : ''}
+            </td>
+            <td style="color:var(--text-muted)">${col.type}</td>
+            <td style="color:var(--text-dim); font-size:10px;">${col.desc}</td>
+          </tr>
+        `;
+      }).join('');
+
+      let relsHtml = table.relationships.map(rel => `
+        <div class="rel-card" onclick="inspectTable('${rel.target}')">
+          <div class="rel-header">
+            <span>&rarr; ${rel.target}</span>
+            <span style="color:#3b82f6; font-size:10px;">${rel.type}</span>
+          </div>
+          <div class="rel-desc">${rel.role}</div>
+          <div style="font-size:9px; color:var(--text-dim); font-family:var(--font-mono);">Constraint: ${rel.constraint}</div>
+        </div>
+      `).join('');
+
+      bodyEl.innerHTML = `
+        <div class="meta-card">
+          <div class="meta-row">
+            <span class="meta-label">Storage Engine:</span>
+            <span class="meta-val">${table.storage}</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">DDL Reference:</span>
+            <span class="meta-val">${table.ddl}</span>
+          </div>
+          <div class="meta-row" style="margin-top:4px;">
+            <span class="meta-label">Source Path:</span>
+            <span class="meta-val" style="font-size:10px;">${table.sourceCode}</span>
+          </div>
+          <div style="margin-top:8px; font-size:11px; color:var(--text-muted); line-height:1.4;">
+            ${table.desc}
+          </div>
+        </div>
+
+        <div>
+          <div class="section-title">Relationships &amp; Foreign Keys (${table.relationships.length})</div>
+          ${relsHtml || '<div style="font-size:11px; color:var(--text-dim)">No direct foreign key relationships</div>'}
+        </div>
+
+        <div>
+          <div class="section-title">Table Columns (${table.columns.length})</div>
+          <table class="columns-table">
+            <thead>
+              <tr>
+                <th>Column</th>
+                <th>Type</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${columnsHtml}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      drawer.classList.add('open');
+    }
+
+    function closeInspector() {
+      document.getElementById('inspectorDrawer').classList.remove('open');
+      selectedTableId = null;
+      renderTableList();
+    }
+
+    function openCodeModal() {
+      document.getElementById('codeModal').classList.add('open');
+    }
+
+    function closeCodeModal() {
+      document.getElementById('codeModal').classList.remove('open');
+    }
+
+    function copyMermaidCode() {
+      const text = document.getElementById('codeBox').value;
+      navigator.clipboard.writeText(text).then(() => {
+        alert('Mermaid ERD source code copied to clipboard!');
+      });
+    }
+
+    function toggleTheme() {
+      const html = document.documentElement;
+      const btn = document.getElementById('themeBtn');
+      if (html.getAttribute('data-theme') === 'dark') {
+        html.setAttribute('data-theme', 'light');
+        btn.textContent = '🌙 Dark';
+      } else {
+        html.setAttribute('data-theme', 'dark');
+        btn.textContent = '☀️ Light';
+      }
+    }
+
+    // Initialize Mermaid and hook click listeners on entity boxes
+    window.addEventListener('DOMContentLoaded', () => {
+      mermaid.initialize({
+        startOnLoad: true,
+        securityLevel: 'loose',
+        er: {
+          useMaxWidth: false
+        }
+      });
+
+      renderTableList();
+      updateTransform();
+
+      // Attach click events on rendered SVG entity elements once mermaid renders
+      setTimeout(() => {
+        const svg = document.querySelector('#mermaidDiagram svg');
+        if (svg) {
+          tablesData.forEach(t => {
+            const el = svg.querySelector(`[id*="${t.id}"]`);
+            if (el) {
+              el.style.cursor = 'pointer';
+              el.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                inspectTable(t.id);
+              });
+            }
+          });
+        }
+      }, 1200);
+    });
+  </script>
+</body>
+</html>
