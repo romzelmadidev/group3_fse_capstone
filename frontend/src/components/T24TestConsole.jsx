@@ -2,10 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Send,
   Lock,
-  Unlock,
   RotateCcw,
-  Terminal,
-  Moon,
   AlertTriangle,
   CheckCircle2,
   XCircle,
@@ -33,33 +30,17 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 
-// API Clients
+// API Clients - Routes via API Gateway (:8080)
 const API_BASE = '/api/v1';
 
-const parseOfsResponse = (text) => {
-  if (!text || typeof text !== 'string') return {};
-  const map = {};
-  const parts = text.split(',');
-  for (const part of parts) {
-    const eqIdx = part.indexOf('=');
-    if (eqIdx !== -1) {
-      let key = part.slice(0, eqIdx).trim();
-      key = key.replace(/:\d+:\d+$/, '');
-      const val = part.slice(eqIdx + 1).trim();
-      map[key] = val;
-    }
-  }
-  return map;
-};
-
 export default function T24TestConsole() {
-  const [activeTab, setActiveTab] = useState('transfer'); // transfer | enquiry | reversal | ofs | cob | dlq
-  const [activeAccount, setActiveAccount] = useState('acc-2002-chk-001');
+  const [activeTab, setActiveTab] = useState('transfer'); // transfer | enquiry | reversal | dlq | scenarios
+  const [activeAccount, setActiveAccount] = useState('1000-2000-3001');
   const [balanceData, setBalanceData] = useState({
-    accountId: 'acc-2002-chk-001',
-    balanceAmount: 8500000.0,
+    accountId: '1000-2000-3001',
+    balanceAmount: 25000000.0,
     holdAmount: 0.0,
-    availableBalance: 8500000.0
+    availableBalance: 25000000.0
   });
   const [systemDate, setSystemDate] = useState({
     businessDate: '2026-10-09',
@@ -72,8 +53,8 @@ export default function T24TestConsole() {
 
   // Transfer State
   const [transferForm, setTransferForm] = useState({
-    sourceAccountId: 'acc-2002-chk-001',
-    destinationAccountId: 'acc-2003-sav-002',
+    sourceAccountId: '1000-2000-3001',
+    destinationAccountId: '1000-2000-3002',
     amount: '5000.00',
     currency: 'PHP',
     description: 'Test Transfer via CBS Console'
@@ -81,13 +62,11 @@ export default function T24TestConsole() {
   const [transferResult, setTransferResult] = useState(null);
   const [isTransferring, setIsTransferring] = useState(false);
 
-  // Account Transaction Enquiry State (ENQUIRY.SELECT)
-  const [enquiryAccount, setEnquiryAccount] = useState('acc-2002-chk-001');
+  // Account Transaction Enquiry State (Orchestrator JSON mapping)
+  const [enquiryAccount, setEnquiryAccount] = useState('1000-2000-3001');
   const [enquiryPage, setEnquiryPage] = useState(0);
   const [enquirySize, setEnquirySize] = useState(20);
-  const [enquiryProtocol, setEnquiryProtocol] = useState('ORCHESTRATOR_JSON'); // 'ORCHESTRATOR_JSON' | 'T24_OFS'
   const [enquiryTransactions, setEnquiryTransactions] = useState([]);
-  const [enquiryRawOfs, setEnquiryRawOfs] = useState('');
   const [isLoadingEnquiry, setIsLoadingEnquiry] = useState(false);
   const [isSimulatingFailure, setIsSimulatingFailure] = useState(false);
 
@@ -95,7 +74,6 @@ export default function T24TestConsole() {
   const [selectedScenario, setSelectedScenario] = useState('INSUFFICIENT_FUNDS');
   const [scenarioRunning, setScenarioRunning] = useState(false);
   const [scenarioResult, setScenarioResult] = useState(null);
-  const [postingWindowToggling, setPostingWindowToggling] = useState(false);
 
   // Reversal State
   const [reversalForm, setReversalForm] = useState({
@@ -123,17 +101,6 @@ export default function T24TestConsole() {
   const [isLoadingStatusHistory, setIsLoadingStatusHistory] = useState(false);
   const [isStatusHistoryOpen, setIsStatusHistoryOpen] = useState(false);
 
-  // OFS Terminal State
-  const [ofsInput, setOfsInput] = useState(
-    'FUNDS.TRANSFER,INITIATE/I/PROCESS//TX-9901,USER01/123456,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=acc-2002-chk-001,CREDIT.ACCT.NO=acc-2003-sav-002,AMOUNT=2500.00,CURRENCY=PHP,VALUE.DATE=20261008'
-  );
-  const [ofsResponse, setOfsResponse] = useState('');
-  const [isExecutingOfs, setIsExecutingOfs] = useState(false);
-
-  // COB Batch State
-  const [cobResult, setCobResult] = useState(null);
-  const [isExecutingCob, setIsExecutingCob] = useState(false);
-
   // DLQ State
   const [dlqIncidents, setDlqIncidents] = useState([]);
   const [isLoadingDlq, setIsLoadingDlq] = useState(false);
@@ -150,21 +117,16 @@ export default function T24TestConsole() {
     setTimeout(() => setCopiedText(false), 2000);
   };
 
-  // Fetch live balance
+  // Fetch live balance from Account Service via Gateway (GET /api/v1/accounts/{id}/balance)
   const fetchBalance = async (accId = activeAccount) => {
     setIsLoadingBalance(true);
     try {
-      const res = await axios.get(`${API_BASE}/cbs/accounts/${accId}/balance`);
+      const res = await axios.get(`${API_BASE}/accounts/${accId}/balance`);
       let bal = 0, hld = 0, avail = 0;
-      if (typeof res.data === 'string') {
-        const ofs = parseOfsResponse(res.data);
-        bal = parseFloat(ofs['CURRENT.BALANCE'] || ofs['WORKING.BALANCE'] || ofs['BALANCE.AMOUNT'] || 0);
-        hld = parseFloat(ofs['HOLD.AMOUNT'] || ofs['LOCKED.AMOUNT'] || 0);
-        avail = parseFloat(ofs['AVAILABLE.BALANCE'] !== undefined ? ofs['AVAILABLE.BALANCE'] : (bal - hld));
-      } else if (res.data) {
-        bal = parseFloat(res.data.balanceAmount ?? res.data.currentBalance ?? res.data.balance ?? 0);
-        hld = parseFloat(res.data.holdAmount ?? res.data.heldAmount ?? 0);
-        avail = parseFloat(res.data.availableBalance ?? (bal - hld));
+      if (res.data) {
+        bal = parseFloat(res.data.current_balance ?? res.data.balanceAmount ?? res.data.currentBalance ?? 0);
+        hld = parseFloat(res.data.held_balance ?? res.data.holdAmount ?? res.data.heldAmount ?? 0);
+        avail = parseFloat(res.data.available_balance ?? res.data.availableBalance ?? (bal - hld));
       }
       setBalanceData({
         accountId: accId,
@@ -174,59 +136,18 @@ export default function T24TestConsole() {
       });
     } catch (e) {
       console.warn('Balance fetch error for', accId, e);
-      // Fallback enquiry via OFS or simulated state
-      try {
-        const ofsRes = await axios.post(`${API_BASE}/cbs/ofs`, `ENQUIRY.SELECT,,USER01/123456,ACCOUNT.NUMBER:EQ=${accId}`, {
-          headers: { 'Content-Type': 'text/plain' }
-        });
-        const ofs = parseOfsResponse(ofsRes.data);
-        const bal = parseFloat(ofs['CURRENT.BALANCE'] || ofs['WORKING.BALANCE'] || ofs['BALANCE.AMOUNT'] || 0);
-        const hld = parseFloat(ofs['HOLD.AMOUNT'] || ofs['LOCKED.AMOUNT'] || 0);
-        const avail = parseFloat(ofs['AVAILABLE.BALANCE'] !== undefined ? ofs['AVAILABLE.BALANCE'] : (bal - hld));
-        setBalanceData({
-          accountId: accId,
-          balanceAmount: isNaN(bal) ? 0 : bal,
-          holdAmount: isNaN(hld) ? 0 : hld,
-          availableBalance: isNaN(avail) ? 0 : avail
-        });
-      } catch (err) {
-        // Fallback: reset state to 0 for newly selected account rather than retaining previous account's balance
-        setBalanceData({
-          accountId: accId,
-          balanceAmount: 0,
-          holdAmount: 0,
-          availableBalance: 0
-        });
-      }
+      setBalanceData({
+        accountId: accId,
+        balanceAmount: 0,
+        holdAmount: 0,
+        availableBalance: 0
+      });
     } finally {
       setIsLoadingBalance(false);
     }
   };
 
-  // Fetch system date & COB status
-  const fetchSystemDate = async () => {
-    try {
-      const res = await axios.get(`${API_BASE}/cbs/system-date`);
-      if (typeof res.data === 'string') {
-        const ofs = parseOfsResponse(res.data);
-        setSystemDate({
-          businessDate: ofs['BUSINESS.DATE'] || '2026-10-09',
-          status: ofs['STATUS'] || 'ONLINE',
-          postingWindowOpen: ofs['POSTING.WINDOW'] === 'OPEN' || ofs['POSTING.WINDOW.OPEN'] === 'true'
-        });
-      } else if (res.data) {
-        setSystemDate({
-          businessDate: res.data.businessDate || '2026-10-09',
-          status: res.data.status || 'ONLINE',
-          postingWindowOpen: res.data.postingWindowOpen ?? true
-        });
-      }
-    } catch (e) {
-      console.warn('System date fetch error:', e);
-    }
-  };
-
-  // Fetch DLQ incidents
+  // Fetch DLQ incidents via Gateway -> Compliance Service
   const fetchDlqIncidents = async () => {
     setIsLoadingDlq(true);
     try {
@@ -243,7 +164,6 @@ export default function T24TestConsole() {
 
   useEffect(() => {
     fetchBalance(activeAccount);
-    fetchSystemDate();
   }, [activeAccount]);
 
   useEffect(() => {
@@ -254,11 +174,11 @@ export default function T24TestConsole() {
 
   useEffect(() => {
     if (activeTab === 'enquiry') {
-      handleFetchEnquiryTransactions(enquiryAccount, enquiryPage, enquiryProtocol);
+      handleFetchEnquiryTransactions(enquiryAccount, enquiryPage);
     }
-  }, [activeTab, enquiryAccount, enquiryPage, enquiryProtocol]);
+  }, [activeTab, enquiryAccount, enquiryPage]);
 
-  // Execute Transfer (Orchestrator JSON mapping: POST /api/v1/transfers -> T24 OFS: POST /api/v1/cbs/funds-transfer)
+  // Execute Transfer (Gateway -> Transfer Orchestrator JSON -> T24 CBS OFS)
   const handleExecuteTransfer = async (e) => {
     e.preventDefault();
     setIsTransferring(true);
@@ -277,7 +197,7 @@ export default function T24TestConsole() {
       };
       const res = await axios.post(`${API_BASE}/transfers`, payload);
       setTransferResult({ success: true, data: res.data });
-      showToast('Funds Transfer executed and posted via Orchestrator JSON ➔ T24 OFS!', 'success');
+      showToast('Funds Transfer executed and posted via Gateway ➔ Orchestrator ➔ T24 CBS!', 'success');
       // Auto-fill reversal original Tx ID
       const ref = res.data?.transactionId || txRef;
       setReversalForm((prev) => ({ ...prev, originalTransactionId: ref }));
@@ -293,23 +213,14 @@ export default function T24TestConsole() {
     }
   };
 
-  // Account Transaction Enquiry (Orchestrator JSON: GET /transfers/accounts/{id}/transactions | T24 OFS: GET /cbs/accounts/{id}/transactions)
-  const handleFetchEnquiryTransactions = async (accId = enquiryAccount, page = enquiryPage, protocol = enquiryProtocol) => {
+  // Account Transaction Enquiry (Gateway -> Transfer Orchestrator JSON: GET /transfers/accounts/{id}/transactions)
+  const handleFetchEnquiryTransactions = async (accId = enquiryAccount, page = enquiryPage) => {
     setIsLoadingEnquiry(true);
-    setEnquiryRawOfs('');
     try {
-      if (protocol === 'ORCHESTRATOR_JSON') {
-        const res = await axios.get(`${API_BASE}/transfers/accounts/${accId}/transactions?page=${page}&size=${enquirySize}`);
-        const data = Array.isArray(res.data) ? res.data : [];
-        setEnquiryTransactions(data);
-        showToast(`Retrieved ${data.length} transactions via Orchestrator JSON mapping`, 'info');
-      } else {
-        const res = await axios.get(`${API_BASE}/cbs/accounts/${accId}/transactions?page=${page}&size=${enquirySize}`, {
-          responseType: 'text'
-        });
-        setEnquiryRawOfs(typeof res.data === 'string' ? res.data : JSON.stringify(res.data));
-        showToast('Retrieved raw Temenos OFS transaction enquiry wire string', 'info');
-      }
+      const res = await axios.get(`${API_BASE}/transfers/accounts/${accId}/transactions?page=${page}&size=${enquirySize}`);
+      const data = Array.isArray(res.data) ? res.data : [];
+      setEnquiryTransactions(data);
+      showToast(`Retrieved ${data.length} transactions via Orchestrator JSON mapping`, 'info');
     } catch (err) {
       console.warn('Transaction enquiry error:', err);
       showToast('Enquiry failed: ' + (err.response?.data?.message || err.message), 'error');
@@ -319,7 +230,7 @@ export default function T24TestConsole() {
     }
   };
 
-  // Execute Compensating Reversal (Gateway / Orchestrator: POST /api/v1/reversals/direct)
+  // Execute Compensating Reversal (Gateway -> Orchestrator: POST /api/v1/reversals/direct)
   const handleCompensatingReversal = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     if (!reversalForm.originalTransactionId) {
@@ -351,7 +262,7 @@ export default function T24TestConsole() {
     }
   };
 
-  // Simulate Failed Transaction (DLQ Injection)
+  // Simulate Failed Transaction (Gateway -> Compliance Service DLQ)
   const handleSimulateFailure = async (errorType, errorCode, cbState = 'OPEN') => {
     setIsSimulatingFailure(true);
     try {
@@ -363,41 +274,19 @@ export default function T24TestConsole() {
         circuitBreakerState: cbState,
         payload: JSON.stringify({
           sourceAccountId: activeAccount,
-          destinationAccountId: 'ACC-1002',
+          destinationAccountId: '1000-2000-3002',
           amount: 5000.0,
           currency: 'PHP',
           reason: 'Failed transfer simulation'
         })
       };
-      await axios.post(`${API_BASE}/cbs/audit/failed-transactions/simulate`, payload);
+      await axios.post(`${API_BASE}/compliance/dlq/simulate`, payload);
       showToast(`Simulated failure logged to DLQ: ${errorType} (${errorCode})`, 'info');
       fetchDlqIncidents();
     } catch (err) {
       showToast('Simulation failed: ' + (err.response?.data?.message || err.message), 'error');
     } finally {
       setIsSimulatingFailure(false);
-    }
-  };
-
-  // Toggle Posting Window (Cutoff Simulation: ONLINE <-> EOD_CUTOFF)
-  const handleTogglePostingWindow = async (openTarget) => {
-    setPostingWindowToggling(true);
-    try {
-      const q = openTarget !== undefined ? `?open=${openTarget}` : '';
-      const res = await axios.post(`${API_BASE}/cbs/cob/posting-window${q}`);
-      const ofs = typeof res.data === 'string' ? parseOfsResponse(res.data) : res.data;
-      const isOpen = ofs['POSTING.WINDOW'] === 'OPEN' || ofs['POSTING.WINDOW.OPEN'] === 'true' || ofs.postingWindowOpen;
-      setSystemDate((prev) => ({
-        ...prev,
-        status: ofs['STATUS'] || ofs.status || (isOpen ? 'ONLINE' : 'EOD_CUTOFF'),
-        postingWindowOpen: isOpen
-      }));
-      showToast(`Posting window is now ${isOpen ? 'OPEN (ONLINE)' : 'CLOSED (EOD_CUTOFF)'}!`, isOpen ? 'success' : 'info');
-      fetchSystemDate();
-    } catch (err) {
-      showToast('Failed to toggle posting window: ' + (err.response?.data?.message || err.message), 'error');
-    } finally {
-      setPostingWindowToggling(false);
     }
   };
 
@@ -413,7 +302,7 @@ export default function T24TestConsole() {
         const payload = {
           transactionId: txRef,
           sourceAccountId: activeAccount,
-          destinationAccountId: 'acc-2003-sav-002',
+          destinationAccountId: '1000-2000-3002',
           amount: 999999999.00,
           currency: 'PHP',
           description: 'Solvency Test: Overdraft rejection',
@@ -444,47 +333,6 @@ export default function T24TestConsole() {
             response: errData || { error: err.message }
           });
           showToast(isExpected ? 'Scenario Verified: Overdraft successfully blocked by CBS!' : 'Unexpected error: ' + errMsg, isExpected ? 'success' : 'error');
-        }
-      } else if (scenarioId === 'EOD_CUTOFF_WINDOW_CLOSED') {
-        // Step 1: Ensure window is closed
-        await axios.post(`${API_BASE}/cbs/cob/posting-window?open=false`);
-        fetchSystemDate();
-
-        const txRef = 'SCEN-CUTOFF-' + Math.floor(Math.random() * 90000 + 10000);
-        const payload = {
-          transactionId: txRef,
-          sourceAccountId: activeAccount,
-          destinationAccountId: 'acc-2003-sav-002',
-          amount: 1000.00,
-          currency: 'PHP',
-          description: 'EOD Cutoff Window Closed Test',
-          deviceId: 'SCENARIO-RUNNER',
-          idempotencyKey: 'IDEMP-' + txRef
-        };
-        try {
-          const res = await axios.post(`${API_BASE}/transfers`, payload);
-          setScenarioResult({
-            id: scenarioId,
-            passed: false,
-            expected: 'Rejection with "Posting window is closed"',
-            actual: `Unexpected Success: HTTP 200 (${res.data?.status})`,
-            payload,
-            response: res.data
-          });
-        } catch (err) {
-          const errData = err.response?.data;
-          const errMsg = typeof errData === 'string' ? errData : errData?.message || err.message;
-          const status = err.response?.status;
-          const isExpected = errMsg && errMsg.toLowerCase().includes('posting window is closed');
-          setScenarioResult({
-            id: scenarioId,
-            passed: isExpected,
-            expected: 'HTTP 400/500 with "CBS Posting window is closed. Business status: EOD_CUTOFF"',
-            actual: `HTTP ${status}: ${errMsg}`,
-            payload,
-            response: errData || { error: err.message }
-          });
-          showToast(isExpected ? 'Scenario Verified: Transfer rejected due to closed posting window!' : 'Result: ' + errMsg, isExpected ? 'success' : 'error');
         }
       } else if (scenarioId === 'CIRCULAR_SAME_ACCOUNT') {
         const txRef = 'SCEN-CIRC-' + Math.floor(Math.random() * 90000 + 10000);
@@ -565,7 +413,7 @@ export default function T24TestConsole() {
         const payload = {
           transactionId: txRef,
           sourceAccountId: activeAccount,
-          destinationAccountId: 'acc-2003-sav-002',
+          destinationAccountId: '1000-2000-3002',
           amount: 300000.00,
           currency: 'PHP',
           description: 'BSP Circular 1140: High-Value Cooling-Off Hold',
@@ -588,7 +436,7 @@ export default function T24TestConsole() {
         const payload = {
           transactionId: txRef,
           sourceAccountId: activeAccount,
-          destinationAccountId: 'acc-2003-sav-002',
+          destinationAccountId: '1000-2000-3002',
           amount: 75000.00,
           currency: 'PHP',
           description: 'Strong Customer Authentication (SCA) Step-Up Challenge',
@@ -607,7 +455,7 @@ export default function T24TestConsole() {
         });
         showToast(isExpected ? 'Scenario Verified: Biometric challenge required for ₱75k transfer!' : 'Response: ' + res.data?.status, isExpected ? 'success' : 'info');
       } else if (scenarioId === 'FOUR_EYES_DUAL_CONTROL_VIOLATION') {
-        // Step 1: Create a real dispute ticket
+        // Step 1: Create a real dispute ticket via Orchestrator
         const originTx = 'TXN-DISP-' + Math.floor(Math.random() * 90000 + 10000);
         const reqPayload = {
           originalTransactionId: originTx,
@@ -654,7 +502,7 @@ export default function T24TestConsole() {
         const payload = {
           transactionId: 'TXN-DUP-A-' + Math.floor(Math.random() * 90000 + 10000),
           sourceAccountId: activeAccount,
-          destinationAccountId: 'acc-2003-sav-002',
+          destinationAccountId: '1000-2000-3002',
           amount: 250.00,
           currency: 'PHP',
           description: 'Idempotency Test Mutation',
@@ -691,12 +539,12 @@ export default function T24TestConsole() {
           circuitBreakerState: 'OPEN',
           payload: JSON.stringify({
             sourceAccountId: activeAccount,
-            destinationAccountId: 'acc-2003-sav-002',
+            destinationAccountId: '1000-2000-3002',
             amount: 5000.00,
             reason: 'Simulated CBS 504 Gateway Timeout'
           })
         };
-        const res = await axios.post(`${API_BASE}/cbs/audit/failed-transactions/simulate`, payload);
+        const res = await axios.post(`${API_BASE}/compliance/dlq/simulate`, payload);
         setScenarioResult({
           id: scenarioId,
           passed: true,
@@ -839,52 +687,7 @@ export default function T24TestConsole() {
     }
   };
 
-  // Execute Raw OFS Message
-  const handleExecuteOfs = async () => {
-    setIsExecutingOfs(true);
-    setOfsResponse('');
-    try {
-      const res = await axios.post(`${API_BASE}/cbs/ofs`, ofsInput.trim(), {
-        headers: { 'Content-Type': 'text/plain' }
-      });
-      setOfsResponse(res.data);
-      showToast('OFS message processed by CBS wire parser!', 'success');
-      fetchBalance(activeAccount);
-    } catch (err) {
-      setOfsResponse(err.response?.data || err.message);
-      showToast('OFS error returned by CBS', 'error');
-    } finally {
-      setIsExecutingOfs(false);
-    }
-  };
-
-  // Execute COB Batch
-  const handleRunCob = async () => {
-    setIsExecutingCob(true);
-    setCobResult(null);
-    try {
-      const res = await axios.post(`${API_BASE}/cbs/cob/run`);
-      let parsed = res.data;
-      if (typeof res.data === 'string') {
-        parsed = parseOfsResponse(res.data);
-      }
-      setCobResult({ success: true, data: parsed });
-      const nextDate = parsed.businessDate || parsed['BUSINESS.DATE'] || 'T+1';
-      showToast(`COB Batch finished! Rolled over to ${nextDate}`, 'success');
-      fetchSystemDate();
-      fetchBalance(activeAccount);
-    } catch (err) {
-      setCobResult({
-        success: false,
-        error: err.response?.data?.message || err.response?.data || err.message
-      });
-      showToast('COB Batch halted or failed', 'error');
-    } finally {
-      setIsExecutingCob(false);
-    }
-  };
-
-  // Replay DLQ Incident
+  // Replay DLQ Incident via Gateway -> Compliance Service
   const handleReplayDlq = async (transferId) => {
     try {
       const res = await axios.post(`${API_BASE}/compliance/dlq/replay/${transferId}`);
@@ -928,15 +731,15 @@ export default function T24TestConsole() {
               <Database className="h-3 w-3 text-purple-700" /> T24 CBS Core
             </span>
             <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 font-mono text-2xs font-semibold uppercase tracking-wider text-emerald-800">
-              <Activity className="h-3 w-3 text-emerald-600" /> Mock Runtime :8085
+              <Activity className="h-3 w-3 text-emerald-600" /> Gateway ➔ Orchestrator ➔ CBS
             </span>
           </div>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
-            T24 Mock CBS Test Laboratory
+            T24 Core Banking Test Laboratory
           </h1>
           <p className="mt-1 text-sm text-slate-500">
             Aura Bank interactive workbench for validating Funds Transfers, Account Transaction Enquiries (`ENQUIRY.SELECT`),
-            Maker-Checker Reversals, Temenos OFS wire strings, COB lifecycle, and DLQ incident replays.
+            Maker-Checker Reversals, DLQ incident replays, and real-world banking resilience scenarios.
           </p>
         </div>
 
@@ -962,7 +765,6 @@ export default function T24TestConsole() {
           </div>
           <button
             onClick={() => {
-              fetchSystemDate();
               fetchBalance();
             }}
             className="rounded-lg border border-purple-200 bg-white p-2 text-purple-800 shadow-xs hover:bg-purple-100/60 hover:text-purple-950 transition-colors"
@@ -981,7 +783,7 @@ export default function T24TestConsole() {
             Select Test Account
           </label>
           <div className="mt-2.5 flex flex-col gap-1.5">
-            {['acc-2002-chk-001', 'acc-2001-sav-001', 'acc-2003-sav-002', '1000-2000-3001'].map((acc) => (
+            {['1000-2000-3001', '1000-2000-3002', '1000-2000-3004', '1000-2000-3005'].map((acc) => (
               <button
                 key={acc}
                 onClick={() => {
@@ -998,7 +800,7 @@ export default function T24TestConsole() {
               >
                 <span>{acc}</span>
                 <span className={`text-2xs ${activeAccount === acc ? 'text-purple-700 font-semibold' : 'text-slate-400'}`}>
-                  {acc === 'acc-2002-chk-001' ? 'Checking (8.5M)' : acc === 'acc-2001-sav-001' ? 'Savings (25.0M)' : acc === 'acc-2003-sav-002' ? 'Savings (3.2M)' : 'Corporate (25.0M)'}
+                  {acc === '1000-2000-3001' ? 'Savings (25.0M)' : acc === '1000-2000-3002' ? 'Savings (5.0M)' : acc === '1000-2000-3004' ? 'Savings (5.2M)' : 'Savings (3.75M)'}
                 </span>
               </button>
             ))}
@@ -1063,10 +865,8 @@ export default function T24TestConsole() {
           { id: 'transfer', label: '1. Funds Transfer', icon: Send },
           { id: 'enquiry', label: '2. Transaction Enquiry (ENQUIRY.SELECT)', icon: FileText },
           { id: 'reversal', label: '3. Reversal (Dual Control)', icon: RotateCcw },
-          { id: 'ofs', label: '4. Raw Temenos OFS Terminal', icon: Terminal },
-          { id: 'cob', label: '5. COB & EOD Lifecycle', icon: Moon },
-          { id: 'dlq', label: '6. DLQ Incident Replays', icon: AlertTriangle },
-          { id: 'scenarios', label: '7. Banking Failure Simulator', icon: ShieldAlert }
+          { id: 'dlq', label: '4. DLQ Incident Replays', icon: AlertTriangle },
+          { id: 'scenarios', label: '5. Banking Failure Simulator', icon: ShieldAlert }
         ].map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
@@ -1123,7 +923,7 @@ export default function T24TestConsole() {
                     setTransferForm({
                       ...transferForm,
                       sourceAccountId: activeAccount,
-                      destinationAccountId: 'acc-2003-sav-002',
+                      destinationAccountId: '1000-2000-3002',
                       amount: '999999999.00',
                       description: 'Test Insolvency: Amount > Available'
                     });
@@ -1171,7 +971,7 @@ export default function T24TestConsole() {
                     setTransferForm({
                       ...transferForm,
                       sourceAccountId: activeAccount,
-                      destinationAccountId: 'acc-2003-sav-002',
+                      destinationAccountId: '1000-2000-3002',
                       amount: '350000.00',
                       description: 'Test High-Value Cooling-Off Hold'
                     });
@@ -1187,7 +987,7 @@ export default function T24TestConsole() {
                     setTransferForm({
                       ...transferForm,
                       sourceAccountId: activeAccount,
-                      destinationAccountId: 'acc-2003-sav-002',
+                      destinationAccountId: '1000-2000-3002',
                       amount: '75000.00',
                       description: 'Test Biometric Step-Up Challenge'
                     });
@@ -1196,19 +996,6 @@ export default function T24TestConsole() {
                   className="rounded-lg border border-sky-200 bg-sky-50 px-2 py-1 text-2xs font-semibold text-sky-900 hover:bg-sky-100 transition"
                 >
                   Biometric Step-Up (₱75k)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleTogglePostingWindow()}
-                  disabled={postingWindowToggling}
-                  className={`rounded-lg border px-2 py-1 text-2xs font-semibold transition ${
-                    systemDate.postingWindowOpen
-                      ? 'border-rose-300 bg-white text-rose-700 hover:bg-rose-50'
-                      : 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                  }`}
-                  title="Toggle Posting Window to simulate clearing cutoff"
-                >
-                  {postingWindowToggling ? 'Toggling...' : systemDate.postingWindowOpen ? 'Simulate Cutoff (Close Window)' : 'Re-open Window (ONLINE)'}
                 </button>
               </div>
             </div>
@@ -1312,7 +1099,7 @@ export default function T24TestConsole() {
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <span className="text-2xs font-mono text-purple-900 font-medium">Trace Output &bull; OFS Settlement</span>
+                    <span className="text-2xs font-mono text-purple-900 font-medium">Trace Output &bull; Settlement</span>
                     <button
                       type="button"
                       onClick={() => {
@@ -1336,7 +1123,7 @@ export default function T24TestConsole() {
                     <Send className="h-6 w-6" />
                   </div>
                   <p className="text-xs font-medium text-slate-600">No active trace yet</p>
-                  <p className="mt-1 text-2xs text-slate-400 max-w-xs">Execute a transfer to inspect response payload and OFS return string.</p>
+                  <p className="mt-1 text-2xs text-slate-400 max-w-xs">Execute a transfer to inspect response payload and CBS settlement.</p>
                 </div>
               )}
             </div>
@@ -1354,14 +1141,13 @@ export default function T24TestConsole() {
               Temenos T24 Canonical Transaction Enquiry (`ENQUIRY.SELECT`) &amp; Orchestrator Translation
             </div>
             <p className="mt-1.5 text-xs text-slate-600 leading-relaxed">
-              Queries committed ledger transactions (`TransactionMaster` table) with pagination support.
-              In <strong className="text-purple-950">Orchestrator JSON mode</strong> (`GET /api/v1/transfers/accounts/{'{'}accountId{'}'}/transactions`), the orchestrator translates incoming requests, invokes T24, and unpacks the Temenos OFS syntax into strongly-typed DTOs.
-              In <strong className="text-purple-950">Direct CBS OFS mode</strong> (`GET /api/v1/cbs/accounts/{'{'}accountId{'}'}/transactions`), observe the raw wire string formatted by CBS with double-semicolon record delimiters.
+              Queries committed ledger transactions (`TransactionMaster` table) with pagination support via the Transfer Orchestrator
+              (`GET /api/v1/transfers/accounts/{'{'}accountId{'}'}/transactions`). The orchestrator queries T24 CBS, unpacks the wire syntax, and returns strongly-typed JSON DTOs to the client.
             </p>
           </div>
 
           <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm space-y-5">
-            {/* Control Bar: Account, Protocol, Pagination, Refresh */}
+            {/* Control Bar: Account, Pagination, Refresh */}
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-purple-100/80 pb-4">
               <div className="flex flex-wrap items-center gap-3">
                 <div>
@@ -1374,37 +1160,6 @@ export default function T24TestConsole() {
                     onChange={(e) => setEnquiryAccount(e.target.value)}
                     className="mt-1 w-48 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-1.5 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
                   />
-                </div>
-
-                {/* Protocol Toggle */}
-                <div>
-                  <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
-                    Wire Protocol / Format
-                  </label>
-                  <div className="mt-1 flex items-center rounded-xl bg-purple-50/70 p-1 border border-purple-100 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setEnquiryProtocol('ORCHESTRATOR_JSON')}
-                      className={`px-3 py-1 rounded-lg font-semibold transition-all ${
-                        enquiryProtocol === 'ORCHESTRATOR_JSON'
-                          ? 'bg-purple-900 text-white shadow-2xs'
-                          : 'text-slate-600 hover:text-purple-900'
-                      }`}
-                    >
-                      Orchestrator JSON
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEnquiryProtocol('T24_OFS')}
-                      className={`px-3 py-1 rounded-lg font-mono text-2xs font-semibold transition-all ${
-                        enquiryProtocol === 'T24_OFS'
-                          ? 'bg-purple-900 text-white shadow-2xs'
-                          : 'text-slate-600 hover:text-purple-900'
-                      }`}
-                    >
-                      Raw T24 OFS
-                    </button>
-                  </div>
                 </div>
               </div>
 
@@ -1425,7 +1180,7 @@ export default function T24TestConsole() {
                   <button
                     type="button"
                     onClick={() => setEnquiryPage((prev) => prev + 1)}
-                    disabled={isLoadingEnquiry || (enquiryProtocol === 'ORCHESTRATOR_JSON' && enquiryTransactions.length < enquirySize)}
+                    disabled={isLoadingEnquiry || enquiryTransactions.length < enquirySize}
                     className="rounded-lg px-2.5 py-1 text-slate-600 hover:bg-white hover:text-purple-900 disabled:opacity-40 transition"
                   >
                     Next
@@ -1434,7 +1189,7 @@ export default function T24TestConsole() {
 
                 <button
                   type="button"
-                  onClick={() => handleFetchEnquiryTransactions(enquiryAccount, enquiryPage, enquiryProtocol)}
+                  onClick={() => handleFetchEnquiryTransactions(enquiryAccount, enquiryPage)}
                   disabled={isLoadingEnquiry}
                   className="flex items-center gap-1.5 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-4 py-2 text-xs font-bold uppercase tracking-wider text-white shadow-2xs transition-all disabled:opacity-50"
                 >
@@ -1444,45 +1199,13 @@ export default function T24TestConsole() {
               </div>
             </div>
 
-            {/* Content Display: Mode 1 Orchestrator JSON vs Mode 2 Raw OFS */}
+            {/* Content Display: Orchestrator JSON Table View */}
             {isLoadingEnquiry ? (
               <div className="py-12 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
                 <RefreshCw className="h-5 w-5 animate-spin text-purple-600" />
                 Querying ledger transactions for account <code className="font-mono">{enquiryAccount}</code>...
               </div>
-            ) : enquiryProtocol === 'T24_OFS' ? (
-              /* Raw OFS Wire String View */
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-2xs uppercase tracking-wider text-purple-900">
-                  <span className="font-bold flex items-center gap-1.5">
-                    <Terminal className="h-3.5 w-3.5 text-purple-700" /> Temenos OFS Return String
-                  </span>
-                  <span className="font-mono text-emerald-600 font-semibold">GET /api/v1/cbs/accounts/{enquiryAccount}/transactions</span>
-                </div>
-                {enquiryRawOfs ? (
-                  <div>
-                    <pre className="overflow-x-auto rounded-xl border border-purple-900/40 bg-[#120B24] p-4 font-mono text-2xs text-purple-200 shadow-inner leading-relaxed">
-                      {enquiryRawOfs}
-                    </pre>
-                    <div className="mt-2.5 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(enquiryRawOfs)}
-                        className="flex items-center gap-1.5 rounded-xl border border-purple-200 bg-white px-3 py-1.5 text-xs font-semibold text-purple-900 hover:bg-purple-50 shadow-2xs transition"
-                      >
-                        {copiedText ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-                        Copy OFS Response
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="py-10 text-center text-xs text-slate-400">
-                    No wire response captured. Click "Run Enquiry" to fetch.
-                  </div>
-                )}
-              </div>
             ) : (
-              /* Orchestrator JSON Table View */
               <div>
                 {enquiryTransactions.length === 0 ? (
                   <div className="py-12 text-center text-slate-400 space-y-2">
@@ -1585,8 +1308,7 @@ export default function T24TestConsole() {
         </div>
       )}
 
-
-      {/* TAB 3: TRANSACTION REVERSAL (DUAL ENDPOINT 2 & MAKER-CHECKER) */}
+      {/* TAB 3: TRANSACTION REVERSAL (DUAL CONTROL) */}
       {activeTab === 'reversal' && (
         <div className="space-y-6">
           {/* Dual-Endpoint 2 Saga Compensation Quick Trigger */}
@@ -1596,7 +1318,7 @@ export default function T24TestConsole() {
                 <span className="rounded-full border border-purple-300 bg-purple-100 px-2.5 py-0.5 font-mono text-2xs font-bold uppercase text-purple-950">
                   Dual Architecture Endpoint 2
                 </span>
-                <h3 className="text-sm font-bold text-slate-900">Automated Saga Compensating Reversal (`POST /t24/reversal`)</h3>
+                <h3 className="text-sm font-bold text-slate-900">Automated Saga Compensating Reversal (`POST /api/v1/reversals/direct`)</h3>
               </div>
               <span className="font-mono text-2xs font-semibold text-purple-800 bg-purple-100/60 px-2 py-0.5 rounded">ACID Rollback</span>
             </div>
@@ -1606,7 +1328,7 @@ export default function T24TestConsole() {
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <input
                 type="text"
-                placeholder="Transaction ID to reverse (e.g. FT123456 or TXN-...)"
+                placeholder="Transaction ID to reverse (e.g. TXN-123456)"
                 value={reversalForm.originalTransactionId}
                 onChange={(e) => setReversalForm({ ...reversalForm, originalTransactionId: e.target.value })}
                 className="flex-1 min-w-[240px] rounded-xl border border-slate-200 bg-white px-3.5 py-2 font-mono text-xs text-slate-900 focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
@@ -1633,459 +1355,298 @@ export default function T24TestConsole() {
                 <h2 className="text-sm font-bold text-slate-900">Initiate Dispute Reversal Ticket</h2>
               </div>
 
-            <form onSubmit={handleRequestReversal} className="mt-5 space-y-4">
-              <div>
-                <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
-                  Original Transaction ID to Reverse
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. TX-123456"
-                  value={reversalForm.originalTransactionId}
-                  onChange={(e) => setReversalForm({ ...reversalForm, originalTransactionId: e.target.value })}
-                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
-                  Maker ID (Operator)
-                </label>
-                <input
-                  type="text"
-                  value={reversalForm.makerId}
-                  onChange={(e) => setReversalForm({ ...reversalForm, makerId: e.target.value })}
-                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
-                  Dispute Reason
-                </label>
-                <select
-                  value={reversalForm.reason}
-                  onChange={(e) => setReversalForm({ ...reversalForm, reason: e.target.value })}
-                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
-                >
-                  <option value="CUSTOMER_DISPUTE">CUSTOMER_DISPUTE (Customer Filed Unauthorized Debit)</option>
-                  <option value="OPERATIONAL_ERROR">OPERATIONAL_ERROR (Duplicate Operator Posting)</option>
-                  <option value="FRAUD_INVESTIGATION">FRAUD_INVESTIGATION (Compromised Destination Account)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
-                  Maker Notes
-                </label>
-                <textarea
-                  rows="2"
-                  value={reversalForm.notes}
-                  onChange={(e) => setReversalForm({ ...reversalForm, notes: e.target.value })}
-                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={isReversing}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-5 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-xs hover:shadow-md transition-all disabled:opacity-50"
-              >
-                {isReversing ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                File Reversal Dispute Ticket
-              </button>
-            </form>
-          </div>
-
-          {/* Checker Authorization */}
-          <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center gap-2 border-b border-purple-100/70 pb-3.5">
-                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 font-mono text-2xs font-bold uppercase text-emerald-900">
-                  Step 2: Checker Role
-                </span>
-                <h2 className="text-sm font-bold text-slate-900">Dual-Control Approval (Segregation of Duties)</h2>
-              </div>
-
-              <div className="mt-5 space-y-4">
+              <form onSubmit={handleRequestReversal} className="mt-5 space-y-4">
                 <div>
                   <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
-                    Dispute Ticket ID
+                    Original Transaction ID to Reverse
                   </label>
                   <input
                     type="text"
-                    placeholder="Ticket ID from Step 1"
-                    value={checkerForm.ticketId}
-                    onChange={(e) => setCheckerForm({ ...checkerForm, ticketId: e.target.value })}
+                    placeholder="e.g. TXN-123456"
+                    value={reversalForm.originalTransactionId}
+                    onChange={(e) => setReversalForm({ ...reversalForm, originalTransactionId: e.target.value })}
                     className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
+                    required
                   />
                 </div>
 
                 <div>
                   <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
-                    Checker ID (Must Differ from Maker)
+                    Maker ID (Operator)
                   </label>
                   <input
                     type="text"
-                    value={checkerForm.checkerId}
-                    onChange={(e) => setCheckerForm({ ...checkerForm, checkerId: e.target.value })}
+                    value={reversalForm.makerId}
+                    onChange={(e) => setReversalForm({ ...reversalForm, makerId: e.target.value })}
                     className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
+                    required
                   />
-                  <p className="mt-1.5 text-2xs font-medium text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200">
-                    Dual Control Rule: If Checker == `{reversalForm.makerId}`, CBS will reject with error.
-                  </p>
                 </div>
 
                 <div>
                   <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
-                    Checker Authorization Notes
+                    Dispute Reason
                   </label>
-                  <input
-                    type="text"
-                    value={checkerForm.checkerNotes}
-                    onChange={(e) => setCheckerForm({ ...checkerForm, checkerNotes: e.target.value })}
+                  <select
+                    value={reversalForm.reason}
+                    onChange={(e) => setReversalForm({ ...reversalForm, reason: e.target.value })}
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
+                  >
+                    <option value="CUSTOMER_DISPUTE">CUSTOMER_DISPUTE (Customer Filed Unauthorized Debit)</option>
+                    <option value="OPERATIONAL_ERROR">OPERATIONAL_ERROR (Duplicate Operator Posting)</option>
+                    <option value="FRAUD_INVESTIGATION">FRAUD_INVESTIGATION (Compromised Destination Account)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                    Maker Notes
+                  </label>
+                  <textarea
+                    rows="2"
+                    value={reversalForm.notes}
+                    onChange={(e) => setReversalForm({ ...reversalForm, notes: e.target.value })}
                     className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={handleApproveReversal}
-                    disabled={isReversing || !checkerForm.ticketId}
-                    className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-xs transition-all disabled:opacity-50"
-                  >
-                    <CheckCircle2 className="h-4 w-4" /> Approve Reversal
-                  </button>
+                <button
+                  type="submit"
+                  disabled={isReversing}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-5 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-xs hover:shadow-md transition-all disabled:opacity-50"
+                >
+                  {isReversing ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                  File Reversal Dispute Ticket
+                </button>
+              </form>
+            </div>
 
-                  <button
-                    type="button"
-                    onClick={handleRejectReversal}
-                    disabled={isReversing || !checkerForm.ticketId}
-                    className="flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white hover:bg-rose-50 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-rose-700 shadow-2xs transition-all disabled:opacity-50"
-                  >
-                    <XCircle className="h-4 w-4" /> Reject Ticket
-                  </button>
+            {/* Checker Authorization */}
+            <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-2 border-b border-purple-100/70 pb-3.5">
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 font-mono text-2xs font-bold uppercase text-emerald-900">
+                    Step 2: Checker Role
+                  </span>
+                  <h2 className="text-sm font-bold text-slate-900">Dual-Control Approval (Segregation of Duties)</h2>
                 </div>
-              </div>
 
-              {/* Reversal Result Inspector */}
-              {reversalResult && (
-                <div className="mt-4 space-y-2 rounded-xl border border-purple-200 bg-purple-50/60 p-3.5">
-                  <div className="flex items-center justify-between">
-                    <div className="font-mono text-2xs font-bold text-purple-950">
-                      Result Step: {reversalResult.step || 'Error'}
-                    </div>
+                <div className="mt-5 space-y-4">
+                  <div>
+                    <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                      Dispute Ticket ID
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ticket ID from Step 1"
+                      value={checkerForm.ticketId}
+                      onChange={(e) => setCheckerForm({ ...checkerForm, ticketId: e.target.value })}
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                      Checker ID (Must Differ from Maker)
+                    </label>
+                    <input
+                      type="text"
+                      value={checkerForm.checkerId}
+                      onChange={(e) => setCheckerForm({ ...checkerForm, checkerId: e.target.value })}
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
+                    />
+                    <p className="mt-1.5 text-2xs font-medium text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                      Dual Control Rule: If Checker == `{reversalForm.makerId}`, CBS will reject with error.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                      Checker Authorization Notes
+                    </label>
+                    <input
+                      type="text"
+                      value={checkerForm.checkerNotes}
+                      onChange={(e) => setCheckerForm({ ...checkerForm, checkerNotes: e.target.value })}
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        const txId = reversalResult.data?.['ORIGINAL.FT.NO'] || reversalResult.data?.originalTransactionId || reversalForm.originalTransactionId;
-                        fetchStatusHistory(txId);
-                      }}
-                      className="flex items-center gap-1.5 rounded-lg border border-purple-300 bg-white px-2.5 py-1 text-2xs font-semibold text-purple-900 hover:bg-purple-100 transition shadow-2xs"
+                      onClick={handleApproveReversal}
+                      disabled={isReversing || !checkerForm.ticketId}
+                      className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-xs transition-all disabled:opacity-50"
                     >
-                      <History className="h-3 w-3 text-purple-700" />
-                      Status History
+                      <CheckCircle2 className="h-4 w-4" /> Approve Reversal
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleRejectReversal}
+                      disabled={isReversing || !checkerForm.ticketId}
+                      className="flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white hover:bg-rose-50 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-rose-700 shadow-2xs transition-all disabled:opacity-50"
+                    >
+                      <XCircle className="h-4 w-4" /> Reject Ticket
                     </button>
                   </div>
-                  <pre className="overflow-x-auto rounded-lg border border-purple-300/40 bg-[#120B24] p-3 text-2xs text-purple-200">
-                    {JSON.stringify(reversalResult, null, 2)}
-                  </pre>
                 </div>
-              )}
+
+                {/* Reversal Result Inspector */}
+                {reversalResult && (
+                  <div className="mt-4 space-y-2 rounded-xl border border-purple-200 bg-purple-50/60 p-3.5">
+                    <div className="flex items-center justify-between">
+                      <div className="font-mono text-2xs font-bold text-purple-950">
+                        Result Step: {reversalResult.step || 'Error'}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const txId = reversalResult.data?.['ORIGINAL.FT.NO'] || reversalResult.data?.originalTransactionId || reversalForm.originalTransactionId;
+                          fetchStatusHistory(txId);
+                        }}
+                        className="flex items-center gap-1.5 rounded-lg border border-purple-300 bg-white px-2.5 py-1 text-2xs font-semibold text-purple-900 hover:bg-purple-100 transition shadow-2xs"
+                      >
+                        <History className="h-3 w-3 text-purple-700" />
+                        Status History
+                      </button>
+                    </div>
+                    <pre className="overflow-x-auto rounded-lg border border-purple-300/40 bg-[#120B24] p-3 text-2xs text-purple-200">
+                      {JSON.stringify(reversalResult, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Live Reversal Requests Backlog via Orchestrator */}
-        <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-purple-100/70 pb-3.5">
-            <div>
+          {/* Live Reversal Requests Backlog via Orchestrator */}
+          <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-purple-100/70 pb-3.5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <RotateCcw className="h-4 w-4 text-purple-700" />
+                  <h2 className="text-sm font-bold text-slate-900">
+                    Live Dispute Reversal Backlog (Orchestrator: <code className="text-2xs font-mono bg-purple-50 text-purple-900 px-1.5 py-0.5 rounded">GET /api/v1/reversals</code>)
+                  </h2>
+                </div>
+                <p className="text-2xs text-slate-500 mt-0.5">
+                  Real-time maker-checker dispute tickets queue mapped from Temenos OFS via Gateway / Transfer Orchestrator.
+                </p>
+              </div>
+
               <div className="flex items-center gap-2">
-                <RotateCcw className="h-4 w-4 text-purple-700" />
-                <h2 className="text-sm font-bold text-slate-900">
-                  Live Dispute Reversal Backlog (Orchestrator: <code className="text-2xs font-mono bg-purple-50 text-purple-900 px-1.5 py-0.5 rounded">GET /api/v1/reversals</code>)
-                </h2>
+                <div className="flex rounded-xl bg-slate-100 p-0.5 text-2xs font-semibold">
+                  {['ALL', 'PENDING', 'APPROVED', 'REJECTED'].map((filter) => (
+                    <button
+                      key={filter}
+                      type="button"
+                      onClick={() => setReversalStatusFilter(filter)}
+                      className={`px-2.5 py-1 rounded-lg transition-all ${
+                        reversalStatusFilter === filter
+                          ? 'bg-white text-purple-950 font-bold shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {filter}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => fetchReversalRequests(reversalStatusFilter === 'ALL' ? '' : reversalStatusFilter)}
+                  disabled={isLoadingReversals}
+                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-2xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-2xs disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isLoadingReversals ? 'animate-spin text-purple-600' : ''}`} />
+                  Refresh
+                </button>
               </div>
-              <p className="text-2xs text-slate-500 mt-0.5">
-                Real-time maker-checker dispute tickets queue mapped from Temenos OFS via Gateway / Transfer Orchestrator.
-              </p>
             </div>
 
-            <div className="flex items-center gap-2">
-              <div className="flex rounded-xl bg-slate-100 p-0.5 text-2xs font-semibold">
-                {['ALL', 'PENDING', 'APPROVED', 'REJECTED'].map((filter) => (
-                  <button
-                    key={filter}
-                    type="button"
-                    onClick={() => setReversalStatusFilter(filter)}
-                    className={`px-2.5 py-1 rounded-lg transition-all ${
-                      reversalStatusFilter === filter
-                        ? 'bg-white text-purple-950 font-bold shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    {filter}
-                  </button>
-                ))}
+            {isLoadingReversals ? (
+              <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                <RefreshCw className="h-4 w-4 animate-spin text-purple-600" /> Loading reversal backlog...
               </div>
-
-              <button
-                type="button"
-                onClick={() => fetchReversalRequests(reversalStatusFilter === 'ALL' ? '' : reversalStatusFilter)}
-                disabled={isLoadingReversals}
-                className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-2xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-2xs disabled:opacity-50"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${isLoadingReversals ? 'animate-spin text-purple-600' : ''}`} />
-                Refresh
-              </button>
-            </div>
-          </div>
-
-          {isLoadingReversals ? (
-            <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-              <RefreshCw className="h-4 w-4 animate-spin text-purple-600" /> Loading reversal backlog...
-            </div>
-          ) : reversalRequests.length === 0 ? (
-            <div className="py-8 text-center text-xs text-slate-400">
-              No reversal requests found for status "{reversalStatusFilter}". File a dispute ticket in Step 1 to populate.
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead className="border-b border-slate-200 bg-slate-50/70 text-2xs uppercase tracking-wider text-slate-500 font-mono">
-                  <tr>
-                    <th className="py-2.5 px-3.5">Ticket ID</th>
-                    <th className="py-2.5 px-3.5">Original Tx</th>
-                    <th className="py-2.5 px-3.5">Maker</th>
-                    <th className="py-2.5 px-3.5">Status</th>
-                    <th className="py-2.5 px-3.5">Reason</th>
-                    <th className="py-2.5 px-3.5">Created At</th>
-                    <th className="py-2.5 px-3.5 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-mono text-2xs">
-                  {reversalRequests.map((req) => (
-                    <tr key={req.ticketId} className="hover:bg-purple-50/40 transition">
-                      <td className="py-2.5 px-3.5 font-bold text-purple-950">{req.ticketId}</td>
-                      <td className="py-2.5 px-3.5 text-slate-700">{req.originalTransactionId}</td>
-                      <td className="py-2.5 px-3.5 text-slate-600">{req.makerId}</td>
-                      <td className="py-2.5 px-3.5">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full font-sans text-2xs font-semibold ${
-                          req.status === 'APPROVED'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : req.status === 'REJECTED'
-                            ? 'bg-rose-100 text-rose-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {req.status}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3.5 font-sans text-slate-600 max-w-[200px] truncate" title={req.disputeReason}>
-                        {req.disputeReason}
-                      </td>
-                      <td className="py-2.5 px-3.5 text-slate-500">
-                        {req.createdAt ? new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'}
-                      </td>
-                      <td className="py-2.5 px-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {req.status === 'PENDING' && (
+            ) : reversalRequests.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400">
+                No reversal requests found for status "{reversalStatusFilter}". File a dispute ticket in Step 1 to populate.
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="border-b border-slate-200 bg-slate-50/70 text-2xs uppercase tracking-wider text-slate-500 font-mono">
+                    <tr>
+                      <th className="py-2.5 px-3.5">Ticket ID</th>
+                      <th className="py-2.5 px-3.5">Original Tx</th>
+                      <th className="py-2.5 px-3.5">Maker</th>
+                      <th className="py-2.5 px-3.5">Status</th>
+                      <th className="py-2.5 px-3.5">Reason</th>
+                      <th className="py-2.5 px-3.5">Created At</th>
+                      <th className="py-2.5 px-3.5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-mono text-2xs">
+                    {reversalRequests.map((req) => (
+                      <tr key={req.ticketId} className="hover:bg-purple-50/40 transition">
+                        <td className="py-2.5 px-3.5 font-bold text-purple-950">{req.ticketId}</td>
+                        <td className="py-2.5 px-3.5 text-slate-700">{req.originalTransactionId}</td>
+                        <td className="py-2.5 px-3.5 text-slate-600">{req.makerId}</td>
+                        <td className="py-2.5 px-3.5">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full font-sans text-2xs font-semibold ${
+                            req.status === 'APPROVED'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : req.status === 'REJECTED'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {req.status}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3.5 font-sans text-slate-600 max-w-[200px] truncate" title={req.disputeReason}>
+                          {req.disputeReason}
+                        </td>
+                        <td className="py-2.5 px-3.5 text-slate-500">
+                          {req.createdAt ? new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'}
+                        </td>
+                        <td className="py-2.5 px-3.5 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {req.status === 'PENDING' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCheckerForm((prev) => ({ ...prev, ticketId: req.ticketId }));
+                                  setReversalForm((prev) => ({ ...prev, originalTransactionId: req.originalTransactionId }));
+                                  showToast(`Loaded ticket ${req.ticketId} into Step 2 Checker form!`, 'info');
+                                }}
+                                className="px-2 py-1 rounded bg-purple-700 hover:bg-purple-800 text-white font-sans text-2xs font-semibold transition"
+                              >
+                                Select for Review
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={() => {
-                                setCheckerForm((prev) => ({ ...prev, ticketId: req.ticketId }));
-                                setReversalForm((prev) => ({ ...prev, originalTransactionId: req.originalTransactionId }));
-                                showToast(`Loaded ticket ${req.ticketId} into Step 2 Checker form!`, 'info');
-                              }}
-                              className="px-2 py-1 rounded bg-purple-700 hover:bg-purple-800 text-white font-sans text-2xs font-semibold transition"
+                              onClick={() => fetchStatusHistory(req.originalTransactionId)}
+                              className="px-2 py-1 rounded border border-slate-300 hover:bg-slate-100 text-slate-700 font-sans text-2xs transition"
+                              title="Inspect Status History"
                             >
-                              Select for Review
+                              <History className="h-3 w-3 inline" />
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => fetchStatusHistory(req.originalTransactionId)}
-                            className="px-2 py-1 rounded border border-slate-300 hover:bg-slate-100 text-slate-700 font-sans text-2xs transition"
-                            title="Inspect Status History"
-                          >
-                            <History className="h-3 w-3 inline" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-      )}
-
-      {/* TAB 4: RAW TEMENOS OFS PROTOCOL TERMINAL */}
-      {activeTab === 'ofs' && (
-        <div className="space-y-5 rounded-2xl border border-purple-100 bg-white p-6 shadow-sm">
-          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-            <div>
-              <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
-                <Terminal className="h-4 w-4 text-purple-700" /> Temenos Open Financial Services (OFS) Wire Playground
-              </h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Direct wire protocol endpoint (`POST /api/v1/cbs/ofs` with `Content-Type: text/plain`).
-              </p>
-            </div>
-
-            {/* Template Presets */}
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                {
-                  label: 'FT INITIATE',
-                  cmd: 'FUNDS.TRANSFER,INITIATE/I/PROCESS//TX-9901,USER01/123456,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=acc-2002-chk-001,CREDIT.ACCT.NO=acc-2003-sav-002,AMOUNT=2500.00,CURRENCY=PHP,VALUE.DATE=20261009,DESCRIPTION=TestPayment,IDEMPOTENCY.KEY=IDEMP-9901'
-                },
-                {
-                  label: 'FT REVERSAL',
-                  cmd: 'FUNDS.TRANSFER,REVERSAL/I/PROCESS//REV-001,SAGA_COORDINATOR/123456,ORIGINAL.FT.NO=TX-9901,REASON=SAGA_COMPENSATION,CHECKER.ID=SYSTEM_SAGA,MAKER.ID=SAGA_COORDINATOR'
-                },
-                {
-                  label: 'DISPUTE REQUEST',
-                  cmd: 'FUNDS.TRANSFER,REVERSAL.REQUEST/I/PROCESS//TX-9901,MAKER01/123456,ORIGINAL.FT.NO=TX-9901,REASON=CUSTOMER_DISPUTE,MAKER=MAKER01'
-                },
-                {
-                  label: 'DISPUTE APPROVE',
-                  cmd: 'FUNDS.TRANSFER,REVERSAL/I/PROCESS//TICKET-01,MGR02/123456,TICKET.ID=TICKET-01,CHECKER=MGR02,REASON=Approved'
-                },
-                {
-                  label: 'ENQUIRY.SELECT',
-                  cmd: 'ENQUIRY.SELECT,,USER01/123456,ACCOUNT.NUMBER:EQ=acc-2002-chk-001'
-                }
-              ].map((tmpl) => (
-                <button
-                  key={tmpl.label}
-                  type="button"
-                  onClick={() => setOfsInput(tmpl.cmd)}
-                  className="rounded-lg border border-purple-200 bg-purple-50/70 px-2.5 py-1 font-mono text-2xs font-semibold text-purple-900 hover:bg-purple-100 transition-colors"
-                >
-                  {tmpl.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-3">
-            <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
-              OFS Wire Payload String
-            </label>
-            <textarea
-              rows="4"
-              value={ofsInput}
-              onChange={(e) => setOfsInput(e.target.value)}
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 font-mono text-xs text-purple-950 focus:bg-white focus:border-purple-700 focus:ring-1 focus:ring-purple-700 focus:outline-none transition-all"
-            />
-          </div>
-
-          <div className="flex justify-end gap-3">
-            <button
-              onClick={() => copyToClipboard(ofsInput)}
-              className="flex items-center gap-1.5 rounded-xl border border-purple-200 bg-white px-4 py-2.5 text-xs font-semibold text-purple-900 hover:bg-purple-50 shadow-2xs transition-all"
-            >
-              {copiedText ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-              Copy Wire String
-            </button>
-            <button
-              onClick={handleExecuteOfs}
-              disabled={isExecutingOfs}
-              className="flex items-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-xs hover:shadow-md transition-all disabled:opacity-50"
-            >
-              {isExecutingOfs ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              Transmit OFS Payload
-            </button>
-          </div>
-
-          {/* Response Terminal */}
-          {ofsResponse && (
-            <div className="mt-4 rounded-xl border border-purple-900/40 bg-[#120B24] p-4 shadow-inner">
-              <div className="flex items-center justify-between text-2xs uppercase tracking-wider text-purple-300">
-                <span>Temenos Wire Protocol Response</span>
-                <span className="font-mono text-emerald-400 font-bold">HTTP 200 OK</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <pre className="mt-2.5 overflow-x-auto font-mono text-xs text-emerald-300">
-                {ofsResponse}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* TAB 5: COB & EOD LIFECYCLE */}
-      {activeTab === 'cob' && (
-        <div className="space-y-6 rounded-2xl border border-purple-100 bg-white p-6 shadow-sm">
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-            <div>
-              <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
-                <Moon className="h-4 w-4 text-purple-700" /> Close of Business (COB) & EOD Batch Simulation
-              </h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Executes the 5-phase COB sequence: Cutoff &rarr; Zero-overdraft fee collection &rarr; BIR 20%
-                tax withholding & interest accrual &rarr; EOD snapshot & GL reconciliation &rarr; Rollover to T+1.
-              </p>
-            </div>
-
-            <button
-              onClick={handleRunCob}
-              disabled={isExecutingCob}
-              className="flex items-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-6 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-xs hover:shadow-md transition-all disabled:opacity-50"
-            >
-              {isExecutingCob ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              Run Full COB Sequence
-            </button>
-          </div>
-
-          {/* Phase progression cards */}
-          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-5">
-            {[
-              { phase: 'Phase 0', title: 'Cutoff Posting Window', desc: 'Closes window, sets EOD_CUTOFF' },
-              { phase: 'Phase 1', title: 'Zero-Overdraft Fees', desc: 'Accounts < 5000 ADB, arrears safe' },
-              { phase: 'Phase 2', title: 'Interest & BIR 20% Tax', desc: 'Daily accrual & 20% tax withhold' },
-              { phase: 'Phase 3', title: 'GL Reconciliation', desc: 'Sum debits == credits check' },
-              { phase: 'Phase 4', title: 'Rollover to T+1', desc: 'Advances system date to next day' }
-            ].map((p) => (
-              <div key={p.phase} className="rounded-xl border border-purple-100 bg-purple-50/40 p-4 shadow-2xs hover:bg-purple-50/70 transition-colors">
-                <div className="font-mono text-2xs font-bold text-purple-700">{p.phase}</div>
-                <div className="mt-1.5 text-xs font-bold text-slate-900">{p.title}</div>
-                <div className="mt-1 text-2xs text-slate-500 leading-snug">{p.desc}</div>
-              </div>
-            ))}
-          </div>
-
-          {cobResult && (
-            <div className="rounded-xl border border-purple-900/40 bg-[#120B24] p-4 shadow-inner">
-              <div className="font-mono text-xs font-bold text-purple-300">
-                COB Execution Summary
-              </div>
-              <pre className="mt-2 overflow-x-auto font-mono text-2xs text-purple-200">
-                {JSON.stringify(cobResult, null, 2)}
-              </pre>
-            </div>
-          )}
-
-          {/* Azurite Reports Link */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-purple-100 pt-4">
-            <span className="text-xs text-slate-500">
-              Generated BIR 2306 tax certificates, customer statements, and GL reconciliation reports are saved in Azurite Blob Storage:
-            </span>
-            <a
-              href="/azurite-drive"
-              className="flex items-center gap-2 rounded-xl border border-purple-200 bg-purple-50 px-4 py-2 text-xs font-bold text-purple-900 hover:bg-purple-100 shadow-2xs transition-all"
-            >
-              <FileText className="h-4 w-4 text-purple-700" /> Open Azurite Drive Storage
-            </a>
+            )}
           </div>
         </div>
       )}
 
-      {/* TAB 6: DLQ & CIRCUIT BREAKER REPLAYS */}
+      {/* TAB 4: DLQ & CIRCUIT BREAKER REPLAYS */}
       {activeTab === 'dlq' && (
         <div className="space-y-5 rounded-2xl border border-purple-100 bg-white p-6 shadow-sm">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -2128,7 +1689,7 @@ export default function T24TestConsole() {
                 disabled={isSimulatingFailure}
                 className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-2xs font-bold text-amber-800 hover:bg-amber-100 shadow-2xs transition-all disabled:opacity-50"
               >
-                <Moon className="h-3.5 w-3.5" /> Simulate Posting Cutoff Rejection (EOD_CUTOFF)
+                <Clock className="h-3.5 w-3.5" /> Simulate Posting Cutoff Rejection (EOD_CUTOFF)
               </button>
               <button
                 type="button"
@@ -2187,7 +1748,7 @@ export default function T24TestConsole() {
         </div>
       )}
 
-      {/* TAB 7: REAL-WORLD BANKING FAILURE SCENARIOS & CHAOS SIMULATOR */}
+      {/* TAB 5: REAL-WORLD BANKING FAILURE SCENARIOS & CHAOS SIMULATOR */}
       {activeTab === 'scenarios' && (
         <div className="space-y-6">
           {/* Header Banner */}
@@ -2200,33 +1761,10 @@ export default function T24TestConsole() {
                 </div>
                 <p className="mt-1 text-xs text-slate-600 max-w-3xl leading-relaxed">
                   Validate core banking defense mechanisms under real-world production stress and regulatory failure modes:
-                  unauthorized overdrafts, national clearing cutoff times (PCHC/PhilPaSS), circular self-transfers, invalid routing,
+                  unauthorized overdrafts, circular self-transfers, invalid routing,
                   BSP Circular 1140 anti-scam cooling-off locks, biometric step-up authentication, Four-Eyes segregation of duties,
-                  and idempotency lock protection.
+                  and idempotency lock protection. All tests dispatch through the API Gateway and Transfer Orchestrator.
                 </p>
-              </div>
-
-              {/* Instant Cutoff Toggle Control */}
-              <div className="flex items-center gap-3 rounded-xl border border-purple-200 bg-white p-3 shadow-2xs shrink-0">
-                <div>
-                  <div className="text-2xs font-bold uppercase text-purple-950">Posting Window</div>
-                  <div className="flex items-center gap-1.5 font-mono text-xs font-bold">
-                    <span className={`h-2 w-2 rounded-full ${systemDate.postingWindowOpen ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                    <span className={systemDate.postingWindowOpen ? 'text-emerald-700' : 'text-rose-700'}>
-                      {systemDate.status}
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleTogglePostingWindow()}
-                  disabled={postingWindowToggling}
-                  className={`rounded-lg px-3 py-1.5 text-2xs font-bold uppercase tracking-wider text-white shadow-2xs transition disabled:opacity-50 ${
-                    systemDate.postingWindowOpen ? 'bg-rose-700 hover:bg-rose-800' : 'bg-emerald-700 hover:bg-emerald-800'
-                  }`}
-                >
-                  {postingWindowToggling ? 'Toggling...' : systemDate.postingWindowOpen ? 'Simulate Cutoff' : 'Re-open Window'}
-                </button>
               </div>
             </div>
           </div>
@@ -2244,19 +1782,10 @@ export default function T24TestConsole() {
                 icon: AlertCircle
               },
               {
-                id: 'EOD_CUTOFF_WINDOW_CLOSED',
-                badge: 'Clearing Cutoff',
-                badgeColor: 'border-amber-200 bg-amber-50 text-amber-800',
-                title: '2. EOD Posting Window Closed (Clearing Cutoff)',
-                description: 'Forces posting window into EOD_CUTOFF and dispatches transfer. Asserts that CBS rejects postings while batch clearing is in progress.',
-                route: 'POST /api/v1/cbs/funds-transfer',
-                icon: Moon
-              },
-              {
                 id: 'CIRCULAR_SAME_ACCOUNT',
                 badge: 'Input Hygiene',
                 badgeColor: 'border-orange-200 bg-orange-50 text-orange-800',
-                title: '3. Same-Account Circular Self-Transfer',
+                title: '2. Same-Account Circular Self-Transfer',
                 description: 'Attempts to transfer funds from source account to the identical destination account. Asserts zero-sum loop rejection.',
                 route: 'POST /api/v1/transfers',
                 icon: Ban
@@ -2265,7 +1794,7 @@ export default function T24TestConsole() {
                 id: 'NON_EXISTENT_ACCOUNT',
                 badge: 'Routing Failure',
                 badgeColor: 'border-slate-200 bg-slate-100 text-slate-800',
-                title: '4. Non-Existent Account / Invalid Directory Routing',
+                title: '3. Non-Existent Account / Invalid Directory Routing',
                 description: 'Dispatches transfer to an unmapped account (ACC-INVALID-999-NOTFOUND). Asserts that CBS rejects invalid routing before double-entry posting.',
                 route: 'POST /api/v1/transfers',
                 icon: XCircle
@@ -2274,7 +1803,7 @@ export default function T24TestConsole() {
                 id: 'ANTI_SCAM_COOLING_OFF',
                 badge: 'BSP Circular 1140',
                 badgeColor: 'border-indigo-200 bg-indigo-50 text-indigo-800',
-                title: '5. High-Value Anti-Scam 10-Min Cooling-Off (₱250k+)',
+                title: '4. High-Value Anti-Scam 10-Min Cooling-Off (₱250k+)',
                 description: 'Transfers ₱300,000.00. Asserts that Orchestrator intercepts payment into a 10-minute provisional cooling-off hold (Reserved state).',
                 route: 'POST /api/v1/transfers',
                 icon: Clock
@@ -2283,7 +1812,7 @@ export default function T24TestConsole() {
                 id: 'BIOMETRIC_STEP_UP_CHALLENGE',
                 badge: 'SCA Authentication',
                 badgeColor: 'border-sky-200 bg-sky-50 text-sky-800',
-                title: '6. Biometric MFA Step-Up Challenge (₱50k+)',
+                title: '5. Biometric MFA Step-Up Challenge (₱50k+)',
                 description: 'Transfers ₱75,000.00 without biometric signature. Asserts that Orchestrator returns Authorized status with an authentication challenge.',
                 route: 'POST /api/v1/transfers',
                 icon: ShieldCheck
@@ -2292,7 +1821,7 @@ export default function T24TestConsole() {
                 id: 'FOUR_EYES_DUAL_CONTROL_VIOLATION',
                 badge: 'BSP Circular 982',
                 badgeColor: 'border-purple-200 bg-purple-50 text-purple-900',
-                title: '7. Four-Eyes Maker-Checker Self-Approval Violation',
+                title: '6. Four-Eyes Maker-Checker Self-Approval Violation',
                 description: 'Maker TELLER_ALICE creates dispute ticket, then attempts to self-approve with checkerId: TELLER_ALICE. Asserts segregation-of-duties block.',
                 route: 'POST /api/v1/reversals/approve',
                 icon: ShieldAlert
@@ -2301,7 +1830,7 @@ export default function T24TestConsole() {
                 id: 'IDEMPOTENCY_DUPLICATE_REPLAY',
                 badge: 'Deduplication',
                 badgeColor: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-                title: '8. Concurrent Duplicate Idempotency Replay',
+                title: '7. Concurrent Duplicate Idempotency Replay',
                 description: 'Dispatches two transfers with the identical idempotencyKey. Asserts that the second attempt replays safely without double debiting.',
                 route: 'POST /api/v1/transfers',
                 icon: Zap
@@ -2310,9 +1839,9 @@ export default function T24TestConsole() {
                 id: 'CIRCUIT_BREAKER_DLQ_ROUTING',
                 badge: 'Resilience & DLQ',
                 badgeColor: 'border-rose-200 bg-rose-50 text-rose-800',
-                title: '9. Core Outage Circuit Breaker & DLQ Audit Fallback',
+                title: '8. Core Outage Circuit Breaker & DLQ Audit Fallback',
                 description: 'Simulates CBS HTTP 504 Gateway Timeout. Asserts that Resilience4j trips circuit breaker to OPEN and routes incident to banking.transfers.dlq.',
-                route: 'POST /api/v1/cbs/audit/failed-transactions/simulate',
+                route: 'POST /api/v1/compliance/dlq/simulate',
                 icon: AlertTriangle
               }
             ].map((scen) => {
