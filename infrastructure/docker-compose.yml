@@ -311,6 +311,12 @@ services:
       - CBS_COB_SCHEDULER_ZONE=${CBS_COB_SCHEDULER_ZONE:-Asia/Manila}
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "t24-mock-cbs"}]'
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:8085/actuator/health" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 25s
     networks:
       - banking-net
     depends_on:
@@ -355,11 +361,16 @@ services:
     networks:
       - banking-net
     depends_on:
-      - redis-cache
-      - kafka-broker
-      - risk-service
-      - t24-mock-cbs
-      - dd-agent
+      redis-cache:
+        condition: service_started
+      kafka-broker:
+        condition: service_started
+      risk-service:
+        condition: service_started
+      t24-mock-cbs:
+        condition: service_healthy
+      dd-agent:
+        condition: service_started
 
   # ============================================================================
   # 9c. Compliance & Reporting Service (Spring Boot :8086)
