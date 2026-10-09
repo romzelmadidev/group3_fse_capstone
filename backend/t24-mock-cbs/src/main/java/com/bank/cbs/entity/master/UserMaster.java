@@ -9,7 +9,7 @@ import lombok.*;
 import java.time.Instant;
 
 @Entity
-@Table(name = "users", schema = "core")
+@Table(name = "users", schema = "auth_identity")
 @Getter
 @Setter
 @NoArgsConstructor

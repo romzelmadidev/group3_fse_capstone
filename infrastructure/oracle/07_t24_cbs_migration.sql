@@ -374,7 +374,8 @@ DECLARE
         'ACCOUNTS', 'BALANCE_MASTER', 'COB_BATCH_LOG',
         'EOD_BALANCE_SNAPSHOTS', 'GL_ACCOUNTS', 'GL_BALANCES', 'GL_LEDGER',
         'INTEREST_ACCRUALS', 'REVERSAL_REQUESTS', 'SYSTEM_DATES',
-        'TRANSACTIONS', 'TRANSACTION_STATUS_HISTORY', 'UNCOLLECTED_FEES'
+        'TRANSACTIONS', 'TRANSACTION_STATUS_HISTORY', 'UNCOLLECTED_FEES',
+        'USERS'
     );
     v_integration_tables t_str_list := t_str_list('OUTBOX_EVENTS');
     v_auth_tables t_str_list := t_str_list('USERS');
