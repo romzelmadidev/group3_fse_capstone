@@ -149,19 +149,31 @@ public class CbsClientService {
                 request.amount(), request.currency() != null ? request.currency() : "PHP", null
         );
 
-        String ofsResponse = webClient.post()
-                .uri("/api/v1/cbs/funds-transfer")
-                .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
-                .bodyValue(ofsPostingReq)
-                .retrieve()
-                .bodyToMono(String.class)
-                .timeout(Duration.ofMillis(3000))
-                .block();
+        String ofsResponse;
+        try {
+            ofsResponse = webClient.post()
+                    .uri("/api/v1/cbs/funds-transfer")
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
+                    .bodyValue(ofsPostingReq)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofMillis(5000))
+                    .block();
+        } catch (org.springframework.web.reactive.function.client.WebClientResponseException ex) {
+            if (ex.getStatusCode().is4xxClientError()) {
+                String respBody = ex.getResponseBodyAsString();
+                Map<String, String> fields = OfsMessageUtil.parseOfsFields(respBody);
+                String errMsg = fields.getOrDefault("MESSAGE", fields.getOrDefault("ERROR", ex.getMessage()));
+                throw new ResponseStatusException(ex.getStatusCode(), "Posting failed in CBS: " + errMsg);
+            }
+            throw ex;
+        }
 
         log.info("CBS transfer success response received for txId={}: {}", txId, ofsResponse);
         Map<String, String> fields = OfsMessageUtil.parseOfsFields(ofsResponse);
         if ("FAILURE".equalsIgnoreCase(fields.get("STATUS")) || "-1".equals(fields.get("STATUS_CODE"))) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Posting failed in CBS: " + fields.get("ERROR"));
+            String errMsg = fields.getOrDefault("MESSAGE", fields.getOrDefault("ERROR", "CBS rejection"));
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Posting failed in CBS: " + errMsg);
         }
 
         return new TransferInitiationResponse(
@@ -185,6 +197,16 @@ public class CbsClientService {
     }
 
     public TransferInitiationResponse cbsPostingFallback(TransferInitiationRequest request, String txId, boolean fundsHeld, Throwable t) {
+        if (t instanceof ResponseStatusException rse) {
+            throw rse;
+        }
+        if (t instanceof org.springframework.web.reactive.function.client.WebClientResponseException wcre && wcre.getStatusCode().is4xxClientError()) {
+            String respBody = wcre.getResponseBodyAsString();
+            Map<String, String> fields = OfsMessageUtil.parseOfsFields(respBody);
+            String errMsg = fields.getOrDefault("MESSAGE", fields.getOrDefault("ERROR", wcre.getMessage()));
+            throw new ResponseStatusException(wcre.getStatusCode(), "Posting failed in CBS: " + errMsg);
+        }
+
         log.error("CBS Circuit Breaker fallback activated for txId={}: {}", txId, t.getMessage());
 
         String incidentId = UUID.randomUUID().toString();
@@ -220,53 +242,5 @@ public class CbsClientService {
                 "Core banking system is temporarily unavailable. Transaction queued into DLQ for safe replay: incident=" + incidentId,
                 t
         );
-    }
-
-    public Map<String, String> getAccountBalance(String accountId) {
-        log.info("Querying CBS balance for accountId={}", accountId);
-        try {
-            String ofsResponse = webClient.get()
-                    .uri("/api/v1/cbs/accounts/{accountId}/balance", accountId)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .timeout(Duration.ofMillis(3000))
-                    .block();
-            return OfsMessageUtil.parseBalanceEnquiryResponse(ofsResponse);
-        } catch (Exception e) {
-            log.error("Failed to query CBS balance for accountId={}: {}", accountId, e.getMessage());
-            return Map.of("accountId", accountId, "accountNumber", accountId, "currentBalance", "0.00", "availableBalance", "0.00");
-        }
-    }
-
-    public Map<String, String> getSystemDate() {
-        log.info("Querying CBS system date via OFS");
-        try {
-            String ofsResponse = webClient.get()
-                    .uri("/api/v1/cbs/system-date")
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .timeout(Duration.ofMillis(3000))
-                    .block();
-            return OfsMessageUtil.parseOfsFields(ofsResponse);
-        } catch (Exception e) {
-            log.error("Failed to query CBS system date: {}", e.getMessage());
-            return Map.of("STATUS", "ONLINE", "POSTING.WINDOW", "OPEN");
-        }
-    }
-
-    public Map<String, String> triggerCob() {
-        log.info("Triggering CBS COB batch run via OFS");
-        try {
-            String ofsResponse = webClient.post()
-                    .uri("/api/v1/cbs/cob/run")
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .timeout(Duration.ofMillis(10000))
-                    .block();
-            return OfsMessageUtil.parseOfsFields(ofsResponse);
-        } catch (Exception e) {
-            log.error("Failed to run CBS COB batch: {}", e.getMessage());
-            return Map.of("STATUS", "FAILED", "ERROR", e.getMessage());
-        }
     }
 }
