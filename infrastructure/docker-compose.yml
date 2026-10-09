@@ -193,8 +193,8 @@ services:
   account-service:
     container_name: account-service
     build:
-      context: ../backend/account-service
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: account-service/Dockerfile
     restart: unless-stopped
     ports:
       - "8081:8081"
@@ -272,8 +272,8 @@ services:
   t24-mock-cbs:
     container_name: t24-mock-cbs
     build:
-      context: ../backend/t24-mock-cbs
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: t24-mock-cbs/Dockerfile
     restart: unless-stopped
     ports:
       - "8085:8085"
@@ -320,8 +320,8 @@ services:
   transfer-orchestrator:
     container_name: transfer-orchestrator
     build:
-      context: ../backend/transfer-orchestrator
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: transfer-orchestrator/Dockerfile
     restart: unless-stopped
     ports:
       - "8082:8082"
@@ -361,8 +361,8 @@ services:
   compliance-service:
     container_name: compliance-service
     build:
-      context: ../backend/compliance-service
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: compliance-service/Dockerfile
     restart: unless-stopped
     ports:
       - "8086:8086"
@@ -442,8 +442,8 @@ services:
   notification-service:
     container_name: notification-service
     build:
-      context: ../backend/notification-service
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: notification-service/Dockerfile
     restart: unless-stopped
     ports:
       - "8083:8083"
@@ -485,8 +485,8 @@ services:
   gateway-service:
     container_name: gateway-service
     build:
-      context: ../backend/gateway-service
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: gateway-service/Dockerfile
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -518,7 +518,6 @@ services:
   # ============================================================================
   banking-frontend:
     container_name: banking-frontend
-    profiles: ["frontend"]
     build:
       context: ../frontend
       dockerfile: Dockerfile

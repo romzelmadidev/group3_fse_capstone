@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # ==============================================================================
 # FSE Capstone: Retail Banking SPA Multi-Stage Production Dockerfile
 # Builds React static bundle inside container and serves via Nginx Alpine
@@ -9,7 +10,8 @@ WORKDIR /app
 
 # Install dependencies
 COPY package*.json ./
-RUN npm install
+RUN --mount=type=cache,target=/root/.npm \
+    npm install
 
 # Build static distribution
 COPY . ./
