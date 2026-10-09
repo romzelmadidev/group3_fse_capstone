@@ -62,6 +62,8 @@ class CbsCoreBankingServiceTest {
     private EodBalanceSnapshotMasterRepository eodSnapshotRepository;
     @Mock
     private KafkaTemplate<String, Object> kafkaTemplate;
+    @Mock
+    private UserMasterRepository userRepository;
 
     private ObjectMapper objectMapper;
     private CbsFundsTransferService transferService;
@@ -85,7 +87,7 @@ class CbsCoreBankingServiceTest {
         reversalService = new CbsReversalService(
                 reversalRequestRepository, transactionRepository, balanceRepository,
                 glLedgerRepository, statusHistoryRepository, outboxRepository,
-                kafkaTemplate, objectMapper
+                kafkaTemplate, objectMapper, userRepository
         );
 
         cobBatchService = new CbsCobBatchService(
@@ -270,6 +272,9 @@ class CbsCoreBankingServiceTest {
 
         when(balanceRepository.findByAccountIdForUpdate("ACC-1")).thenReturn(Optional.of(senderBal));
         when(balanceRepository.findByAccountIdForUpdate("ACC-2")).thenReturn(Optional.of(beneficiaryBal));
+        when(userRepository.findById("CHECKER-MGR")).thenReturn(Optional.of(
+                UserMaster.builder().userId("CHECKER-MGR").role("MANAGER").status("ACTIVE").build()
+        ));
 
         ReversalActionDto action = new ReversalActionDto("TICKET-1", "CHECKER-MGR", null, "Approved dispute");
         ReversalRequestMaster result = reversalService.approveReversal(action);
@@ -280,6 +285,71 @@ class CbsCoreBankingServiceTest {
         assertEquals(new BigDecimal("7000.00"), senderBal.getBalanceAmount());
         assertEquals(new BigDecimal("2000.00"), beneficiaryBal.getBalanceAmount());
         assertEquals(TransactionStatus.Reversed.name(), origTx.getStatus());
+    }
+
+    @Test
+    void testReversal_MakerNotFound_ThrowsException() {
+        when(userRepository.findById("UNKNOWN-MAKER")).thenReturn(Optional.empty());
+
+        ReversalRequestDto req = new ReversalRequestDto("TXN-1", "UNKNOWN-MAKER", "DISPUTE", "notes");
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> reversalService.requestReversal(req));
+        assertTrue(ex.getMessage().contains("Maker user does not exist in database"));
+    }
+
+    @Test
+    void testReversal_MakerNotActive_ThrowsException() {
+        when(userRepository.findById("LOCKED-MAKER")).thenReturn(Optional.of(
+                UserMaster.builder().userId("LOCKED-MAKER").role("TELLER").status("LOCKED").build()
+        ));
+
+        ReversalRequestDto req = new ReversalRequestDto("TXN-1", "LOCKED-MAKER", "DISPUTE", "notes");
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> reversalService.requestReversal(req));
+        assertTrue(ex.getMessage().contains("Maker user is not active"));
+    }
+
+    @Test
+    void testReversal_MakerCustomerRole_ThrowsException() {
+        when(userRepository.findById("CUST-1")).thenReturn(Optional.of(
+                UserMaster.builder().userId("CUST-1").role("CUSTOMER").status("ACTIVE").build()
+        ));
+
+        ReversalRequestDto req = new ReversalRequestDto("TXN-1", "CUST-1", "DISPUTE", "notes");
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> reversalService.requestReversal(req));
+        assertTrue(ex.getMessage().contains("not authorized to act as a reversal Maker"));
+    }
+
+    @Test
+    void testReversal_CheckerNotFound_ThrowsException() {
+        ReversalRequestMaster revReq = ReversalRequestMaster.builder()
+                .ticketId("TICKET-1")
+                .originalTxId("TXN-1")
+                .makerId("MAKER-1")
+                .status("PENDING")
+                .build();
+        when(reversalRequestRepository.findById("TICKET-1")).thenReturn(Optional.of(revReq));
+        when(userRepository.findById("UNKNOWN-CHECKER")).thenReturn(Optional.empty());
+
+        ReversalActionDto action = new ReversalActionDto("TICKET-1", "UNKNOWN-CHECKER", null, "Approved");
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> reversalService.approveReversal(action));
+        assertTrue(ex.getMessage().contains("Checker user does not exist in database"));
+    }
+
+    @Test
+    void testReversal_CheckerTellerRole_ThrowsException() {
+        ReversalRequestMaster revReq = ReversalRequestMaster.builder()
+                .ticketId("TICKET-1")
+                .originalTxId("TXN-1")
+                .makerId("MAKER-1")
+                .status("PENDING")
+                .build();
+        when(reversalRequestRepository.findById("TICKET-1")).thenReturn(Optional.of(revReq));
+        when(userRepository.findById("TELLER-CHECKER")).thenReturn(Optional.of(
+                UserMaster.builder().userId("TELLER-CHECKER").role("TELLER").status("ACTIVE").build()
+        ));
+
+        ReversalActionDto action = new ReversalActionDto("TICKET-1", "TELLER-CHECKER", null, "Approved");
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> reversalService.approveReversal(action));
+        assertTrue(ex.getMessage().contains("requires MANAGER or ADMIN"));
     }
 
     @Test
@@ -358,7 +428,7 @@ class CbsCoreBankingServiceTest {
         when(balanceRepository.findByAccountIdForUpdate("ACC-1")).thenReturn(Optional.of(senderBal));
         when(balanceRepository.findByAccountIdForUpdate("ACC-2")).thenReturn(Optional.of(beneficiaryBal));
 
-        String ofsRevRequest = "FUNDS.TRANSFER,REVERSAL/I/PROCESS//REV-TICKET-1,MGR02/123456,ORIGINAL.FT.NO=TXN-OFS-REV";
+        String ofsRevRequest = "FUNDS.TRANSFER,REVERSAL/I/PROCESS//REV-TICKET-1,usr-1004-adm-001/123456,ORIGINAL.FT.NO=TXN-OFS-REV";
         var revRespEntity = postingController.executeReversal(ofsRevRequest);
 
         assertEquals(200, revRespEntity.getStatusCode().value());
@@ -443,7 +513,7 @@ class CbsCoreBankingServiceTest {
         when(balanceRepository.findByAccountIdForUpdate("ACC-SENDER")).thenReturn(Optional.of(senderBal));
         when(balanceRepository.findByAccountIdForUpdate("ACC-BENEFICIARY")).thenReturn(Optional.of(benBal));
 
-        String ofsRevMsg = "FUNDS.TRANSFER,REVERSAL/I/PROCESS//REV-SAGA-999,MGR02/123456,ORIGINAL.FT.NO=FT-ORIG-999,REASON=SAGA_COMPENSATION";
+        String ofsRevMsg = "FUNDS.TRANSFER,REVERSAL/I/PROCESS//REV-SAGA-999,usr-1004-adm-001/123456,ORIGINAL.FT.NO=FT-ORIG-999,REASON=SAGA_COMPENSATION";
 
         var resp = postingController.executeReversal(ofsRevMsg);
 

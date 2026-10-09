@@ -59,7 +59,7 @@ public class ReversalOrchestratorController {
     public ResponseEntity<Map<?, ?>> requestReversal(@RequestBody Map<String, Object> request) {
         String origTx = String.valueOf(request.getOrDefault("originalTransactionId", request.get("originalTxId")));
         String reason = String.valueOf(request.getOrDefault("reason", request.getOrDefault("disputeReason", "DISPUTE")));
-        String maker = String.valueOf(request.getOrDefault("makerId", "MAKER01"));
+        String maker = String.valueOf(request.getOrDefault("makerId", "usr-1003-tel-001"));
         String ofsMsg = OfsMessageUtil.buildReversalRequestMessage(origTx, reason, maker);
 
         try {
@@ -83,7 +83,7 @@ public class ReversalOrchestratorController {
     @PostMapping("/approve")
     public ResponseEntity<Map<?, ?>> approveReversal(@RequestBody Map<String, Object> request) {
         String ticketId = String.valueOf(request.getOrDefault("reversalRequestId", request.get("ticketId")));
-        String checker = String.valueOf(request.getOrDefault("checkerId", "MGR02"));
+        String checker = String.valueOf(request.getOrDefault("checkerId", "usr-1004-adm-001"));
         String reason = String.valueOf(request.getOrDefault("checkerNotes", "Approved"));
         String ofsMsg = OfsMessageUtil.buildReversalApprovalMessage(ticketId, checker, reason);
 
@@ -108,7 +108,7 @@ public class ReversalOrchestratorController {
     @PostMapping("/reject")
     public ResponseEntity<Map<?, ?>> rejectReversal(@RequestBody Map<String, Object> request) {
         String ticketId = String.valueOf(request.getOrDefault("reversalRequestId", request.get("ticketId")));
-        String checker = String.valueOf(request.getOrDefault("checkerId", "MGR02"));
+        String checker = String.valueOf(request.getOrDefault("checkerId", "usr-1004-adm-001"));
         String reason = String.valueOf(request.getOrDefault("rejectionReason", request.getOrDefault("checkerNotes", "Rejected")));
         String ofsMsg = OfsMessageUtil.buildReversalRejectionMessage(ticketId, checker, reason);
 

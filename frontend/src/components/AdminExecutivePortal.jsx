@@ -2511,7 +2511,7 @@ export default function AdminExecutivePortal() {
                                     </span>
                                   </td>
                                   <td className="py-4 px-6 text-2xs text-fg-muted font-sans">
-                                    <div>Maker: <strong className="text-fg">{ticket.makerId || ticket.maker_id || 'MAKER01'}</strong></div>
+                                    <div>Maker: <strong className="text-fg">{ticket.makerId || ticket.maker_id || 'usr-1003-tel-001'}</strong></div>
                                     <div>Checker: <strong className="text-fg">{ticket.checkerId || ticket.checker_id || 'PENDING'}</strong></div>
                                   </td>
                                   <td className="py-4 px-6 text-center">

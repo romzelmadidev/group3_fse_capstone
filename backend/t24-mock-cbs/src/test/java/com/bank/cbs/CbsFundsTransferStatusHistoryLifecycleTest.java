@@ -58,6 +58,8 @@ class CbsFundsTransferStatusHistoryLifecycleTest {
     private ReversalRequestMasterRepository reversalRequestRepository;
     @Mock
     private KafkaTemplate<String, Object> kafkaTemplate;
+    @Mock
+    private UserMasterRepository userRepository;
 
     @Captor
     private ArgumentCaptor<List<TransactionStatusHistoryMaster>> historyListCaptor;
@@ -79,7 +81,7 @@ class CbsFundsTransferStatusHistoryLifecycleTest {
         reversalService = new CbsReversalService(
                 reversalRequestRepository, transactionRepository, balanceRepository,
                 glLedgerRepository, statusHistoryRepository, outboxRepository,
-                kafkaTemplate, objectMapper
+                kafkaTemplate, objectMapper, userRepository
         );
     }
 
@@ -314,6 +316,9 @@ class CbsFundsTransferStatusHistoryLifecycleTest {
                 .build();
 
         when(transactionRepository.findById("FT-REV-TEST")).thenReturn(Optional.of(originalTx));
+        when(userRepository.findById("TELLER-1")).thenReturn(Optional.of(
+                UserMaster.builder().userId("TELLER-1").role("TELLER").status("ACTIVE").build()
+        ));
 
         // 1. Request Reversal -> records PendingReversal
         ReversalRequestDto reqDto = new ReversalRequestDto("FT-REV-TEST", "TELLER-1", "CUSTOMER_DISPUTE", "Wrong amount entered");

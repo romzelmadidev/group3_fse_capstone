@@ -287,7 +287,7 @@ Three separate endpoints are implemented in [`CbsReversalController`](/backend/t
 * **Purpose:** Teller/Maker submits a reversal ticket for a `POSTED` transaction. Updates the transaction status to `PendingReversal`, persists a `PENDING` ticket in `ReversalRequestMaster`, and emits `TransactionStatusChangedEvent`.
 * **CBS Request Payload (`text/plain`, OFS syntax):**
   ```text
-  FUNDS.TRANSFER,REVERSAL.REQUEST/I/PROCESS//TXN-9001,MAKER01/123456,ORIGINAL.FT.NO=TXN-9001,REASON=CUSTOMER_DISPUTE,MAKER=MAKER01
+  FUNDS.TRANSFER,REVERSAL.REQUEST/I/PROCESS//TXN-9001,usr-1003-tel-001/123456,ORIGINAL.FT.NO=TXN-9001,REASON=CUSTOMER_DISPUTE,MAKER=usr-1003-tel-001
   ```
 * **CBS Response Payload (`text/plain`, OFS syntax):**
   ```text
@@ -301,7 +301,7 @@ Three separate endpoints are implemented in [`CbsReversalController`](/backend/t
     {
       "originalTransactionId": "TXN-9001",
       "reason": "Customer fraud claim",
-      "makerId": "TELLER_01"
+      "makerId": "usr-1003-tel-001"
     }
     ```
   * **Orchestrator Response Payload (`application/json`):**
@@ -324,7 +324,7 @@ Three separate endpoints are implemented in [`CbsReversalController`](/backend/t
 * **Purpose:** Supervisor/Checker approves the reversal ticket. Strictly enforces dual-control (`checkerId != makerId`), debits the original recipient, refunds the original sender, posts balanced GL compensating records, flags original transaction as `Reversed`, and records the reversal transaction.
 * **CBS Request Payload (`text/plain`, OFS syntax):**
   ```text
-  FUNDS.TRANSFER,REVERSAL/I/PROCESS//550e8400-e29b-41d4-a716-446655440000,MGR02/123456,TICKET.ID=550e8400-e29b-41d4-a716-446655440000,CHECKER=MGR02,REASON=Approved
+  FUNDS.TRANSFER,REVERSAL/I/PROCESS//550e8400-e29b-41d4-a716-446655440000,usr-1004-adm-001/123456,TICKET.ID=550e8400-e29b-41d4-a716-446655440000,CHECKER=usr-1004-adm-001,REASON=Approved
   ```
 * **CBS Response Payload (`text/plain`, OFS syntax):**
   ```text
@@ -337,7 +337,7 @@ Three separate endpoints are implemented in [`CbsReversalController`](/backend/t
     ```json
     {
       "reversalRequestId": "550e8400-e29b-41d4-a716-446655440000",
-      "checkerId": "MGR_02",
+      "checkerId": "usr-1004-adm-001",
       "checkerNotes": "Approved after dispute investigation"
     }
     ```
@@ -362,7 +362,7 @@ Three separate endpoints are implemented in [`CbsReversalController`](/backend/t
 * **Purpose:** Supervisor rejects the reversal request. Reverts the original transaction status from `PendingReversal` back to `Posted`, updates ticket status to `REJECTED`, and emits `TransactionStatusChangedEvent`.
 * **CBS Request Payload (`text/plain`, OFS syntax):**
   ```text
-  FUNDS.TRANSFER,REVERSAL.REJECT/I/PROCESS//550e8400-e29b-41d4-a716-446655440000,MGR02/123456,TICKET.ID=550e8400-e29b-41d4-a716-446655440000,CHECKER=MGR02,REASON=Insufficient evidence of fraud
+  FUNDS.TRANSFER,REVERSAL.REJECT/I/PROCESS//550e8400-e29b-41d4-a716-446655440000,usr-1004-adm-001/123456,TICKET.ID=550e8400-e29b-41d4-a716-446655440000,CHECKER=usr-1004-adm-001,REASON=Insufficient evidence of fraud
   ```
 * **CBS Response Payload (`text/plain`, OFS syntax):**
   ```text
@@ -406,7 +406,7 @@ Three separate endpoints are implemented in [`CbsReversalController`](/backend/t
 * **Request Payload:** None (HTTP GET).
 * **CBS Response Payload (`text/plain`, OFS syntax):**
   ```text
-  //1,SUCCESS,PAGE=0,SIZE=20,TOTAL=1,DATA=TICKET.ID=REV-TKT-100:ORIGINAL.TX.ID=TXN-ORIG-100:MAKER.ID=MAKER01:CHECKER.ID=CHECKER01:STATUS=PENDING:DISPUTE.REASON=DUPLICATE_CHARGE:MAKER.NOTES=Customer reported double swipe:CHECKER.NOTES=:REVERSAL.TX.ID=:CREATED.AT=2026-10-09T08:30:00Z:RESOLVED.AT=;;
+  //1,SUCCESS,PAGE=0,SIZE=20,TOTAL=1,DATA=TICKET.ID=REV-TKT-100:ORIGINAL.TX.ID=TXN-ORIG-100:MAKER.ID=usr-1003-tel-001:CHECKER.ID=usr-1004-adm-001:STATUS=PENDING:DISPUTE.REASON=DUPLICATE_CHARGE:MAKER.NOTES=Customer reported double swipe:CHECKER.NOTES=:REVERSAL.TX.ID=:CREATED.AT=2026-10-09T08:30:00Z:RESOLVED.AT=;;
   ```
   *Format structure:* `//1,SUCCESS,PAGE={page},SIZE={size},TOTAL={count},DATA=TICKET.ID={ticketId}:ORIGINAL.TX.ID={origTxId}:MAKER.ID={makerId}:CHECKER.ID={checkerId}:STATUS={status}:DISPUTE.REASON={reason}:MAKER.NOTES={makerNotes}:CHECKER.NOTES={checkerNotes}:REVERSAL.TX.ID={revTxId}:CREATED.AT={createdAt}:RESOLVED.AT={resolvedAt};;...`
 
@@ -422,8 +422,8 @@ Three separate endpoints are implemented in [`CbsReversalController`](/backend/t
       {
         "ticketId": "REV-TKT-100",
         "originalTransactionId": "TXN-ORIG-100",
-        "makerId": "MAKER01",
-        "checkerId": "CHECKER01",
+        "makerId": "usr-1003-tel-001",
+        "checkerId": "usr-1004-adm-001",
         "status": "PENDING",
         "disputeReason": "DUPLICATE_CHARGE",
         "makerNotes": "Customer reported double swipe",

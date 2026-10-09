@@ -40,6 +40,7 @@ public class CbsReversalService {
     private final OutboxEventMasterRepository outboxRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final ObjectMapper objectMapper;
+    private final UserMasterRepository userRepository;
 
     public CbsReversalService(
             ReversalRequestMasterRepository reversalRequestRepository,
@@ -49,7 +50,8 @@ public class CbsReversalService {
             TransactionStatusHistoryMasterRepository statusHistoryRepository,
             OutboxEventMasterRepository outboxRepository,
             KafkaTemplate<String, Object> kafkaTemplate,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            UserMasterRepository userRepository) {
         this.reversalRequestRepository = reversalRequestRepository;
         this.transactionRepository = transactionRepository;
         this.balanceRepository = balanceRepository;
@@ -58,6 +60,7 @@ public class CbsReversalService {
         this.outboxRepository = outboxRepository;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
+        this.userRepository = userRepository;
     }
 
     @Transactional(value = "masterTransactionManager", readOnly = true)
@@ -73,6 +76,8 @@ public class CbsReversalService {
 
     @Transactional("masterTransactionManager")
     public ReversalRequestMaster requestReversal(ReversalRequestDto dto) {
+        validateMaker(dto.makerId());
+
         TransactionMaster originalTx = transactionRepository.findById(dto.originalTransactionId())
                 .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + dto.originalTransactionId()));
 
@@ -143,6 +148,8 @@ public class CbsReversalService {
         if (action.checkerId().equalsIgnoreCase(request.getMakerId())) {
             throw new IllegalArgumentException("Dual control violation: Checker cannot be the same person as Maker (" + action.checkerId() + ")");
         }
+
+        validateChecker(action.checkerId());
 
         TransactionMaster originalTx = transactionRepository.findById(request.getOriginalTxId())
                 .orElseThrow(() -> new IllegalArgumentException("Original transaction not found"));
@@ -346,6 +353,8 @@ public class CbsReversalService {
         if (action.checkerId().equalsIgnoreCase(request.getMakerId())) {
             throw new IllegalArgumentException("Dual control violation: Checker cannot be Maker");
         }
+
+        validateChecker(action.checkerId());
 
         Instant now = Instant.now();
         request.setCheckerId(action.checkerId());
@@ -619,6 +628,52 @@ public class CbsReversalService {
             kafkaTemplate.send(KafkaConfig.TOPIC_TRANSFERS_EVENTS, aggregateId, payload);
         } catch (Exception e) {
             log.error("Failed to publish reversal event {}: {}", eventType, e.getMessage());
+        }
+    }
+
+    private boolean isSystemActor(String actorId) {
+        if (actorId == null) return false;
+        String id = actorId.trim().toUpperCase();
+        return id.startsWith("SYSTEM") || id.startsWith("SAGA_");
+    }
+
+    private void validateMaker(String makerId) {
+        if (makerId == null || makerId.isBlank()) {
+            throw new IllegalArgumentException("Maker ID is required to request a reversal");
+        }
+        if (isSystemActor(makerId)) {
+            return;
+        }
+        UserMaster maker = userRepository.findById(makerId)
+                .orElseThrow(() -> new IllegalArgumentException("Maker user does not exist in database: " + makerId));
+
+        if (!"ACTIVE".equalsIgnoreCase(maker.getStatus())) {
+            throw new IllegalStateException("Maker user is not active: " + makerId + " (status: " + maker.getStatus() + ")");
+        }
+
+        String role = maker.getRole() != null ? maker.getRole().toUpperCase() : "";
+        if (!role.equals("TELLER") && !role.equals("MANAGER") && !role.equals("ADMIN")) {
+            throw new IllegalArgumentException("User " + makerId + " with role " + role + " is not authorized to act as a reversal Maker");
+        }
+    }
+
+    private void validateChecker(String checkerId) {
+        if (checkerId == null || checkerId.isBlank()) {
+            throw new IllegalArgumentException("Checker ID is required for reversal approval/rejection");
+        }
+        if (isSystemActor(checkerId)) {
+            return;
+        }
+        UserMaster checker = userRepository.findById(checkerId)
+                .orElseThrow(() -> new IllegalArgumentException("Checker user does not exist in database: " + checkerId));
+
+        if (!"ACTIVE".equalsIgnoreCase(checker.getStatus())) {
+            throw new IllegalStateException("Checker user is not active: " + checkerId + " (status: " + checker.getStatus() + ")");
+        }
+
+        String role = checker.getRole() != null ? checker.getRole().toUpperCase() : "";
+        if (!role.equals("MANAGER") && !role.equals("ADMIN")) {
+            throw new IllegalArgumentException("User " + checkerId + " with role " + role + " is not authorized to act as a reversal Checker (requires MANAGER or ADMIN)");
         }
     }
 }

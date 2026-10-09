@@ -474,7 +474,7 @@ export default function AdminPortal() {
     try {
       await apiClient.post('/reversals/approve', {
         reversalRequestId: ticketId,
-        checkerId: 'MGR_ADMIN',
+        checkerId: 'usr-1004-adm-001',
         checkerNotes: 'Approved via Admin Portal reviewer'
       });
       showAdminToast({
@@ -502,7 +502,7 @@ export default function AdminPortal() {
     try {
       await apiClient.post('/reversals/reject', {
         reversalRequestId: ticketId,
-        checkerId: 'MGR_ADMIN',
+        checkerId: 'usr-1004-adm-001',
         rejectionReason: 'Rejected via Admin Portal review'
       });
       showAdminToast({
@@ -532,8 +532,8 @@ export default function AdminPortal() {
         originalTransactionId: reversalModalTx.id,
         reason: reversalReason,
         memo: reversalMemo.trim() || 'CSR Escalation Reversal',
-        makerId: 'ADMIN_CSR',
-        checkerId: 'ADMIN_SUPERVISOR'
+        makerId: 'usr-1003-tel-001',
+        checkerId: 'usr-1004-adm-001'
       });
       showAdminToast({
         type: 'success',
@@ -1689,7 +1689,7 @@ export default function AdminPortal() {
                             <span className="text-fg-subtle text-[10px]">{t.makerNotes || t.maker_notes || ''}</span>
                           </td>
                           <td className="py-2.5 px-3 text-fg-muted">
-                            {t.makerId || t.maker_id || 'MAKER01'}
+                            {t.makerId || t.maker_id || 'usr-1003-tel-001'}
                           </td>
                           <td className="py-2.5 px-3 text-fg-muted">
                             {t.checkerId || t.checker_id || '--'}

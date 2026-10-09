@@ -844,7 +844,7 @@ function handleMockFallback(config) {
         const tickets = (mockState.reversalTickets || []).map(t => ({
           ticketId: t.ticketId || t.ticket_id,
           originalTransactionId: t.originalTransactionId || t.original_tx_id,
-          makerId: t.makerId || t.maker_id || 'MAKER01',
+          makerId: t.makerId || t.maker_id || 'usr-1003-tel-001',
           checkerId: t.checkerId || t.checker_id || null,
           status: t.status || 'PENDING',
           disputeReason: t.disputeReason || t.dispute_reason || 'CUSTOMER_DISPUTE',
@@ -865,7 +865,7 @@ function handleMockFallback(config) {
         const newTicket = {
           ticketId,
           originalTransactionId: payload.originalTransactionId || payload.originalTxId,
-          makerId: payload.makerId || 'MAKER01',
+          makerId: payload.makerId || 'usr-1003-tel-001',
           status: 'PENDING',
           disputeReason: payload.reason || payload.disputeReason || 'DISPUTE',
           makerNotes: payload.notes || payload.makerNotes || 'Filed dispute ticket',
@@ -893,7 +893,7 @@ function handleMockFallback(config) {
         const ticket = (mockState.reversalTickets || []).find(t => t.ticketId === ticketId);
         if (ticket) {
           ticket.status = 'APPROVED';
-          ticket.checkerId = payload.checkerId || 'CHECKER01';
+          ticket.checkerId = payload.checkerId || 'usr-1004-adm-001';
           ticket.checkerNotes = payload.checkerNotes || 'Approved';
           ticket.resolvedAt = new Date().toISOString();
           ticket.reversalTransactionId = 'REV-TX-' + Math.floor(Math.random() * 90000 + 10000);
@@ -917,7 +917,7 @@ function handleMockFallback(config) {
         const ticket = (mockState.reversalTickets || []).find(t => t.ticketId === ticketId);
         if (ticket) {
           ticket.status = 'REJECTED';
-          ticket.checkerId = payload.checkerId || 'CHECKER01';
+          ticket.checkerId = payload.checkerId || 'usr-1004-adm-001';
           ticket.checkerNotes = payload.rejectionReason || payload.checkerNotes || 'Rejected';
           ticket.resolvedAt = new Date().toISOString();
           saveMockState();
