@@ -3,8 +3,7 @@ FROM adminer:latest
 USER root
 
 # Install dependencies required for Oracle Instant Client and Alpine compatibility
-RUN apk --no-cache add libaio libnsl libc6-compat curl autoconf m4 file gcc make g++ && \
-    ln -s /lib/libc.so.6 /usr/lib/libresolv.so.2 || true
+RUN apk --no-cache add ca-certificates libaio libnsl libc6-compat gcompat
 
 # Set up Oracle environment
 ENV ORACLE_BASE=/usr/local/oracle \
