@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:aurabank_core/theme/aura_theme.dart';
 import 'package:aurabank_core/services/bank_service.dart';
+import 'package:aurabank_core/widgets/aura_app_mark.dart';
 
 class WebSidebar extends StatelessWidget {
   final int selectedIndex;
@@ -14,15 +14,30 @@ class WebSidebar extends StatelessWidget {
     this.onLogout,
   });
 
-  static const Color brandViolet = AuraColors.primary;
   static const Color bgDark = Color(0xFF0F0728);
   static const Color activeItemBg = Color(0xFF261250);
   static const Color borderSubtle = Color(0xFF1E103F);
 
+  String _formatCurrency(double amount) {
+    final parts = amount.toStringAsFixed(2).split('.');
+    final reg = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
+    final formattedInt = parts[0].replaceAllMapped(reg, (Match m) => '${m[1]},');
+    return '₱$formattedInt.${parts[1]}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final user = BankService().user;
-    final userName = user.name.isNotEmpty ? user.name : 'Elijah Montefalco';
+    final bank = BankService();
+    return ListenableBuilder(
+      listenable: bank,
+      builder: (context, _) => _buildSidebar(bank),
+    );
+  }
+
+  Widget _buildSidebar(BankService bank) {
+    final userName = bank.user.name.isNotEmpty ? bank.user.name : 'Elijah Montefalco';
+    final digits = bank.savingsAccountNumber.replaceAll(RegExp(r'\D'), '');
+    final last4 = digits.length >= 4 ? digits.substring(digits.length - 4) : digits;
 
     return Container(
       width: 260,
@@ -40,72 +55,16 @@ class WebSidebar extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
             child: Row(
               children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF8B5CF6), Color(0xFF380084)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.35),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: const Center(
-                    child: Text(
-                      'A',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                  ),
-                ),
+                const AuraAppMark(size: 42, borderRadius: 12),
                 const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'AURA BANK',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF10B981),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 5),
-                        const Text(
-                          'WEB PORTAL v2.4',
-                          style: TextStyle(
-                            color: Color(0xFF9CA3AF),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                const Text(
+                  'AURA BANK',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.2,
+                  ),
                 ),
               ],
             ),
@@ -126,54 +85,27 @@ class WebSidebar extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Primary Account',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF6B21A8),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFDCFCE7),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.check_circle_rounded, size: 10, color: Color(0xFF16A34A)),
-                          SizedBox(width: 3),
-                          Text(
-                            'Verified',
-                            style: TextStyle(
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF16A34A),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                const Text(
+                  'Savings',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF6B21A8),
+                  ),
                 ),
                 const SizedBox(height: 6),
-                const Text(
-                  'PHP Savings •••• 9081',
-                  style: TextStyle(
+                Text(
+                  '•••• $last4',
+                  style: const TextStyle(
                     fontSize: 11,
                     color: Color(0xFF6B7280),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  'PHP 1,248,930.50',
-                  style: TextStyle(
+                Text(
+                  _formatCurrency(bank.availableBalance),
+                  style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
                     color: Color(0xFF1E103F),
@@ -188,61 +120,16 @@ class WebSidebar extends StatelessWidget {
           const Divider(color: borderSubtle, height: 1),
           const SizedBox(height: 12),
 
-          // Section Label
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-            child: Text(
-              'FINANCIAL SERVICES',
-              style: TextStyle(
-                color: Color(0xFF6B7280),
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.8,
-              ),
-            ),
-          ),
-
-          // 2. Navigation Items
           Expanded(
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 14),
               children: [
-                _buildNavItem(
-                  index: 0,
-                  icon: Icons.dashboard_rounded,
-                  label: 'Dashboard',
-                  badge: null,
-                ),
-                _buildNavItem(
-                  index: 1,
-                  icon: Icons.swap_horiz_rounded,
-                  label: 'Transfer',
-                  badge: null,
-                ),
-                _buildNavItem(
-                  index: 2,
-                  icon: Icons.credit_card_rounded,
-                  label: 'Cards & Control',
-                  badge: '1 Active',
-                ),
-                _buildNavItem(
-                  index: 3,
-                  icon: Icons.qr_code_scanner_rounded,
-                  label: 'Scan & Pay',
-                  badge: null,
-                ),
-                _buildNavItem(
-                  index: 4,
-                  icon: Icons.bar_chart_rounded,
-                  label: 'Analytics & Reports',
-                  badge: null,
-                ),
-                _buildNavItem(
-                  index: 5,
-                  icon: Icons.manage_accounts_rounded,
-                  label: 'Security & Profile',
-                  badge: null,
-                ),
+                _buildNavItem(index: 0, icon: Icons.home_rounded, label: 'Home'),
+                _buildNavItem(index: 1, icon: Icons.swap_horiz_rounded, label: 'Transfer'),
+                _buildNavItem(index: 2, icon: Icons.credit_card_rounded, label: 'Cards'),
+                _buildNavItem(index: 3, icon: Icons.qr_code_scanner_rounded, label: 'Pay'),
+                _buildNavItem(index: 4, icon: Icons.bar_chart_rounded, label: 'Reports'),
+                _buildNavItem(index: 5, icon: Icons.person_rounded, label: 'Profile'),
               ],
             ),
           ),
@@ -272,34 +159,20 @@ class WebSidebar extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        userName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const Text(
-                        'Premier Client',
-                        style: TextStyle(
-                          color: Color(0xFFA78BFA),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    userName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Sign Out',
-                  icon: const Icon(Icons.logout_rounded, color: Color(0xFFEF4444), size: 19),
+                  tooltip: 'Sign out',
+                  icon: const Icon(Icons.logout_rounded, color: Color(0xFFD1D5DB), size: 19),
                   onPressed: onLogout ?? () {},
                 ),
               ],
@@ -314,7 +187,6 @@ class WebSidebar extends StatelessWidget {
     required int index,
     required IconData icon,
     required String label,
-    String? badge,
   }) {
     final isSelected = selectedIndex == index;
 
@@ -352,22 +224,6 @@ class WebSidebar extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (badge != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF380084),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      badge,
-                      style: const TextStyle(
-                        color: Color(0xFFDDD6FE),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
               ],
             ),
           ),

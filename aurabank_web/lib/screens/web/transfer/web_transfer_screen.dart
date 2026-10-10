@@ -931,95 +931,38 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
 
           const SizedBox(height: 20),
 
-          // Channel Segmented Buttons: Aura to Aura vs Other Bank
+          const Text(
+            'Send to',
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF374151),
+            ),
+          ),
+          const SizedBox(height: 6),
           Container(
-            height: 44,
+            height: 48,
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               color: const Color(0xFFF3F4F6),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
               children: [
                 Expanded(
-                  child: InkWell(
+                  child: _buildSendToOption(
+                    label: 'Aura Bank',
+                    icon: Icons.account_balance_rounded,
+                    selected: _isAuraToAura,
                     onTap: () => setState(() => _isAuraToAura = true),
-                    borderRadius: BorderRadius.circular(9),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: _isAuraToAura ? Colors.white : Colors.transparent,
-                        borderRadius: BorderRadius.circular(9),
-                        boxShadow: _isAuraToAura
-                            ? [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.05),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 1),
-                                ),
-                              ]
-                            : null,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.bolt_rounded,
-                            size: 16,
-                            color: _isAuraToAura ? brandViolet : const Color(0xFF6B7280),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Aura to Aura',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: _isAuraToAura ? const Color(0xFF111827) : const Color(0xFF4B5563),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
                 ),
-                const SizedBox(width: 8),
                 Expanded(
-                  child: InkWell(
+                  child: _buildSendToOption(
+                    label: 'Another bank',
+                    icon: Icons.account_balance_outlined,
+                    selected: !_isAuraToAura,
                     onTap: () => setState(() => _isAuraToAura = false),
-                    borderRadius: BorderRadius.circular(9),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: !_isAuraToAura ? Colors.white : Colors.transparent,
-                        borderRadius: BorderRadius.circular(9),
-                        boxShadow: !_isAuraToAura
-                            ? [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.05),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 1),
-                                ),
-                              ]
-                            : null,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.account_balance_rounded,
-                            size: 15,
-                            color: !_isAuraToAura ? brandViolet : const Color(0xFF6B7280),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Other Bank',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: !_isAuraToAura ? const Color(0xFF111827) : const Color(0xFF4B5563),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
                 ),
               ],
@@ -1215,10 +1158,9 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
 
           const SizedBox(height: 18),
 
-          // Purpose & Remarks side by side
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Purpose Dropdown
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1233,7 +1175,9 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                     ),
                     const SizedBox(height: 6),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      height: 48,
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
                       decoration: BoxDecoration(
                         color: bgSurface,
                         borderRadius: BorderRadius.circular(10),
@@ -1243,7 +1187,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                         child: DropdownButton<String>(
                           value: _selectedPurpose,
                           isExpanded: true,
-                          itemHeight: 64,
+                          isDense: true,
                           icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: Color(0xFF6B7280)),
                           items: _purposes.map((p) {
                             final title = p['title'] as String;
@@ -1303,35 +1247,17 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                           selectedItemBuilder: (context) {
                             return _purposes.map((p) {
                               final title = p['title'] as String;
-                              final icon = p['icon'] as IconData;
-                              return Row(
-                                children: [
-                                  Container(
-                                    width: 28,
-                                    height: 28,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFFAF5FF),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Icon(
-                                      icon,
-                                      size: 16,
-                                      color: brandViolet,
-                                    ),
+                              return Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  title,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF111827),
                                   ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      title,
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF111827),
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               );
                             }).toList();
                           },
@@ -1344,16 +1270,13 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                   ],
                 ),
               ),
-
               const SizedBox(width: 14),
-
-              // Remarks (Optional)
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Remarks (Optional)',
+                      'Remarks (optional)',
                       style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
@@ -1362,6 +1285,9 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                     ),
                     const SizedBox(height: 6),
                     Container(
+                      height: 48,
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
                       decoration: BoxDecoration(
                         color: bgSurface,
                         borderRadius: BorderRadius.circular(10),
@@ -1369,8 +1295,9 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       ),
                       child: TextField(
                         controller: _remarksController,
+                        textAlignVertical: TextAlignVertical.center,
                         style: const TextStyle(
-                          fontSize: 13,
+                          fontSize: 14,
                           fontWeight: FontWeight.w500,
                           color: Color(0xFF111827),
                         ),
@@ -1378,10 +1305,11 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                           hintText: 'Enter details...',
                           hintStyle: TextStyle(
                             color: Color(0xFF9CA3AF),
-                            fontSize: 13,
+                            fontSize: 14,
                           ),
                           border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          isCollapsed: true,
+                          contentPadding: EdgeInsets.zero,
                         ),
                       ),
                     ),
@@ -1391,6 +1319,50 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSendToOption({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final color = selected ? const Color(0xFF111827) : const Color(0xFF4B5563);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

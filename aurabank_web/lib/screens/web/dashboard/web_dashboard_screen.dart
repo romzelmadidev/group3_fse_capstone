@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:aurabank_core/services/bank_service.dart';
+import 'package:aurabank_core/widgets/aura_app_mark.dart';
 import 'package:aurabank_core/models/bank_models.dart';
 import 'package:aurabank_core/theme/aura_theme.dart';
 import '../transfer/web_transfer_screen.dart';
@@ -157,19 +158,7 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
                 ),
                 child: const Row(
                   children: [
-                    SizedBox(
-                      width: 26,
-                      height: 26,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Color(0xFF2E1065),
-                          borderRadius: BorderRadius.all(Radius.circular(7)),
-                        ),
-                        child: Center(
-                          child: Text('A', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
-                        ),
-                      ),
-                    ),
+                    AuraAppMark(size: 26, borderRadius: 7),
                     SizedBox(width: 8),
                     Text(
                       'Aura Bank',
