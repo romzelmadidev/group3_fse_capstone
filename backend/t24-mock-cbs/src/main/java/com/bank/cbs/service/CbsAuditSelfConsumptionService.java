@@ -80,9 +80,17 @@ public class CbsAuditSelfConsumptionService {
 
     @KafkaListener(topics = KafkaConfig.TOPIC_TRANSFERS_DLQ, groupId = "cbs-audit-workers")
     @Transactional("auditTransactionManager")
-    public void consumeDlqEvent(String messagePayload) {
+    public void consumeDlqEvent(org.apache.kafka.clients.consumer.ConsumerRecord<String, Object> record) {
         try {
-            TransferFailedToDlqEvent event = objectMapper.readValue(messagePayload, TransferFailedToDlqEvent.class);
+            Object raw = record != null ? record.value() : null;
+            if (raw == null) return;
+            TransferFailedToDlqEvent event;
+            if (raw instanceof TransferFailedToDlqEvent dlqEvt) {
+                event = dlqEvt;
+            } else {
+                String messagePayload = raw instanceof String str ? str : objectMapper.writeValueAsString(raw);
+                event = objectMapper.readValue(messagePayload, TransferFailedToDlqEvent.class);
+            }
             log.warn("Logging failed transfer to audit vault from DLQ: transferId={}, errorType={}",
                     event.getTransactionId(), event.getErrorType());
 

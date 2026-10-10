@@ -21,11 +21,13 @@ services:
       - APP_USER_PASSWORD=fse_password
     volumes:
       - ./oracle/init.sql:/container-entrypoint-initdb.d/init.sql:ro
+      - ./oracle/startup_verify.sh:/container-entrypoint-startdb.d/startup_verify.sh:ro
+      - ./oracle:/opt/oracle/scripts:ro
       - oracle_data:/opt/oracle/oradata
     networks:
       - banking-net
     healthcheck:
-      test: [ "CMD-SHELL", "/opt/oracle/checkDBStatus.sh || exit 0" ]
+      test: [ "CMD-SHELL", "/opt/oracle/healthcheck.sh" ]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -182,8 +184,6 @@ services:
       - redisinsight_data:/data
     networks:
       - banking-net
-    depends_on:
-      - redis-cache
 
   # ============================================================================
   # 8. Account & Identity Service (Spring Boot :8081)
@@ -193,8 +193,8 @@ services:
   account-service:
     container_name: account-service
     build:
-      context: ../backend/account-service
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: account-service/Dockerfile
     restart: unless-stopped
     ports:
       - "8081:8081"
@@ -205,7 +205,7 @@ services:
       - DD_AGENT_HOST=dd-agent
       - DD_TRACE_AGENT_PORT=8126
       - DD_SERVICE=account-service
-      - DD_ENV=local
+      - DD_ENV=dev
       - DD_VERSION=1.0.0
       - DD_LOGS_INJECTION=true
       - DD_TRACE_SAMPLE_RATE=1.0
@@ -215,6 +215,10 @@ services:
       - SPRING_DATA_REDIS_HOST=redis-cache
       - SPRING_DATA_REDIS_PORT=6379
       - NOTIFICATION_SERVICE_URL=http://notification-service:8083
+      - AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite-storage:10000/devstoreaccount1;
+      - AZURE_STORAGE_CONTAINER_NAME=kyc-vault
+      - AZURE_STORAGE_PUBLIC_ENDPOINT=http://localhost:10000/devstoreaccount1
+      - APP_SERVICES_RISK_SERVICE_URL=http://risk-service:8084
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "account-service"}]'
     networks:
@@ -222,6 +226,8 @@ services:
     depends_on:
       - oracle-xe-master
       - redis-cache
+      - azurite
+      - risk-service
       - dd-agent
 
   # ============================================================================
@@ -238,13 +244,15 @@ services:
       - "10000:10000"
       - "10001:10001"
       - "10002:10002"
-    command: "azurite-blob --blobHost 0.0.0.0 --blobPort 10000 -l /data"
+    command: ["azurite-blob", "--blobHost", "0.0.0.0", "--blobPort", "10000", "-l", "/data", "--skipApiVersionCheck"]
     volumes:
       - azurite_data:/data
     labels:
       com.datadoghq.ad.logs: '[{"source": "azure-storage", "service": "azurite-storage"}]'
     networks:
-      - banking-net
+      banking-net:
+        aliases:
+          - azurite-storage
 
   # ============================================================================
   # Azurite Drive Web GUI (Google Drive UI for Azurite Blob Storage)
@@ -272,8 +280,8 @@ services:
   t24-mock-cbs:
     container_name: t24-mock-cbs
     build:
-      context: ../backend/t24-mock-cbs
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: t24-mock-cbs/Dockerfile
     restart: unless-stopped
     ports:
       - "8085:8085"
@@ -298,8 +306,17 @@ services:
       - SPRING_DATA_REDIS_HOST=redis-cache
       - SPRING_DATA_REDIS_PORT=6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:29092
+      - CBS_COB_SCHEDULER_ENABLED=${CBS_COB_SCHEDULER_ENABLED:-true}
+      - CBS_COB_SCHEDULER_CRON=${CBS_COB_SCHEDULER_CRON:-0 0 21 * * *}
+      - CBS_COB_SCHEDULER_ZONE=${CBS_COB_SCHEDULER_ZONE:-Asia/Manila}
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "t24-mock-cbs"}]'
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:8085/actuator/health" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 25s
     networks:
       - banking-net
     depends_on:
@@ -317,8 +334,8 @@ services:
   transfer-orchestrator:
     container_name: transfer-orchestrator
     build:
-      context: ../backend/transfer-orchestrator
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: transfer-orchestrator/Dockerfile
     restart: unless-stopped
     ports:
       - "8082:8082"
@@ -329,7 +346,7 @@ services:
       - DD_AGENT_HOST=dd-agent
       - DD_TRACE_AGENT_PORT=8126
       - DD_SERVICE=transfer-orchestrator
-      - DD_ENV=local
+      - DD_ENV=dev
       - DD_VERSION=1.0.0
       - DD_LOGS_INJECTION=true
       - DD_TRACE_SAMPLE_RATE=1.0
@@ -344,11 +361,16 @@ services:
     networks:
       - banking-net
     depends_on:
-      - redis-cache
-      - kafka-broker
-      - risk-service
-      - t24-mock-cbs
-      - dd-agent
+      redis-cache:
+        condition: service_started
+      kafka-broker:
+        condition: service_started
+      risk-service:
+        condition: service_started
+      t24-mock-cbs:
+        condition: service_healthy
+      dd-agent:
+        condition: service_started
 
   # ============================================================================
   # 9c. Compliance & Reporting Service (Spring Boot :8086)
@@ -358,8 +380,8 @@ services:
   compliance-service:
     container_name: compliance-service
     build:
-      context: ../backend/compliance-service
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: compliance-service/Dockerfile
     restart: unless-stopped
     ports:
       - "8086:8086"
@@ -404,12 +426,13 @@ services:
     volumes:
       - ../backend/risk-service/app:/app/app
       - ../backend/risk-service/data:/app/data
+      - ../backend/risk-service/tests:/app/tests
       - ../hybrid_bench:/app/hybrid_bench
     environment:
       - DD_AGENT_HOST=dd-agent
       - DD_TRACE_AGENT_PORT=8126
       - DD_SERVICE=risk-service
-      - DD_ENV=local
+      - DD_ENV=dev
       - DD_VERSION=2.0.0
       - DD_LOGS_INJECTION=true
       - SETTLEMENT_WINDOW_SECONDS=60.0
@@ -439,8 +462,8 @@ services:
   notification-service:
     container_name: notification-service
     build:
-      context: ../backend/notification-service
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: notification-service/Dockerfile
     restart: unless-stopped
     ports:
       - "8083:8083"
@@ -451,7 +474,7 @@ services:
       - DD_AGENT_HOST=dd-agent
       - DD_TRACE_AGENT_PORT=8126
       - DD_SERVICE=notification-service
-      - DD_ENV=local
+      - DD_ENV=dev
       - DD_VERSION=1.0.0
       - DD_LOGS_INJECTION=true
       - DD_TRACE_SAMPLE_RATE=1.0
@@ -482,12 +505,22 @@ services:
   gateway-service:
     container_name: gateway-service
     build:
-      context: ../backend/gateway-service
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: gateway-service/Dockerfile
     restart: unless-stopped
     ports:
       - "8080:8080"
+    volumes:
+      - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
     environment:
+      - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
+      - DD_AGENT_HOST=dd-agent
+      - DD_TRACE_AGENT_PORT=8126
+      - DD_SERVICE=gateway-service
+      - DD_ENV=dev
+      - DD_VERSION=1.0.0
+      - DD_LOGS_INJECTION=true
+      - DD_TRACE_SAMPLE_RATE=1.0
       - REDIS_HOST=redis-cache
       - REDIS_PORT=6379
       - ACCOUNT_SERVICE_URI=http://account-service:8081
@@ -515,7 +548,6 @@ services:
   # ============================================================================
   banking-frontend:
     container_name: banking-frontend
-    profiles: ["frontend"]
     build:
       context: ../frontend
       dockerfile: Dockerfile
@@ -538,8 +570,8 @@ services:
     restart: unless-stopped
     ports:
       - "16686:16686" # Web UI
-      - "4317:4317" # OTLP gRPC receiver
-      - "4318:4318" # OTLP HTTP receiver
+      - "14317:4317" # OTLP gRPC receiver (offset to avoid host conflict with dd-agent)
+      - "14318:4318" # OTLP HTTP receiver (offset to avoid host conflict with dd-agent)
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     networks:
@@ -605,17 +637,19 @@ services:
   # Live metrics, APM request traces, waterfall spans, and container logs
   # ============================================================================
   dd-agent:
-    container_name: dd-agent
-    image: registry.datadoghq.com/agent:7
+    container_name: datadog-agent
+    image: datadog/agent:latest
     restart: unless-stopped
     ports:
       - "8126:8126" # APM trace receiver
       - "8125:8125/udp" # DogStatsD metrics
+      - "4318:4318" # OTLP HTTP trace intake
+      - "4317:4317" # OTLP gRPC trace intake
     environment:
-      - DD_API_KEY=38f78a4f829a542181926e4e9499146d
+      - DD_API_KEY=a65a6c84cbe468582ca3cc16c8b8cf81
       - DD_SITE=datadoghq.com
-      - DD_ENV=local
-      - DD_TAGS=env:local
+      - DD_ENV=dev
+      - DD_TAGS=env:dev
       - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
       - DD_APM_ENABLED=true
       - DD_APM_NON_LOCAL_TRAFFIC=true
@@ -623,15 +657,20 @@ services:
       - DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_GRPC_ENDPOINT=0.0.0.0:4317
       - DD_LOGS_ENABLED=true
       - DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL=true
+      - DD_CONTAINER_EXCLUDE_LOGS=name:dd-agent name:datadog-agent
       - DD_PROCESS_AGENT_ENABLED=true
       - DD_SKIP_SSL_VALIDATION=true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /proc/:/host/proc/:ro
+      - /opt/datadog-agent/run:/opt/datadog-agent/run:rw
       - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
     networks:
-      - banking-net
+      banking-net:
+        aliases:
+          - dd-agent
+          - datadog-agent
 
   # ============================================================================
   # 17. Datadog Synthetics Private Location Worker

@@ -262,155 +262,177 @@ Day 9: Final Comprehensive Examination & Project Sign-Off
 
 ## 7. Developer Quick Start Guide
 
-### Prerequisites
-1. **Docker Desktop** (version 4.25+)
-2. **Java 21 JDK** (configured in your `PATH`)
-3. **Flutter SDK 3.x & Dart 3.x**
-4. **Python 3.11+** (for local Risk Engine development)
-5. **Maven** (bundled `.\mvnw.cmd` included in the repository)
+### 🚀 1-Step Quick Launch (Recommended: Docker Compose)
 
-### Launching the Platform via Docker Compose
-
-The platform can be built and launched directly from the repository root using Docker Compose:
-
-#### 1. Compile Backend Microservices
-Package all Spring Boot JARs with the bundled Maven wrapper:
+The fastest and easiest way to boot the entire platform—all backend microservices, databases, caches, message brokers, telemetry, and the web console—is using Docker Compose directly from the repository root:
 
 ```powershell
-# Windows (PowerShell / Command Prompt)
-cd backend
-.\mvnw.cmd clean package -DskipTests
-cd ..
+# Windows PowerShell / macOS / Linux (from repository root)
+docker compose --profile frontend up -d --build
 ```
 
-```bash
-# macOS / Linux
-cd backend
-./mvnw clean package -DskipTests
-cd ..
-```
+> **What this command executes:**
+> 1. Builds and starts all backend microservices (`gateway-service`, `account-service`, `transfer-orchestrator`, `t24-mock-cbs`, `notification-service`, `risk-service`, `compliance-service`).
+> 2. Starts the relational databases (`oracle-xe-master` and `postgres-audit-vault`) with automatic schema initialization and initial seed data.
+> 3. Starts infrastructure dependencies (`redis-cache`, `kafka-broker`, `azurite-storage`, `mailhog`, `adminer`, `dd-agent`).
+> 4. Builds and serves the unified web console (`banking-frontend`) on port 3000.
 
-#### 2. Launch Container Stack
-Start all backend services, databases, messaging brokers, and telemetry collectors:
+---
 
-```powershell
-# Launch all core backend services in detached mode
-docker compose up -d --build
-```
+### 🌐 Web Portals & Dashboard Directory
 
-*(Note: You can run `docker compose up -d --build` directly from the project root, or alternatively use `docker compose -f infrastructure/docker-compose.yml up -d --build`.)*
+Once the containers are running, access the web portals directly in your browser:
 
-#### 3. Optional Profiles
-* **Retail Banking Web SPA (React / Vite / Nginx on port 3000):**
-  ```powershell
-  docker compose --profile frontend up -d --build
-  ```
-* **Datadog Synthetics Worker (requires Datadog location credentials):**
-  ```powershell
-  docker compose --profile synthetics up -d
-  ```
+| Portal / Dashboard | URL | Default Credentials / Persona | Description |
+| :--- | :--- | :--- | :--- |
+| **Aura Bank Staff Console** | **`http://localhost:3000`** | `diana.admin@bank.com` / `password123`<br>`crisostomo.teller@bank.com` / `password123` | Unified back-office portal: Customers, KYC, Held Transfers, Reversals, SAR/STR, Location Simulator, Audit Trail, T24 Core Banking (`/cbs`), and Compliance Drive (`/drive`). |
+| **Adminer Database GUI** | **`http://localhost:8088`** | *(See detailed login guide below)* | Web SQL console to inspect and query Oracle XE Master DB and PostgreSQL Audit Vault. |
+| **MailHog SMTP Inbox** | **`http://localhost:8025`** | *No authentication required* | Live web inbox capturing transaction receipts, alert emails, and 2FA MFA OTP login codes. |
+| **Kafka Web Console (Kafka UI)**| **`http://localhost:8089`** | *No authentication required* | Real-time topic, consumer group, and message streaming inspector (`banking.transfers.events`, `banking.batch.events`). |
+| **Redis Insight** | **`http://localhost:5540`** | *No authentication required* | In-memory key browser for distributed idempotency locks, cooling-off payloads (`tx:cooloff:*`), and JWT blacklists. |
+| **Azurite Drive** | **`http://localhost:10005`** | *No authentication required* | Web browser for Azure Blob Storage container `compliance` (EOD spreadsheets, PDF statements). |
 
-#### 4. Verify Container Health
-Check the status of all active containers:
+---
 
+### 🗄️ Database Web Console: How to Login Using Adminer
+
+Adminer is pre-configured with Oracle Instant Client (OCI8) and PostgreSQL drivers at **`http://localhost:8088`**.
+
+#### Option 1: Login to Oracle Database XE 21c (Master Operational Store)
+
+Oracle XE houses live operational accounts, customer balances, transaction ledgers, General Ledger entries, and maker-checker reversal requests.
+
+1. Open your browser and navigate to **`http://localhost:8088`**.
+2. Fill in the login form with the exact credentials below:
+
+| Adminer Field | Exact Value to Enter | Explanation |
+| :--- | :--- | :--- |
+| **System** | **`Oracle (beta)`** | Select from the top dropdown |
+| **Server** | **`oracle-xe-master/XEPDB1`** | Internal container name and pluggable database |
+| **Username** | **`fse_user`** | Application schema owner (or `SYSTEM` for DBA) |
+| **Password** | **`fse_password`** | Schema password (or `Password123#` for `SYSTEM`) |
+| **Database** | **`XEPDB1`** | Target pluggable database name |
+
+3. Click **Login**.
+
+> **💡 Quick SQL Checks for Oracle XE in Adminer:**
+> * **Check balances:** `SELECT account_id, balance_amount, hold_amount, available_balance FROM balance_master;`
+> * **Check posted transfers:** `SELECT transaction_id, from_account_id, to_account_id, amount, status FROM transactions ORDER BY created_at DESC;`
+> * **Check double-entry GL:** `SELECT journal_id, transaction_id, gl_code, debit_amount, credit_amount FROM gl_ledger ORDER BY posting_date DESC;`
+> * **Check maker-checker tickets:** `SELECT ticket_id, original_tx_id, maker_id, checker_id, status FROM reversal_requests;`
+> * **Check status lifecycle audit:** `SELECT transaction_id, from_status, to_status, change_reason, actor_id FROM transaction_status_history ORDER BY changed_at DESC;`
+> * **Check COB system date:** `SELECT system_date_id, business_date, status, posting_window_open FROM system_dates;`
+
+---
+
+#### Option 2: Login to PostgreSQL 15 (Immutable Audit Vault)
+
+PostgreSQL houses the write-once, append-only compliance audit trail (`ledger_mutation_audit`) and Dead Letter Queue failure incidents (`failed_transaction_audit`).
+
+1. Open your browser and navigate to **`http://localhost:8088`** *(click Logout in the sidebar if currently logged into Oracle)*.
+2. Fill in the login form with the exact credentials below:
+
+| Adminer Field | Exact Value to Enter | Explanation |
+| :--- | :--- | :--- |
+| **System** | **`PostgreSQL`** | Select from the top dropdown |
+| **Server** | **`postgres-audit-vault`** | Internal container name on `banking-net` |
+| **Username** | **`audit_user`** | Audit vault database user |
+| **Password** | **`audit_password`** | Audit vault password |
+| **Database** | **`banking_audit`** | Target audit database |
+
+3. Click **Login**.
+
+> **💡 Quick SQL Checks for PostgreSQL in Adminer:**
+> * **Check immutable audit journal:** `SELECT audit_id, transaction_id, account_id, mutation_type, mutation_amount, status, sha256_hash FROM ledger_mutation_audit ORDER BY created_at DESC;`
+> * **Check DLQ failure incidents:** `SELECT incident_id, transaction_id, error_type, circuit_breaker_state, replay_status FROM failed_transaction_audit ORDER BY failure_timestamp DESC;`
+> * **Check EOD report metadata:** `SELECT report_id, business_date, file_name, blob_uri, sha256_checksum FROM eod_reports_metadata;`
+
+---
+
+#### Option 3: Connecting via External DB Tools (DBeaver, DataGrip, VS Code)
+
+If connecting from host applications outside of Docker:
+* **Oracle XE Master:** Host: `localhost`, Port: `1521`, Service Name: `XEPDB1`, User: `fse_user`, Password: `fse_password`.
+* **PostgreSQL Audit:** Host: `localhost`, Port: `5433`, Database: `banking_audit`, User: `audit_user`, Password: `audit_password`.
+
+---
+
+### 🛠️ Common Administrative Commands & Operations
+
+#### 1. Checking Container Health
 ```powershell
 docker compose ps
 ```
 
-Verify the health check endpoints:
+Health check endpoints:
 * **API Gateway:** `http://localhost:8080/actuator/health`
 * **Account Service:** `http://localhost:8081/actuator/health`
 * **Transfer Orchestrator:** `http://localhost:8082/actuator/health`
+* **T24 Mock CBS:** `http://localhost:8085/actuator/health`
 * **Notification Service:** `http://localhost:8083/actuator/health`
-* **Fraud Risk Engine:** `http://localhost:8084/health`
-* **T24 Mock Core Banking System:** `http://localhost:8085/actuator/health`
-* **Compliance & Reporting Service:** `http://localhost:8086/actuator/health`
+* **Risk Service (FastAPI):** `http://localhost:8084/health`
+* **Compliance Service:** `http://localhost:8086/actuator/health`
 
-#### 5. Stop and Tear Down
-To stop running containers:
-
+#### 2. Triggering Close of Business (COB) EOD Batch Run
+The daily COB batch rolls the business date, accrues interest, deducts below-minimum ADB fees, takes balance snapshots, and uploads regulatory filings (`.xlsx`, `.pdf`) to Azurite:
 ```powershell
-docker compose down
+curl.exe -X POST http://localhost:8085/api/v1/cbs/cob/run
 ```
 
-To stop containers and reset persistent volumes (Oracle, Postgres, Redis, Prometheus):
-
+#### 3. Checking CBS System Business Date & Window
 ```powershell
+curl.exe -s http://localhost:8085/api/v1/cbs/system-date
+```
+
+#### 4. Viewing Real-Time Logs
+```powershell
+# Follow logs for specific services:
+docker compose logs -f gateway-service transfer-orchestrator t24-mock-cbs
+```
+
+#### 5. Clean Slate Reset (Tear Down & Re-seed Databases)
+To wipe all database volumes, cached state, and reset everything cleanly from initial seeds:
+```powershell
+# Stop containers and remove persistent volumes
 docker compose down -v
+
+# Re-build and launch fresh stack
+docker compose --profile frontend up -d --build
 ```
 
-### Local Development Workflow (Running Services Locally on Host)
+---
 
-If you prefer developing with live reload on host machines:
+### 💻 Local Development Workflow (Running Directly on Host)
+
+If developing microservices locally with hot reload:
 
 ```powershell
-# Step 1: Start backing infrastructure containers
-docker compose up -d oracle-xe-master postgres-audit-vault redis-cache kafka-broker mailhog kafka-ui adminer dd-agent
+# 1. Start backing infrastructure in Docker
+docker compose up -d oracle-xe-master postgres-audit-vault redis-cache kafka-broker mailhog kafka-ui adminer azurite azurite-drive dd-agent
 
-# Step 2: Start microservices (in separate terminals)
-# Terminal 1: API Gateway (:8080)
-cd backend/gateway-service && ..\mvnw.cmd spring-boot:run
+# 2. Compile Java dependencies
+cd backend
+.\mvnw.cmd clean compile -DskipTests
 
-# Terminal 2: Account & Identity Service (:8081)
-cd backend/account-service && ..\mvnw.cmd spring-boot:run
+# 3. Launch backend microservices:
+# Option A: Automated launcher script
+.\start-all-services.ps1
 
-# Terminal 3: T24 Mock Core Banking System (:8085)
-cd backend/t24-mock-cbs && ..\mvnw.cmd spring-boot:run
+# Option B: Run individual microservices via Maven:
+# cd backend/gateway-service && ..\mvnw.cmd spring-boot:run
+# cd backend/account-service && ..\mvnw.cmd spring-boot:run
+# cd backend/transfer-orchestrator && ..\mvnw.cmd spring-boot:run
+# cd backend/t24-mock-cbs && ..\mvnw.cmd spring-boot:run
+# cd backend/notification-service && ..\mvnw.cmd spring-boot:run
+# cd backend/compliance-service && ..\mvnw.cmd spring-boot:run
+# cd backend/risk-service && python -m app.server
 
-# Terminal 4: Transfer Orchestrator (:8082)
-cd backend/transfer-orchestrator && ..\mvnw.cmd spring-boot:run
-
-# Terminal 5: Notification Service (:8083)
-cd backend/notification-service && ..\mvnw.cmd spring-boot:run
-
-# Terminal 6: Compliance & Reporting Service (:8086)
-cd backend/compliance-service && ..\mvnw.cmd spring-boot:run
-
-# Terminal 7: Python Risk Engine (:8084)
-cd backend/risk-service && python -m app.server
-
-# Step 3: Run Flutter Web Portal or React SPA
-cd frontend
+# 4. Launch Frontend Web App
+cd ../frontend
+npm install
 npm run dev
-# or for Flutter:
-# cd flutter_client && flutter run -d chrome --web-port 3000
+# Browser opens at http://localhost:3000
 ```
-
-### Database Web Console (Adminer Credentials)
-
-Adminer provides a browser-based SQL client to inspect and query both the Oracle XE operational database and the PostgreSQL audit vault.
-
-* **Adminer Web URL:** `http://localhost:8088`
-
-#### Oracle Database XE 21c (Master Operational Store)
-
-When logging into Adminer, fill in the following fields:
-
-| Field | Value | Notes |
-| :--- | :--- | :--- |
-| **System** | `Oracle (beta)` | Select from the system dropdown |
-| **Server** | `oracle-xe-master/XEPDB1` | Uses container service name on `banking-net` |
-| **Username** | `fse_user` | Application schema owner (or `SYSTEM` for DBA access) |
-| **Password** | `fse_password` | For `fse_user` (or `Password123#` for `SYSTEM`) |
-| **Database** | `XEPDB1` | Pluggable database name |
-
-For external database tools (DBeaver, SQL Developer) connecting from the host machine:
-* Host: `localhost`, Port: `1521`, Service Name: `XEPDB1`, User: `fse_user`, Password: `fse_password`
-
-#### PostgreSQL 16 (Immutable Audit Vault)
-
-When logging into Adminer, fill in the following fields:
-
-| Field | Value | Notes |
-| :--- | :--- | :--- |
-| **System** | `PostgreSQL` | Select from the system dropdown |
-| **Server** | `postgres-audit-vault` | Or `postgres-audit-vault:5432` on `banking-net` |
-| **Username** | `audit_user` | Audit vault database user |
-| **Password** | `audit_password` | Configured password |
-| **Database** | `banking_audit` | Target audit database |
-
-For external database tools (DBeaver, pgAdmin, psql) connecting from the host machine:
-* Host: `localhost`, Port: `5433`, Database: `banking_audit`, User: `audit_user`, Password: `audit_password`
 
 ---
 

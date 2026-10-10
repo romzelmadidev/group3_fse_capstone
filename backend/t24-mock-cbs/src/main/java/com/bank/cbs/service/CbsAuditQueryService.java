@@ -50,6 +50,14 @@ public class CbsAuditQueryService {
     }
 
     @Transactional(value = "auditTransactionManager", readOnly = true)
+    public List<LedgerMutationAudit> getAllLedgerMutations(int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 200);
+        return ledgerMutationAuditRepository.findAll(
+                PageRequest.of(safePage, safeSize, org.springframework.data.domain.Sort.by("createdAt").descending())).getContent();
+    }
+
+    @Transactional(value = "auditTransactionManager", readOnly = true)
     public List<TransactionStatusAudit> getStatusHistory(String transactionId) {
         return transactionStatusAuditRepository.findByTransactionIdOrderByChangedAtAsc(transactionId);
     }
@@ -93,9 +101,19 @@ public class CbsAuditQueryService {
             String payloadJson,
             String stackTrace) {
         String incidentId = "INC-" + java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        String txId = (transactionId != null && !transactionId.isBlank()) 
-                ? transactionId 
-                : ("FAIL-TX-" + java.util.UUID.randomUUID().toString().substring(0, 6).toUpperCase());
+        String txId;
+        if (transactionId != null && !transactionId.isBlank()) {
+            String trimmed = transactionId.trim();
+            if (trimmed.startsWith("TX-")) {
+                txId = "TXN-" + trimmed.substring(3);
+            } else if (trimmed.startsWith("TXN-")) {
+                txId = trimmed;
+            } else {
+                txId = "TXN-" + trimmed;
+            }
+        } else {
+            txId = "TXN-FAIL-" + java.util.UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+        }
         FailedTransactionAudit audit = FailedTransactionAudit.builder()
                 .incidentId(incidentId)
                 .correlationId("CORR-" + java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase())
@@ -103,7 +121,7 @@ public class CbsAuditQueryService {
                 .errorType(errorType != null ? errorType : "NETWORK_TIMEOUT")
                 .errorCode(errorCode != null ? errorCode : "HTTP_504")
                 .circuitBreakerState(circuitBreakerState != null ? circuitBreakerState : "OPEN")
-                .payloadJson(payloadJson != null ? payloadJson : "{\"amount\":5000.00,\"sourceAccountId\":\"ACC-1001\",\"destinationAccountId\":\"ACC-1002\"}")
+                .payloadJson(payloadJson != null ? payloadJson : "{\"amount\":5000.00,\"sourceAccountId\":\"1000-2000-3001\",\"destinationAccountId\":\"1000-2000-3002\",\"currency\":\"PHP\",\"reason\":\"Simulated DLQ timeout\"}")
                 .stackTrace(stackTrace != null ? stackTrace : "Simulated downstream CBS timeout after 3 retries. Routed to DLQ.")
                 .replayStatus("PENDING_REPLAY")
                 .failureTimestamp(Instant.now())

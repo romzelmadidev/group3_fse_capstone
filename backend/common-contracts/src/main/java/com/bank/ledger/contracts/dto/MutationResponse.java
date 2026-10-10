@@ -62,4 +62,31 @@ public class MutationResponse {
 
     @JsonProperty("warning_message")
     private String warningMessage;
+
+    @JsonProperty("threat_category")
+    private String threatCategory;
+
+    @JsonProperty("cause_of_suspicion")
+    private String causeOfSuspicion;
+
+    @JsonProperty("sar_draft_created")
+    private Boolean sarDraftCreated;
+
+    @JsonProperty("sar_report_id")
+    private String sarReportId;
+
+    @JsonProperty("cooling_off_required")
+    private Boolean coolingOffRequired;
+
+    @JsonProperty("cooling_off_expires_in_seconds")
+    private Integer coolingOffExpiresInSeconds;
+
+    @JsonProperty("biometric_required")
+    private Boolean biometricRequired;
+
+    @JsonProperty("biometric_challenge")
+    private String biometricChallenge;
+
+    @JsonProperty("processed_at")
+    private Instant processedAt;
 }

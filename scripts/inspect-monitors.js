@@ -1,5 +1,5 @@
-const apiKey = '01f81b9b68f2858cbdd9f9b04c02c16a';
-const appKey = 'ddapp_lxTRTGazMCOVNjyNGpGHugCCKToj0s0kvd';
+const apiKey = 'a65a6c84cbe468582ca3cc16c8b8cf81';
+const appKey = 'ddapp_ebWVMLRQjDpJM0lsv8ehu6R78qv63V8Xuu';
 
 async function listMonitors() {
   const res = await fetch('https://api.datadoghq.com/api/v1/monitor', {

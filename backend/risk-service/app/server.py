@@ -30,8 +30,10 @@ if _SERVICE_ROOT not in sys.path:
 from app.seed_data import get_customer_profile
 from app.geo_math import analyze_location_signals
 from app.models import RiskAnalysisRequest
-from app.threat_builder import has_threat_context, build_threat_narrative
+from app.threat_builder import has_threat_context, build_threat_narrative, detect_threat_category
 from app.warning_catalog import get_warning_dialog
+from hybrid_bench.sar_generator import trigger_sar_async
+from app import sar_registry
 from app.reviewer import (
     NanoJevSecondLookEngine,
     AsyncReviewWorkerPool,
@@ -39,6 +41,9 @@ from app.reviewer import (
     AnalystDecisionStore,
     ReviewerMetrics
 )
+from app.kyc import KycEvaluator, KycEvaluationRequest
+
+kyc_evaluator = KycEvaluator()
 
 # Datadog APM Tracing initialization
 DD_AGENT_HOST = os.environ.get("DD_AGENT_HOST", "dd-agent")
@@ -236,22 +241,128 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
             self._send_json(200, profile)
             return
 
+        if path == "/api/v1/risk/sar":
+            self._send_json(200, sar_registry.list_reports())
+            return
+
+        if path.startswith("/api/v1/risk/sar/"):
+            try:
+                report = sar_registry.get_report(path[len("/api/v1/risk/sar/"):])
+            except ValueError as exc:  # traversal-safe id check in sar_registry._path
+                self._send_json(400, {"detail": str(exc)})
+                return
+            if report is None:
+                self._send_json(404, {"detail": "SAR draft not found"})
+            else:
+                self._send_json(200, report)
+            return
+
         self._send_json(404, {"error": "Not Found", "path": self.path})
 
     def do_POST(self):
         path = self.path.split("?")[0].rstrip("/")
-        content_length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_length) if content_length > 0 else b"{}"
+        content_length_hdr = self.headers.get("Content-Length")
+        transfer_encoding = self.headers.get("Transfer-Encoding", "")
+
+        if content_length_hdr is not None:
+            content_length = int(content_length_hdr)
+            body = self.rfile.read(content_length) if content_length > 0 else b"{}"
+        elif "chunked" in transfer_encoding.lower():
+            chunks = []
+            while True:
+                line = self.rfile.readline().strip()
+                if not line:
+                    break
+                try:
+                    chunk_len = int(line, 16)
+                except ValueError:
+                    break
+                if chunk_len == 0:
+                    self.rfile.readline()
+                    break
+                chunks.append(self.rfile.read(chunk_len))
+                self.rfile.readline()
+            body = b"".join(chunks)
+        else:
+            body = b"{}"
 
         try:
             payload = json.loads(body.decode("utf-8-sig")) if body else {}
-        except Exception:
-            self._send_json(400, {"error": "Invalid JSON payload"})
+        except Exception as e:
+            self._send_json(400, {"error": "Invalid JSON payload", "detail": str(e)})
             return
 
-        if path in ("/api/v1/risk/analyze", "/api/v1/risk/transfer"):
+        if path in ("/api/v1/risk/analyze", "/api/v1/risk/transfer", "/api/v1/risk/evaluate"):
             result = self._handle_analyze(payload)
             self._send_json(200, result)
+            return
+
+        if path == "/api/v1/risk/score":
+            tx_id = payload.get("transactionId") or payload.get("transaction_id") or f"TXN-{uuid.uuid4().hex[:8].upper()}"
+            amount = float(payload.get("amount", 0.0))
+            desc = payload.get("description") or payload.get("memo") or ""
+
+            desc_lower = str(desc).lower()
+            is_scam_memo = any(kw in desc_lower for kw in ["crypto", "broker", "bail", "police", "urgent investment", "forex", "binary"])
+
+            if is_scam_memo or amount >= 500000.0:
+                score = 75
+                decision = "ADVISORY_WARNING"
+                reason = "Potential high-risk payee or scam memo typology detected"
+            elif amount >= 250000.0:
+                score = 65
+                decision = "REQUIRE_2FA"
+                reason = "High-value threshold step-up required"
+            else:
+                score = 15
+                decision = "ALLOW"
+                reason = "Standard low risk transaction"
+
+            self._send_json(200, {
+                "transactionId": tx_id,
+                "score": score,
+                "decision": decision,
+                "riskReason": reason
+            })
+            return
+
+        if path in ("/risk/memo-check", "/api/v1/risk/memo-check"):
+            memo = str(payload.get("memo") or "").strip()
+            memo_lower = memo.lower()
+            if any(kw in memo_lower for kw in ["police", "bail", "arrest", "court", "fbi", "nbi", "law enforcement", "officer", "impersonation"]):
+                typology = "POLICE_IMPERSONATION_SCAM"
+                typology_prob = 0.94
+                tier = "HIGH"
+                advisory_tier = "ADVISORY_WARNING"
+                action = "ADVISORY_WARNING"
+                message = "High risk: Law enforcement impersonation scam indicators detected in payment memo."
+            elif any(kw in memo_lower for kw in ["crypto", "broker", "guaranteed", "urgent investment", "forex", "binary", "high return"]):
+                typology = "INVESTMENT_SCAM"
+                typology_prob = 0.88
+                tier = "HIGH"
+                advisory_tier = "ADVISORY_WARNING"
+                action = "ADVISORY_WARNING"
+                message = "High risk: Suspicious investment scam indicators detected."
+            else:
+                typology = "NONE"
+                typology_prob = 0.05
+                tier = "LOW"
+                advisory_tier = "NONE"
+                action = "ALLOW"
+                message = "Standard memo text, no scam typologies detected."
+
+            res = {
+                "decision_id": payload.get("decision_id", f"DEC-{uuid.uuid4().hex[:8].upper()}"),
+                "typology": typology,
+                "typology_prob": typology_prob,
+                "tier": tier,
+                "advisory_tier": advisory_tier,
+                "action": action,
+                "message": message,
+                "cached": False,
+                "latency_ms": 1.2
+            }
+            self._send_json(200, res)
             return
 
         if path == "/api/v1/analyst/decision":
@@ -274,15 +385,43 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(200, result)
             return
 
+        if path == "/api/v1/kyc/evaluate":
+            try:
+                req_obj = KycEvaluationRequest(**payload)
+                eval_res = kyc_evaluator.evaluate(req_obj)
+                res_dict = eval_res.model_dump() if hasattr(eval_res, "model_dump") else eval_res.dict()
+                self._send_json(200, res_dict)
+            except Exception as e:
+                logging.error(f"[KYC EVALUATION ERROR] {e}", exc_info=True)
+                self._send_json(500, {"error": "KYC Evaluation Failed", "detail": str(e)})
+            return
+
+        if path.startswith("/api/v1/risk/sar/") and path.endswith("/review"):
+            tx_id = path[len("/api/v1/risk/sar/"):-len("/review")]
+            try:
+                report = sar_registry.review_report(tx_id, payload.get("reviewer_id", ""),
+                                                    payload.get("action", ""), payload.get("note", ""))
+            except KeyError:
+                self._send_json(404, {"detail": "SAR draft not found"})
+                return
+            except sar_registry.SarReviewError as exc:  # subclass of ValueError, so catch it first
+                self._send_json(409, {"detail": str(exc)})
+                return
+            except ValueError as exc:
+                self._send_json(400, {"detail": str(exc)})
+                return
+            self._send_json(200, report)
+            return
+
         self._send_json(404, {"error": "Endpoint Not Found", "path": self.path})
 
     def _handle_analyze(self, req: Dict[str, Any]) -> Dict[str, Any]:
         start_time = time.perf_counter()
         tx_id = req.get("transaction_id") or f"TX-RISK-{uuid.uuid4().hex[:8].upper()}"
 
-        account_id = req.get("account_id") or req.get("accountId") or "acc-2001-sav-001"
+        account_id = req.get("account_id") or req.get("accountId") or "1000-2000-3001"
         user_id = req.get("user_id") or req.get("userId") or "usr-1001-cst-001"
-        target_account_id = req.get("target_account_id") or req.get("targetAccountId") or "acc-2002-chk-001"
+        target_account_id = req.get("target_account_id") or req.get("targetAccountId") or "1000-2000-3002"
         customer = get_customer_profile(account_id) if account_id else get_customer_profile(user_id)
 
         home_coords = customer.get("home_coordinates", {"latitude": 14.5995, "longitude": 120.9842})
@@ -457,41 +596,110 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
                 if "is_primary_device" in req["device_context"]:
                     is_primary_device = req["device_context"]["is_primary_device"]
 
-            if decision != "BLOCK":
+            threat_cat = "NONE"
+            try:
+                req_model = RiskAnalysisRequest(**req)
+                if has_threat_context(req_model):
+                    threat_narrative, threat_cat = build_threat_narrative(req_model)
+                    if decision == "ALLOW":
+                        decision = "ADVISORY_WARNING"
+                        status = "ADVISORY_PENDING"
+                        advisory_tier = "ADVISORY_WARNING"
+                        wd = get_warning_dialog(threat_cat)
+                        warning_dialog = wd.model_dump() if hasattr(wd, "model_dump") else wd.dict()
+                        primary_flag = f"DEVICE_THREAT_{threat_cat}"
+                        all_flags.append(primary_flag)
+                    elif decision == "REQUIRE_2FA":
+                        advisory_tier = "ADVISORY_WARNING"
+                        wd = get_warning_dialog(threat_cat)
+                        warning_dialog = wd.model_dump() if hasattr(wd, "model_dump") else wd.dict()
+                        all_flags.append(f"DEVICE_THREAT_{threat_cat}")
+                elif memo_analysis and (memo_analysis.get("is_anomaly") or memo_analysis.get("typology", "none") != "none"):
+                    typology = memo_analysis.get("typology", "other")
+                    threat_cat = "MEMO_SCAM_PATTERN"
+                    if decision == "ALLOW":
+                        decision = "ADVISORY_WARNING"
+                        status = "ADVISORY_PENDING"
+                        advisory_tier = "ADVISORY_WARNING"
+                        wd = get_warning_dialog("MEMO_SCAM_PATTERN")
+                        warning_dialog = wd.model_dump() if hasattr(wd, "model_dump") else wd.dict()
+                        primary_flag = f"SCAM_TYPOLOGY_{typology.upper()}"
+                        all_flags.append(primary_flag)
+                    elif decision == "REQUIRE_2FA":
+                        advisory_tier = "ADVISORY_WARNING"
+                        wd = get_warning_dialog("MEMO_SCAM_PATTERN")
+                        warning_dialog = wd.model_dump() if hasattr(wd, "model_dump") else wd.dict()
+                        all_flags.append(f"SCAM_TYPOLOGY_{typology.upper()}")
+            except Exception as e:
+                print(f"[THREAT EVAL ERROR] {e}", flush=True)
+
+            if threat_cat == "NONE":
+                if decision == "BLOCK":
+                    threat_cat = gate0_reason if gate0_reason else "CRITICAL_FRAUD"
+                elif decision == "REQUIRE_2FA":
+                    threat_cat = "ELEVATED_RISK"
+
+            # 5. Laya Cause of Suspicion Synthesis
+            if laya_engine_instance is not None:
+                cause_of_suspicion = laya_engine_instance.determine_cause_of_suspicion(
+                    threat_category=threat_cat,
+                    threat_narrative=threat_narrative,
+                    memo=memo,
+                    geo_signals=geo_signals,
+                    spike_ratio=spike_ratio if 'spike_ratio' in locals() else 1.0,
+                    flags=all_flags
+                )
+            else:
+                cause_of_suspicion = f"Evaluated fraud risk score of {fraud_score}/100 with flag {primary_flag}."
+
+            # 6. Automated AMLC SAR/STR Draft Trigger
+            sar_draft_created = False
+            sar_report_id = None
+            is_sar_candidate = (
+                decision == "BLOCK"
+                or threat_cat in ["MEMORY_HOOKING_TAMPER", "PACKET_INSPECTION_MITM", "REMOTE_ACCESS_MALWARE"]
+                or fraud_score >= 80
+            )
+            if is_sar_candidate:
+                sar_report_id = f"SAR-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{tx_id}"
+                dev_ctx = req.get("device_context", {}) if isinstance(req.get("device_context"), dict) else {}
+                sar_tx_row = {
+                    "transaction_id": tx_id,
+                    "user_id": user_id,
+                    "amount_php": amount,
+                    "spike_ratio": spike_ratio if 'spike_ratio' in locals() else 1.0,
+                    "balance_drain_ratio": drain_ratio if 'drain_ratio' in locals() else 0.0,
+                    "memo": memo,
+                    "velocity_kmh": geo_signals["velocity_kmh"],
+                    "is_vpn": geo_signals["is_vpn_detected"],
+                    "rooted": req.get("rooted", False) or dev_ctx.get("rooted", False),
+                    "hooking": req.get("hooking", False) or dev_ctx.get("hooking", False) or (threat_cat == "MEMORY_HOOKING_TAMPER"),
+                    "emulator": req.get("emulator", False) or dev_ctx.get("emulator", False),
+                    "tampered": req.get("tampered", False),
+                    "attestation_verdict": req.get("attestation_verdict", "PASS"),
+                    "remote_app_active": req.get("remote_app_active", False) or dev_ctx.get("remote_app_active", False) or (threat_cat == "REMOTE_ACCESS_MALWARE"),
+                    "screen_sharing": dev_ctx.get("media_projection", {}).get("is_screen_sharing", False) if isinstance(dev_ctx.get("media_projection"), dict) else False,
+                    "active_call": req.get("active_call", False) or (dev_ctx.get("telephony", {}).get("call_state", "IDLE") != "IDLE" if isinstance(dev_ctx.get("telephony"), dict) else False),
+                    "call_state": dev_ctx.get("telephony", {}).get("call_state", "IDLE") if isinstance(dev_ctx.get("telephony"), dict) else "IDLE",
+                    "running_packages": dev_ctx.get("running_packages", []),
+                    "active_accessibility_services": dev_ctx.get("active_accessibility_services", []),
+                    "detected_threats": dev_ctx.get("detected_threats", []),
+                    "threat_category": threat_cat,
+                    "cause_of_suspicion": cause_of_suspicion,
+                }
+                sar_verdict = {
+                    "action": decision,
+                    "primary_reason": primary_flag,
+                    "gate_used": "TWO_STAGE_RISK_ENGINE" if not gate0_action else "GATE_0_HARD_RULES",
+                    "fraud_score": float(fraud_score),
+                    "threat_category": threat_cat,
+                    "cause_of_suspicion": cause_of_suspicion,
+                }
                 try:
-                    req_model = RiskAnalysisRequest(**req)
-                    if has_threat_context(req_model):
-                        threat_narrative, threat_cat = build_threat_narrative(req_model)
-                        if decision == "ALLOW":
-                            decision = "ADVISORY_WARNING"
-                            status = "ADVISORY_PENDING"
-                            advisory_tier = "ADVISORY_WARNING"
-                            wd = get_warning_dialog(threat_cat)
-                            warning_dialog = wd.model_dump() if hasattr(wd, "model_dump") else wd.dict()
-                            primary_flag = f"DEVICE_THREAT_{threat_cat}"
-                            all_flags.append(primary_flag)
-                        elif decision == "REQUIRE_2FA":
-                            advisory_tier = "ADVISORY_WARNING"
-                            wd = get_warning_dialog(threat_cat)
-                            warning_dialog = wd.model_dump() if hasattr(wd, "model_dump") else wd.dict()
-                            all_flags.append(f"DEVICE_THREAT_{threat_cat}")
-                    elif memo_analysis and (memo_analysis.get("is_anomaly") or memo_analysis.get("typology", "none") != "none"):
-                        typology = memo_analysis.get("typology", "other")
-                        if decision == "ALLOW":
-                            decision = "ADVISORY_WARNING"
-                            status = "ADVISORY_PENDING"
-                            advisory_tier = "ADVISORY_WARNING"
-                            wd = get_warning_dialog("MEMO_SCAM_PATTERN")
-                            warning_dialog = wd.model_dump() if hasattr(wd, "model_dump") else wd.dict()
-                            primary_flag = f"SCAM_TYPOLOGY_{typology.upper()}"
-                            all_flags.append(primary_flag)
-                        elif decision == "REQUIRE_2FA":
-                            advisory_tier = "ADVISORY_WARNING"
-                            wd = get_warning_dialog("MEMO_SCAM_PATTERN")
-                            warning_dialog = wd.model_dump() if hasattr(wd, "model_dump") else wd.dict()
-                            all_flags.append(f"SCAM_TYPOLOGY_{typology.upper()}")
-                except Exception as e:
-                    print(f"[THREAT EVAL ERROR] {e}", flush=True)
+                    trigger_sar_async(sar_tx_row, sar_verdict)
+                    sar_draft_created = True
+                except Exception as sar_err:
+                    print(f"[SAR TRIGGER ERROR] {sar_err}", flush=True)
 
             # Enqueue Async Reviewer for enriched threat context or elevated S2 risk (ignoring memo)
             review_enqueued = False
@@ -517,7 +725,7 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
                     tabular_data=row_dict if 'row_dict' in locals() else {}
                 )
 
-            # 4. Out-of-band & Biometric Authorization Mapping (Zero SMS OTP for Transactions)
+            # 7. Out-of-band & Biometric Authorization Mapping (Zero SMS OTP for Transactions)
             if decision == "BLOCK":
                 auth_method = "NONE_BLOCKED"
             elif decision == "REQUIRE_2FA":
@@ -548,7 +756,7 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
                 "env": DD_ENV,
                 "version": DD_VERSION,
                 "logger": "risk_service.transaction_output",
-                "message": f"TRANSACTION_VERDICT [{decision}] [{status}] TxId={tx_id} Amount=PHP{amount:,.2f} Score={fraud_score}/100 ReviewEnqueued={review_enqueued}",
+                "message": f"TRANSACTION_VERDICT [{decision}] [{status}] TxId={tx_id} Amount=PHP{amount:,.2f} Score={fraud_score}/100 SAR={sar_report_id}",
                 "dd": {"trace_id": trace_id, "span_id": span_id},
                 "transaction": {
                     "id": tx_id,
@@ -580,6 +788,10 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
                 "advisory_tier": advisory_tier,
                 "warning_dialog": warning_dialog,
                 "threat_narrative": threat_narrative,
+                "threat_category": threat_cat,
+                "cause_of_suspicion": cause_of_suspicion,
+                "sar_draft_created": sar_draft_created,
+                "sar_report_id": sar_report_id,
                 "auth_method": auth_method,
                 "metrics": {
                     "distance_from_home_km": geo_signals["distance_from_home_km"],

@@ -35,9 +35,12 @@ class MakerCheckerIntegrationTest {
     @Autowired
     private TransactionMasterRepository transactionRepository;
 
-    private static final String SENDER_ACCOUNT = "acc-2001-sav-001"; // Owned by usr-1001-cst-001
-    private static final String RECEIVER_ACCOUNT = "acc-2003-sav-002"; // Owned by usr-1002-cst-002
-    private static final String MAKER_USER = "usr-1001-cst-001";
+    @Autowired
+    private com.bank.ledger.engine.repository.master.AccountMasterRepository accountRepository;
+
+    private static final String SENDER_ACCOUNT = "1000-2000-3001";
+    private static final String RECEIVER_ACCOUNT = "1000-2000-3002";
+    private static String MAKER_USER = "U1001";
     private static final String TELLER_USER = "usr-1003-tel-001";
 
     @BeforeEach
@@ -53,8 +56,12 @@ class MakerCheckerIntegrationTest {
             org.junit.jupiter.api.Assumptions.abort("Kafka broker is not running on localhost:9092; skipping live Maker-Checker test.");
         }
 
+        MAKER_USER = accountRepository.findById(SENDER_ACCOUNT)
+                .map(com.bank.ledger.engine.entity.master.AccountMaster::getUserId)
+                .orElse("U1001");
+
         // Reset Sender to PHP 500,000.00 with zero holds
-        BalanceMaster sender = balanceRepository.findById(SENDER_ACCOUNT).orElseThrow();
+        BalanceMaster sender = balanceRepository.findByAccountId(SENDER_ACCOUNT).orElseThrow();
         sender.setBalanceAmount(new BigDecimal("500000.0000"));
         sender.setHoldAmount(BigDecimal.ZERO);
         sender.setAvailableBalance(new BigDecimal("500000.0000"));
@@ -62,7 +69,7 @@ class MakerCheckerIntegrationTest {
         balanceRepository.save(sender);
 
         // Reset Receiver to PHP 100,000.00
-        BalanceMaster receiver = balanceRepository.findById(RECEIVER_ACCOUNT).orElseThrow();
+        BalanceMaster receiver = balanceRepository.findByAccountId(RECEIVER_ACCOUNT).orElseThrow();
         receiver.setBalanceAmount(new BigDecimal("100000.0000"));
         receiver.setHoldAmount(BigDecimal.ZERO);
         receiver.setAvailableBalance(new BigDecimal("100000.0000"));
@@ -88,8 +95,8 @@ class MakerCheckerIntegrationTest {
 
         assertEquals("COMMITTED", response.getStatus());
 
-        BalanceMaster sender = balanceRepository.findById(SENDER_ACCOUNT).orElseThrow();
-        BalanceMaster receiver = balanceRepository.findById(RECEIVER_ACCOUNT).orElseThrow();
+        BalanceMaster sender = balanceRepository.findByAccountId(SENDER_ACCOUNT).orElseThrow();
+        BalanceMaster receiver = balanceRepository.findByAccountId(RECEIVER_ACCOUNT).orElseThrow();
 
         assertEquals(0, new BigDecimal("475000.0000").compareTo(sender.getBalanceAmount()));
         assertEquals(0, new BigDecimal("125000.0000").compareTo(receiver.getBalanceAmount()));
@@ -114,8 +121,8 @@ class MakerCheckerIntegrationTest {
 
         assertEquals("PENDING_APPROVAL", response.getStatus());
 
-        BalanceMaster sender = balanceRepository.findById(SENDER_ACCOUNT).orElseThrow();
-        BalanceMaster receiver = balanceRepository.findById(RECEIVER_ACCOUNT).orElseThrow();
+        BalanceMaster sender = balanceRepository.findByAccountId(SENDER_ACCOUNT).orElseThrow();
+        BalanceMaster receiver = balanceRepository.findByAccountId(RECEIVER_ACCOUNT).orElseThrow();
 
         // balance_amount is still 500,000 PHP (not taken yet!)
         assertEquals(0, new BigDecimal("500000.0000").compareTo(sender.getBalanceAmount()));
@@ -182,8 +189,8 @@ class MakerCheckerIntegrationTest {
         MutationResponse approvedResponse = mutationService.approveTransfer(txId, tellerApproval);
         assertEquals("COMMITTED", approvedResponse.getStatus());
 
-        BalanceMaster sender = balanceRepository.findById(SENDER_ACCOUNT).orElseThrow();
-        BalanceMaster receiver = balanceRepository.findById(RECEIVER_ACCOUNT).orElseThrow();
+        BalanceMaster sender = balanceRepository.findByAccountId(SENDER_ACCOUNT).orElseThrow();
+        BalanceMaster receiver = balanceRepository.findByAccountId(RECEIVER_ACCOUNT).orElseThrow();
 
         // Hold is cleared back to 0!
         assertEquals(0, BigDecimal.ZERO.compareTo(sender.getHoldAmount()));
@@ -223,8 +230,8 @@ class MakerCheckerIntegrationTest {
         MutationResponse rejectedResponse = mutationService.rejectTransfer(txId, tellerRejection);
         assertEquals("FAILED", rejectedResponse.getStatus());
 
-        BalanceMaster sender = balanceRepository.findById(SENDER_ACCOUNT).orElseThrow();
-        BalanceMaster receiver = balanceRepository.findById(RECEIVER_ACCOUNT).orElseThrow();
+        BalanceMaster sender = balanceRepository.findByAccountId(SENDER_ACCOUNT).orElseThrow();
+        BalanceMaster receiver = balanceRepository.findByAccountId(RECEIVER_ACCOUNT).orElseThrow();
 
         // Hold released!
         assertEquals(0, BigDecimal.ZERO.compareTo(sender.getHoldAmount()));

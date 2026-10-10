@@ -36,10 +36,7 @@ public class IdempotencyFilter implements GlobalFilter {
 
         if (key != null && !key.isBlank()) {
 
-            System.out.println("IDEMPOTENCY KEY = " + key);
-
             boolean duplicate = idempotencyService.isDuplicate(key);
-            System.out.println("IS DUPLICATE = " + duplicate);
 
             if (duplicate) {
 
@@ -50,9 +47,7 @@ public class IdempotencyFilter implements GlobalFilter {
                         .setComplete();
             }
 
-            System.out.println("SAVING KEY = " + key);
             idempotencyService.save(key);
-            System.out.println("KEY SAVED = " + key);
 
             if (exchange.getRequest().getHeaders().getFirst("X-Idempotency-Key") == null) {
                 final String finalKey = key;

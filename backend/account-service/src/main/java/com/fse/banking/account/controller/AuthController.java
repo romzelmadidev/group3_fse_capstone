@@ -6,6 +6,7 @@ import com.fse.banking.account.dto.LoginResponse;
 import com.fse.banking.account.dto.LogoutResponse;
 import com.fse.banking.account.dto.RegisterRequest;
 import com.fse.banking.account.dto.RegisterResponse;
+import com.fse.banking.account.dto.ResendOtpRequest;
 import com.fse.banking.account.dto.TokenRefreshResponse;
 import com.fse.banking.account.dto.VerifyLoginOtpRequest;
 import com.fse.banking.account.security.JwtProvider;
@@ -95,6 +96,18 @@ public class AuthController {
                 .body(result.getResponse());
     }
 
+    /** Re-sends the email code for registration or first sign-in; verify it with /verify-login-otp. */
+    @PostMapping("/resend-otp")
+    public ResponseEntity<Map<String, Object>> resendOtp(@Valid @RequestBody ResendOtpRequest request) {
+        String maskedEmail = authService.resendLoginOtp(request.getUserId());
+        return ResponseEntity.ok(Map.of(
+                "status", "OTP_SENT",
+                "user_id", request.getUserId(),
+                "masked_email", maskedEmail,
+                "expires_in_seconds", 300
+        ));
+    }
+
     @PostMapping("/refresh")
     public ResponseEntity<TokenRefreshResponse> refresh(
             @CookieValue(name = "refresh_token", required = false) String refreshTokenCookie) {
@@ -128,11 +141,44 @@ public class AuthController {
 
     @PostMapping("/logout-all")
     public ResponseEntity<Map<String, Object>> logoutAll(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
-        authService.logoutAll(authHeader);
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
+            @RequestParam(value = "userId", required = false) String paramUserId) {
+        String userId = paramUserId;
+        if ((userId == null || userId.isBlank()) && authHeader != null && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring(7);
+            if (jwtProvider.validateToken(token)) {
+                userId = jwtProvider.getUserId(token);
+            }
+        }
+        if (userId != null && !userId.isBlank()) {
+            authService.logoutAll(userId, authHeader);
+        } else {
+            authService.logoutAll(authHeader);
+        }
         return ResponseEntity.ok(Map.of(
                 "status", "SUCCESS",
                 "message", "All secondary and web sessions have been terminated."
+        ));
+    }
+
+    @PostMapping("/logout-sessions")
+    public ResponseEntity<Map<String, Object>> logoutAllSessions(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
+            @RequestParam(value = "userId", required = false) String paramUserId) {
+        String userId = paramUserId;
+        if ((userId == null || userId.isBlank()) && authHeader != null && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring(7);
+            if (jwtProvider.validateToken(token)) {
+                userId = jwtProvider.getUserId(token);
+            }
+        }
+        if (userId == null || userId.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        authService.logoutAllWebSessions(userId, authHeader);
+        return ResponseEntity.ok(Map.of(
+                "status", "SUCCESS",
+                "message", "All web sessions have been terminated."
         ));
     }
 

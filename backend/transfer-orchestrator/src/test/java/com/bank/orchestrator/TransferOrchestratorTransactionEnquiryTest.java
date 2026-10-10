@@ -1,6 +1,7 @@
 package com.bank.orchestrator;
 
 import com.bank.ledger.contracts.dto.AccountTransactionDto;
+import com.bank.ledger.contracts.dto.TransactionStatusHistoryDto;
 import com.bank.orchestrator.controller.TransferOrchestratorController;
 import com.bank.orchestrator.service.BiometricChallengeService;
 import com.bank.orchestrator.service.CbsClientService;
@@ -60,7 +61,7 @@ class TransferOrchestratorTransactionEnquiryTest {
 
         when(cbsService.getAccountTransactions("ACC-100001", 0, 20)).thenReturn(List.of(tx1));
 
-        ResponseEntity<List<AccountTransactionDto>> response = controller.getAccountTransactions("ACC-100001", null, 0, 20);
+        ResponseEntity<List<AccountTransactionDto>> response = controller.getAccountTransactions("ACC-100001", 0, 20);
 
         assertNotNull(response.getBody());
         assertEquals(1, response.getBody().size());
@@ -93,11 +94,46 @@ class TransferOrchestratorTransactionEnquiryTest {
 
         when(cbsService.getAccountTransactions("ACC-100001", 2, 5)).thenReturn(List.of(tx2));
 
-        ResponseEntity<List<AccountTransactionDto>> response = controller.getAccountTransactions("ACC-100001", null, 2, 5);
+        ResponseEntity<List<AccountTransactionDto>> response = controller.getAccountTransactions("ACC-100001", 2, 5);
 
         assertNotNull(response.getBody());
         assertEquals(1, response.getBody().size());
         assertEquals("TXN-OFS-02", response.getBody().get(0).getTransactionId());
         verify(cbsService, times(1)).getAccountTransactions("ACC-100001", 2, 5);
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/transfers/{transactionId}/status-history routes to CBS client and returns status history")
+    void testGetTransactionStatusHistoryEndpoint() {
+        TransferOrchestratorController controller = new TransferOrchestratorController(
+                orchestrationService,
+                biometricService,
+                coolOffService,
+                cbsService,
+                new ObjectMapper()
+        );
+
+        TransactionStatusHistoryDto item = TransactionStatusHistoryDto.builder()
+                .historyId("HIST-99")
+                .transactionId("TXN-STATUS-99")
+                .fromStatus("INITIATED")
+                .toStatus("POSTED")
+                .changeReason("CBS_POSTING_CONFIRMED")
+                .reasonDetails("Completed")
+                .actorId("CORE")
+                .actorType("SYSTEM")
+                .changedAt(Instant.now())
+                .build();
+
+        when(cbsService.getTransactionStatusHistory("TXN-STATUS-99", 0, 20)).thenReturn(List.of(item));
+
+        ResponseEntity<List<TransactionStatusHistoryDto>> response =
+                controller.getTransactionStatusHistory("TXN-STATUS-99", 0, 20);
+
+        assertNotNull(response.getBody());
+        assertEquals(1, response.getBody().size());
+        assertEquals("POSTED", response.getBody().get(0).getToStatus());
+        assertEquals("CBS_POSTING_CONFIRMED", response.getBody().get(0).getChangeReason());
+        verify(cbsService, times(1)).getTransactionStatusHistory("TXN-STATUS-99", 0, 20);
     }
 }

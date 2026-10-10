@@ -83,4 +83,32 @@ class NotificationControllerTest {
             ));
         });
     }
+
+    @Test
+    @DisplayName("Should deliver events only to the target user's streams")
+    @SuppressWarnings("unchecked")
+    void testEventsAreIsolatedPerUser() throws Exception {
+        SseEmitter alice = org.mockito.Mockito.mock(SseEmitter.class);
+        SseEmitter bob = org.mockito.Mockito.mock(SseEmitter.class);
+        var field = NotificationStreamController.class.getDeclaredField("userEmitters");
+        field.setAccessible(true);
+        var map = (java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CopyOnWriteArrayList<SseEmitter>>) field.get(realStreamController);
+        map.put("ALICE", new java.util.concurrent.CopyOnWriteArrayList<>(java.util.List.of(alice)));
+        map.put("BOB", new java.util.concurrent.CopyOnWriteArrayList<>(java.util.List.of(bob)));
+
+        realStreamController.pushSecurityAlert("ALICE", Map.of("type", "DEVICE_REVOKED"));
+        realStreamController.pushToast("ALICE", Map.of("type", "TRANSACTION_ALERT"));
+
+        verify(alice, org.mockito.Mockito.times(2)).send(any(SseEmitter.SseEventBuilder.class));
+        verify(bob, org.mockito.Mockito.never()).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
+    @Test
+    @DisplayName("Should reject SSE streams that do not identify a user")
+    void testStreamRequiresUserId() {
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> realStreamController.streamNotifications(" "));
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> realStreamController.streamNotifications(null));
+    }
 }

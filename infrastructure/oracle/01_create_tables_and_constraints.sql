@@ -29,6 +29,12 @@ CREATE TABLE users (
     max_concurrent_sessions NUMBER(3) DEFAULT 3 NOT NULL,
     failed_login_attempts   NUMBER(3) DEFAULT 0 NOT NULL,
     status                  VARCHAR2(20) DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'LOCKED', 'SUSPENDED')),
+    last_login_at           TIMESTAMP WITH TIME ZONE,
+    last_known_latitude     NUMBER(10, 6) DEFAULT 14.5995,
+    last_known_longitude    NUMBER(10, 6) DEFAULT 120.9842,
+    last_known_location_name VARCHAR2(100) DEFAULT 'Manila, Philippines',
+    last_known_ip           VARCHAR2(45) DEFAULT '112.198.45.10',
+    last_geo_updated_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_at              TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at              TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
@@ -48,6 +54,7 @@ CREATE TABLE accounts (
     user_id        VARCHAR2(64) NOT NULL,
     account_number VARCHAR2(32) NOT NULL UNIQUE,
     account_type   VARCHAR2(20) NOT NULL CHECK (account_type IN ('SAVINGS')),
+    currency       VARCHAR2(3) DEFAULT 'PHP' NOT NULL,
     status         VARCHAR2(20) DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'LOCKED', 'PENDING_APPROVAL')),
     credit_limit   NUMBER(18, 4) DEFAULT 0.0000 NOT NULL CHECK (credit_limit >= 0),
     created_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -63,9 +70,11 @@ COMMENT ON COLUMN accounts.credit_limit IS 'Approved credit limit for CREDIT acc
 -- ------------------------------------------------------------------------------
 -- 3. BALANCE_MASTER TABLE (Pessimistic Locking Target)
 -- Dedicated table for live balances locked via SELECT ... FOR UPDATE.
+-- Uses surrogate balance_id primary key to eliminate shared PK/FK anti-pattern.
 -- ------------------------------------------------------------------------------
 CREATE TABLE balance_master (
-    account_id        VARCHAR2(64) PRIMARY KEY,
+    balance_id        VARCHAR2(64) PRIMARY KEY,
+    account_id        VARCHAR2(64) NOT NULL UNIQUE,
     balance_amount    NUMBER(18, 4) DEFAULT 0.0000 NOT NULL CHECK (balance_amount >= 0),
     hold_amount       NUMBER(18, 4) DEFAULT 0.0000 NOT NULL CHECK (hold_amount >= 0),
     available_balance NUMBER(18, 4) GENERATED ALWAYS AS (balance_amount - hold_amount) VIRTUAL,
@@ -76,6 +85,8 @@ CREATE TABLE balance_master (
 );
 
 COMMENT ON TABLE balance_master IS 'Master balance records optimized for SELECT FOR UPDATE pessimistic locking';
+COMMENT ON COLUMN balance_master.balance_id IS 'Surrogate primary key (e.g. BM-A2001) ensuring clean PK/FK separation';
+COMMENT ON COLUMN balance_master.account_id IS 'Unique foreign key referencing accounts(account_id)';
 COMMENT ON COLUMN balance_master.balance_amount IS 'Total ledger balance with 4 decimal places precision (@Digits(14,4))';
 COMMENT ON COLUMN balance_master.hold_amount IS 'Funds frozen for pending approvals (Maker-Checker threshold > 100,000)';
 COMMENT ON COLUMN balance_master.available_balance IS 'Spendable balance: (balance_amount - hold_amount) virtual generated column';
@@ -100,6 +111,7 @@ CREATE TABLE transactions (
     from_account_id        VARCHAR2(64) NOT NULL,
     to_account_id          VARCHAR2(64),
     type                   VARCHAR2(30) NOT NULL CHECK (type IN ('DEPOSIT', 'WITHDRAWAL', 'TRANSFER')),
+    currency               VARCHAR2(3) DEFAULT 'PHP' NOT NULL,
     amount                 NUMBER(18, 4) NOT NULL CHECK (amount > 0),
     before_balance         NUMBER(18, 4) NOT NULL,
     after_balance          NUMBER(18, 4) NOT NULL,
@@ -107,6 +119,7 @@ CREATE TABLE transactions (
     requires_maker_checker NUMBER(1) DEFAULT 0 NOT NULL CHECK (requires_maker_checker IN (0, 1)),
     approved_by_user_id    VARCHAR2(64),
     idempotency_key        VARCHAR2(64) UNIQUE,
+    memo                   VARCHAR2(255),
     created_at             TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at             TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT fk_tx_from_acc FOREIGN KEY (from_account_id) REFERENCES accounts(account_id),
@@ -342,6 +355,9 @@ VALUES ('5010-INT-EXPENSE', 'Deposit Interest Expense', 'EXPENSE', 'PHP', 1);
 INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)
 VALUES ('2150-TAX-WITHHOLD-PAYABLE', 'BIR Final Withholding Tax Payable (20%)', 'LIABILITY', 'PHP', 1);
 
+INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)
+VALUES ('20100', 'Demand Deposit - Customer Accounts', 'LIABILITY', 'PHP', 1);
+
 INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
 VALUES ('1010-CASH-VAULT', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
 
@@ -357,5 +373,13 @@ VALUES ('5010-INT-EXPENSE', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP
 INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
 VALUES ('2150-TAX-WITHHOLD-PAYABLE', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
 
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('20100', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('20100', '2026-M10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
 INSERT INTO system_dates (system_date_id, business_date, status, posting_window_open, last_cob_completed_at, updated_at)
-VALUES ('SYS-DATE-001', DATE '2026-10-07', 'ONLINE', 1, NULL, CURRENT_TIMESTAMP);
+VALUES ('SYS-DATE-1', TRUNC(CURRENT_DATE), 'ONLINE', 1, NULL, CURRENT_TIMESTAMP);
+
+

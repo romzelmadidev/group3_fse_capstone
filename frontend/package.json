@@ -4,14 +4,15 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 3000",
+    "dev": "node --insecure-http-parser node_modules/vite/bin/vite.js --port 3000",
     "build": "vite build",
     "preview": "vite preview --port 3000"
   },
   "dependencies": {
-    "@fontsource-variable/geist": "5.3.0",
     "@fontsource-variable/geist-mono": "5.3.0",
+    "@fontsource-variable/onest": "^5.3.1",
     "axios": "^1.7.7",
+    "leaflet": "1.9.4",
     "lucide-react": "^0.441.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

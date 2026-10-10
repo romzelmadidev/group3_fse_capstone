@@ -31,6 +31,9 @@ class OutboxWorkerIntegrationTest {
     @Autowired
     private OutboxRelayScheduler outboxRelayScheduler;
 
+    @Autowired
+    private com.bank.ledger.engine.repository.master.BalanceMasterRepository balanceRepository;
+
     @org.junit.jupiter.api.BeforeEach
     void checkPrerequisites() {
         try (java.net.Socket socket = new java.net.Socket()) {
@@ -48,13 +51,19 @@ class OutboxWorkerIntegrationTest {
     @Test
     @DisplayName("Verify Transactional Outbox Pattern & Background Relay Worker (EVT-601)")
     void testOutboxWorkerRelaysEventToKafka() throws Exception {
+        com.bank.ledger.engine.entity.master.BalanceMaster sender = balanceRepository.findByAccountId("1000-2000-3001").orElseThrow();
+        sender.setAvailableBalance(new BigDecimal("500000.0000"));
+        sender.setBalanceAmount(new BigDecimal("500000.0000"));
+        sender.setHoldAmount(BigDecimal.ZERO);
+        balanceRepository.saveAndFlush(sender);
+
         String txId = "TX-OUTBOX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
         // 1. Execute a financial transfer (Route B - Normal settlement)
         MutationRequest request = MutationRequest.builder()
                 .transactionId(txId)
-                .accountId("acc-2001-sav-001")
-                .targetAccountId("acc-2003-sav-002")
+                .accountId("1000-2000-3001")
+                .targetAccountId("1000-2000-3002")
                 .eventType(EventType.TRANSFER)
                 .mutationType(MutationType.TRANSFER)
                 .mutationAmount(new BigDecimal("1200.0000"))

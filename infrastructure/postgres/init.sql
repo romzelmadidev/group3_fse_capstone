@@ -208,37 +208,3 @@ ON audit_block_anchor
 FOR EACH ROW
 EXECUTE FUNCTION enforce_audit_immutability();
 
--- ============================================================
--- SAMPLE SEED DATA
--- ============================================================
-
-INSERT INTO ledger_mutation_audit (
-    transaction_id,
-    account_id,
-    mutation_type,
-    mutation_amount,
-    before_balance,
-    after_balance,
-    initiator_user_id,
-    approved_by_user_id,
-    status,
-    created_at,
-    prev_hash,
-    sha256_hash
-)
-VALUES (
-           'T5001',
-           'A2001',
-           'TRANSFER',
-           2000.0000,
-           300000.0000,
-           298000.0000,
-           'U1001',
-           NULL,
-           'COMMITTED',
-           '2024-06-01 14:32:00',
-           'GENESIS_0000000000000000000000000000000000000000000000000000000000000000',
-           '4e7c1f8a29b40c812739481239841029348102934810293481029348102933b9'
-       )
-    ON CONFLICT (transaction_id, account_id, mutation_type) DO NOTHING;
-

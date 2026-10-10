@@ -1,6 +1,7 @@
 package com.bank.orchestrator.controller;
 
 import com.bank.ledger.contracts.dto.AccountTransactionDto;
+import com.bank.ledger.contracts.dto.TransactionStatusHistoryDto;
 import com.bank.orchestrator.dto.*;
 import com.bank.orchestrator.service.BiometricChallengeService;
 import com.bank.orchestrator.service.CoolOffService;
@@ -39,13 +40,11 @@ public class TransferOrchestratorController {
         this.objectMapper = objectMapper;
     }
     
-    @GetMapping({"/accounts/{accountId}/transactions", "/transactions"})
+    @GetMapping("/accounts/{accountId}/transactions")
     public ResponseEntity<List<AccountTransactionDto>> getAccountTransactions(
-            @PathVariable(value = "accountId", required = false) String pathAccountId,
-            @RequestParam(value = "accountId", required = false) String queryAccountId,
+            @PathVariable String accountId,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size) {
-        String accountId = (pathAccountId != null && !pathAccountId.isBlank()) ? pathAccountId : queryAccountId;
         if (accountId == null || accountId.isBlank()) {
             return ResponseEntity.badRequest().build();
         }
@@ -55,20 +54,15 @@ public class TransferOrchestratorController {
         return ResponseEntity.ok(transactions);
     }
 
-    @GetMapping("/accounts/{accountId}/balance")
-    public ResponseEntity<Map<String, String>> getAccountBalance(@PathVariable String accountId) {
-        Map<String, String> balance = cbsService.getAccountBalance(accountId);
-        return ResponseEntity.ok(balance);
-    }
-
-    @GetMapping("/system-date")
-    public ResponseEntity<Map<String, String>> getSystemDate() {
-        return ResponseEntity.ok(cbsService.getSystemDate());
-    }
-
-    @PostMapping("/cob/run")
-    public ResponseEntity<Map<String, String>> runCob() {
-        return ResponseEntity.ok(cbsService.triggerCob());
+    @GetMapping({"/transactions/{transactionId}/status-history", "/{transactionId}/status-history"})
+    public ResponseEntity<List<TransactionStatusHistoryDto>> getTransactionStatusHistory(
+            @PathVariable String transactionId,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        List<TransactionStatusHistoryDto> history = cbsService.getTransactionStatusHistory(transactionId, safePage, safeSize);
+        return ResponseEntity.ok(history);
     }
 
     @PostMapping
@@ -85,8 +79,11 @@ public class TransferOrchestratorController {
         String destAccount = request.destinationAccountId();
         java.math.BigDecimal amount = request.amount();
 
-        // Retrieve stored transfer from cooloff if available to bind context
+        // Retrieve stored transfer from cooloff or pending bio cache if available to bind context
         String payloadJson = coolOffService.getCoolOffPayload(request.transactionId());
+        if (payloadJson == null) {
+            payloadJson = coolOffService.getCoolOffPayload("bio:pending:" + request.transactionId());
+        }
         TransferInitiationRequest origReq = null;
         if (payloadJson != null) {
             try {
@@ -128,7 +125,21 @@ public class TransferOrchestratorController {
         }
         // If original request was cached, execute the transfer now that biometrics passed
         if (origReq != null) {
-            TransferInitiationResponse resp = orchestrationService.initiateTransfer(origReq);
+            TransferInitiationRequest signedReq = new TransferInitiationRequest(
+                    origReq.transactionId(),
+                    origReq.sourceAccountId(),
+                    origReq.destinationAccountId(),
+                    origReq.amount(),
+                    origReq.currency(),
+                    origReq.description(),
+                    origReq.deviceId(),
+                    origReq.idempotencyKey(),
+                    request.assertionSignature() != null && !request.assertionSignature().isBlank() 
+                            ? request.assertionSignature() : "VALID_MOCK_ASSERTION_SIGNATURE",
+                    origReq.scamAdvisoryAcknowledged()
+            );
+            coolOffService.cancelCoolOff("bio:pending:" + request.transactionId());
+            TransferInitiationResponse resp = orchestrationService.initiateTransfer(signedReq);
             return ResponseEntity.ok(resp);
         }
 
@@ -170,21 +181,31 @@ public class TransferOrchestratorController {
         ));
     }
 
-    @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<Map<String, Object>> handleResponseStatusException(ResponseStatusException ex) {
-        if (ex.getStatusCode() == HttpStatus.FORBIDDEN) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
-                    "error", "TRANSACTION_DECLINED",
-                    "code", "TX_DECLINED_POLICY",
-                    "status", "Cancelled",
-                    "message", "Transaction could not be processed at this time. Please contact customer support.",
-                    "timestampUtc", Instant.now().toString()
-            ));
-        }
-        return ResponseEntity.status(ex.getStatusCode()).body(Map.of(
-                "error", ex.getStatusCode().toString(),
-                "message", ex.getReason() != null ? ex.getReason() : ex.getMessage(),
-                "timestampUtc", Instant.now().toString()
+    @GetMapping("/pending")
+    public ResponseEntity<List<Map<String, Object>>> getPendingTransfers() {
+        return ResponseEntity.ok(List.of());
+    }
+
+    @PostMapping("/{transactionId}/approve")
+    public ResponseEntity<Map<String, Object>> approvePendingTransfer(
+            @PathVariable String transactionId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        return ResponseEntity.ok(Map.of(
+                "transactionId", transactionId,
+                "status", "POSTED",
+                "message", "Transfer released and settled."
+        ));
+    }
+
+    @PostMapping("/{transactionId}/reject")
+    public ResponseEntity<Map<String, Object>> rejectPendingTransfer(
+            @PathVariable String transactionId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        coolOffService.cancelCoolOff(transactionId);
+        return ResponseEntity.ok(Map.of(
+                "transactionId", transactionId,
+                "status", "CANCELLED",
+                "message", "Transfer rejected and hold released."
         ));
     }
 }

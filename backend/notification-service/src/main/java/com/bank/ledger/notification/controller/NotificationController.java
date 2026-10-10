@@ -125,6 +125,65 @@ public class NotificationController {
         return ResponseEntity.ok(response);
     }
 
+    @PostMapping("/transfer-alert")
+    public ResponseEntity<Map<String, Object>> handleTransferAlert(
+            @RequestBody(required = false) Map<String, Object> request) {
+
+        String userId = request != null && request.get("user_id") != null
+                ? request.get("user_id").toString()
+                : (request != null && request.get("userId") != null ? request.get("userId").toString() : "USR-UNKNOWN");
+
+        String transferId = request != null && request.get("transfer_id") != null
+                ? request.get("transfer_id").toString()
+                : (request != null && request.get("transferId") != null
+                    ? request.get("transferId").toString()
+                    : "TXN-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+
+        String amount = request != null && request.get("amount") != null ? request.get("amount").toString() : "0.00";
+        String status = request != null && request.get("status") != null ? request.get("status").toString() : "SUCCESS";
+        String recipient = request != null && request.get("recipient_name") != null
+                ? request.get("recipient_name").toString()
+                : (request != null && request.get("counterparty") != null ? request.get("counterparty").toString() : "Beneficiary");
+
+        String message = request != null && request.get("message") != null
+                ? request.get("message").toString()
+                : ("Transfer of PHP " + amount + " to " + recipient + " completed successfully.");
+
+        String notificationId = "NOTIF-TRX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+
+        if (notificationRepository != null && !userId.isBlank()) {
+            try {
+                NotificationEntity entity = NotificationEntity.builder()
+                        .notificationId(notificationId)
+                        .userId(userId)
+                        .type("TRANSACTION_ALERT")
+                        .message(message)
+                        .sentAt(Instant.now())
+                        .build();
+                notificationRepository.save(entity);
+            } catch (Exception e) {
+                log.warn("Could not persist transaction notification to database: {}", e.getMessage());
+            }
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("notification_id", notificationId);
+        payload.put("type", "TRANSACTION_ALERT");
+        payload.put("user_id", userId);
+        payload.put("transferId", transferId);
+        payload.put("amount", amount);
+        payload.put("status", status);
+        payload.put("counterparty", recipient);
+        payload.put("message", message);
+        payload.put("timestamp", Instant.now().toString());
+
+        if (streamController != null) {
+            streamController.pushToast(userId, payload);
+        }
+
+        return ResponseEntity.ok(payload);
+    }
+
     @PostMapping("/device-approved")
     public ResponseEntity<Map<String, Object>> handleDeviceApproved(
             @RequestBody(required = false) Map<String, Object> request) {

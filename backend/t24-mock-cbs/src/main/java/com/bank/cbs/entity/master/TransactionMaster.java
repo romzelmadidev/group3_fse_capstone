@@ -25,18 +25,44 @@ public class TransactionMaster {
     @Column(name = "idempotency_key", length = 64, unique = true)
     private String idempotencyKey;
 
-    @Column(name = "source_account_id", length = 64)
+    @Column(name = "from_account_id", length = 64)
     private String sourceAccountId;
 
-    @Column(name = "target_account_id", length = 64)
+    @Column(name = "to_account_id", length = 64)
     private String targetAccountId;
+
+    public String getFromAccountId() {
+        return sourceAccountId;
+    }
+
+    public void setFromAccountId(String fromAccountId) {
+        this.sourceAccountId = fromAccountId;
+    }
+
+    public String getToAccountId() {
+        return targetAccountId;
+    }
+
+    public void setToAccountId(String toAccountId) {
+        this.targetAccountId = toAccountId;
+    }
 
     @Column(name = "amount", nullable = false, precision = 18, scale = 4)
     private BigDecimal amount;
 
+    @Column(name = "before_balance", precision = 18, scale = 4)
+    private BigDecimal beforeBalance;
+
+    @Column(name = "after_balance", precision = 18, scale = 4)
+    private BigDecimal afterBalance;
+
     @Column(name = "currency", length = 3)
     @Builder.Default
     private String currency = "PHP";
+
+    @Column(name = "type", length = 30)
+    @Builder.Default
+    private String type = "TRANSFER";
 
     @Column(name = "transaction_type", length = 20)
     @Builder.Default

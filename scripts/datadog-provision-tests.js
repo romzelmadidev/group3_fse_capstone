@@ -1,6 +1,6 @@
-const apiKey = process.env.DATADOG_API_KEY || '';
-const appKey = process.env.DATADOG_APP_KEY || '';
-const location = process.env.DATADOG_LOCATION || 'pl:fse-local-banking-de56c164c7cb2e33ccb5d1fd190199e2';
+const apiKey = process.env.DATADOG_API_KEY || 'a65a6c84cbe468582ca3cc16c8b8cf81';
+const appKey = process.env.DATADOG_APP_KEY || 'ddapp_ebWVMLRQjDpJM0lsv8ehu6R78qv63V8Xuu';
+const location = process.env.DATADOG_LOCATION || 'pl:fse-local-banking-worker-0b9cc28d6a0207bc59e9b9b22b68a9db';
 
 const testsToCreate = [
   {
@@ -26,10 +26,10 @@ const testsToCreate = [
       min_location_failed: 1
     },
     message: 'CRITICAL: Gateway latency exceeded 100ms SLA or is DOWN',
-    tags: ['service:gateway-service', 'tier:p1', 'env:local']
+    tags: ['service:gateway-service', 'tier:p1', 'env:dev']
   },
   {
-    name: 'Ledger Mutation Engine - Concurrency & Solvency Probe',
+    name: 'Transfer Orchestrator - Perimeter & OFS Gateway Probe',
     type: 'api',
     subtype: 'http',
     status: 'live',
@@ -37,12 +37,12 @@ const testsToCreate = [
     config: {
       request: {
         method: 'GET',
-        url: 'http://ledger-mutation-engine:8082/actuator/health',
+        url: 'http://transfer-orchestrator:8082/actuator/health',
         timeout: 5
       },
       assertions: [
         { type: 'statusCode', operator: 'is', target: 200 },
-        { type: 'responseTime', operator: 'lessThan', target: 150 }
+        { type: 'responseTime', operator: 'lessThan', target: 100 }
       ]
     },
     options: {
@@ -50,8 +50,8 @@ const testsToCreate = [
       min_failure_duration: 0,
       min_location_failed: 1
     },
-    message: 'CRITICAL: Core Ledger Mutation Engine is UNHEALTHY',
-    tags: ['service:ledger-mutation-engine', 'tier:core', 'env:local']
+    message: 'CRITICAL: Core Transfer Orchestrator Perimeter is UNHEALTHY',
+    tags: ['service:transfer-orchestrator', 'tier:core', 'env:dev']
   },
   {
     name: 'Account & Identity Service - KYC Probe',
@@ -76,7 +76,7 @@ const testsToCreate = [
       min_location_failed: 1
     },
     message: 'CRITICAL: Account & Identity Service is UNHEALTHY',
-    tags: ['service:account-service', 'tier:core', 'env:local']
+    tags: ['service:account-service', 'tier:core', 'env:dev']
   },
   {
     name: 'Notification & Event Streaming Service Probe',
@@ -101,7 +101,32 @@ const testsToCreate = [
       min_location_failed: 1
     },
     message: 'WARNING: Notification & Alert Service is UNHEALTHY',
-    tags: ['service:notification-service', 'tier:support', 'env:local']
+    tags: ['service:notification-service', 'tier:support', 'env:dev']
+  },
+  {
+    name: 'Risk Engine (S2 + Laya AI) Health Probe',
+    type: 'api',
+    subtype: 'http',
+    status: 'live',
+    locations: [location],
+    config: {
+      request: {
+        method: 'GET',
+        url: 'http://risk-service:8084/health',
+        timeout: 5
+      },
+      assertions: [
+        { type: 'statusCode', operator: 'is', target: 200 },
+        { type: 'responseTime', operator: 'lessThan', target: 200 }
+      ]
+    },
+    options: {
+      tick_every: 60,
+      min_failure_duration: 0,
+      min_location_failed: 1
+    },
+    message: 'CRITICAL: Risk Service or Laya AI model inference is UNHEALTHY',
+    tags: ['service:risk-service', 'tier:ai', 'env:dev']
   },
   {
     name: 'T24 Mock Core Banking System - Ledger & Audit Vault Probe',
@@ -126,32 +151,7 @@ const testsToCreate = [
       min_location_failed: 1
     },
     message: 'CRITICAL: T24 Mock Core Banking System is UNHEALTHY',
-    tags: ['service:t24-mock-cbs', 'tier:core', 'env:local']
-  },
-  {
-    name: 'Stateless Transfer Orchestrator - Perimeter & OFS Probe',
-    type: 'api',
-    subtype: 'http',
-    status: 'live',
-    locations: [location],
-    config: {
-      request: {
-        method: 'GET',
-        url: 'http://transfer-orchestrator:8082/actuator/health',
-        timeout: 5
-      },
-      assertions: [
-        { type: 'statusCode', operator: 'is', target: 200 },
-        { type: 'responseTime', operator: 'lessThan', target: 100 }
-      ]
-    },
-    options: {
-      tick_every: 60,
-      min_failure_duration: 0,
-      min_location_failed: 1
-    },
-    message: 'CRITICAL: Transfer Orchestrator Perimeter is UNHEALTHY',
-    tags: ['service:transfer-orchestrator', 'tier:perimeter', 'env:local']
+    tags: ['service:t24-mock-cbs', 'tier:core', 'env:dev']
   },
   {
     name: 'Compliance & Regulatory Engine - Azurite Storage Probe',
@@ -176,7 +176,7 @@ const testsToCreate = [
       min_location_failed: 1
     },
     message: 'WARNING: Compliance & Regulatory Service is UNHEALTHY',
-    tags: ['service:compliance-service', 'tier:regulatory', 'env:local']
+    tags: ['service:compliance-service', 'tier:regulatory', 'env:dev']
   }
 ];
 

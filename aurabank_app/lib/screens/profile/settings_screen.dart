@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/bank_service.dart';
+import '../../services/biometric_service.dart';
 import '../../theme/aura_theme.dart';
 import '../../widgets/aura_logo.dart';
 import 'devices_sessions_screen.dart';
@@ -7,6 +8,7 @@ import 'risk_showcase_screen.dart';
 import '../auth/security_gate_screen.dart';
 import '../auth/otp_verification_screen.dart';
 import '../auth/login_screen.dart';
+import '../kyc_wizard_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -20,12 +22,108 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final BankService _bankService = BankService();
 
+  Future<void> _toggleFaceId(bool val) async {
+    if (!val) {
+      setState(() => _bankService.user.faceIdEnabled = false);
+      await _bankService.setFaceIdEnabled(false);
+      return;
+    }
+
+    final biometric = BiometricService();
+    final canAuth = await biometric.canAuthenticate();
+    if (!canAuth) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Face ID is not supported or not enrolled on this device.'),
+            backgroundColor: Color(0xFFC8423B),
+          ),
+        );
+      }
+      return;
+    }
+
+    final success = await biometric.authenticate(
+      reason: 'Verify Face ID to enable biometric login for Aura Bank',
+      biometricOnly: false,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      setState(() => _bankService.user.faceIdEnabled = true);
+      await _bankService.setFaceIdEnabled(true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Face ID login enabled successfully.'),
+          backgroundColor: Color(0xFF2FA37E),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Face ID verification failed or was cancelled.'),
+          backgroundColor: Color(0xFF7D8892),
+        ),
+      );
+    }
+  }
+
+  Future<void> _toggleFingerprint(bool val) async {
+    if (!val) {
+      setState(() => _bankService.user.fingerprintEnabled = false);
+      await _bankService.setFingerprintEnabled(false);
+      return;
+    }
+
+    final biometric = BiometricService();
+    final canAuth = await biometric.canAuthenticate();
+    if (!canAuth) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Fingerprint sensor is not supported or not enrolled on this device.'),
+            backgroundColor: Color(0xFFC8423B),
+          ),
+        );
+      }
+      return;
+    }
+
+    final success = await biometric.authenticate(
+      reason: 'Scan your fingerprint to enable biometric login for Aura Bank',
+      biometricOnly: false,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      setState(() => _bankService.user.fingerprintEnabled = true);
+      await _bankService.setFingerprintEnabled(true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Fingerprint login enabled successfully.'),
+          backgroundColor: Color(0xFF2FA37E),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Fingerprint verification failed or was cancelled.'),
+          backgroundColor: Color(0xFF7D8892),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = _bankService.user;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFBFBFD),
+      backgroundColor: const Color(0xFFF7F7F7),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 18.0, vertical: 12.0),
@@ -121,8 +219,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                   colors: [
-                                    Color(0xFF260057),
-                                    Color(0xFF4B0FAF),
+                                    Color(0xFF10171C),
+                                    Color(0xFF1C6E5A),
                                   ],
                                 ),
                               ),
@@ -143,7 +241,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 width: 18,
                                 height: 18,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF10B981),
+                                  color: const Color(0xFF2FA37E),
                                   shape: BoxShape.circle,
                                   border: Border.all(color: Colors.white, width: 2),
                                 ),
@@ -191,7 +289,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF3F4F6),
+                              color: const Color(0xFFF1F3F4),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Row(
@@ -283,24 +381,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 child: Column(
                   children: [
+                    _buildNavTile(
+                      title: 'Identity Verification (e-KYC)',
+                      subtitle: user.isKycVerified
+                          ? 'Philippine ID verified'
+                          : (user.kycStatus == 'PENDING_REVIEW'
+                              ? 'Application under compliance review'
+                              : 'Upload Philippine ID & selfie'),
+                      badgeText: user.isKycVerified ? 'Verified' : (user.kycStatus == 'PENDING_REVIEW' ? 'Review' : 'Required'),
+                      isPurpleBadge: !user.isKycVerified,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (context) => KycWizardScreen(onCompleted: () => setState(() {}))),
+                        );
+                      },
+                    ),
+                    const Divider(color: AuraColors.divider, height: 1),
                     _buildSwitchTile(
                       title: 'Biometric Login (Face ID)',
                       subtitle: 'Unlock app instantly with Face ID',
                       value: user.faceIdEnabled,
-                      onChanged: (val) {
-                        setState(() => user.faceIdEnabled = val);
-                        _bankService.setFaceIdEnabled(val);
-                      },
+                      onChanged: _toggleFaceId,
                     ),
                     const Divider(color: AuraColors.divider, height: 1),
                     _buildSwitchTile(
                       title: 'Biometric Login (Fingerprint)',
                       subtitle: 'Authenticate with Touch ID / Fingerprint',
                       value: user.fingerprintEnabled,
-                      onChanged: (val) {
-                        setState(() => user.fingerprintEnabled = val);
-                        _bankService.setFingerprintEnabled(val);
-                      },
+                      onChanged: _toggleFingerprint,
                     ),
                     const Divider(color: AuraColors.divider, height: 1),
                     _buildNavTile(
@@ -469,8 +577,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 height: 50,
                 child: OutlinedButton(
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFFFEE2E2), width: 1.2),
-                    backgroundColor: const Color(0xFFFEF2F2).withValues(alpha: 0.5),
+                    side: const BorderSide(color: Color(0xFFFBE9E7), width: 1.2),
+                    backgroundColor: const Color(0xFFFDF3F2).withValues(alpha: 0.5),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
                   ),
                   onPressed: () {
@@ -482,14 +590,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: const [
-                      Icon(Icons.logout_rounded, size: 18, color: Color(0xFF991B1B)),
+                      Icon(Icons.logout_rounded, size: 18, color: Color(0xFF8E2B26)),
                       SizedBox(width: 8),
                       Text(
                         'Log Out of This Device',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF991B1B),
+                          color: Color(0xFF8E2B26),
                         ),
                       ),
                     ],
@@ -593,7 +701,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 decoration: BoxDecoration(
                   color: isPurpleBadge
                       ? AuraColors.tintPurple
-                      : const Color(0xFFFEE2E2),
+                      : const Color(0xFFFBE9E7),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -603,7 +711,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     fontWeight: FontWeight.w700,
                     color: isPurpleBadge
                         ? AuraColors.primary
-                        : const Color(0xFFDC2626),
+                        : const Color(0xFFC8423B),
                   ),
                 ),
               ),
@@ -680,7 +788,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: !isProd ? const Color(0xFFEDE9FE) : const Color(0xFFF8FAFC),
+                        color: !isProd ? const Color(0xFFEFF6FB) : const Color(0xFFF7F7F7),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: !isProd ? AuraColors.primary : AuraColors.cardBorder,
@@ -743,7 +851,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: isProd ? const Color(0xFFEDE9FE) : const Color(0xFFF8FAFC),
+                        color: isProd ? const Color(0xFFEFF6FB) : const Color(0xFFF7F7F7),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: isProd ? AuraColors.primary : AuraColors.cardBorder,
@@ -778,7 +886,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: isProd ? const Color(0xFF10B981) : Colors.transparent,
+                              color: isProd ? const Color(0xFF2FA37E) : Colors.transparent,
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -809,7 +917,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       decoration: InputDecoration(
                         hintText: 'https://gateway.banking.azure.com or IP',
                         filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
+                        fillColor: const Color(0xFFF7F7F7),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: const BorderSide(color: AuraColors.cardBorder),
@@ -864,13 +972,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
                         color: _bankService.lastPingLatencyMs != null
-                            ? const Color(0xFFECFDF5)
-                            : const Color(0xFFFEF2F2),
+                            ? const Color(0xFFE4F5EE)
+                            : const Color(0xFFFDF3F2),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: _bankService.lastPingLatencyMs != null
-                              ? const Color(0xFF10B981).withValues(alpha: 0.3)
-                              : const Color(0xFFEF4444).withValues(alpha: 0.3),
+                              ? const Color(0xFF2FA37E).withValues(alpha: 0.3)
+                              : const Color(0xFFD9534B).withValues(alpha: 0.3),
                         ),
                       ),
                       child: Row(
@@ -878,7 +986,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Icon(
                             _bankService.lastPingLatencyMs != null ? Icons.check_circle_rounded : Icons.error_outline_rounded,
                             size: 16,
-                            color: _bankService.lastPingLatencyMs != null ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                            color: _bankService.lastPingLatencyMs != null ? const Color(0xFF17805F) : const Color(0xFFC8423B),
                           ),
                           const SizedBox(width: 8),
                           Text(
@@ -886,7 +994,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: _bankService.lastPingLatencyMs != null ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                              color: _bankService.lastPingLatencyMs != null ? const Color(0xFF17805F) : const Color(0xFFC8423B),
                             ),
                           ),
                         ],

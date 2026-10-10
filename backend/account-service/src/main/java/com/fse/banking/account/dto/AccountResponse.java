@@ -8,7 +8,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 
 @Data
@@ -32,9 +31,15 @@ public class AccountResponse {
     @JsonProperty("status")
     private AccountStatus status;
 
-    @JsonProperty("credit_limit")
-    private BigDecimal creditLimit;
-
     @JsonProperty("created_at")
     private Instant createdAt;
+
+    /** Only set on the staff listing, so the console can name the customer. */
+    @JsonProperty("owner_name")
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private String ownerName;
+
+    @JsonProperty("owner_role")
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private String ownerRole;
 }

@@ -21,6 +21,7 @@ import java.util.Map;
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/ledger")
+@CrossOrigin(originPatterns = "*", allowedHeaders = "*")
 @RequiredArgsConstructor
 public class BalanceMutationController {
 
@@ -236,6 +237,20 @@ public class BalanceMutationController {
                 "error_code", "TX_DECLINED_POLICY",
                 "status", "Cancelled",
                 "message", "Transaction could not be processed at this time. Please contact customer support.",
+                "timestamp", Instant.now()
+        ));
+    }
+
+    /**
+     * Ledger Data Integrity / Database Constraint Violation -> HTTP 422 Unprocessable Entity
+     */
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleDataIntegrityViolation(org.springframework.dao.DataIntegrityViolationException ex) {
+        log.error("[LEDGER INTEGRITY VIOLATION] {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "status", "REJECTED",
+                "error_code", "LEDGER_CONSTRAINT_VIOLATION",
+                "message", "Transfer rejected due to financial ledger constraint violation. Please verify available account balance.",
                 "timestamp", Instant.now()
         ));
     }
