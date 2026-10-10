@@ -290,7 +290,7 @@ class CbsCoreBankingServiceTest {
         ArgumentCaptor<TransactionMaster> txCaptor = ArgumentCaptor.forClass(TransactionMaster.class);
         verify(transactionRepository, atLeastOnce()).save(txCaptor.capture());
         TransactionMaster compensatingTx = txCaptor.getAllValues().stream()
-                .filter(t -> "REVERSAL".equals(t.getTransactionType()))
+                .filter(t -> "REVERSAL".equals(t.getType()))
                 .findFirst()
                 .orElse(null);
         assertNotNull(compensatingTx);

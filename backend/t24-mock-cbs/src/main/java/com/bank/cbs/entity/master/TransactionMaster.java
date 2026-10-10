@@ -60,6 +60,10 @@ public class TransactionMaster {
     @Builder.Default
     private String currency = "PHP";
 
+    @Column(name = "type", length = 30)
+    @Builder.Default
+    private String type = "TRANSFER";
+
     @Column(name = "transaction_type", length = 20)
     @Builder.Default
     private String transactionType = "INTRA_BANK";

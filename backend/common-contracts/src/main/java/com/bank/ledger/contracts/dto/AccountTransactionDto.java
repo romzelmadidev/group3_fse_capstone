@@ -57,6 +57,9 @@ public class AccountTransactionDto {
     @JsonProperty("currency")
     private String currency;
 
+    @JsonProperty("type")
+    private String type;
+
     @JsonProperty("transaction_type")
     @JsonAlias("transactionType")
     private String transactionType;

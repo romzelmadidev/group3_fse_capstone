@@ -361,11 +361,23 @@ CREATE OR REPLACE TRIGGER trg_tx_sync_cols
 BEFORE INSERT OR UPDATE ON transactions
 FOR EACH ROW
 BEGIN
-    IF :NEW.type IS NULL AND :NEW.transaction_type IS NOT NULL THEN
-        :NEW.type := :NEW.transaction_type;
+    -- Standardize type (Operation category: TRANSFER, REVERSAL, DEPOSIT, WITHDRAWAL)
+    IF :NEW.type IS NULL THEN
+        IF UPPER(:NEW.transaction_type) = 'REVERSAL' THEN
+            :NEW.type := 'REVERSAL';
+        ELSE
+            :NEW.type := 'TRANSFER';
+        END IF;
+    ELSIF UPPER(:NEW.type) IN ('INTRA_BANK', 'INTER_BANK') THEN
+        IF :NEW.transaction_type IS NULL THEN
+            :NEW.transaction_type := :NEW.type;
+        END IF;
+        :NEW.type := 'TRANSFER';
     END IF;
-    IF :NEW.transaction_type IS NULL AND :NEW.type IS NOT NULL THEN
-        :NEW.transaction_type := :NEW.type;
+
+    -- Standardize transaction_type (Channel/Routing scope: INTRA_BANK, INTER_BANK)
+    IF :NEW.transaction_type IS NULL OR UPPER(:NEW.transaction_type) IN ('TRANSFER', 'REVERSAL') THEN
+        :NEW.transaction_type := 'INTRA_BANK';
     END IF;
     IF :NEW.before_balance IS NULL THEN
         :NEW.before_balance := 0.0000;
@@ -824,15 +836,7 @@ VALUES ('bal-1000-8801-0006', '1000-8801-0006', 1000000.0000, 0.0000);
 INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
 VALUES ('bal-1000-8801-0007', '1000-8801-0007', 1000000.0000, 0.0000);
 
--- 4. Transactions
--- Tx 1: High-value transfer pending Customer Email Verification (> 50k PHP hold applied)
-INSERT INTO transactions (
-    transaction_id, from_account_id, to_account_id, type, amount,
-    before_balance, after_balance, status, requires_2fa_otp, approved_by_user_id
-) VALUES (
-    'tx-4001-hld-001', '1000-2000-3001', '1000-2000-3002', 'TRANSFER', 5000000.0000,
-    25000000.0000, 20000000.0000, 'PENDING_APPROVAL', 1, NULL
-);
+-- 4. Transactions (Empty: all ledger transactions are created live via the banking system)
 
 -- Baseline Chart of Accounts Seeds
 INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)

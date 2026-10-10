@@ -444,7 +444,8 @@ function TransferDrawer({ tx, account, owners, onClose }) {
             ['To', name(tx.target_account_id)],
             ['Reference', tx.transaction_id],
             ['Status', titleCase(tx.status)],
-            ['Type', titleCase(tx.transaction_type)],
+            ['Type', titleCase(tx.type || 'Transfer')],
+            ['Channel', titleCase(tx.transaction_type || 'Intra Bank')],
             ['Memo', tx.memo || '-'],
           ].map(([k, v]) => (
             <div key={k}>

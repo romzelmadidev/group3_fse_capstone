@@ -59,6 +59,7 @@ public class CbsBalanceController {
                             .targetAccountId(tx.getTargetAccountId())
                             .amount(tx.getAmount())
                             .currency(tx.getCurrency())
+                            .type(tx.getType())
                             .transactionType(tx.getTransactionType())
                             .status(tx.getStatus())
                             .memo(tx.getMemo())

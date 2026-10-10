@@ -444,7 +444,8 @@ public final class OfsMessageUtil {
                   .append(tx.getStatus() != null ? tx.getStatus() : "").append("|")
                   .append(tx.getCreatedAt() != null ? tx.getCreatedAt().toString() : "").append("|")
                   .append(tx.getBeforeBalance() != null ? tx.getBeforeBalance().toPlainString() : "").append("|")
-                  .append(tx.getAfterBalance() != null ? tx.getAfterBalance().toPlainString() : "");
+                  .append(tx.getAfterBalance() != null ? tx.getAfterBalance().toPlainString() : "").append("|")
+                  .append(tx.getType() != null ? tx.getType() : "");
             }
         }
         return sb.toString();
@@ -500,6 +501,11 @@ public final class OfsMessageUtil {
                     try {
                         dto.setAfterBalance(new BigDecimal(cols[9]));
                     } catch (Exception ignored) {}
+                }
+                if (cols.length > 10 && !cols[10].isBlank()) {
+                    dto.setType(cols[10]);
+                } else {
+                    dto.setType(dto.getTransactionType() != null && dto.getTransactionType().equalsIgnoreCase("REVERSAL") ? "REVERSAL" : "TRANSFER");
                 }
             } else {
                 String[] cols = record.split(":", -1);
