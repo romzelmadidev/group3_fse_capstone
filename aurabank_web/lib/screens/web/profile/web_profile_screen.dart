@@ -107,6 +107,14 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final user = _bankService.user;
+    final nameParts = user.name.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).toList();
+    final initials = nameParts.isEmpty
+        ? 'E'
+        : nameParts.length == 1
+            ? nameParts.first[0].toUpperCase()
+            : '${nameParts.first[0]}${nameParts.last[0]}'.toUpperCase();
+    final accountDigits = _bankService.savingsAccountNumber.replaceAll(RegExp(r'\D'), '');
+    final accountLast4 = accountDigits.length >= 4 ? accountDigits.substring(accountDigits.length - 4) : accountDigits;
 
     return Container(
       color: bgSurface,
@@ -119,20 +127,20 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Account & Security Management',
+                  'Profile',
                   style: TextStyle(
-                    fontSize: 26,
+                    fontSize: 22,
                     fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
+                    letterSpacing: -0.4,
                     color: textDark,
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  'Manage institutional profile settings, Multi-Factor Authentication, and active desktop sessions.',
+                const SizedBox(height: 3),
+                const Text(
+                  'Your details, sign-in, and devices',
                   style: TextStyle(
-                    fontSize: 14,
-                    color: textGray.withValues(alpha: 0.9),
+                    fontSize: 13,
+                    color: textGray,
                   ),
                 ),
 
@@ -155,18 +163,22 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Compact Identity Header
-                            Padding(
+                            Container(
                               padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFAF5FF),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFE9D5FF)),
+                              ),
                               child: Row(
                                 children: [
                                   CircleAvatar(
                                     radius: 24,
-                                    backgroundColor: brandViolet.withValues(alpha: 0.1),
-                                    child: const Text(
-                                      'RA',
-                                      style: TextStyle(
-                                        color: brandViolet,
+                                    backgroundColor: brandViolet,
+                                    child: Text(
+                                      initials,
+                                      style: const TextStyle(
+                                        color: Colors.white,
                                         fontWeight: FontWeight.w800,
                                         fontSize: 16,
                                       ),
@@ -184,8 +196,8 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                         Text(
-                                          _bankService.savingsAccountNumber,
-                                          style: const TextStyle(fontSize: 11, color: textGray, fontFamily: 'monospace'),
+                                          'Savings •••• $accountLast4',
+                                          style: const TextStyle(fontSize: 11, color: textGray),
                                         ),
                                       ],
                                     ),
@@ -195,9 +207,9 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
                             ),
                             const Divider(height: 24, color: cardBorder),
 
-                            _buildSettingsNavItem(0, Icons.person_outline_rounded, 'Personal Information'),
-                            _buildSettingsNavItem(1, Icons.shield_outlined, 'Security & 2FA'),
-                            _buildSettingsNavItem(2, Icons.devices_rounded, 'Devices & Sessions'),
+                            _buildSettingsNavItem(0, Icons.person_outline_rounded, 'Details'),
+                            _buildSettingsNavItem(1, Icons.shield_outlined, 'Sign-in'),
+                            _buildSettingsNavItem(2, Icons.devices_rounded, 'Devices'),
                           ],
                         ),
                       ),
@@ -242,13 +254,22 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
         onTap: () => setState(() => _selectedNavSection = index),
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          padding: const EdgeInsets.fromLTRB(10, 12, 14, 12),
           decoration: BoxDecoration(
             color: isSelected ? brandViolet.withValues(alpha: 0.08) : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
             children: [
+              Container(
+                width: 3,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: isSelected ? brandViolet : Colors.transparent,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 10),
               Icon(icon, size: 18, color: isSelected ? brandViolet : textGray),
               const SizedBox(width: 12),
               Text(
@@ -284,13 +305,8 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Personal Details',
+          'Personal details',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: textDark),
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          'Update your personal information and verified contact channels.',
-          style: TextStyle(fontSize: 13, color: textGray),
         ),
         const SizedBox(height: 28),
 
@@ -314,7 +330,7 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: _buildInputField('Billing Address', _addressController, Icons.location_on_outlined),
+              child: _buildInputField('Address', _addressController, Icons.location_on_outlined),
             ),
           ],
         ),
@@ -354,7 +370,7 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
                 ),
                 child: _isSaving
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Text('Save Changes', style: TextStyle(fontWeight: FontWeight.w700)),
+                    : const Text('Save changes', style: TextStyle(fontWeight: FontWeight.w700)),
               ),
             ),
           ],
@@ -376,7 +392,20 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
           controller: controller,
           style: const TextStyle(fontSize: 14, color: textDark),
           decoration: InputDecoration(
-            prefixIcon: Icon(icon, size: 18, color: textGray),
+            prefixIcon: Padding(
+              padding: const EdgeInsets.only(left: 10, right: 4),
+              child: Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3E8FF),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, size: 16, color: brandViolet),
+              ),
+            ),
+            prefixIconConstraints: const BoxConstraints(minWidth: 46, minHeight: 40),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: const BorderSide(color: cardBorder),
