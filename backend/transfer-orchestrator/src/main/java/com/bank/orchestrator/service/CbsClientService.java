@@ -257,6 +257,22 @@ public class CbsClientService {
         return null;
     }
 
+    public Map<String, String> getAccountBalance(String accountId) {
+        log.info("Querying CBS balance for accountId={}", accountId);
+        try {
+            String ofsResponse = webClient.get()
+                    .uri("/api/v1/cbs/accounts/{accountId}/balance", accountId)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofMillis(3000))
+                    .block();
+            return OfsMessageUtil.parseBalanceEnquiryResponse(ofsResponse);
+        } catch (Exception e) {
+            log.error("Failed to query CBS balance for accountId={}: {}", accountId, e.getMessage());
+            return Collections.emptyMap();
+        }
+    }
+
     public void executeCompensatingReversal(String originalTxId, String reason) {
         log.warn("Executing automated Saga compensating reversal for originalTxId={}: reason={}", originalTxId, reason);
         try {

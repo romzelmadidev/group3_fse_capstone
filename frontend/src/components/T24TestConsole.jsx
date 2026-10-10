@@ -30,8 +30,7 @@ import {
   ShieldCheck,
   Zap,
   Moon,
-  Terminal,
-  ShieldAlert
+  Terminal
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -878,6 +877,7 @@ export default function T24TestConsole() {
           <label className="block text-2xs font-bold uppercase tracking-wider text-purple-900">
             Select Test Account
           </label>
+          <div className="mt-2.5 flex flex-col gap-1.5">
             {[
               { id: '1000-2000-3001', label: 'Savings (25.0M)' },
               { id: '1000-2000-3002', label: 'Savings (5.0M)' },
