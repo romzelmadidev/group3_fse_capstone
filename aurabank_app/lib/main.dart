@@ -25,6 +25,7 @@ void main() async {
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarColor: AuraColors.canvas,
     ),
   );
   runApp(const AuraBankApp());
@@ -39,21 +40,7 @@ class AuraBankApp extends StatelessWidget {
       navigatorKey: rootNavigatorKey,
       title: 'Aura Bank',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        scaffoldBackgroundColor: Colors.white,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AuraColors.primary,
-          primary: AuraColors.primary,
-          surface: Colors.white,
-        ),
-        fontFamily: 'Inter',
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.white,
-          foregroundColor: AuraColors.textPrimary,
-          elevation: 0,
-        ),
-      ),
+      theme: AuraTheme.light(),
       initialRoute: '/',
       routes: {
         '/': (context) => const LandingScreen(),

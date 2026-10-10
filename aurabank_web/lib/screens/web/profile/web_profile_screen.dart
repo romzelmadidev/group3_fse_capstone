@@ -17,9 +17,9 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
   static const Color brandViolet = AuraColors.primary;
   static const Color textDark = AuraColors.textPrimary;
   static const Color textGray = AuraColors.textMuted;
-  static const Color bgSurface = Color(0xFFF9FAFB);
-  static const Color cardBorder = Color(0xFFE5E7EB);
-  static const Color accentGreen = Color(0xFF16A34A);
+  static const Color bgSurface = Color(0xFFF7F7F7);
+  static const Color cardBorder = Color(0xFFEAECEE);
+  static const Color accentGreen = Color(0xFF17805F);
 
   int _selectedNavSection = 0; // 0: Personal Information, 1: Security & 2FA, 2: Active Sessions
 
@@ -605,7 +605,7 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: highlighted ? brandViolet.withValues(alpha: 0.03) : const Color(0xFFF9FAFB),
+        color: highlighted ? brandViolet.withValues(alpha: 0.03) : const Color(0xFFF7F7F7),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: highlighted ? brandViolet.withValues(alpha: 0.2) : cardBorder),
       ),
@@ -639,7 +639,7 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
                           color: entry.badge == 'MAIN' || entry.isThisBrowser
-                              ? const Color(0xFFDCFCE7)
+                              ? const Color(0xFFE4F5EE)
                               : const Color(0xFFF3F4F6),
                           borderRadius: BorderRadius.circular(6),
                         ),

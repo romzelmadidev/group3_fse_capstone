@@ -6,8 +6,11 @@ import com.fse.banking.account.dto.LoginResponse;
 import com.fse.banking.account.dto.RegisterRequest;
 import com.fse.banking.account.dto.RegisterResponse;
 import com.fse.banking.account.dto.VerifyLoginOtpRequest;
+import com.fse.banking.account.exception.TooManyRequestsException;
 import com.fse.banking.account.model.UserEntity;
 import com.fse.banking.account.repository.UserRepository;
+import com.fse.banking.account.repository.AccountRepository;
+import com.fse.banking.account.repository.BalanceMasterRepository;
 import com.fse.banking.account.security.JwtProvider;
 import com.fse.banking.account.security.RedisSessionStore;
 import com.fse.banking.account.security.model.RefreshTokenMetadata;
@@ -28,6 +31,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -41,6 +45,8 @@ import java.util.concurrent.ThreadLocalRandom;
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final AccountRepository accountRepository;
+    private final BalanceMasterRepository balanceMasterRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final RedisSessionStore redisSessionStore;
@@ -50,6 +56,10 @@ public class AuthService {
 
     private static final int MAX_FAILED_ATTEMPTS = 5;
     private static final Duration REFRESH_TOKEN_TTL = Duration.ofDays(7);
+    private static final Duration OTP_TTL = Duration.ofMinutes(5);
+    private static final Duration OTP_RESEND_COOLDOWN = Duration.ofSeconds(60);
+    private static final int MAX_OTP_ATTEMPTS = 5;
+    private static final SecureRandom OTP_RANDOM = new SecureRandom();
 
     @Data
     @Builder
@@ -94,9 +104,13 @@ public class AuthService {
         UserEntity saved = userRepository.save(user);
         log.info("User registered successfully: userId={}", saved.getUserId());
 
+        // lastLoginAt stays null: the account cannot get tokens until this email code is verified.
+        sendLoginOtp(saved);
+
         return RegisterResponse.builder()
                 .userId(saved.getUserId())
                 .email(saved.getEmail())
+                .maskedEmail(maskEmail(saved.getEmail()))
                 .kycStatus("PENDING")
                 .createdAt(saved.getCreatedAt())
                 .build();
@@ -143,19 +157,32 @@ public class AuthService {
             userRepository.save(user);
         }
 
+        // Restrict mobile app access to CUSTOMER role only; Administrative & staff must use Web Admin Portal
+        String resolvedDeviceType = resolveDeviceType(request.getDeviceType(), request.getDeviceId(), request.getDeviceName(), userAgent);
+        boolean isWeb = "WEB".equalsIgnoreCase(resolvedDeviceType);
+        if (!isWeb && user.getRole() != UserRole.CUSTOMER) {
+            log.warn("Blocked mobile login attempt for non-customer user {} (role={}, deviceType={})",
+                    user.getUserId(), user.getRole(), resolvedDeviceType);
+            throw new ForbiddenException("Administrative accounts are restricted from mobile access. Please use the Web Admin Portal.");
+        }
+
         // Enforce First-Time Login MFA Verification
         if (user.getLastLoginAt() == null) {
             String otp = redisSessionStore.getLoginOtp(user.getUserId());
             if (otp == null || otp.isBlank()) {
-                otp = String.format("%06d", ThreadLocalRandom.current().nextInt(1000000));
-                redisSessionStore.storeLoginOtp(user.getUserId(), otp, Duration.ofMinutes(5));
-                dispatchOtpEmail(user.getEmail(), user.getFirstName() + " " + user.getLastName(), otp);
+                sendLoginOtp(user);
             }
 
+            String fullName = (user.getFirstName() + " " + (user.getLastName() != null ? user.getLastName() : "")).trim();
             LoginResponse mfaChallenge = LoginResponse.builder()
                     .status("MFA_REQUIRED")
                     .userId(user.getUserId())
                     .maskedEmail(maskEmail(user.getEmail()))
+                    .role(user.getRole().name())
+                    .fullName(fullName)
+                    .email(user.getEmail())
+                    .phoneNumber(user.getPhoneNumber())
+                    .deviceType(resolvedDeviceType)
                     .build();
 
             return LoginResult.builder()
@@ -178,9 +205,27 @@ public class AuthService {
             throw new UnauthorizedException("Account is inactive.");
         }
 
+        // Restrict mobile app access to CUSTOMER role only
+        String resolvedDeviceType = resolveDeviceType(request.getDeviceType(), request.getDeviceId(), request.getDeviceName(), userAgent);
+        boolean isWeb = "WEB".equalsIgnoreCase(resolvedDeviceType);
+        if (!isWeb && user.getRole() != UserRole.CUSTOMER) {
+            log.warn("Blocked mobile OTP verification for non-customer user {} (role={}, deviceType={})",
+                    user.getUserId(), user.getRole(), resolvedDeviceType);
+            throw new ForbiddenException("Administrative accounts are restricted from mobile access. Please use the Web Admin Portal.");
+        }
+
         String cachedOtp = redisSessionStore.getLoginOtp(user.getUserId());
-        if (cachedOtp == null || !cachedOtp.equals(request.getOtp().trim())) {
-            throw new UnauthorizedException("Invalid or expired verification code.");
+        if (cachedOtp == null) {
+            throw new UnauthorizedException("Verification code has expired. Request a new code.");
+        }
+        if (!cachedOtp.equals(request.getOtp().trim())) {
+            long attempts = redisSessionStore.incrementLoginOtpAttempts(user.getUserId(), OTP_TTL);
+            if (attempts >= MAX_OTP_ATTEMPTS) {
+                redisSessionStore.clearLoginOtp(user.getUserId());
+                throw new TooManyRequestsException("Too many incorrect codes. Request a new code.");
+            }
+            long left = MAX_OTP_ATTEMPTS - attempts;
+            throw new UnauthorizedException("Incorrect verification code. " + left + (left == 1 ? " attempt" : " attempts") + " left.");
         }
 
         // Invalidate OTP immediately to prevent replay attacks
@@ -191,6 +236,32 @@ public class AuthService {
         userRepository.save(user);
 
         return createAuthenticatedSession(user, clientIp, userAgent, request.getDeviceId(), request.getDeviceName(), request.getDeviceType());
+    }
+
+    /** Emails a new code to an account that has not verified its email yet. Returns the masked address. */
+    public String resendLoginOtp(String userId) {
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new UnauthorizedException("User account not found."));
+        if (user.getLastLoginAt() != null) {
+            throw new ConflictException("This email is already verified. Sign in with your password.");
+        }
+        long wait = sendLoginOtp(user);
+        if (wait > 0) {
+            throw new TooManyRequestsException("Please wait " + wait + " seconds before requesting a new code.");
+        }
+        return maskEmail(user.getEmail());
+    }
+
+    /** Generates, stores and emails a fresh code unless one went out inside the cooldown. Returns seconds left to wait (0 = sent). */
+    private long sendLoginOtp(UserEntity user) {
+        long wait = redisSessionStore.startLoginOtpCooldown(user.getUserId(), OTP_RESEND_COOLDOWN);
+        if (wait > 0) {
+            return wait;
+        }
+        String otp = String.format("%06d", OTP_RANDOM.nextInt(1_000_000));
+        redisSessionStore.storeLoginOtp(user.getUserId(), otp, OTP_TTL);
+        dispatchOtpEmail(user.getEmail(), user.getFirstName() + " " + user.getLastName(), otp);
+        return 0;
     }
 
     public LoginResult createAuthenticatedSession(UserEntity user, String clientIp, String userAgent) {
@@ -342,6 +413,28 @@ public class AuthService {
         redisSessionStore.saveRefreshToken(tokenMetadata, REFRESH_TOKEN_TTL);
         redisSessionStore.addToTokenFamily(sessionId, refreshTokenId);
 
+        String fullName = (user.getFirstName() + " " + (user.getLastName() != null ? user.getLastName() : "")).trim();
+        String primaryAccId = null;
+        String primaryAccNum = null;
+        java.math.BigDecimal availBalance = java.math.BigDecimal.ZERO;
+        String currency = "PHP";
+
+        try {
+            List<com.fse.banking.account.model.AccountEntity> userAccounts = accountRepository.findByUserId(user.getUserId());
+            if (userAccounts != null && !userAccounts.isEmpty()) {
+                com.fse.banking.account.model.AccountEntity acc = userAccounts.get(0);
+                primaryAccId = acc.getAccountId();
+                primaryAccNum = acc.getAccountNumber();
+                currency = acc.getCurrency() != null ? acc.getCurrency() : "PHP";
+                Optional<com.fse.banking.account.model.BalanceMasterEntity> bm = balanceMasterRepository.findByAccountId(primaryAccId);
+                if (bm.isPresent()) {
+                    availBalance = bm.get().getAvailableBalance();
+                }
+            }
+        } catch (Exception ex) {
+            log.warn("Could not query account/balance for user {}: {}", user.getUserId(), ex.getMessage());
+        }
+
         LoginResponse loginResponse = LoginResponse.builder()
                 .status(isApproved ? "AUTHENTICATED" : (isThirdDevice ? "PENDING_CONFIRMATION" : "PENDING_APPROVAL"))
                 .accessToken(accessToken)
@@ -349,6 +442,15 @@ public class AuthService {
                 .expiresInSeconds(jwtProvider.getAccessTokenExpirationSeconds())
                 .role(roleAuthority)
                 .userId(user.getUserId())
+                .fullName(fullName)
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .email(user.getEmail())
+                .phoneNumber(user.getPhoneNumber())
+                .primaryAccountId(primaryAccId)
+                .accountNumber(primaryAccNum)
+                .availableBalance(availBalance)
+                .currency(currency)
                 .deviceId(resolvedDeviceId)
                 .deviceName(resolvedDeviceName)
                 .deviceType(resolvedDeviceType)

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/bank_models.dart';
+import 'device_storage.dart';
 
 enum AppEnvironment { local, prod }
 
@@ -116,39 +117,50 @@ class BankService extends ChangeNotifier {
   final String savingsAccountNumber = '123456789123';
   String activeAccountId = '1000-2000-3001';
 
-  // Bank Cards
+  // Debit cards on the savings account
   final List<BankCard> cards = [
     BankCard(
       id: 'CARD-01',
-      title: 'Savings',
-      cardNumber: '1235 5267 8795 0809',
+      title: 'Aura Debit',
+      cardNumber: '4123 5267 8795 0809',
       expiry: '08/29',
       cvv: '158',
-      holderName: 'Elijah Montefalco',
-      gradientStart: 0xFF2A085C,
-      gradientEnd: 0xFF5E17EB,
+      holderName: 'Elijah R. Montefalco',
+      network: CardNetwork.visa,
     ),
     BankCard(
       id: 'CARD-02',
-      title: 'Current',
-      cardNumber: '1235 5267 8795 1016',
-      expiry: '09/32',
+      title: 'Aura Virtual',
+      cardNumber: '5235 5267 8795 1016',
+      expiry: '09/30',
       cvv: '143',
-      holderName: 'Juan S. Dela Cruz',
-      gradientStart: 0xFF2A085C,
-      gradientEnd: 0xFF5E17EB,
-    ),
-    BankCard(
-      id: 'CARD-03',
-      title: 'Credit',
-      cardNumber: '1235 5267 8795 8776',
-      expiry: '10/56',
-      cvv: '155',
-      holderName: 'Juan S. Dela Cruz',
-      gradientStart: 0xFF190634,
-      gradientEnd: 0xFF4A154B,
+      holderName: 'Elijah R. Montefalco',
+      network: CardNetwork.mastercard,
+      isVirtual: true,
     ),
   ];
+
+  /// Issues a new debit card on the savings account. Local until the card
+  /// service exists; the number is a display placeholder, not a real PAN.
+  BankCard issueCard({required CardNetwork network, required bool isVirtual}) {
+    final seed = DateTime.now().millisecondsSinceEpoch.toString();
+    final tail = seed.substring(seed.length - 4);
+    final bin = network == CardNetwork.visa ? '4123' : '5235';
+    final now = DateTime.now();
+    final card = BankCard(
+      id: 'CARD-$seed',
+      title: isVirtual ? 'Aura Virtual' : 'Aura Debit',
+      cardNumber: '$bin 5267 ${seed.substring(seed.length - 8, seed.length - 4)} $tail',
+      expiry: '${now.month.toString().padLeft(2, '0')}/${(now.year + 4) % 100}',
+      cvv: seed.substring(seed.length - 3),
+      holderName: user.name,
+      network: network,
+      isVirtual: isVirtual,
+    );
+    cards.add(card);
+    notifyListeners();
+    return card;
+  }
 
   // Statements mapped by monthKey (All 12 Months: Jan - Dec 2026)
   final Map<String, MonthlyStatement> statements = {
@@ -169,7 +181,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Dec 15, 10:00 AM',
           status: TransactionStatus.settled,
           initial: 'A',
-          avatarColorValue: 0xFF059669,
+          avatarColorValue: 0xFF17805F,
         ),
         BankTransaction(
           id: 'TXN-DEC-02',
@@ -181,7 +193,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Dec 18, 2:30 PM',
           status: TransactionStatus.settled,
           initial: 'E',
-          avatarColorValue: 0xFF059669,
+          avatarColorValue: 0xFF17805F,
         ),
         BankTransaction(
           id: 'TXN-DEC-03',
@@ -193,7 +205,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Dec 22, 4:45 PM',
           status: TransactionStatus.settled,
           initial: 'H',
-          avatarColorValue: 0xFF7928CA,
+          avatarColorValue: 0xFF2F78A8,
         ),
         BankTransaction(
           id: 'TXN-DEC-04',
@@ -205,7 +217,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Dec 28, 11:15 AM',
           status: TransactionStatus.settled,
           initial: 'B',
-          avatarColorValue: 0xFF7928CA,
+          avatarColorValue: 0xFF2F78A8,
         ),
       ],
     ),
@@ -226,7 +238,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Nov 08, 9:30 AM',
           status: TransactionStatus.settled,
           initial: 'C',
-          avatarColorValue: 0xFF059669,
+          avatarColorValue: 0xFF17805F,
         ),
         BankTransaction(
           id: 'TXN-NOV-02',
@@ -238,7 +250,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Nov 19, 3:20 PM',
           status: TransactionStatus.settled,
           initial: 'O',
-          avatarColorValue: 0xFF7928CA,
+          avatarColorValue: 0xFF2F78A8,
         ),
         BankTransaction(
           id: 'TXN-NOV-03',
@@ -250,7 +262,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Nov 26, 5:00 PM',
           status: TransactionStatus.settled,
           initial: 'O',
-          avatarColorValue: 0xFF7928CA,
+          avatarColorValue: 0xFF2F78A8,
         ),
       ],
     ),
@@ -332,7 +344,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Sep 15, 10:30 AM',
           status: TransactionStatus.settled,
           initial: 'D',
-          avatarColorValue: 0xFF059669,
+          avatarColorValue: 0xFF17805F,
         ),
         BankTransaction(
           id: 'TXN-SEP-02',
@@ -344,7 +356,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Sep 24, 4:15 PM',
           status: TransactionStatus.settled,
           initial: 'K',
-          avatarColorValue: 0xFF7928CA,
+          avatarColorValue: 0xFF2F78A8,
         ),
       ],
     ),
@@ -365,7 +377,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Aug 11, 10:15 AM',
           status: TransactionStatus.settled,
           initial: 'A',
-          avatarColorValue: 0xFF059669,
+          avatarColorValue: 0xFF17805F,
         ),
         BankTransaction(
           id: 'TXN-AUG-02',
@@ -377,7 +389,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Aug 19, 2:00 PM',
           status: TransactionStatus.settled,
           initial: 'E',
-          avatarColorValue: 0xFF7928CA,
+          avatarColorValue: 0xFF2F78A8,
         ),
         BankTransaction(
           id: 'TXN-AUG-03',
@@ -389,7 +401,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Aug 27, 4:30 PM',
           status: TransactionStatus.settled,
           initial: 'C',
-          avatarColorValue: 0xFF7928CA,
+          avatarColorValue: 0xFF2F78A8,
         ),
       ],
     ),
@@ -410,7 +422,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Jul 12, 11:00 AM',
           status: TransactionStatus.settled,
           initial: 'B',
-          avatarColorValue: 0xFF059669,
+          avatarColorValue: 0xFF17805F,
         ),
         BankTransaction(
           id: 'TXN-JUL-02',
@@ -422,7 +434,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Jul 21, 3:45 PM',
           status: TransactionStatus.settled,
           initial: 'E',
-          avatarColorValue: 0xFF7928CA,
+          avatarColorValue: 0xFF2F78A8,
         ),
         BankTransaction(
           id: 'TXN-JUL-03',
@@ -434,7 +446,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Jul 28, 5:10 PM',
           status: TransactionStatus.settled,
           initial: 'S',
-          avatarColorValue: 0xFF7928CA,
+          avatarColorValue: 0xFF2F78A8,
         ),
       ],
     ),
@@ -455,7 +467,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Jun 14, 9:30 AM',
           status: TransactionStatus.settled,
           initial: 'C',
-          avatarColorValue: 0xFF059669,
+          avatarColorValue: 0xFF17805F,
         ),
         BankTransaction(
           id: 'TXN-JUN-02',
@@ -467,7 +479,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Jun 25, 2:20 PM',
           status: TransactionStatus.settled,
           initial: 'H',
-          avatarColorValue: 0xFF7928CA,
+          avatarColorValue: 0xFF2F78A8,
         ),
       ],
     ),
@@ -488,7 +500,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'May 10, 10:00 AM',
           status: TransactionStatus.settled,
           initial: 'C',
-          avatarColorValue: 0xFF059669,
+          avatarColorValue: 0xFF17805F,
         ),
         BankTransaction(
           id: 'TXN-MAY-02',
@@ -500,7 +512,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'May 22, 4:00 PM',
           status: TransactionStatus.settled,
           initial: 'S',
-          avatarColorValue: 0xFF7928CA,
+          avatarColorValue: 0xFF2F78A8,
         ),
       ],
     ),
@@ -521,7 +533,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Apr 15, 11:30 AM',
           status: TransactionStatus.settled,
           initial: 'E',
-          avatarColorValue: 0xFF059669,
+          avatarColorValue: 0xFF17805F,
         ),
         BankTransaction(
           id: 'TXN-APR-02',
@@ -533,7 +545,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Apr 28, 3:15 PM',
           status: TransactionStatus.settled,
           initial: 'Q',
-          avatarColorValue: 0xFF7928CA,
+          avatarColorValue: 0xFF2F78A8,
         ),
       ],
     ),
@@ -554,7 +566,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Mar 10, 9:45 AM',
           status: TransactionStatus.settled,
           initial: 'T',
-          avatarColorValue: 0xFF059669,
+          avatarColorValue: 0xFF17805F,
         ),
         BankTransaction(
           id: 'TXN-MAR-02',
@@ -566,7 +578,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Mar 26, 2:30 PM',
           status: TransactionStatus.settled,
           initial: 'B',
-          avatarColorValue: 0xFF7928CA,
+          avatarColorValue: 0xFF2F78A8,
         ),
       ],
     ),
@@ -587,7 +599,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Feb 14, 11:00 AM',
           status: TransactionStatus.settled,
           initial: 'A',
-          avatarColorValue: 0xFF059669,
+          avatarColorValue: 0xFF17805F,
         ),
         BankTransaction(
           id: 'TXN-FEB-02',
@@ -599,7 +611,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Feb 24, 4:45 PM',
           status: TransactionStatus.settled,
           initial: 'D',
-          avatarColorValue: 0xFF7928CA,
+          avatarColorValue: 0xFF2F78A8,
         ),
       ],
     ),
@@ -620,7 +632,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Jan 05, 10:00 AM',
           status: TransactionStatus.settled,
           initial: 'F',
-          avatarColorValue: 0xFF059669,
+          avatarColorValue: 0xFF17805F,
         ),
         BankTransaction(
           id: 'TXN-JAN-02',
@@ -632,7 +644,7 @@ class BankService extends ChangeNotifier {
           displayTime: 'Jan 22, 3:30 PM',
           status: TransactionStatus.settled,
           initial: 'I',
-          avatarColorValue: 0xFF7928CA,
+          avatarColorValue: 0xFF2F78A8,
         ),
       ],
     ),
@@ -651,7 +663,7 @@ class BankService extends ChangeNotifier {
           status: TransactionStatus.settled,
           channel: 'Same Bank',
           initial: 'A',
-          avatarColorValue: 0xFF2E0854,
+          avatarColorValue: 0xFF10171C,
         ),
         BankTransaction(
           id: 'TX-REC-02',
@@ -664,7 +676,7 @@ class BankService extends ChangeNotifier {
           status: TransactionStatus.settled,
           channel: 'Other Bank',
           initial: 'M',
-          avatarColorValue: 0xFF7928CA,
+          avatarColorValue: 0xFF2F78A8,
         ),
         BankTransaction(
           id: 'TX-REC-03',
@@ -677,7 +689,7 @@ class BankService extends ChangeNotifier {
           status: TransactionStatus.failed,
           channel: 'Same Bank',
           initial: 'J',
-          avatarColorValue: 0xFF4F46E5,
+          avatarColorValue: 0xFF2F78A8,
         ),
       ];
 
@@ -805,7 +817,7 @@ class BankService extends ChangeNotifier {
                     displayTime: 'Live DB Sync',
                     status: TransactionStatus.settled,
                     initial: 'A',
-                    avatarColorValue: 0xFF4A0E17,
+                    avatarColorValue: 0xFF10171C,
                   ),
                 );
               }
@@ -934,6 +946,10 @@ class BankService extends ChangeNotifier {
         DateTime.now().day.toString().padLeft(2, '0');
     final fallbackRef = 'FT$dateStr${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
 
+    final effectiveUserId = (user.email.toLowerCase().contains('juan') || activeAccountId.contains('3001'))
+        ? 'usr-1001-cst-001'
+        : 'U1001';
+
     final payload = {
       'accountId': activeAccountId,
       'targetAccountId': targetAccount,
@@ -942,7 +958,7 @@ class BankService extends ChangeNotifier {
       'eventType': 'TRANSFER',
       'mutationType': 'TRANSFER',
       'reference': fallbackRef,
-      'initiatorUserId': 'U1001',
+      'initiatorUserId': effectiveUserId,
       'remarks': remarks ?? 'Mobile Fund Transfer to $recipientName',
       if (deviceId != null) 'deviceId': deviceId,
       if (isPrimaryDevice != null) 'isPrimaryDevice': isPrimaryDevice,
@@ -956,95 +972,74 @@ class BankService extends ChangeNotifier {
       if (detectedThreats != null && detectedThreats.isNotEmpty) 'detectedThreats': detectedThreats,
     };
 
-    // 1. Try Primary endpoint (Cloud Prod or Local Dev)
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/v1/ledger/mutate'),
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Idempotency-Key': 'TX-${DateTime.now().millisecondsSinceEpoch}',
-        },
-        body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 4));
+    final token = DeviceStorage.getAccessToken() ?? 'active_token';
+    final headers = {
+      'Content-Type': 'application/json',
+      'X-Idempotency-Key': 'TX-${DateTime.now().millisecondsSinceEpoch}-${DateTime.now().microsecondsSinceEpoch}',
+      'Authorization': 'Bearer $token',
+    };
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final data = jsonDecode(response.body);
-        final t24Ref = data['t24_reference'] ?? data['t24Reference'] ?? data['transaction_id'] ?? fallbackRef;
-        final newBal = (data['balance_after'] ?? data['available_balance'] as num?)?.toDouble();
-        if (newBal != null) {
-          availableBalance = newBal;
-        } else {
-          availableBalance -= amount;
-        }
-        _applyLocalTransfer(amount, recipientName, t24Ref, remarks);
-        return {
-          'success': true,
-          'reference': t24Ref,
-          't24_reference': t24Ref,
-          'amount': amount,
-          'status': data['status'] ?? 'COMMITTED',
-          'threat_category': data['threat_category'] ?? data['threatCategory'],
-          'cause_of_suspicion': data['cause_of_suspicion'] ?? data['causeOfSuspicion'],
-          'sar_draft_created': data['sar_draft_created'] ?? data['sarDraftCreated'] ?? false,
-          'sar_report_id': data['sar_report_id'] ?? data['sarReportId'],
-        };
-      } else {
-        try {
-          final errData = jsonDecode(response.body);
-          return {
-            'success': false,
-            'reference': fallbackRef,
-            'failureReason': errData['message'] ?? errData['error'] ?? 'Transfer rejected by core banking (${response.statusCode})',
-            'threat_category': errData['threat_category'] ?? errData['threatCategory'],
-            'cause_of_suspicion': errData['cause_of_suspicion'] ?? errData['causeOfSuspicion'],
-            'sar_draft_created': errData['sar_draft_created'] ?? errData['sarDraftCreated'] ?? false,
-            'sar_report_id': errData['sar_report_id'] ?? errData['sarReportId'],
-          };
-        } catch (_) {
-          return {
-            'success': false,
-            'reference': fallbackRef,
-            'failureReason': 'Transfer rejected by core banking (${response.statusCode})',
-          };
-        }
-      }
-    } catch (_) {
-      // 2. Cloud Fallback to Local Docker PC
-      if (environment == AppEnvironment.prod && autoFallbackToLocal) {
-        try {
-          final fallbackResponse = await http.post(
-            Uri.parse('$localUrl/api/v1/ledger/mutate'),
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Idempotency-Key': 'TX-FALLBACK-${DateTime.now().millisecondsSinceEpoch}',
-            },
-            body: jsonEncode(payload),
-          ).timeout(const Duration(seconds: 4));
+    // Candidate endpoints: Gateway (:8080) and direct Ledger Engine (:8082)
+    final candidateEndpoints = [
+      '$baseUrl/api/v1/ledger/transfer',
+      '$baseUrl/api/v1/ledger/transfers',
+      '$baseUrl/api/v1/ledger/mutate',
+      'http://localhost:8082/api/v1/ledger/transfer',
+      'http://localhost:8082/api/v1/ledger/mutate',
+      if (environment == AppEnvironment.prod && autoFallbackToLocal) '$localUrl/api/v1/ledger/transfer',
+    ];
 
-          if (fallbackResponse.statusCode >= 200 && fallbackResponse.statusCode < 300) {
-            debugPrint('[AURA CLOUD FALLBACK] Cloud ledger engine unavailable. Committed on local Docker PC.');
-            final data = jsonDecode(fallbackResponse.body);
-            final t24Ref = data['t24_reference'] ?? data['t24Reference'] ?? data['transaction_id'] ?? fallbackRef;
-            final newBal = (data['balance_after'] ?? data['available_balance'] as num?)?.toDouble();
-            if (newBal != null) {
-              availableBalance = newBal;
-            } else {
-              availableBalance -= amount;
-            }
-            _applyLocalTransfer(amount, recipientName, t24Ref, remarks);
+    for (final endpoint in candidateEndpoints) {
+      try {
+        final response = await http.post(
+          Uri.parse(endpoint),
+          headers: headers,
+          body: jsonEncode(payload),
+        ).timeout(const Duration(seconds: 4));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final data = jsonDecode(response.body);
+          final t24Ref = data['t24_reference'] ?? data['t24Reference'] ?? data['transaction_id'] ?? fallbackRef;
+          final newBal = (data['balance_after'] ?? data['available_balance'] as num?)?.toDouble();
+          if (newBal != null) {
+            availableBalance = newBal;
+          } else {
+            availableBalance -= amount;
+          }
+          _applyLocalTransfer(amount, recipientName, t24Ref, remarks);
+          return {
+            'success': true,
+            'reference': t24Ref,
+            't24_reference': t24Ref,
+            'amount': amount,
+            'status': data['status'] ?? 'COMMITTED',
+            'threat_category': data['threat_category'] ?? data['threatCategory'],
+            'cause_of_suspicion': data['cause_of_suspicion'] ?? data['causeOfSuspicion'],
+            'sar_draft_created': data['sar_draft_created'] ?? data['sarDraftCreated'] ?? false,
+            'sar_report_id': data['sar_report_id'] ?? data['sarReportId'],
+          };
+        } else if (response.statusCode == 400 || response.statusCode == 403 || response.statusCode == 422) {
+          try {
+            final errData = jsonDecode(response.body);
             return {
-              'success': true,
-              'reference': t24Ref,
-              't24_reference': t24Ref,
-              'amount': amount,
-              'status': data['status'] ?? 'COMMITTED',
-              'threat_category': data['threat_category'] ?? data['threatCategory'],
-              'cause_of_suspicion': data['cause_of_suspicion'] ?? data['causeOfSuspicion'],
-              'sar_draft_created': data['sar_draft_created'] ?? data['sarDraftCreated'] ?? false,
-              'sar_report_id': data['sar_report_id'] ?? data['sarReportId'],
+              'success': false,
+              'reference': fallbackRef,
+              'failureReason': errData['message'] ?? errData['error'] ?? 'Transfer rejected by core banking (${response.statusCode})',
+              'threat_category': errData['threat_category'] ?? errData['threatCategory'],
+              'cause_of_suspicion': errData['cause_of_suspicion'] ?? errData['causeOfSuspicion'],
+              'sar_draft_created': errData['sar_draft_created'] ?? errData['sarDraftCreated'] ?? false,
+              'sar_report_id': errData['sar_report_id'] ?? errData['sarReportId'],
+            };
+          } catch (_) {
+            return {
+              'success': false,
+              'reference': fallbackRef,
+              'failureReason': 'Transfer rejected by core banking (${response.statusCode})',
             };
           }
-        } catch (_) {}
+        }
+      } catch (_) {
+        // Try next candidate endpoint
       }
     }
 
@@ -1082,4 +1077,51 @@ class BankService extends ChangeNotifier {
     user.kycReviewReason = reason;
     notifyListeners();
   }
+
+  // Update customer location in Oracle XE Master (for geo-velocity & anomaly simulation)
+  Future<bool> updateCustomerLocation({
+    required double latitude,
+    required double longitude,
+    required String locationName,
+    String? ipAddress,
+  }) async {
+    final effectiveUserId = (user.email.toLowerCase().contains('juan') || activeAccountId.contains('3001'))
+        ? 'usr-1001-cst-001'
+        : 'U1001';
+
+    final payload = {
+      'latitude': latitude,
+      'longitude': longitude,
+      'location_name': locationName,
+      'ip_address': ipAddress ?? '112.198.45.10',
+    };
+
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer active_token',
+    };
+
+    final candidateUrls = [
+      '$baseUrl/api/v1/ledger/users/$effectiveUserId/location',
+      'http://localhost:8082/api/v1/ledger/users/$effectiveUserId/location',
+      '$baseUrl/api/v1/users/$effectiveUserId/location',
+    ];
+
+    for (final url in candidateUrls) {
+      try {
+        final res = await http.post(
+          Uri.parse(url),
+          headers: headers,
+          body: jsonEncode(payload),
+        ).timeout(const Duration(seconds: 3));
+
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          debugPrint('[GEO UPDATE] Location updated to $locationName for $effectiveUserId');
+          return true;
+        }
+      } catch (_) {}
+    }
+    return false;
+  }
 }
+

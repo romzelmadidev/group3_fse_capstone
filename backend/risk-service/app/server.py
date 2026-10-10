@@ -33,6 +33,7 @@ from app.models import RiskAnalysisRequest
 from app.threat_builder import has_threat_context, build_threat_narrative, detect_threat_category
 from app.warning_catalog import get_warning_dialog
 from hybrid_bench.sar_generator import trigger_sar_async
+from app import sar_registry
 from app.reviewer import (
     NanoJevSecondLookEngine,
     AsyncReviewWorkerPool,
@@ -240,6 +241,22 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
             self._send_json(200, profile)
             return
 
+        if path == "/api/v1/risk/sar":
+            self._send_json(200, sar_registry.list_reports())
+            return
+
+        if path.startswith("/api/v1/risk/sar/"):
+            try:
+                report = sar_registry.get_report(path[len("/api/v1/risk/sar/"):])
+            except ValueError as exc:  # traversal-safe id check in sar_registry._path
+                self._send_json(400, {"detail": str(exc)})
+                return
+            if report is None:
+                self._send_json(404, {"detail": "SAR draft not found"})
+            else:
+                self._send_json(200, report)
+            return
+
         self._send_json(404, {"error": "Not Found", "path": self.path})
 
     def do_POST(self):
@@ -275,7 +292,7 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "Invalid JSON payload", "detail": str(e)})
             return
 
-        if path in ("/api/v1/risk/analyze", "/api/v1/risk/transfer"):
+        if path in ("/api/v1/risk/analyze", "/api/v1/risk/transfer", "/api/v1/risk/evaluate"):
             result = self._handle_analyze(payload)
             self._send_json(200, result)
             return
@@ -311,15 +328,32 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"error": "KYC Evaluation Failed", "detail": str(e)})
             return
 
+        if path.startswith("/api/v1/risk/sar/") and path.endswith("/review"):
+            tx_id = path[len("/api/v1/risk/sar/"):-len("/review")]
+            try:
+                report = sar_registry.review_report(tx_id, payload.get("reviewer_id", ""),
+                                                    payload.get("action", ""), payload.get("note", ""))
+            except KeyError:
+                self._send_json(404, {"detail": "SAR draft not found"})
+                return
+            except sar_registry.SarReviewError as exc:  # subclass of ValueError, so catch it first
+                self._send_json(409, {"detail": str(exc)})
+                return
+            except ValueError as exc:
+                self._send_json(400, {"detail": str(exc)})
+                return
+            self._send_json(200, report)
+            return
+
         self._send_json(404, {"error": "Endpoint Not Found", "path": self.path})
 
     def _handle_analyze(self, req: Dict[str, Any]) -> Dict[str, Any]:
         start_time = time.perf_counter()
         tx_id = req.get("transaction_id") or f"TX-RISK-{uuid.uuid4().hex[:8].upper()}"
 
-        account_id = req.get("account_id") or req.get("accountId") or "acc-2001-sav-001"
+        account_id = req.get("account_id") or req.get("accountId") or "1000-2000-3001"
         user_id = req.get("user_id") or req.get("userId") or "usr-1001-cst-001"
-        target_account_id = req.get("target_account_id") or req.get("targetAccountId") or "acc-2002-chk-001"
+        target_account_id = req.get("target_account_id") or req.get("targetAccountId") or "1000-2000-3002"
         customer = get_customer_profile(account_id) if account_id else get_customer_profile(user_id)
 
         home_coords = customer.get("home_coordinates", {"latitude": 14.5995, "longitude": 120.9842})

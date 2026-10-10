@@ -79,6 +79,14 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
         case 'BLOCK':
           _currentRemarks = 'Emergency investment deposit';
           break;
+        case 'GEO_ANOMALY':
+          _currentRemarks = 'Overseas fund movement';
+          _bankService.updateCustomerLocation(
+            latitude: 51.5074,
+            longitude: -0.1278,
+            locationName: 'London, United Kingdom (Impossible Travel)',
+          );
+          break;
         case 'AUTO':
         default:
           _currentRemarks = (widget.remarks != null && widget.remarks!.trim().isNotEmpty)
@@ -106,7 +114,7 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
           decoration: InputDecoration(
             hintText: 'Enter transfer purpose or memo',
             filled: true,
-            fillColor: const Color(0xFFF8FAFC),
+            fillColor: const Color(0xFFF7F7F7),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: const BorderSide(color: cardBorder),
@@ -189,6 +197,7 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
                       _buildSimulationOption('HOOKING', 'Frida / Xposed Hooking', 'Simulates memory hooking frameworks detected', Icons.memory_rounded),
                       _buildSimulationOption('CANARY', 'HTTP Canary Sniffer', 'Simulates packet inspection / MITM tool active', Icons.network_check_rounded),
                       _buildSimulationOption('CALL', 'Active Call', 'Simulates active phone call during transaction', Icons.phone_in_talk_outlined),
+                      _buildSimulationOption('GEO_ANOMALY', 'Location Anomaly (London / Impossible Travel)', 'Simulates instant change of customer location to London, UK', Icons.wrong_location_rounded),
                       _buildSimulationOption('BLOCK', 'High Risk Block', 'Simulates restricted device or severe anomaly', Icons.block_flipped),
                       const SizedBox(height: 12),
                     ],
@@ -355,10 +364,10 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
                           width: 42,
                           height: 42,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF7928CA).withValues(alpha: 0.15),
+                            color: const Color(0xFF2F78A8).withValues(alpha: 0.15),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.account_balance_rounded, color: Color(0xFF7928CA), size: 22),
+                          child: const Icon(Icons.account_balance_rounded, color: Color(0xFF2F78A8), size: 22),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
@@ -431,7 +440,7 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEDE9FE),
+                        color: const Color(0xFFEFF6FB),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(Icons.notes_rounded, color: AuraColors.primary, size: 20),
@@ -783,7 +792,8 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
         _riskScenario == 'REMOTE' ||
         _riskScenario == 'ANYDESK' ||
         _riskScenario == 'CANARY' ||
-        _riskScenario == 'CALL';
+        _riskScenario == 'CALL' ||
+        _riskScenario == 'GEO_ANOMALY';
     final bool isBlockScenario = _riskScenario == 'BLOCK' || _riskScenario == 'HOOKING';
 
     final List<String> runningPkgs = [];
@@ -811,6 +821,9 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
     } else if (_riskScenario == 'CALL') {
       activeCall = true;
       threats.add('ACTIVE_VOICE_CALL_COERCION');
+    } else if (_riskScenario == 'GEO_ANOMALY') {
+      threats.add('IMPOSSIBLE_TRAVEL_GEO_ANOMALY');
+      threats.add('UNRECOGNIZED_OVERSEAS_LOCATION');
     } else if (_riskScenario == 'BLOCK') {
       isEmulator = true;
       rooted = true;
@@ -936,14 +949,14 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFFECFDF5),
+                color: const Color(0xFFE4F5EE),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFA7F3D0)),
+                border: Border.all(color: const Color(0xFFA7E8D1)),
               ),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.verified_rounded, color: Color(0xFF059669), size: 16),
+                  Icon(Icons.verified_rounded, color: Color(0xFF17805F), size: 16),
                   SizedBox(width: 8),
                   Text(
                     'Identity Verified • Secure Transfer',
@@ -976,7 +989,7 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text('Biometric authorization was cancelled or unverified.'),
-                            backgroundColor: Color(0xFF6B7280),
+                            backgroundColor: Color(0xFF7D8892),
                           ),
                         );
                       }
@@ -1140,10 +1153,10 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
                 width: 64,
                 height: 64,
                 decoration: const BoxDecoration(
-                  color: Color(0xFFFEF2F2),
+                  color: Color(0xFFFDF3F2),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.shield_outlined, color: Color(0xFFDC2626), size: 36),
+                child: const Icon(Icons.shield_outlined, color: Color(0xFFC8423B), size: 36),
               ),
               const SizedBox(height: 16),
               const Text(
@@ -1161,9 +1174,9 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFEF2F2),
+                  color: const Color(0xFFFDF3F2),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFFECACA)),
+                  border: Border.all(color: const Color(0xFFF6CFCB)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1174,7 +1187,7 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
                         Text('Security Status', style: TextStyle(fontSize: 12, color: textGray)),
                         Text(
                           'Protected',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFDC2626)),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFC8423B)),
                         ),
                       ],
                     ),
@@ -1185,7 +1198,7 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
                         Text('Notice', style: TextStyle(fontSize: 12, color: textGray)),
                         Text(
                           'Suspicious activity detected',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFDC2626)),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFC8423B)),
                         ),
                       ],
                     ),
@@ -1196,7 +1209,7 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
                         Text('Account Protection', style: TextStyle(fontSize: 12, color: textGray)),
                         Text(
                           'Funds 100% Preserved',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF059669)),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF17805F)),
                         ),
                       ],
                     ),
@@ -1220,7 +1233,7 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
                 height: 48,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFDC2626),
+                    backgroundColor: const Color(0xFFC8423B),
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                     elevation: 0,
@@ -1387,10 +1400,10 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
               width: 64,
               height: 64,
               decoration: const BoxDecoration(
-                color: Color(0xFFECFDF5),
+                color: Color(0xFFE4F5EE),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.shield_rounded, color: Color(0xFF059669), size: 36),
+              child: const Icon(Icons.shield_rounded, color: Color(0xFF17805F), size: 36),
             ),
             const SizedBox(height: 16),
             const Text(
@@ -1492,7 +1505,7 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text('Biometric authorization was cancelled or unverified.'),
-                              backgroundColor: Color(0xFF6B7280),
+                              backgroundColor: Color(0xFF7D8892),
                             ),
                           );
                         }
@@ -1615,6 +1628,24 @@ class _RiskScanDialogState extends State<_RiskScanDialog> {
         'primary_flag': 'HIGH_RISK_SUSPICIOUS_ENVIRONMENT',
         'threat_category': 'SUSPICIOUS_ACTIVITY',
         'cause_of_suspicion': 'Suspicious device environment detected',
+      });
+      return;
+    }
+
+    if (widget.detectedThreats != null && widget.detectedThreats!.contains('IMPOSSIBLE_TRAVEL_GEO_ANOMALY')) {
+      Navigator.of(context).pop({
+        ...apiRes,
+        'decision': 'ADVISORY_WARNING',
+        'fraud_score': 85,
+        'primary_flag': 'GEO_VELOCITY_IMPOSSIBLE_TRAVEL',
+        'threat_category': 'LOCATION_ANOMALY',
+        'cause_of_suspicion': 'Impossible travel velocity detected: Location changed instantaneously to London, United Kingdom while registered baseline is Manila, Philippines.',
+        'warning_dialog': {
+          'title': 'Location Anomaly Detected',
+          'threat_category': 'IMPOSSIBLE_TRAVEL',
+          'body_message': 'Our security risk engine detected an impossible travel anomaly. Your session is currently reporting from London, United Kingdom, which deviates significantly from your baseline profile in Manila, Philippines.',
+          'checkbox_acknowledgment_text': 'I verify that this location change is legitimate and I authorize this funds transfer.',
+        },
       });
       return;
     }
@@ -1904,13 +1935,13 @@ class _AdvisoryWarningSheetState extends State<_AdvisoryWarningSheet> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFFFEF2F2),
+                color: const Color(0xFFFDF3F2),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFFECACA)),
+                border: Border.all(color: const Color(0xFFF6CFCB)),
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.shield_outlined, color: Color(0xFFDC2626), size: 16),
+                  Icon(Icons.shield_outlined, color: Color(0xFFC8423B), size: 16),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1918,7 +1949,7 @@ class _AdvisoryWarningSheetState extends State<_AdvisoryWarningSheet> {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF991B1B),
+                        color: Color(0xFF8E2B26),
                       ),
                     ),
                   ),
@@ -1964,7 +1995,7 @@ class _AdvisoryWarningSheetState extends State<_AdvisoryWarningSheet> {
             height: 48,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFDC2626),
+                backgroundColor: const Color(0xFFC8423B),
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                 elevation: 0,
@@ -2089,7 +2120,7 @@ class _AdvisoryWarningSheetState extends State<_AdvisoryWarningSheet> {
               width: 13,
               height: 13,
               decoration: const BoxDecoration(
-                color: Color(0xFFDC2626),
+                color: Color(0xFFC8423B),
                 shape: BoxShape.circle,
               ),
               child: const Center(
