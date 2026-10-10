@@ -486,9 +486,9 @@ CREATE INDEX idx_notif_user ON notifications(user_id, sent_at DESC);
 CREATE INDEX idx_kyc_status ON kyc_submissions(status, created_at);
 CREATE INDEX idx_kyc_user ON kyc_submissions(user_id, created_at DESC);
 CREATE INDEX idx_push_user ON device_push_tokens(user_id);
-CREATE INDEX idx_rev_status ON reversal_requests(status, created_at DESC);
-CREATE INDEX idx_rev_orig_tx ON reversal_requests(original_transaction_id);
-CREATE INDEX idx_tsh_tx ON transaction_status_history(transaction_id, changed_at ASC);
+CREATE INDEX idx_rev_stat_dt ON reversal_requests(status, created_at DESC);
+CREATE INDEX idx_rev_orig_compat ON reversal_requests(original_transaction_id);
+-- Note: idx_tsh_tx already created above for transaction_status_history
 
 -- ==============================================================================
 -- Seed Population: Realistic Banking Dataset
