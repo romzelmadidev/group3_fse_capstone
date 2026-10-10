@@ -18,6 +18,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -285,6 +286,15 @@ class CbsCoreBankingServiceTest {
         assertEquals(new BigDecimal("7000.00"), senderBal.getBalanceAmount());
         assertEquals(new BigDecimal("2000.00"), beneficiaryBal.getBalanceAmount());
         assertEquals(TransactionStatus.Reversed.name(), origTx.getStatus());
+
+        ArgumentCaptor<TransactionMaster> txCaptor = ArgumentCaptor.forClass(TransactionMaster.class);
+        verify(transactionRepository, atLeastOnce()).save(txCaptor.capture());
+        TransactionMaster compensatingTx = txCaptor.getAllValues().stream()
+                .filter(t -> "REVERSAL".equals(t.getTransactionType()))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(compensatingTx);
+        assertEquals(TransactionStatus.Posted.name(), compensatingTx.getStatus());
     }
 
     @Test
@@ -416,15 +426,6 @@ class CbsCoreBankingServiceTest {
                 .build();
 
         when(transactionRepository.findById("TXN-OFS-REV")).thenReturn(Optional.of(origTx));
-        when(reversalRequestRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(reversalRequestRepository.findById(any())).thenAnswer(invocation -> Optional.of(
-                ReversalRequestMaster.builder()
-                        .ticketId(invocation.getArgument(0))
-                        .originalTxId("TXN-OFS-REV")
-                        .makerId("TELLER_MAKER")
-                        .status("PENDING")
-                        .build()
-        ));
         when(balanceRepository.findByAccountIdForUpdate("ACC-1")).thenReturn(Optional.of(senderBal));
         when(balanceRepository.findByAccountIdForUpdate("ACC-2")).thenReturn(Optional.of(beneficiaryBal));
 
@@ -501,15 +502,6 @@ class CbsCoreBankingServiceTest {
                 .build();
 
         when(transactionRepository.findById("FT-ORIG-999")).thenReturn(Optional.of(origTx));
-        when(reversalRequestRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(reversalRequestRepository.findById(any())).thenAnswer(invocation -> Optional.of(
-                ReversalRequestMaster.builder()
-                        .ticketId(invocation.getArgument(0))
-                        .originalTxId("FT-ORIG-999")
-                        .makerId("SAGA_COORDINATOR")
-                        .status("PENDING")
-                        .build()
-        ));
         when(balanceRepository.findByAccountIdForUpdate("ACC-SENDER")).thenReturn(Optional.of(senderBal));
         when(balanceRepository.findByAccountIdForUpdate("ACC-BENEFICIARY")).thenReturn(Optional.of(benBal));
 
