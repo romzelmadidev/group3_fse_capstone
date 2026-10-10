@@ -135,6 +135,15 @@ export default function T24TestConsole() {
   const [isInwardExecuting, setIsInwardExecuting] = useState(false);
   const [inwardResult, setInwardResult] = useState(null);
 
+  // Raw Temenos OFS Terminal State (Tab 6)
+  const [ofsInput, setOfsInput] = useState('FUNDS.TRANSFER,INITIATE/I/PROCESS//TXN-OFS-01,USER01/123456,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=1000-2000-3001,CREDIT.ACCT.NO=1000-2000-3002,AMOUNT=100.00,CURRENCY=PHP,DESCRIPTION=Raw OFS Wire Test');
+  const [ofsResponse, setOfsResponse] = useState('');
+  const [isExecutingOfs, setIsExecutingOfs] = useState(false);
+
+  // COB & EOD Lifecycle State (Tab 7)
+  const [isExecutingCob, setIsExecutingCob] = useState(false);
+  const [cobResult, setCobResult] = useState(null);
+
   const showToast = (text, type = 'info') => {
     setToastMessage({ text, type });
     setTimeout(() => setToastMessage(null), 5000);
@@ -191,8 +200,69 @@ export default function T24TestConsole() {
     }
   };
 
+  // Fetch CBS System Date & Status
+  const fetchSystemDate = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/cbs/system-date`);
+      if (res.data) {
+        const text = typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
+        const matchDate = text.match(/BUSINESS\.DATE=([^,]+)/) || text.match(/SYSTEM\.DATE=([^,]+)/);
+        const matchStatus = text.match(/STATUS=([^,]+)/);
+        const matchWindow = text.match(/POSTING\.WINDOW=([^,]+)/);
+        setSystemDate({
+          businessDate: matchDate ? matchDate[1] : (res.data.businessDate || '2026-10-15'),
+          status: matchStatus ? matchStatus[1] : (res.data.status || 'ONLINE'),
+          postingWindowOpen: matchWindow ? matchWindow[1] === 'OPEN' : true
+        });
+      }
+    } catch (e) {
+      console.warn('System date fetch error:', e);
+    }
+  };
+
+  // Transmit Raw OFS Wire Payload (POST /api/v1/cbs/funds-transfer)
+  const handleExecuteOfs = async () => {
+    setIsExecutingOfs(true);
+    setOfsResponse('');
+    try {
+      const res = await axios.post(`${API_BASE}/cbs/funds-transfer`, ofsInput.trim(), {
+        headers: { 'Content-Type': 'text/plain' }
+      });
+      setOfsResponse(res.data);
+      showToast('OFS message processed by CBS wire parser!', 'success');
+      fetchBalance(activeAccount);
+    } catch (err) {
+      setOfsResponse(err.response?.data || err.message);
+      showToast('OFS error returned by CBS', 'error');
+    } finally {
+      setIsExecutingOfs(false);
+    }
+  };
+
+  // Execute Close of Business (COB) Batch (POST /api/v1/cbs/cob/run)
+  const handleRunCob = async () => {
+    setIsExecutingCob(true);
+    setCobResult(null);
+    try {
+      const res = await axios.post(`${API_BASE}/cbs/cob/run`);
+      setCobResult({ success: true, data: res.data });
+      showToast('COB Batch completed: Interest accrued, low ADB fees assessed, date rolled forward!', 'success');
+      fetchSystemDate();
+      fetchBalance(activeAccount);
+    } catch (err) {
+      setCobResult({
+        success: false,
+        error: err.response?.data?.message || err.response?.data || err.message
+      });
+      showToast('COB Batch halted or failed', 'error');
+    } finally {
+      setIsExecutingCob(false);
+    }
+  };
+
   useEffect(() => {
     fetchBalance(activeAccount);
+    fetchSystemDate();
   }, [activeAccount]);
 
   useEffect(() => {
@@ -2306,6 +2376,144 @@ export default function T24TestConsole() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TAB 6: RAW TEMENOS OFS PROTOCOL TERMINAL */}
+      {activeTab === 'ofs' && (
+        <div className="space-y-6 rounded-2xl border border-purple-100 bg-white p-6 shadow-sm">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div>
+              <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
+                <Terminal className="h-4 w-4 text-purple-700" /> Temenos Open Financial Services (OFS) Wire Playground
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Direct wire protocol endpoint (<code className="font-mono text-purple-900 font-semibold">POST /api/v1/cbs/funds-transfer</code> with <code className="font-mono text-purple-900">Content-Type: text/plain</code>).
+              </p>
+            </div>
+
+            {/* Template Presets */}
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                {
+                  label: 'FT INITIATE (₱100)',
+                  cmd: 'FUNDS.TRANSFER,INITIATE/I/PROCESS//TXN-OFS-01,USER01/123456,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=1000-2000-3001,CREDIT.ACCT.NO=1000-2000-3002,AMOUNT=100.00,CURRENCY=PHP,DESCRIPTION=Temenos OFS Wire'
+                },
+                {
+                  label: 'FT INITIATE (₱5,000)',
+                  cmd: 'FUNDS.TRANSFER,INITIATE/I/PROCESS//TXN-OFS-02,USER01/123456,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=1000-2000-3001,CREDIT.ACCT.NO=1000-2000-3002,AMOUNT=5000.00,CURRENCY=PHP,DESCRIPTION=Standard Retail Transfer'
+                },
+                {
+                  label: 'FT OVERDRAFT TEST',
+                  cmd: 'FUNDS.TRANSFER,INITIATE/I/PROCESS//TXN-OFS-03,USER01/123456,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=1000-2000-3001,CREDIT.ACCT.NO=1000-2000-3002,AMOUNT=999999999.00,CURRENCY=PHP,DESCRIPTION=Overdraft Stress'
+                }
+              ].map((tmpl) => (
+                <button
+                  key={tmpl.label}
+                  type="button"
+                  onClick={() => setOfsInput(tmpl.cmd)}
+                  className="rounded-lg border border-purple-200 bg-purple-50/70 px-2.5 py-1 font-mono text-2xs font-semibold text-purple-900 hover:bg-purple-100 hover:text-purple-950 transition"
+                >
+                  {tmpl.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+              OFS Wire Payload String
+            </label>
+            <textarea
+              rows="4"
+              value={ofsInput}
+              onChange={(e) => setOfsInput(e.target.value)}
+              className="w-full rounded-xl border border-purple-200 bg-slate-900 p-3.5 font-mono text-xs text-emerald-400 focus:border-purple-600 focus:outline-hidden shadow-inner"
+            />
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleExecuteOfs}
+              disabled={isExecutingOfs}
+              className="flex items-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-2xs transition-all disabled:opacity-50"
+            >
+              {isExecutingOfs ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Transmit OFS Payload
+            </button>
+          </div>
+
+          {/* Response Terminal */}
+          {ofsResponse && (
+            <div className="rounded-xl border border-purple-900/40 bg-[#120B24] p-4 shadow-inner space-y-2">
+              <div className="flex items-center justify-between text-2xs font-bold uppercase tracking-wider text-purple-300 border-b border-purple-900/60 pb-2">
+                <span className="flex items-center gap-1.5"><Terminal className="h-3.5 w-3.5 text-purple-400" /> Temenos Wire Protocol Response</span>
+                <span className="font-mono text-emerald-400">STATUS 200 OK</span>
+              </div>
+              <pre className="overflow-x-auto font-mono text-xs text-emerald-400 leading-relaxed">
+                {ofsResponse}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 7: COB & EOD LIFECYCLE */}
+      {activeTab === 'cob' && (
+        <div className="space-y-6 rounded-2xl border border-purple-100 bg-white p-6 shadow-sm">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div>
+              <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
+                <Moon className="h-4 w-4 text-purple-700" /> Close of Business (COB) &amp; EOD Batch Lifecycle
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Executes the 5-phase COB sequence: Cutoff &rarr; Low ADB Balance Fees (₱50) &rarr; BIR 20% Tax Withholding &amp; Interest Accrual &rarr; EOD Snapshots &amp; Merkle Audit &rarr; Rollover to T+1.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleRunCob}
+              disabled={isExecutingCob}
+              className="flex items-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-2xs transition-all disabled:opacity-50"
+            >
+              {isExecutingCob ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+              Run Full COB Sequence
+            </button>
+          </div>
+
+          {/* Phase progression cards */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
+            {[
+              { phase: 'Phase 0', title: 'Cutoff Posting Window', desc: 'Closes window, sets EOD_CUTOFF' },
+              { phase: 'Phase 1', title: 'Low ADB Fees (₱50)', desc: 'Accounts < ₱5,000 ADB, arrears safe' },
+              { phase: 'Phase 2', title: 'Interest & BIR 20% Tax', desc: 'Daily accrual (0.5% p.a.) & 20% BIR tax' },
+              { phase: 'Phase 3', title: 'Audit Merkle Anchoring', desc: 'Audit snapshots & Merkle root sealing' },
+              { phase: 'Phase 4', title: 'Rollover to T+1', desc: 'Advances system date to next day' }
+            ].map((p) => (
+              <div key={p.phase} className="rounded-xl border border-purple-100 bg-purple-50/50 p-3.5 space-y-1">
+                <div className="font-mono text-2xs font-bold uppercase tracking-wider text-purple-700">{p.phase}</div>
+                <div className="text-xs font-bold text-slate-900">{p.title}</div>
+                <div className="text-2xs text-slate-500">{p.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* COB Result Inspection */}
+          {cobResult && (
+            <div className="rounded-xl border border-purple-100 bg-slate-50/80 p-4 space-y-2">
+              <div className="flex items-center justify-between text-2xs font-bold uppercase tracking-wider text-purple-950 border-b border-purple-200/60 pb-2">
+                <span>Close of Business (COB) Execution Result</span>
+                <span className={`font-mono ${cobResult.success ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  {cobResult.success ? '✓ COMPLETED' : '✗ FAILED'}
+                </span>
+              </div>
+              <pre className="overflow-x-auto rounded-lg border border-purple-900/30 bg-[#120B24] p-3 font-mono text-2xs text-purple-200">
+                {typeof cobResult.data === 'string' ? cobResult.data : JSON.stringify(cobResult.data || cobResult.error, null, 2)}
+              </pre>
+            </div>
+          )}
         </div>
       )}
 
