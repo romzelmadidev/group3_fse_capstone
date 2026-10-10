@@ -469,7 +469,6 @@ services:
       - "8083:8083"
     volumes:
       - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
-      - ../backend/notification-service/target/notification-service-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
     environment:
       - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
       - DD_AGENT_HOST=dd-agent
@@ -571,8 +570,8 @@ services:
     restart: unless-stopped
     ports:
       - "16686:16686" # Web UI
-      - "4317:4317" # OTLP gRPC receiver
-      - "4318:4318" # OTLP HTTP receiver
+      - "14317:4317" # OTLP gRPC receiver (offset to avoid host conflict with dd-agent)
+      - "14318:4318" # OTLP HTTP receiver (offset to avoid host conflict with dd-agent)
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     networks:
