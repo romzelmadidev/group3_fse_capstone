@@ -67,7 +67,10 @@ public class CbsReversalController {
             Map<String, String> fields = OfsMessageUtil.parseOfsFields(ofsMessage);
             originalTxId = fields.getOrDefault("ORIGINAL.FT.NO",
                     fields.getOrDefault("ORIGINAL.TX.ID", fields.getOrDefault("TRANSACTION.ID", "UNKNOWN")));
-            String makerId = fields.getOrDefault("MAKER", fields.getOrDefault("MAKER.ID", "usr-1003-tel-001"));
+            String makerId = fields.get("MAKER");
+            if (makerId == null || makerId.isBlank()) {
+                makerId = fields.get("MAKER.ID");
+            }
             String reason = fields.getOrDefault("REASON", fields.getOrDefault("DISPUTE.REASON", "DISPUTE"));
             String notes = fields.getOrDefault("NOTES", fields.getOrDefault("MAKER.NOTES", reason));
 
@@ -94,7 +97,10 @@ public class CbsReversalController {
         try {
             Map<String, String> fields = OfsMessageUtil.parseOfsFields(ofsMessage);
             ticketId = fields.getOrDefault("TICKET.ID", fields.getOrDefault("REVERSAL.REQUEST.ID", "UNKNOWN"));
-            String checkerId = fields.getOrDefault("CHECKER", fields.getOrDefault("CHECKER.ID", "usr-1004-adm-001"));
+            String checkerId = fields.get("CHECKER");
+            if (checkerId == null || checkerId.isBlank()) {
+                checkerId = fields.get("CHECKER.ID");
+            }
             String notes = fields.getOrDefault("NOTES", fields.getOrDefault("CHECKER.NOTES", "Approved by checker"));
 
             ReversalActionDto action = new ReversalActionDto(ticketId, checkerId, null, notes);
@@ -120,7 +126,10 @@ public class CbsReversalController {
         try {
             Map<String, String> fields = OfsMessageUtil.parseOfsFields(ofsMessage);
             ticketId = fields.getOrDefault("TICKET.ID", fields.getOrDefault("REVERSAL.REQUEST.ID", "UNKNOWN"));
-            String checkerId = fields.getOrDefault("CHECKER", fields.getOrDefault("CHECKER.ID", "usr-1004-adm-001"));
+            String checkerId = fields.get("CHECKER");
+            if (checkerId == null || checkerId.isBlank()) {
+                checkerId = fields.get("CHECKER.ID");
+            }
             String reason = fields.getOrDefault("REASON", fields.getOrDefault("REJECTION.REASON", "Rejected by checker"));
             String notes = fields.getOrDefault("NOTES", fields.getOrDefault("CHECKER.NOTES", reason));
 

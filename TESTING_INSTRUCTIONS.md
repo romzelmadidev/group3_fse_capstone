@@ -212,14 +212,14 @@ You can verify the database state using either the **Command Line (Docker CLI)**
   1. Click the **"3. Reversal (Dual Control)"** tab.
   2. Under **Step 1: Maker Reversal Request**:
      * **Original Transaction ID**: Enter the Transaction ID from Test 1.1.
-     * **Maker ID**: `TELLER_ALICE`
+     * **Maker ID**: `usr-1003-tel-001` (Crisostomo Ibarra - Teller)
      * **Dispute Reason**: Select `CUSTOMER_DISPUTE`.
      * **Notes**: `Customer disputed charge`.
      * Click **"Submit Reversal Request"**.
   3. **Verification**: Toast confirms *"Reversal ticket created via Orchestrator! Waiting for Checker approval."* The transaction status becomes `PendingReversal`, and the generated `Ticket ID` is auto-filled into the Checker form.
   4. Under **Step 2: Checker Authorization (Four-Eyes Principle)**:
      * Verify **Ticket ID** matches the generated ticket.
-     * **Checker ID**: Ensure it is set to an independent user (`MGR_BOB`).
+     * **Checker ID**: Ensure it is set to an independent user (`usr-1004-adm-001` — Diana Administrator, Admin).
      * Click **"Authorize Reversal (Approve)"**.
 * **Frontend Verification Checkpoints**:
   * Toast confirms *"Reversal APPROVED via Orchestrator! Compensating GL entries posted and balances reversed."*.
@@ -239,7 +239,7 @@ You can verify the database state using either the **Command Line (Docker CLI)**
      ```
      * **Expected Invariant**:
        * Record exists with `status = 'PENDING'`.
-       * `maker_id = 'TELLER_ALICE'`, `checker_id IS NULL`.
+       * `maker_id = 'usr-1003-tel-001'`, `checker_id IS NULL`.
        * `dispute_reason = 'CUSTOMER_DISPUTE'`.
 
   2. **Check `TRANSACTIONS` Table (Oracle XE)**:
@@ -260,7 +260,7 @@ You can verify the database state using either the **Command Line (Docker CLI)**
      ```
      * **Expected Invariant**:
        * `from_status = 'Posted'`, `to_status = 'PendingReversal'`.
-       * `change_reason = 'MAKER_DISPUTE_FILED'`, `actor_id = 'TELLER_ALICE'`, `actor_type = 'TELLER_MAKER'`.
+       * `change_reason = 'MAKER_DISPUTE_FILED'`, `actor_id = 'usr-1003-tel-001'`, `actor_type = 'TELLER_MAKER'`.
 
   #### Phase B: Immediately After Checker Authorizes Reversal
   1. **Check `REVERSAL_REQUESTS` Table (Oracle XE)**:
@@ -271,7 +271,7 @@ You can verify the database state using either the **Command Line (Docker CLI)**
      ```
      * **Expected Invariant**:
        * `status` updated to `APPROVED`.
-       * `checker_id = 'MGR_BOB'`.
+       * `checker_id = 'usr-1004-adm-001'`.
        * `reversal_tx_id` is populated with a generated UUID (e.g. `REV-TXN-...`).
        * `resolved_at` timestamp is populated.
 
@@ -299,7 +299,7 @@ You can verify the database state using either the **Command Line (Docker CLI)**
        * New compensating transaction created with:
          * `transaction_id = '<REVERSAL_TX_ID>'`.
          * `from_account_id = '1000-2000-3002'` (beneficiary), `to_account_id = '1000-2000-3001'` (sender).
-         * `transaction_type = 'REVERSAL'`, `status = 'Reversed'`, `approved_by = 'MGR_BOB'`.
+         * `transaction_type = 'REVERSAL'`, `status = 'Reversed'`, `approved_by = 'usr-1004-adm-001'`.
 
   4. **Check `TRANSACTION_STATUS_HISTORY` Table (Oracle XE - Lifecycle Transitions)**:
      ```sql
@@ -308,7 +308,7 @@ You can verify the database state using either the **Command Line (Docker CLI)**
      FROM transaction_status_history 
      WHERE transaction_id = '<ORIGINAL_TX_ID>' 
      ORDER BY changed_at DESC FETCH FIRST 1 ROWS ONLY;
-     -- Expected: from_status = 'PendingReversal', to_status = 'Reversed', change_reason = 'CHECKER_REVERSAL_APPROVED_SETTLED', actor_id = 'MGR_BOB', actor_type = 'MANAGER_CHECKER'
+     -- Expected: from_status = 'PendingReversal', to_status = 'Reversed', change_reason = 'CHECKER_REVERSAL_APPROVED_SETTLED', actor_id = 'usr-1004-adm-001', actor_type = 'MANAGER_CHECKER'
 
      -- 2. Status history for generated compensating transaction:
      SELECT from_status, to_status, change_reason, reason_details, actor_id, actor_type 
@@ -316,9 +316,9 @@ You can verify the database state using either the **Command Line (Docker CLI)**
      WHERE transaction_id = '<REVERSAL_TX_ID>' 
      ORDER BY changed_at ASC;
      -- Expected: 3 sequential rows:
-     -- (1) NULL -> 'Initiated' (CHECKER_REVERSAL_APPROVED_SETTLED, actor: MGR_BOB)
+     -- (1) NULL -> 'Initiated' (CHECKER_REVERSAL_APPROVED_SETTLED, actor: usr-1004-adm-001)
      -- (2) 'Initiated' -> 'Processing' (CBS_OFS_PROCESSING, actor: SYSTEM_CBS)
-     -- (3) 'Processing' -> 'Reversed' (CHECKER_REVERSAL_APPROVED_SETTLED, actor: MGR_BOB)
+     -- (3) 'Processing' -> 'Reversed' (CHECKER_REVERSAL_APPROVED_SETTLED, actor: usr-1004-adm-001)
      ```
 
   5. **Check `GL_LEDGER` Table (Oracle XE - Compensating Journal Entries)**:
@@ -344,36 +344,66 @@ You can verify the database state using either the **Command Line (Docker CLI)**
 ---
 
 ### Test 1.4: Direct Compensating Saga Reversals
-* **Objective**: Verify automated, zero-human-intervention compensating saga rollbacks.
+* **Objective**: Verify automated, zero-human-intervention compensating saga rollbacks orchestrated by the microservice event saga.
+* **Architectural Context**:
+  * In distributed transactions and saga orchestrations, when downstream fulfillment fails or an upstream client issues an immediate rollback, the saga coordinator executes a direct compensating reversal (`POST /api/v1/reversals/direct`).
+  * **Zero Defaults & Dual-Control Decoupling**:
+    * Unlike manual customer dispute tickets (which strictly require human Maker and Checker authorization under BSP Circular 982), an automated SAGA compensating rollback is a **machine-to-machine fault tolerance mechanism**.
+    * It does **not** require, expect, or default any human `makerId` or `checkerId`.
+    * In the database, `requires_maker_checker = 0`, and `approved_by_user_id = NULL`. Because the foreign key column is nullable, Oracle constraints (`FK_TX_APPROVED_BY`) are preserved with zero violations.
+    * In audit history (`transaction_status_history`), the action is recorded with `actor_id = 'SYSTEM_SAGA'` and `actor_type = 'SYSTEM_ORCH'`.
 * **Steps**:
-  1. Execute a new transfer of ₱2,500.00 in Tab 1.
-  2. Navigate to Tab 3 (**Reversal**).
-  3. Under the **Direct Compensating Saga** card, verify the Transaction ID is present.
-  4. Click **"Execute Direct Compensating Rollback"**.
+  1. Execute a new transfer of ₱2,500.00 in Tab 1 (e.g. from `1000-2000-3001` to `1000-2000-3002`).
+  2. Copy the resulting Transaction ID, or note the auto-filled ID.
+  3. Navigate to Tab 3 (**Reversal**).
+  4. Under the **Direct Compensating Saga** card, verify the Transaction ID is present.
+  5. Click **"Execute Direct Compensating Rollback"**.
 * **Frontend Verification Checkpoints**:
   * Toast confirms *"Orchestrator compensating saga reversal executed via Gateway!"*.
-  * Both source and destination balances are immediately restored without waiting for a Checker queue.
+  * The response payload displays `STATUS: SUCCESS`, `MESSAGE: REVERSAL_APPROVED_AND_SETTLED`, and the generated compensating transaction ID (e.g. `TXN-REV-XXXXXXXX`).
+  * The working balances of both source and destination accounts are immediately restored without waiting for a manual Checker queue.
 
 * **Database Table Verification Steps**:
-  1. **Check `TRANSACTIONS` Table (Oracle XE)**:
+  1. **Check Original and Compensating `TRANSACTIONS` Records (Oracle XE)**:
      ```sql
-     SELECT transaction_id, status FROM transactions WHERE transaction_id = '<ORIGINAL_TX_ID>';
+     -- Verify original transaction status transitioned to Reversed:
+     SELECT transaction_id, from_account_id, to_account_id, amount, status 
+     FROM transactions 
+     WHERE transaction_id = '<ORIGINAL_TX_ID>';
+     -- Expected: status = 'Reversed'
+
+     -- Verify generated compensating transaction:
+     SELECT transaction_id, from_account_id, to_account_id, amount, transaction_type, status, requires_maker_checker, approved_by, approved_by_user_id 
+     FROM transactions 
+     WHERE from_account_id = '1000-2000-3002' AND to_account_id = '1000-2000-3001' AND transaction_type = 'REVERSAL'
+     ORDER BY created_at DESC FETCH FIRST 1 ROWS ONLY;
+     -- Expected: status = 'Reversed', requires_maker_checker = 0, approved_by IS NULL, approved_by_user_id IS NULL
      ```
-     * **Expected Invariant**: Status immediately updated to `Reversed`.
+
   2. **Check `BALANCE_MASTER` Table (Oracle XE)**:
      ```sql
-     SELECT account_id, balance_amount FROM balance_master WHERE account_id IN ('1000-2000-3001', '1000-2000-3002');
+     SELECT account_id, balance_amount, available_balance 
+     FROM balance_master 
+     WHERE account_id IN ('1000-2000-3001', '1000-2000-3002');
      ```
-     * **Expected Invariant**: Both accounts restored to their pre-transfer balances.
+     * **Expected Invariant**: Both accounts restored to their pre-transfer balances (+₱2,500.00 to sender, -₱2,500.00 from beneficiary).
+
   3. **Check `GL_LEDGER` Table (Oracle XE)**:
      ```sql
      SELECT journal_id, gl_code, debit_amount, credit_amount 
      FROM gl_ledger 
-     WHERE transaction_id IN (
-         SELECT reversal_tx_id FROM reversal_requests WHERE original_tx_id = '<ORIGINAL_TX_ID>'
-     );
+     WHERE transaction_id = '<COMPENSATING_TXN_ID>';
      ```
-     * **Expected Invariant**: Compensating journal entries created with maker `SAGA_COORDINATOR` and checker `SYSTEM_SAGA`.
+     * **Expected Invariant**: Exactly two balanced entries on GL code `20100` (Debit: 2500.00, Credit: 2500.00).
+
+  4. **Check `TRANSACTION_STATUS_HISTORY` Table (Oracle XE)**:
+     ```sql
+     SELECT history_id, transaction_id, from_status, to_status, change_reason, actor_id, actor_type 
+     FROM transaction_status_history 
+     WHERE transaction_id = '<ORIGINAL_TX_ID>' 
+     ORDER BY changed_at DESC FETCH FIRST 1 ROWS ONLY;
+     ```
+     * **Expected Invariant**: `to_status = 'Reversed'`, `actor_id = 'SYSTEM_SAGA'`, `actor_type = 'SYSTEM_ORCH'`.
 
 ---
 
@@ -465,11 +495,11 @@ You can verify the database state using either the **Command Line (Docker CLI)**
          *Expected Invariant*: No mutation in `balance_master` until biometric challenge token is verified.
 
      * **Scenario 6: Four-Eyes Dual-Control Violation (BSP Circular 982)**
-       * *Payload*: Checker ID == Maker ID (`TELLER_ALICE`).
+       * *Payload*: Checker ID == Maker ID (`usr-1003-tel-001`).
        * *Pass Criteria*: HTTP 400 rejection: `Dual control violation: Checker ID cannot match Maker ID`.
        * **Database Verification (Oracle XE)**:
          ```sql
-         SELECT ticket_id, status, checker_id FROM reversal_requests WHERE maker_id = 'TELLER_ALICE' AND original_tx_id LIKE 'TXN-DISP-%';
+         SELECT ticket_id, status, checker_id FROM reversal_requests WHERE maker_id = 'usr-1003-tel-001' AND original_tx_id LIKE 'TXN-DISP-%';
          ```
          *Expected Invariant*: Ticket status remains `PENDING`; `checker_id` remains `NULL`. The self-approval was blocked by business logic before committing.
 
@@ -783,7 +813,7 @@ Implemented in [`CbsReversalService.java#L166-L169`](file:///c:/Users/HRR83780/D
      -H "Content-Type: application/json" \
      -d '{
        "originalTransactionId": "<TRANSACTION_ID>",
-       "makerId": "TELLER_ALICE",
+       "makerId": "usr-1003-tel-001",
        "reason": "CUSTOMER_DISPUTE"
      }'
    ```
@@ -795,7 +825,7 @@ Implemented in [`CbsReversalService.java#L166-L169`](file:///c:/Users/HRR83780/D
      -H "Content-Type: application/json" \
      -d '{
        "reversalRequestId": "<TICKET_ID>",
-       "checkerId": "MGR_BOB",
+       "checkerId": "usr-1004-adm-001",
        "checkerNotes": "Approved"
      }'
    ```

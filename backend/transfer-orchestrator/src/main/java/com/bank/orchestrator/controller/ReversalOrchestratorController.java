@@ -58,8 +58,15 @@ public class ReversalOrchestratorController {
     @PostMapping("/request")
     public ResponseEntity<Map<?, ?>> requestReversal(@RequestBody Map<String, Object> request) {
         String origTx = String.valueOf(request.getOrDefault("originalTransactionId", request.get("originalTxId")));
+        if (origTx == null || origTx.isBlank() || "null".equalsIgnoreCase(origTx)) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "originalTransactionId is required");
+        }
         String reason = String.valueOf(request.getOrDefault("reason", request.getOrDefault("disputeReason", "DISPUTE")));
-        String maker = String.valueOf(request.getOrDefault("makerId", "usr-1003-tel-001"));
+        Object makerObj = request.get("makerId");
+        if (makerObj == null || String.valueOf(makerObj).isBlank() || "null".equalsIgnoreCase(String.valueOf(makerObj))) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "makerId is required");
+        }
+        String maker = String.valueOf(makerObj).trim();
         String ofsMsg = OfsMessageUtil.buildReversalRequestMessage(origTx, reason, maker);
 
         try {
@@ -83,7 +90,14 @@ public class ReversalOrchestratorController {
     @PostMapping("/approve")
     public ResponseEntity<Map<?, ?>> approveReversal(@RequestBody Map<String, Object> request) {
         String ticketId = String.valueOf(request.getOrDefault("reversalRequestId", request.get("ticketId")));
-        String checker = String.valueOf(request.getOrDefault("checkerId", "usr-1004-adm-001"));
+        if (ticketId == null || ticketId.isBlank() || "null".equalsIgnoreCase(ticketId)) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "reversalRequestId is required");
+        }
+        Object checkerObj = request.get("checkerId");
+        if (checkerObj == null || String.valueOf(checkerObj).isBlank() || "null".equalsIgnoreCase(String.valueOf(checkerObj))) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "checkerId is required");
+        }
+        String checker = String.valueOf(checkerObj).trim();
         String reason = String.valueOf(request.getOrDefault("checkerNotes", "Approved"));
         String ofsMsg = OfsMessageUtil.buildReversalApprovalMessage(ticketId, checker, reason);
 
@@ -108,7 +122,14 @@ public class ReversalOrchestratorController {
     @PostMapping("/reject")
     public ResponseEntity<Map<?, ?>> rejectReversal(@RequestBody Map<String, Object> request) {
         String ticketId = String.valueOf(request.getOrDefault("reversalRequestId", request.get("ticketId")));
-        String checker = String.valueOf(request.getOrDefault("checkerId", "usr-1004-adm-001"));
+        if (ticketId == null || ticketId.isBlank() || "null".equalsIgnoreCase(ticketId)) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "reversalRequestId is required");
+        }
+        Object checkerObj = request.get("checkerId");
+        if (checkerObj == null || String.valueOf(checkerObj).isBlank() || "null".equalsIgnoreCase(String.valueOf(checkerObj))) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "checkerId is required");
+        }
+        String checker = String.valueOf(checkerObj).trim();
         String reason = String.valueOf(request.getOrDefault("rejectionReason", request.getOrDefault("checkerNotes", "Rejected")));
         String ofsMsg = OfsMessageUtil.buildReversalRejectionMessage(ticketId, checker, reason);
 
@@ -133,11 +154,14 @@ public class ReversalOrchestratorController {
     @PostMapping("/direct")
     public ResponseEntity<Map<?, ?>> directReversal(@RequestBody Map<String, Object> request) {
         String origTx = String.valueOf(request.getOrDefault("originalTransactionId", request.getOrDefault("originalFtNo", request.get("originalTxId"))));
+        if (origTx == null || origTx.isBlank() || "null".equalsIgnoreCase(origTx)) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "originalTransactionId is required");
+        }
         String reason = String.valueOf(request.getOrDefault("reason", request.getOrDefault("reversalReason", "SAGA_COMPENSATION")));
-        String maker = String.valueOf(request.getOrDefault("makerId", "SAGA_COORDINATOR"));
-        String checker = String.valueOf(request.getOrDefault("checkerId", "SYSTEM_SAGA"));
-        String ofsMsg = String.format("FUNDS.TRANSFER,REVERSAL/I/PROCESS//%s,%s/123456,ORIGINAL.FT.NO=%s,REASON=%s,CHECKER.ID=%s,MAKER.ID=%s",
-                origTx, maker, origTx, reason, checker, maker);
+
+        // Pure OFS reversal message for automated SAGA - no human maker or checker required
+        String ofsMsg = String.format("FUNDS.TRANSFER,REVERSAL/I/PROCESS//%s,%s/123456,ORIGINAL.FT.NO=%s,REASON=%s",
+                origTx, "SYSTEM_SAGA", origTx, reason);
 
         try {
             String response = cbsWebClient.post()

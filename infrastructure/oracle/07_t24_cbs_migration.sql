@@ -90,6 +90,24 @@ EXCEPTION WHEN OTHERS THEN NULL;
 END;
 /
 
+-- 3b. Ensure foreign key constraints on approved_by_user_id and reversed_by_user_id are enforced
+BEGIN
+  DECLARE
+    v_c NUMBER;
+  BEGIN
+    SELECT COUNT(*) INTO v_c FROM user_constraints WHERE table_name = 'TRANSACTIONS' AND constraint_name = 'FK_TX_APPROVED_BY';
+    IF v_c = 0 THEN
+      EXECUTE IMMEDIATE 'ALTER TABLE transactions ADD CONSTRAINT fk_tx_approved_by FOREIGN KEY (approved_by_user_id) REFERENCES users(user_id)';
+    END IF;
+    SELECT COUNT(*) INTO v_c FROM user_constraints WHERE table_name = 'TRANSACTIONS' AND constraint_name = 'FK_TX_REVERSED_BY';
+    IF v_c = 0 THEN
+      EXECUTE IMMEDIATE 'ALTER TABLE transactions ADD CONSTRAINT fk_tx_reversed_by FOREIGN KEY (reversed_by_user_id) REFERENCES users(user_id)';
+    END IF;
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+END;
+/
+
 -- 4. Sync existing transactions rows
 UPDATE transactions SET
   transaction_type = COALESCE(transaction_type, type, 'INTRA_BANK'),

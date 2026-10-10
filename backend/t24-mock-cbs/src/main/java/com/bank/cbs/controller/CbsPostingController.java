@@ -136,20 +136,14 @@ public class CbsPostingController {
             }
 
             String reason = fields.getOrDefault("REASON", fields.getOrDefault("REVERSAL.REASON", "SAGA_COMPENSATION"));
-            String checkerId = fields.getOrDefault("CHECKER.ID", fields.getOrDefault("CHECKER", "SYSTEM_SAGA"));
-            String makerId = fields.getOrDefault("MAKER.ID", fields.getOrDefault("MAKER", "SAGA_COORDINATOR"));
 
-            ReversalRequestDto reqDto = new ReversalRequestDto(
-                    originalFtNo,
-                    makerId,
-                    reason,
-                    "Automated compensating saga reversal via OFS"
-            );
-            ReversalRequestMaster ticket = reversalService.requestReversal(reqDto);
-            ReversalActionDto action = new ReversalActionDto(ticket.getTicketId(), checkerId, null, "Approved via OFS Reversal");
-            ReversalRequestMaster approved = reversalService.approveReversal(action);
+            com.bank.ledger.contracts.dto.T24ReversalRequest revReq = new com.bank.ledger.contracts.dto.T24ReversalRequest();
+            revReq.setOriginalTransactionId(originalFtNo);
+            revReq.setReversalReason(reason);
 
-            return ResponseEntity.ok(OfsMessageUtil.buildOfsResponse(true, approved.getReversalTxId(), "REVERSAL_APPROVED_AND_SETTLED"));
+            com.bank.ledger.contracts.dto.T24ReversalResponse resp = reversalService.executeCompensatingReversal(revReq);
+
+            return ResponseEntity.ok(OfsMessageUtil.buildOfsResponse(true, resp.getReversalReference(), "REVERSAL_APPROVED_AND_SETTLED"));
         } catch (Exception e) {
             log.error("Failed to execute OFS reversal: {}", e.getMessage(), e);
             return ResponseEntity.badRequest().body(OfsMessageUtil.buildOfsResponse(false, "ERROR", e.getMessage()));

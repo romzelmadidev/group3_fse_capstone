@@ -78,13 +78,13 @@ export default function T24TestConsole() {
   // Reversal State
   const [reversalForm, setReversalForm] = useState({
     originalTransactionId: '',
-    makerId: 'TELLER_ALICE',
+    makerId: 'usr-1003-tel-001',
     reason: 'CUSTOMER_DISPUTE',
     notes: 'Customer disputed charge'
   });
   const [checkerForm, setCheckerForm] = useState({
     ticketId: '',
-    checkerId: 'MGR_BOB',
+    checkerId: 'usr-1004-adm-001',
     checkerNotes: 'Validated and approved by operations manager'
   });
   const [reversalResult, setReversalResult] = useState(null);
@@ -242,9 +242,7 @@ export default function T24TestConsole() {
     try {
       const payload = {
         originalTransactionId: reversalForm.originalTransactionId,
-        reason: reversalForm.reason || 'SAGA_COMPENSATION_ROLLBACK',
-        makerId: 'SAGA_COORDINATOR',
-        checkerId: 'SYSTEM_SAGA'
+        reason: reversalForm.reason || 'SAGA_COMPENSATION_ROLLBACK'
       };
       const res = await axios.post(`${API_BASE}/reversals/direct`, payload);
       setReversalResult({ success: true, step: 'COMPENSATED_ORCHESTRATOR', data: res.data });
@@ -459,7 +457,7 @@ export default function T24TestConsole() {
         const originTx = 'TXN-DISP-' + Math.floor(Math.random() * 90000 + 10000);
         const reqPayload = {
           originalTransactionId: originTx,
-          makerId: 'TELLER_ALICE',
+          makerId: 'usr-1003-tel-001',
           reason: 'CUSTOMER_DISPUTE',
           notes: 'Customer disputed charge'
         };
@@ -469,7 +467,7 @@ export default function T24TestConsole() {
         // Step 2: Attempt rogue self-approval using SAME ID (checkerId == makerId)
         const approvePayload = {
           reversalRequestId: ticketId,
-          checkerId: 'TELLER_ALICE',
+          checkerId: 'usr-1003-tel-001',
           checkerNotes: 'Rogue unauthorized self-approval attempt'
         };
         try {
@@ -1822,7 +1820,7 @@ export default function T24TestConsole() {
                 badge: 'BSP Circular 982',
                 badgeColor: 'border-purple-200 bg-purple-50 text-purple-900',
                 title: '6. Four-Eyes Maker-Checker Self-Approval Violation',
-                description: 'Maker TELLER_ALICE creates dispute ticket, then attempts to self-approve with checkerId: TELLER_ALICE. Asserts segregation-of-duties block.',
+                description: 'Maker usr-1003-tel-001 creates dispute ticket, then attempts to self-approve with checkerId: usr-1003-tel-001. Asserts segregation-of-duties block.',
                 route: 'POST /api/v1/reversals/approve',
                 icon: ShieldAlert
               },

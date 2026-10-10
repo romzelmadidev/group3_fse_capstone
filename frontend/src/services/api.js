@@ -429,7 +429,7 @@ const initialMockState = {
     {
       ticketId: 'REV-TKT-1001',
       originalTransactionId: 'TXN-9901-2026',
-      makerId: 'TELLER_ALICE',
+      makerId: 'usr-1003-tel-001',
       checkerId: null,
       status: 'PENDING',
       disputeReason: 'CUSTOMER_ERRONEOUS_TRANSFER',

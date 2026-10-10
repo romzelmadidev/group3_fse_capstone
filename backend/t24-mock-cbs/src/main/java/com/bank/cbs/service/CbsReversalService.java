@@ -76,7 +76,12 @@ public class CbsReversalService {
 
     @Transactional("masterTransactionManager")
     public ReversalRequestMaster requestReversal(ReversalRequestDto dto) {
-        validateMaker(dto.makerId());
+        String makerId = dto.makerId();
+        if (makerId == null || makerId.isBlank()) {
+            throw new IllegalArgumentException("Maker ID is required to request a reversal");
+        }
+        makerId = makerId.trim();
+        validateMaker(makerId);
 
         TransactionMaster originalTx = transactionRepository.findById(dto.originalTransactionId())
                 .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + dto.originalTransactionId()));
@@ -97,7 +102,7 @@ public class CbsReversalService {
         ReversalRequestMaster reversal = ReversalRequestMaster.builder()
                 .ticketId(ticketId)
                 .originalTxId(originalTx.getTransactionId())
-                .makerId(dto.makerId())
+                .makerId(makerId)
                 .disputeReason(dto.reason() != null ? dto.reason() : "CUSTOMER_DISPUTE")
                 .makerNotes(dto.notes() != null ? dto.notes() : "Reversal requested by maker")
                 .status("PENDING")
@@ -111,8 +116,8 @@ public class CbsReversalService {
                 .fromStatus(TransactionStatus.Posted.name())
                 .toStatus(TransactionStatus.PendingReversal.name())
                 .changeReason(ChangeReasonCode.MAKER_DISPUTE_FILED)
-                .reasonDetails("Reversal initiated by maker: " + dto.makerId())
-                .actorId(dto.makerId())
+                .reasonDetails("Reversal initiated by maker: " + makerId)
+                .actorId(makerId)
                 .actorType(ActorType.TELLER_MAKER.name())
                 .changedAt(now)
                 .build();
@@ -126,7 +131,7 @@ public class CbsReversalService {
                 .fromStatus(TransactionStatus.Posted)
                 .toStatus(TransactionStatus.PendingReversal)
                 .changeReason(ChangeReasonCode.MAKER_DISPUTE_FILED)
-                .actorId(dto.makerId())
+                .actorId(makerId)
                 .actorType(ActorType.TELLER_MAKER)
                 .changedAt(now)
                 .build();
@@ -144,12 +149,18 @@ public class CbsReversalService {
             throw new IllegalStateException("Reversal request is not in PENDING state: " + request.getStatus());
         }
 
+        String checkerId = action.checkerId();
+        if (checkerId == null || checkerId.isBlank()) {
+            throw new IllegalArgumentException("Checker ID is required for reversal approval");
+        }
+        checkerId = checkerId.trim();
+
         // Strict dual-control check: Checker CANNOT be Maker
-        if (action.checkerId().equalsIgnoreCase(request.getMakerId())) {
-            throw new IllegalArgumentException("Dual control violation: Checker cannot be the same person as Maker (" + action.checkerId() + ")");
+        if (checkerId.equalsIgnoreCase(request.getMakerId())) {
+            throw new IllegalArgumentException("Dual control violation: Checker cannot be the same person as Maker (" + checkerId + ")");
         }
 
-        validateChecker(action.checkerId());
+        validateChecker(checkerId);
 
         TransactionMaster originalTx = transactionRepository.findById(request.getOriginalTxId())
                 .orElseThrow(() -> new IllegalArgumentException("Original transaction not found"));
@@ -219,7 +230,7 @@ public class CbsReversalService {
         glLedgerRepository.save(compensatingCr);
 
         // Update reversal record
-        request.setCheckerId(action.checkerId());
+        request.setCheckerId(checkerId);
         request.setCheckerNotes(action.checkerNotes() != null ? action.checkerNotes() : "Approved by checker");
         request.setStatus("APPROVED");
         request.setResolvedAt(now);
@@ -243,7 +254,7 @@ public class CbsReversalService {
                 .transactionType("REVERSAL")
                 .status(TransactionStatus.Reversed.name())
                 .requiresMakerChecker(1)
-                .approvedBy(action.checkerId())
+                .approvedBy(checkerId)
                 .memo("Reversal of transaction " + originalTx.getTransactionId() + ": " + request.getDisputeReason())
                 .createdAt(now)
                 .updatedAt(now)
@@ -257,8 +268,8 @@ public class CbsReversalService {
                 .fromStatus(TransactionStatus.PendingReversal.name())
                 .toStatus(TransactionStatus.Reversed.name())
                 .changeReason(ChangeReasonCode.CHECKER_REVERSAL_APPROVED_SETTLED)
-                .reasonDetails("Reversal approved by checker: " + action.checkerId())
-                .actorId(action.checkerId())
+                .reasonDetails("Reversal approved by checker: " + checkerId)
+                .actorId(checkerId)
                 .actorType(ActorType.MANAGER_CHECKER.name())
                 .changedAt(now)
                 .build();
@@ -273,7 +284,7 @@ public class CbsReversalService {
                         .toStatus(TransactionStatus.Initiated.name())
                         .changeReason(ChangeReasonCode.CHECKER_REVERSAL_APPROVED_SETTLED)
                         .reasonDetails("Compensating reversal transaction initiated")
-                        .actorId(action.checkerId())
+                        .actorId(checkerId)
                         .actorType(ActorType.MANAGER_CHECKER.name())
                         .changedAt(now.minusMillis(20))
                         .build(),
@@ -295,7 +306,7 @@ public class CbsReversalService {
                         .toStatus(TransactionStatus.Reversed.name())
                         .changeReason(ChangeReasonCode.CHECKER_REVERSAL_APPROVED_SETTLED)
                         .reasonDetails("Compensating reversal ledger committed")
-                        .actorId(action.checkerId())
+                        .actorId(checkerId)
                         .actorType(ActorType.MANAGER_CHECKER.name())
                         .changedAt(now)
                         .build()
@@ -316,7 +327,7 @@ public class CbsReversalService {
                 .amount(originalTx.getAmount())
                 .currency(originalTx.getCurrency())
                 .makerId(request.getMakerId())
-                .checkerId(action.checkerId())
+                .checkerId(checkerId)
                 .beneficiaryBalanceAfter(beneficiaryBal.getBalanceAmount())
                 .originalSenderBalanceAfter(senderBal.getBalanceAmount())
                 .executedAtUtc(now)
@@ -330,7 +341,7 @@ public class CbsReversalService {
                 .fromStatus(TransactionStatus.PendingReversal)
                 .toStatus(TransactionStatus.Reversed)
                 .changeReason(ChangeReasonCode.CHECKER_REVERSAL_APPROVED_SETTLED)
-                .actorId(action.checkerId())
+                .actorId(checkerId)
                 .actorType(ActorType.MANAGER_CHECKER)
                 .changedAt(now)
                 .build();
@@ -350,14 +361,20 @@ public class CbsReversalService {
             throw new IllegalStateException("Reversal request is not in PENDING state");
         }
 
-        if (action.checkerId().equalsIgnoreCase(request.getMakerId())) {
-            throw new IllegalArgumentException("Dual control violation: Checker cannot be Maker");
+        String checkerId = action.checkerId();
+        if (checkerId == null || checkerId.isBlank()) {
+            throw new IllegalArgumentException("Checker ID is required for reversal rejection");
+        }
+        checkerId = checkerId.trim();
+
+        if (checkerId.equalsIgnoreCase(request.getMakerId())) {
+            throw new IllegalArgumentException("Dual control violation: Checker cannot be Maker (" + checkerId + ")");
         }
 
-        validateChecker(action.checkerId());
+        validateChecker(checkerId);
 
         Instant now = Instant.now();
-        request.setCheckerId(action.checkerId());
+        request.setCheckerId(checkerId);
         request.setStatus("REJECTED");
         request.setCheckerNotes(action.rejectionReason());
         request.setResolvedAt(now);
@@ -376,8 +393,8 @@ public class CbsReversalService {
                 .fromStatus(TransactionStatus.PendingReversal.name())
                 .toStatus(TransactionStatus.Posted.name())
                 .changeReason(ChangeReasonCode.CHECKER_REVERSAL_REJECTED)
-                .reasonDetails("Reversal rejected by checker: " + action.checkerId())
-                .actorId(action.checkerId())
+                .reasonDetails("Reversal rejected by checker: " + checkerId)
+                .actorId(checkerId)
                 .actorType(ActorType.MANAGER_CHECKER.name())
                 .changedAt(now)
                 .build();
@@ -483,7 +500,6 @@ public class CbsReversalService {
         transactionRepository.save(originalTx);
 
         // Create reversal transaction record
-        String actor = req.getCheckerId() != null ? req.getCheckerId() : (req.getMakerId() != null ? req.getMakerId() : "SAGA_COMPENSATOR");
         TransactionMaster reversalTx = TransactionMaster.builder()
                 .transactionId(reversalTxId)
                 .sourceAccountId(destId)
@@ -495,7 +511,7 @@ public class CbsReversalService {
                 .transactionType("REVERSAL")
                 .status(TransactionStatus.Reversed.name())
                 .requiresMakerChecker(0)
-                .approvedBy(actor)
+                .approvedBy(null)
                 .memo("Compensating reversal of transaction " + originalTx.getTransactionId() + ": " + req.getReversalReason())
                 .createdAt(now)
                 .updatedAt(now)
@@ -510,7 +526,7 @@ public class CbsReversalService {
                 .toStatus(TransactionStatus.Reversed.name())
                 .changeReason(ChangeReasonCode.CHECKER_REVERSAL_APPROVED_SETTLED)
                 .reasonDetails("Compensating reversal executed: " + req.getReversalReason())
-                .actorId(actor)
+                .actorId("SYSTEM_SAGA")
                 .actorType(ActorType.SYSTEM_ORCH.name())
                 .changedAt(now)
                 .build();
@@ -525,7 +541,7 @@ public class CbsReversalService {
                         .toStatus(TransactionStatus.Initiated.name())
                         .changeReason(ChangeReasonCode.CHECKER_REVERSAL_APPROVED_SETTLED)
                         .reasonDetails("Compensating reversal transaction initiated")
-                        .actorId(actor)
+                        .actorId("SYSTEM_SAGA")
                         .actorType(ActorType.SYSTEM_ORCH.name())
                         .changedAt(now.minusMillis(20))
                         .build(),
@@ -544,10 +560,10 @@ public class CbsReversalService {
                         .historyId(UUID.randomUUID().toString())
                         .transactionId(reversalTxId)
                         .fromStatus(TransactionStatus.Processing.name())
-                        .toStatus(TransactionStatus.Reversed.name())
-                        .changeReason(ChangeReasonCode.CHECKER_REVERSAL_APPROVED_SETTLED)
+                        .toStatus(TransactionStatus.Posted.name())
+                        .changeReason(ChangeReasonCode.ACID_LEDGER_COMMITTED)
                         .reasonDetails("Compensating reversal ledger committed")
-                        .actorId(actor)
+                        .actorId("SYSTEM_SAGA")
                         .actorType(ActorType.SYSTEM_ORCH.name())
                         .changedAt(now)
                         .build()
@@ -559,7 +575,7 @@ public class CbsReversalService {
                 .eventId(UUID.randomUUID().toString())
                 .eventType("TransferReversedEvent")
                 .version("1.0")
-                .ticketId("SAGA-" + reversalTxId)
+                .ticketId(null)
                 .originalTransactionId(originalTx.getTransactionId())
                 .reversalTransactionId(reversalTxId)
                 .cbsReference("REV-" + reversalTxId)
@@ -567,8 +583,8 @@ public class CbsReversalService {
                 .originalSenderAccountId(sourceId)
                 .amount(originalTx.getAmount())
                 .currency(originalTx.getCurrency())
-                .makerId(req.getMakerId() != null ? req.getMakerId() : "SAGA_COORDINATOR")
-                .checkerId(actor)
+                .makerId("SYSTEM_SAGA")
+                .checkerId(null)
                 .beneficiaryBalanceAfter(beneficiaryBal.getBalanceAmount())
                 .originalSenderBalanceAfter(senderBal.getBalanceAmount())
                 .executedAtUtc(now)
@@ -582,7 +598,7 @@ public class CbsReversalService {
                 .fromStatus(TransactionStatus.Posted)
                 .toStatus(TransactionStatus.Reversed)
                 .changeReason(ChangeReasonCode.CHECKER_REVERSAL_APPROVED_SETTLED)
-                .actorId(actor)
+                .actorId("SYSTEM_SAGA")
                 .actorType(ActorType.SYSTEM_ORCH)
                 .changedAt(now)
                 .build();
@@ -631,18 +647,9 @@ public class CbsReversalService {
         }
     }
 
-    private boolean isSystemActor(String actorId) {
-        if (actorId == null) return false;
-        String id = actorId.trim().toUpperCase();
-        return id.startsWith("SYSTEM") || id.startsWith("SAGA_");
-    }
-
     private void validateMaker(String makerId) {
         if (makerId == null || makerId.isBlank()) {
             throw new IllegalArgumentException("Maker ID is required to request a reversal");
-        }
-        if (isSystemActor(makerId)) {
-            return;
         }
         UserMaster maker = userRepository.findById(makerId)
                 .orElseThrow(() -> new IllegalArgumentException("Maker user does not exist in database: " + makerId));
@@ -660,9 +667,6 @@ public class CbsReversalService {
     private void validateChecker(String checkerId) {
         if (checkerId == null || checkerId.isBlank()) {
             throw new IllegalArgumentException("Checker ID is required for reversal approval/rejection");
-        }
-        if (isSystemActor(checkerId)) {
-            return;
         }
         UserMaster checker = userRepository.findById(checkerId)
                 .orElseThrow(() -> new IllegalArgumentException("Checker user does not exist in database: " + checkerId));
