@@ -375,7 +375,6 @@ WHEN NOT MATCHED THEN
 
 MERGE INTO system_dates target
 USING (
-    SELECT 'SYS-DATE-001' AS system_date_id, DATE '2026-10-07' AS business_date, 'ONLINE' AS status, 1 AS posting_window_open FROM dual UNION ALL
     SELECT 'SYS-DATE-1' AS system_date_id, TRUNC(CURRENT_DATE) AS business_date, 'ONLINE' AS status, 1 AS posting_window_open FROM dual
 ) source
 ON (target.system_date_id = source.system_date_id)

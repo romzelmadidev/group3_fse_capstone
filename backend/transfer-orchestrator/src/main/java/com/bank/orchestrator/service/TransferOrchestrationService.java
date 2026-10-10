@@ -58,8 +58,32 @@ public class TransferOrchestrationService {
             txId = rawTxId;
         }
 
-        // 1. Idempotency Lock
+        // 1. Idempotency Check & Lock
         String idempKey = request.idempotencyKey() != null ? request.idempotencyKey() : txId;
+        java.util.Optional<String> cachedResp = idempotencyService.getCachedResponse(idempKey);
+        if (cachedResp.isPresent()) {
+            try {
+                TransferInitiationResponse cached = objectMapper.readValue(cachedResp.get(), TransferInitiationResponse.class);
+                log.info("Idempotent replay detected for key: {}. Returning cached response without duplicate posting.", idempKey);
+                return new TransferInitiationResponse(
+                        cached.transactionId(),
+                        cached.status(),
+                        cached.amount(),
+                        cached.currency(),
+                        cached.sourceAccountId(),
+                        cached.destinationAccountId(),
+                        "IDEMPOTENT_REPLAY: Duplicate transfer request safely intercepted without re-executing ledger mutations.",
+                        cached.coolingOffRequired(),
+                        cached.coolingOffExpiresInSeconds(),
+                        cached.biometricRequired(),
+                        cached.biometricChallenge(),
+                        cached.processedAt()
+                );
+            } catch (Exception e) {
+                log.warn("Failed to deserialize cached idempotency response: {}", e.getMessage());
+            }
+        }
+
         if (!idempotencyService.acquireLock(idempKey)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Concurrent or duplicate transfer request in progress");
         }
@@ -109,6 +133,11 @@ public class TransferOrchestrationService {
                         request.currency() != null ? request.currency() : "PHP"
                 );
                 log.info("Transfer {} requires biometric authentication challenge", txId);
+                try {
+                    coolOffService.putInCoolOff("bio:pending:" + txId, objectMapper.writeValueAsString(request));
+                } catch (Exception e) {
+                    log.warn("Failed to cache pending biometric request: {}", e.getMessage());
+                }
                 return new TransferInitiationResponse(
                         txId,
                         TransactionStatus.Authorized,
@@ -148,7 +177,19 @@ public class TransferOrchestrationService {
             }
 
             // 5. Post to CBS
-            return cbsService.postToCbs(request, txId, inCoolOff);
+            TransferInitiationResponse cbsResp = cbsService.postToCbs(request, txId, inCoolOff);
+
+            // Cache response for future idempotent replays
+            try {
+                idempotencyService.cacheResponse(idempKey, objectMapper.writeValueAsString(cbsResp));
+            } catch (Exception e) {
+                log.warn("Failed to cache idempotency response: {}", e.getMessage());
+            }
+
+            // Real-Time Cache Eviction on Mutation
+            idempotencyService.evictBalanceCache(request.sourceAccountId(), request.destinationAccountId());
+
+            return cbsResp;
 
         } catch (ResponseStatusException rse) {
             throw rse;

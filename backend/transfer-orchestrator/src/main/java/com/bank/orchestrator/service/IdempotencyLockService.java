@@ -36,6 +36,41 @@ public class IdempotencyLockService {
         return false;
     }
 
+    private static final String IDEMP_RESP_PREFIX = "tx:idemp:resp:";
+    private static final Duration RESP_TTL = Duration.ofHours(24);
+
+    public void cacheResponse(String idempotencyKey, String responseJson) {
+        if (idempotencyKey != null && !idempotencyKey.isBlank() && responseJson != null) {
+            redisTemplate.opsForValue().set(IDEMP_RESP_PREFIX + idempotencyKey, responseJson, RESP_TTL);
+        }
+    }
+
+    public java.util.Optional<String> getCachedResponse(String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        String val = redisTemplate.opsForValue().get(IDEMP_RESP_PREFIX + idempotencyKey);
+        return java.util.Optional.ofNullable(val);
+    }
+
+    public void evictBalanceCache(String sourceAccountId, String destinationAccountId) {
+        try {
+            java.util.List<String> keys = new java.util.ArrayList<>();
+            if (sourceAccountId != null && !sourceAccountId.isBlank()) {
+                keys.add("account:balance:" + sourceAccountId);
+            }
+            if (destinationAccountId != null && !destinationAccountId.isBlank()) {
+                keys.add("account:balance:" + destinationAccountId);
+            }
+            if (!keys.isEmpty()) {
+                redisTemplate.delete(keys);
+                log.info("Evicted balance cache for accounts: {}", keys);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to evict balance cache: {}", e.getMessage());
+        }
+    }
+
     public void releaseLock(String idempotencyKey) {
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             redisTemplate.delete(IDEMP_PREFIX + idempotencyKey);

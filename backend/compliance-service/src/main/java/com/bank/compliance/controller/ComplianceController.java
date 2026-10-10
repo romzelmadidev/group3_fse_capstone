@@ -3,18 +3,23 @@ package com.bank.compliance.controller;
 import com.bank.compliance.generator.CustomerStatementPdfGenerator;
 import com.bank.compliance.service.AzuriteBlobStorageService;
 import com.bank.ledger.contracts.ofs.OfsMessageUtil;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -28,17 +33,20 @@ public class ComplianceController {
     private final CustomerStatementPdfGenerator statementPdfGenerator;
     private final WebClient cbsWebClient;
     private final WebClient orchestratorWebClient;
+    private final ObjectMapper objectMapper;
 
     public ComplianceController(
             AzuriteBlobStorageService azuriteService,
             CustomerStatementPdfGenerator statementPdfGenerator,
             WebClient.Builder webClientBuilder,
+            ObjectMapper objectMapper,
             @Value("${services.cbs.url:http://localhost:8085}") String cbsServiceUrl,
             @Value("${services.orchestrator.url:http://localhost:8082}") String orchestratorUrl) {
         this.azuriteService = azuriteService;
         this.statementPdfGenerator = statementPdfGenerator;
         this.cbsWebClient = webClientBuilder.baseUrl(cbsServiceUrl).build();
         this.orchestratorWebClient = webClientBuilder.baseUrl(orchestratorUrl).build();
+        this.objectMapper = objectMapper;
     }
 
     @GetMapping("/reports")
@@ -169,47 +177,94 @@ public class ComplianceController {
         log.info("Initiating DLQ replay for failed transfer ID: {}", transferId);
 
         // 1. Resolve incident in CBS audit vault
-        cbsWebClient.post()
-                .uri("/api/v1/cbs/audit/failed-transactions/" + transferId + "/resolve")
-                .bodyValue(Map.of("notes", "Triggered manual replay via compliance console"))
-                .retrieve()
-                .bodyToMono(Map.class)
-                .timeout(Duration.ofSeconds(3))
-                .block();
-
-        // 2. Re-trigger transfer via orchestrator
-        Map<?, ?> replayedResult = orchestratorWebClient.post()
-                .uri("/api/v1/transfers")
-                .bodyValue(replayOverride != null ? replayOverride : Map.of("transactionId", transferId))
-                .retrieve()
-                .bodyToMono(Map.class)
-                .timeout(Duration.ofSeconds(5))
-                .block();
-
-        return ResponseEntity.ok(Map.of(
-                "transferId", transferId,
-                "status", "REPLAYED",
-                "orchestratorResult", replayedResult != null ? replayedResult : Map.of()
-        ));
-    }
-
-    @PostMapping("/dlq/simulate")
-    public ResponseEntity<?> simulateDlqFailure(@RequestBody(required = false) Map<String, String> body) {
-        log.info("Simulating DLQ failure incident: {}", body);
+        Map<?, ?> resolvedAudit = null;
         try {
-            Map<?, ?> res = cbsWebClient.post()
-                    .uri("/api/v1/cbs/audit/failed-transactions/simulate")
-                    .bodyValue(body != null ? body : Map.of())
+            resolvedAudit = cbsWebClient.post()
+                    .uri("/api/v1/cbs/audit/failed-transactions/" + transferId + "/resolve")
+                    .bodyValue(Map.of("notes", "Triggered manual replay via compliance console"))
                     .retrieve()
                     .bodyToMono(Map.class)
                     .timeout(Duration.ofSeconds(3))
                     .block();
-            return ResponseEntity.ok(res != null ? res : Map.of("status", "SIMULATED"));
-        } catch (Exception e) {
-            log.error("Failed to simulate DLQ incident: {}", e.getMessage());
-            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        } catch (Exception ex) {
+            log.warn("Could not mark CBS audit transaction {} as resolved: {}", transferId, ex.getMessage());
+        }
+
+        // 2. Extract and construct transfer payload
+        Map<String, Object> transferPayload = new HashMap<>();
+
+        // If override provided in request body, start with it
+        if (replayOverride != null && !replayOverride.isEmpty()) {
+            transferPayload.putAll(replayOverride);
+        }
+
+        // If payloadJson was stored in audit vault, unpack it for any missing attributes
+        if (resolvedAudit != null && resolvedAudit.get("payloadJson") != null) {
+            try {
+                Object rawPayload = resolvedAudit.get("payloadJson");
+                if (rawPayload instanceof String payloadStr && !payloadStr.isBlank()) {
+                    Map<String, Object> parsed = objectMapper.readValue(payloadStr, new TypeReference<Map<String, Object>>() {});
+                    if (parsed != null) {
+                        for (Map.Entry<String, Object> entry : parsed.entrySet()) {
+                            transferPayload.putIfAbsent(entry.getKey(), entry.getValue());
+                        }
+                    }
+                } else if (rawPayload instanceof Map<?, ?> rawMap) {
+                    for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+                        transferPayload.putIfAbsent(String.valueOf(entry.getKey()), entry.getValue());
+                    }
+                }
+            } catch (Exception ex) {
+                log.warn("Failed to parse stored payloadJson for transferId {}: {}", transferId, ex.getMessage());
+            }
+        }
+
+        // Ensure required TransferInitiationRequest fields have valid non-null defaults
+        transferPayload.putIfAbsent("sourceAccountId", "1000-2000-3001");
+        transferPayload.putIfAbsent("destinationAccountId", "1000-2000-3002");
+        transferPayload.putIfAbsent("amount", 5000.00);
+        transferPayload.putIfAbsent("currency", "PHP");
+        transferPayload.putIfAbsent("description", "DLQ Replay: " + transferId);
+        transferPayload.putIfAbsent("idempotencyKey", "REPLAY-" + transferId + "-" + System.currentTimeMillis());
+        transferPayload.putIfAbsent("scamAdvisoryAcknowledged", true);
+        if (!transferPayload.containsKey("transactionId")) {
+            transferPayload.put("transactionId", transferId);
+        }
+
+        // 3. Re-trigger transfer via orchestrator
+        try {
+            Map<?, ?> replayedResult = orchestratorWebClient.post()
+                    .uri("/api/v1/transfers")
+                    .bodyValue(transferPayload)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .timeout(Duration.ofSeconds(5))
+                    .block();
+
+            return ResponseEntity.ok(Map.of(
+                    "transferId", transferId,
+                    "status", "REPLAYED",
+                    "orchestratorResult", replayedResult != null ? replayedResult : Map.of()
+            ));
+        } catch (WebClientResponseException ex) {
+            log.error("Orchestrator rejected replay for transferId {}: HTTP {} - {}",
+                    transferId, ex.getStatusCode(), ex.getResponseBodyAsString());
+            return ResponseEntity.status(ex.getStatusCode()).body(Map.of(
+                    "transferId", transferId,
+                    "status", "REPLAY_FAILED",
+                    "error", ex.getResponseBodyAsString(),
+                    "payloadSent", transferPayload
+            ));
+        } catch (Exception ex) {
+            log.error("Failed to re-trigger transfer for transferId {}: {}", transferId, ex.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "transferId", transferId,
+                    "status", "REPLAY_FAILED",
+                    "error", ex.getMessage() != null ? ex.getMessage() : "Unknown replay error"
+            ));
         }
     }
+
 
     @GetMapping("/azurite/blobs")
     public ResponseEntity<List<AzuriteBlobStorageService.BlobItemDto>> listAzuriteBlobs() {

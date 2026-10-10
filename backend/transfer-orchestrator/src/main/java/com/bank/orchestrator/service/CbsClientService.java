@@ -144,9 +144,10 @@ public class CbsClientService {
     public TransferInitiationResponse postToCbs(TransferInitiationRequest request, String txId, boolean fundsHeld) {
         log.info("Sending funds transfer request to CBS via OFS: txId={}, amount={}, fundsHeld={}", txId, request.amount(), fundsHeld);
 
+        String idempKey = request.idempotencyKey() != null ? request.idempotencyKey() : txId;
         String ofsPostingReq = OfsMessageUtil.buildFundsTransferInitiate(
                 txId, request.sourceAccountId(), request.destinationAccountId(),
-                request.amount(), request.currency() != null ? request.currency() : "PHP", null
+                request.amount(), request.currency() != null ? request.currency() : "PHP", null, idempKey
         );
 
         String ofsResponse;

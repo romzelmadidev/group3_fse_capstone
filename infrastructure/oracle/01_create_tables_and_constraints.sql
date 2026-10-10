@@ -379,8 +379,6 @@ INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_
 VALUES ('20100', '2026-M10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
 
 INSERT INTO system_dates (system_date_id, business_date, status, posting_window_open, last_cob_completed_at, updated_at)
-VALUES ('SYS-DATE-001', DATE '2026-10-07', 'ONLINE', 1, NULL, CURRENT_TIMESTAMP);
+VALUES ('SYS-DATE-1', TRUNC(CURRENT_DATE), 'ONLINE', 1, NULL, CURRENT_TIMESTAMP);
 
-INSERT INTO system_dates (system_date_id, business_date, status, posting_window_open, last_cob_completed_at, updated_at)
-VALUES ('SYS-DATE-1', DATE '2026-10-07', 'ONLINE', 1, NULL, CURRENT_TIMESTAMP);
 

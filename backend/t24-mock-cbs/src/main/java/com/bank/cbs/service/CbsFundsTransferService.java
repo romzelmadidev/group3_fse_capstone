@@ -44,6 +44,8 @@ public class CbsFundsTransferService {
     private final OutboxEventMasterRepository outboxRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final ObjectMapper objectMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private org.springframework.data.redis.core.StringRedisTemplate redisTemplate;
 
     public CbsFundsTransferService(
             BalanceMasterRepository balanceRepository,
@@ -176,6 +178,16 @@ public class CbsFundsTransferService {
         destBal.setAvailableBalance(destBal.getBalanceAmount().subtract(destHold));
         destBal.setUpdatedAt(now);
         balanceRepository.save(destBal);
+
+        // Real-time balance cache eviction on mutation
+        if (redisTemplate != null) {
+            try {
+                redisTemplate.delete(java.util.List.of("account:balance:" + sourceId, "account:balance:" + destId));
+                log.info("Evicted Redis balance cache for accounts: {}, {}", sourceId, destId);
+            } catch (Exception e) {
+                log.warn("Failed to evict Redis balance cache: {}", e.getMessage());
+            }
+        }
 
         // 5. Double-entry GL postings
         String txId = resolveTransactionId(request.transactionId());

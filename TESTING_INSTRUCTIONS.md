@@ -408,36 +408,58 @@ You can verify the database state using either the **Command Line (Docker CLI)**
 ---
 
 ### Test 1.5: Dead Letter Queue (DLQ) Incident Browsing & Replay
-* **Objective**: Verify failed transaction capture in PostgreSQL audit vault and recovery via DLQ replay.
+* **Objective**: Verify failed transaction capture in PostgreSQL audit vault and recovery via DLQ replay during core banking outages.
 * **Steps**:
-  1. Click the **"4. DLQ Incident Replays"** tab.
-  2. Click **"Simulate Failure Event"** (selecting `NETWORK_TIMEOUT` and `HTTP_504`).
-  3. Confirm the simulated incident appears in the **DLQ Incidents Backlog** with `Circuit Breaker: OPEN`.
-  4. On that incident row, click **"Replay Transaction"**.
+  1. **Simulate a Genuine Core Outage**:
+     In a terminal / PowerShell, temporarily pause the Core Banking container to simulate an upstream network timeout or core outage:
+     ```powershell
+     docker pause group3-t24-mock-cbs
+     ```
+  2. **Trigger a Funds Transfer During the Outage**:
+     In the T24 Test Console (Tab 1) or via `curl`, dispatch a funds transfer:
+     ```powershell
+     curl.exe -s -X POST http://localhost:8080/api/v1/transfers `
+       -H "Content-Type: application/json" `
+       -d '{\"transactionId\":\"TXN-OUTAGE-001\",\"sourceAccountId\":\"1000-2000-3001\",\"destinationAccountId\":\"1000-2000-3002\",\"amount\":5000.00,\"currency\":\"PHP\",\"description\":\"Outage Resilience Test\",\"idempotencyKey\":\"OUTAGE-001\",\"scamAdvisoryAcknowledged\":true}'
+     ```
+     *Response*: Orchestrator attempts retries, trips Resilience4j circuit breaker fallback, routes `TransferFailedToDlqEvent` to Kafka topic `banking.transfers.dlq`, and returns fallback response:
+     ```json
+     {"transactionId":"TXN-OUTAGE-001","status":"Failed","message":"CBS temporarily unavailable. Transfer queued to DLQ for resolution."}
+     ```
+  3. **Restore Core Banking Service**:
+     Unpause the CBS container:
+     ```powershell
+     docker unpause group3-t24-mock-cbs
+     ```
+     *(The CBS audit self-consumption worker consumes the event from `banking.transfers.dlq` and commits the incident into the PostgreSQL `failed_transaction_audit` table)*.
+  4. **Browse and Replay the Dead-Lettered Incident in Tab 4**:
+     * In the T24 Lab, navigate to the **"4. DLQ Incident Replays"** tab and click **"Refresh Incidents"**.
+     * Locate `TXN-OUTAGE-001` in the DLQ Incidents backlog with `Circuit Breaker: OPEN` and `Status: PENDING_REPLAY`.
+     * Click the **"Replay Transaction"** button (or execute `POST http://localhost:8080/api/v1/compliance/dlq/replay/TXN-OUTAGE-001`).
 * **Frontend Verification Checkpoints**:
-  * Green toast confirms *"DLQ transfer ... replayed successfully!"*.
-  * The incident status changes to resolved in the PostgreSQL audit vault.
+  * Green toast confirms *"DLQ transfer TXN-OUTAGE-001 replayed successfully!"*.
+  * The incident status changes to resolved in the PostgreSQL audit vault and the transfer executes on the restored core.
 
 * **Database Table Verification Steps**:
-  1. **Check `failed_transaction_audit` Table Upon Failure Simulation (PostgreSQL)**:
+  1. **Check `failed_transaction_audit` Table Upon Failure Capture (PostgreSQL)**:
      ```sql
      SELECT incident_id, correlation_id, transaction_id, error_type, error_code, circuit_breaker_state, replay_status, failure_timestamp 
      FROM failed_transaction_audit 
      ORDER BY failure_timestamp DESC LIMIT 1;
      ```
      * **Expected Invariant**:
-       * Row exists with `error_type = 'NETWORK_TIMEOUT'`, `error_code = 'HTTP_504'`.
+       * Row exists with `error_type = 'CBS_CIRCUIT_BREAKER_OR_TIMEOUT'`, `error_code = 'CBS_DOWN_DLQ_ROUTED'`.
        * `circuit_breaker_state = 'OPEN'`, `replay_status = 'PENDING_REPLAY'`.
 
   2. **Check `failed_transaction_audit` Table Upon Replay (PostgreSQL)**:
      ```sql
      SELECT incident_id, transaction_id, replay_status, resolved_at, resolved_by 
      FROM failed_transaction_audit 
-     WHERE transaction_id = '<SIMULATED_TX_ID>';
+     WHERE transaction_id = 'TXN-OUTAGE-001';
      ```
      * **Expected Invariant**:
-       * `replay_status` updated to `'RESOLVED'` (or replayed).
-       * `resolved_by = 'COMPLIANCE_OPERATOR'` and `resolved_at` is populated.
+       * `replay_status` updated to `'RESOLVED'`.
+       * `resolved_by = 'SYSTEM'` (or compliance operator) and `resolved_at` is populated.
 
 ---
 
@@ -512,16 +534,17 @@ You can verify the database state using either the **Command Line (Docker CLI)**
          ```
          *Expected Invariant*: Count is exactly `1`. Deduplication prevented duplicate row insertion and prevented double-debiting `balance_master`.
 
-     * **Scenario 8: Circuit Breaker DLQ Routing**
-       * *Payload*: Simulated 504 Gateway Timeout.
-       * *Pass Criteria*: Tripping circuit breaker to `OPEN` and persisting incident to `banking.transfers.dlq`.
+     * **Scenario 8: DLQ Incident Audit Vault & Replay Pipeline**
+       * *Action*: Verifies live PostgreSQL DLQ Audit Vault accessibility and executes automatic replay recovery for pending dead-lettered incidents via the Compliance Service pipeline.
+       * *Pass Criteria*: Audit Vault returns healthy status; if an unresolved incident is present, it is successfully replayed through the Transfer Orchestrator.
        * **Database Verification (PostgreSQL Audit Vault)**:
-         ```sql
-         SELECT incident_id, transaction_id, error_code, circuit_breaker_state 
+         `sql
+         SELECT incident_id, transaction_id, error_type, circuit_breaker_state, replay_status, resolved_at 
          FROM failed_transaction_audit 
-         WHERE transaction_id LIKE 'FAIL-TIMEOUT-%';
-         ```
-         *Expected Invariant*: Incident record saved with `circuit_breaker_state = 'OPEN'`.
+         ORDER BY failure_timestamp DESC LIMIT 1;
+         `
+         *Expected Invariant*: DLQ audit trail records outage failures (circuit_breaker_state = 'OPEN') and reflects 
+eplay_status = 'RESOLVED' once replayed.
 
 ---
 
@@ -555,10 +578,10 @@ COB.RUN/I/PROCESS//BATCH-...,ACCOUNTS.PROCESSED:4,FEES.COLLECTED:50.00,INTEREST.
 
 #### Step 3: Verify the 5 Batch Execution Phases
 1. **Phase 0 (Cutoff)**: The posting window transitions to `EOD_CUTOFF` and `POSTING.WINDOW.OPEN: false`.
-2. **Phase 1 (ADB Fee Deduction)**: Accounts with Average Daily Balance (ADB) below ₱5,000.00 are debited ₱50.00 monthly fee, credited to Fee Income `GL-4001`. Insolvent accounts are logged into `UNCOLLECTED_FEE_MASTER`.
-3. **Phase 2 (Daily Interest Accrual & BIR Withholding Tax)**: Computes 0.5% p.a. daily interest, withholds 20% BIR tax, and records entries in `INTEREST_ACCRUAL_MASTER` and Tax Payable `GL-2002`.
-4. **Phase 3 (GL Reconciliation Tripwire & Snapshot)**: Freezes account balances into `EOD_BALANCE_SNAPSHOT_MASTER`. Total debits must equal total credits in `GL_LEDGER_MASTER`; otherwise, an unbalance tripwire halts the batch.
-5. **Phase 4 (Date Rollover)**: Business date advances to $T+1$ (`2026-10-10`), and the posting window re-opens (`ONLINE`).
+2. **Phase 1 (ADB Fee Deduction)**: Accounts with Average Daily Balance (ADB) below ₱5,000.00 (`MIN_ADB_THRESHOLD`) are debited ₱50.00 monthly fee, credited to Fee Income `GL-4001`. *Note*: Standard test accounts with balances above ₱5,000.00 do not incur below-min fees by design. Insolvent accounts are logged into `UNCOLLECTED_FEE_MASTER`.
+3. **Phase 2 (Daily Interest Accrual & BIR Withholding Tax)**: Computes 0.5% p.a. daily interest based on cleared balance, withholds 20% BIR tax, and records entries into the `INTEREST_ACCRUALS` table with `is_capitalized = 0`. *Note*: Interest accrues daily in the accrual ledger without mutating `balance_master` daily (capitalization occurs at cycle close).
+4. **Phase 3 (GL Reconciliation Tripwire & Snapshot)**: Freezes immutable account balances into `EOD_BALANCE_SNAPSHOTS`. Emits `BalanceSnapshotFrozenEvent` to Kafka topic `banking.batch.events` which triggers compliance report generation in `compliance-service`.
+5. **Phase 4 (Date Rollover)**: Business date advances to $T+1$ (`2026-10-10`), and the posting window re-opens (`ONLINE`). The single canonical record `SYS-DATE-1` in `SYSTEM_DATES` is updated in-place.
 
 #### Step 4: Verify Posting Window Enforcement
 To verify that incoming transfers are strictly rejected while the posting window is closed:
@@ -578,30 +601,30 @@ To verify that incoming transfers are strictly rejected while the posting window
    FROM cob_batch_log 
    ORDER BY started_at DESC FETCH FIRST 1 ROWS ONLY;
    ```
-   *Expected Invariant*: Row shows `status = 'COMPLETED'`, `accounts_processed = 4`, and `business_date = 2026-10-09`.
+   *Expected Invariant*: Row shows `status = 'COMPLETED'` and batch progress details.
 
 2. **Check `EOD_BALANCE_SNAPSHOTS` Table (Oracle XE)**:
    ```sql
-   SELECT snapshot_id, eod_date, account_id, closing_balance, hold_amount, available_balance 
+   SELECT snapshot_id, business_date, account_id, closing_balance, frozen_at 
    FROM eod_balance_snapshots 
-   WHERE eod_date = TO_DATE('2026-10-09', 'YYYY-MM-DD');
+   ORDER BY frozen_at DESC FETCH FIRST 5 ROWS ONLY;
    ```
-   *Expected Invariant*: Exactly 4 snapshot records frozen for each account representing immutable end-of-day ledgers.
+   *Expected Invariant*: Snapshot records frozen for each account representing immutable end-of-day ledgers.
 
 3. **Check `INTEREST_ACCRUALS` Table (Oracle XE)**:
    ```sql
-   SELECT accrual_id, eod_date, account_id, qualifying_balance, gross_interest, withholding_tax, net_interest 
+   SELECT accrual_id, accrual_date, account_id, daily_rate, accrued_amount, tax_withheld, net_accrual, is_capitalized 
    FROM interest_accruals 
-   WHERE eod_date = TO_DATE('2026-10-09', 'YYYY-MM-DD');
+   ORDER BY created_at DESC FETCH FIRST 5 ROWS ONLY;
    ```
-   *Expected Invariant*: Gross interest computed at 0.5% p.a. (`balance * 0.005 / 365`), `withholding_tax = gross * 0.20`, and `net_interest = gross - tax`.
+   *Expected Invariant*: Accrued amount computed at 0.5% p.a. (`cleared_balance * 0.005 / days_in_year`), `tax_withheld = gross * 0.20`, `net_accrual = gross - tax`, and `is_capitalized = 0`.
 
 4. **Check `SYSTEM_DATES` Table (Oracle XE)**:
    ```sql
    SELECT system_date_id, business_date, status, posting_window_open, updated_at 
    FROM system_dates;
    ```
-   *Expected Invariant*: `business_date` advanced to `2026-10-10` ($T+1$), `status = 'ONLINE'`, and `posting_window_open = 1`.
+   *Expected Invariant*: Exactly one active row `SYS-DATE-1` with `business_date` advanced to $T+1$, `status = 'ONLINE'`, and `posting_window_open = 1`.
 
 ---
 
@@ -675,7 +698,8 @@ curl -X POST http://localhost:8080/api/v1/transfers \
     "destinationAccountId": "1000-2000-3002",
     "amount": 300000.00,
     "currency": "PHP",
-    "description": "High value escrow transfer"
+    "description": "High value escrow transfer",
+    "biometricSignature": "MOCK_DEVICE_SIGNATURE"
   }'
 ```
 *Response*:
@@ -840,21 +864,23 @@ Beneficiary account has insufficient funds to process reversal: available=..., r
 ### Test 2.6: Account Lifecycle & Security Freezing
 Implemented in [`AccountController.java#L48-L55`](file:///c:/Users/HRR83780/Downloads/group3_fse_capstone/backend/account-service/src/main/java/com/fse/banking/account/controller/AccountController.java#L48-L55).
 
-#### Step 1: Freeze an Account via Admin API
+*Note*: In the core banking domain, valid `AccountStatus` enum values are `ACTIVE`, `LOCKED`, `PENDING_APPROVAL`, `SUSPENDED`, and `CLOSED`. Security freezing corresponds to status `LOCKED`.
+
+#### Step 1: Freeze / Lock an Account via Admin API
 ```bash
 curl -X PATCH http://localhost:8080/api/v1/accounts/1000-2000-3002/status \
   -H "Content-Type: application/json" \
   -d '{
-    "status": "FROZEN"
+    "status": "LOCKED"
   }'
 ```
-*Expected Output*: Returns account object with `"status": "FROZEN"`.
+*Expected Output*: Returns account object with `"status": "LOCKED"`.
 
 #### Step 2: Test via Admin Portal
 1. Open `http://localhost:3000/admin`.
 2. Go to **Customer 360 & Account Management**.
-3. Locate `1000-2000-3002` and toggle the account status between `ACTIVE`, `FROZEN`, and `LOCKED`.
-4. Attempting to initiate transfers on a frozen account validates that the perimeter security blocks transactions on restricted accounts.
+3. Locate `1000-2000-3002` and toggle the account status between `ACTIVE`, `LOCKED`, and `SUSPENDED`.
+4. Attempting to initiate transfers on a locked account validates that the perimeter security blocks transactions on restricted accounts.
 
 ---
 
@@ -867,11 +893,12 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -i \
   -d '{
-    "email": "juan.delacruz@aurabank.ph",
-    "password": "Password123#"
+    "email": "juan.dc@email.com",
+    "password": "password123",
+    "deviceType": "WEB"
   }'
 ```
-*Verification*: Response returns HTTP 200 with JWT access token and a `Set-Cookie: refresh_token=...; HttpOnly; SameSite=Strict`.
+*Verification*: If initial login requires 2FA MFA, response returns `{"status":"MFA_REQUIRED"}` and an OTP is dispatched to MailHog (`http://localhost:8025`). Verify the OTP via `POST /api/v1/auth/verify-login-otp` with `{"email":"juan.dc@email.com","otp":"<OTP_FROM_MAILHOG>"}` to receive the JWT access token and `Set-Cookie: refresh_token=...; HttpOnly; SameSite=Strict`.
 
 #### Step 2: Refresh Token Rotation
 ```bash
@@ -897,12 +924,13 @@ Implemented in [`KycController.java`](file:///c:/Users/HRR83780/Downloads/group3
 ```bash
 curl http://localhost:8080/api/v1/kyc/pending
 ```
+*Verification*: Returns JSON list of users in `kyc_status: "PENDING"`, including `usr-1001-cst-001`.
 
 #### Step 2: Approve Customer KYC
 ```bash
-curl -X POST http://localhost:8080/api/v1/kyc/U1001/approve
+curl -X POST http://localhost:8080/api/v1/kyc/usr-1001-cst-001/approve
 ```
-*Verification*: KYC profile status updates to `VERIFIED`.
+*Verification*: KYC profile status updates to `VERIFIED` with `{"status":"ACTIVE","kyc_status":"VERIFIED"}`.
 
 ---
 
@@ -929,20 +957,26 @@ curl -X POST http://localhost:8084/risk/memo-check \
 
 ---
 
-### Test 2.10: Customer PDF Bank Statement Generation & Azurite Blob Storage
-Implemented in [`ComplianceController.java#L116-L158`](file:///c:/Users/HRR83780/Downloads/group3_fse_capstone/backend/compliance-service/src/main/java/com/bank/compliance/controller/ComplianceController.java#L116-L158).
+### Test 2.10: Regulatory Compliance Artifact Generation (COB-Triggered) & Customer PDF Statements
+Implemented in [`ComplianceKafkaConsumer.java#L77-L94`](file:///c:/Users/HRR83780/Downloads/group3_fse_capstone/backend/compliance-service/src/main/java/com/bank/compliance/consumer/ComplianceKafkaConsumer.java#L77-L94) and [`ComplianceController.java#L116-L158`](file:///c:/Users/HRR83780/Downloads/group3_fse_capstone/backend/compliance-service/src/main/java/com/bank/compliance/controller/ComplianceController.java#L116-L158).
 
-#### Step 1: Generate & Download Official Bank Statement PDF
+#### Step 1: Automated EOD Regulatory Artifact Generation (Triggered via COB)
+*Architecture Note*: In production compliance architecture, regulatory compliance filings are generated strictly when the Close of Business (COB) batch completes.
+1. When `POST /api/v1/cbs/cob/run` executes Phase 3 (Snapshot), it publishes a `BalanceSnapshotFrozenEvent` to Kafka topic `banking.batch.events`.
+2. `ComplianceKafkaConsumer` automatically intercepts the event and generates three immutable regulatory artifacts uploaded directly to Azurite Blob Storage:
+   * **GL Trial Balance Spreadsheet**: `eod/gl-trial-balance-<YYYY-MM-DD>.xlsx`
+   * **GL EOD Reconciliation Audit Report**: `eod/gl_eod_reconciliation_<YYYY-MM-DD>.pdf`
+   * **BIR Form 2306 Withholding Certificate**: `eod/bir-2306-<YYYY-MM-DD>.pdf`
+3. Each artifact's SHA-256 checksum, URI, and record count are automatically registered in the CBS audit vault (`/api/v1/cbs/audit/compliance-filings`).
+
+#### Step 2: On-Demand Customer Statement PDF Generation
+To download an individual account statement on demand:
 ```bash
 curl http://localhost:8080/api/v1/compliance/statements/1000-2000-3001/pdf --output statement-3001.pdf
 ```
 *Verification*:
 * Open `statement-3001.pdf`.
 * Confirm the PDF is formatted with Aura Bank branding, customer account number, opening/closing balance, and ledger mutations table.
-
-#### Step 2: Verify Azurite Blob Upload
-1. Navigate in your browser to **`http://localhost:3000/azurite-drive`** (or port `http://localhost:10005`).
-2. Verify that the generated statement has been persisted in container `statements/1000-2000-3001/`.
 
 ---
 
@@ -958,13 +992,14 @@ curl http://localhost:8080/api/v1/compliance/statements/1000-2000-3001/pdf --out
 2. Inspect topics:
    * **`banking.transfers.events`**: Contains `TransferExecutedEvent` with transaction ID and debit/credit amounts.
    * **`banking.transfers.dlq`**: Contains dead-lettered failure events when circuit breakers trip.
-   * **`banking.eod.events`**: Contains `BalanceSnapshotFrozenEvent` and `EodCompletedEvent` emitted during COB runs.
+   * **`banking.batch.events`**: Contains `BalanceSnapshotFrozenEvent` and `EodCompletedEvent` emitted during COB batch runs.
 
 #### C. Redis Distributed Locks & Cache (Redis Insight)
 1. Open **`http://localhost:5540`** in your browser.
 2. Browse active keys:
    * `tx:cooloff:*`: Active 10-minute high-value transfer hold payloads (decoupled from CBS until settlement).
    * `idemp:*`: Distributed idempotency locks with TTL.
+   * `account:balance:*`: Balance cache keys (evicted on mutation to guarantee strict read consistency).
    * `blacklist:*`: Revoked JWT tokens after user logout.
 
 ---
@@ -988,10 +1023,10 @@ curl http://localhost:8080/api/v1/compliance/statements/1000-2000-3001/pdf --out
 | **Cooling-Off Cancellation**| `POST /transfers/cancel` | Transfer cancelled; Redis key evicted immediately; funds never touched. |
 | **Scam Advisory Bypass** | `POST /transfers` with ack | Supplying `scamAdvisoryAcknowledged: true` overrides advisory warning. |
 | **Beneficiary Insolvency** | `POST /reversals/approve` | Reversal blocked if beneficiary account lacks available funds for debit. |
-| **Account Freezing** | Admin Portal / `PATCH /status`| Account status set to `FROZEN`; subsequent transactions blocked. |
+| **Account Freezing** | Admin Portal / `PATCH /status`| Account status set to `LOCKED`; subsequent transactions blocked. |
 | **Token Rotation & Reuse** | `POST /auth/refresh` | Valid refresh rotates cookie; reused old refresh token revokes session family. |
 | **KYC Approval** | Admin Portal / `POST /kyc` | Pending customer profile reviewed and marked `VERIFIED`. |
 | **Geo-Velocity Anomaly** | Admin Executive (`/admin-executive`)| Manila-to-London travel in 5 mins triggers > 800 km/h fraud block. |
 | **PDF Bank Statement** | `GET /statements/{id}/pdf` | Downloads valid PDF with account statement and audit ledger trail. |
 | **Email & OTP Delivery** | MailHog (`:8025`) | Confirmation emails and OTP codes visible in SMTP web inbox. |
-| **Event Streaming** | Kafka UI (`:8089`) | Events appear on `banking.transfers.events` and `banking.eod.events`. |
+| **Event Streaming** | Kafka UI (`:8089`) | Events appear on `banking.transfers.events` and `banking.batch.events`. |

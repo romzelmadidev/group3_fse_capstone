@@ -113,7 +113,7 @@ public class CbsAuditQueryService {
                 .errorType(errorType != null ? errorType : "NETWORK_TIMEOUT")
                 .errorCode(errorCode != null ? errorCode : "HTTP_504")
                 .circuitBreakerState(circuitBreakerState != null ? circuitBreakerState : "OPEN")
-                .payloadJson(payloadJson != null ? payloadJson : "{\"amount\":5000.00,\"sourceAccountId\":\"ACC-1001\",\"destinationAccountId\":\"ACC-1002\"}")
+                .payloadJson(payloadJson != null ? payloadJson : "{\"amount\":5000.00,\"sourceAccountId\":\"1000-2000-3001\",\"destinationAccountId\":\"1000-2000-3002\",\"currency\":\"PHP\",\"reason\":\"Simulated DLQ timeout\"}")
                 .stackTrace(stackTrace != null ? stackTrace : "Simulated downstream CBS timeout after 3 retries. Routed to DLQ.")
                 .replayStatus("PENDING_REPLAY")
                 .failureTimestamp(Instant.now())

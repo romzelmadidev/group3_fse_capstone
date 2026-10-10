@@ -24,17 +24,28 @@ public final class OfsMessageUtil {
     public static String buildFundsTransferInitiate(String transactionId, String sourceAccountId,
                                                     String destinationAccountId, BigDecimal amount,
                                                     String currency, String valueDate) {
+        return buildFundsTransferInitiate(transactionId, sourceAccountId, destinationAccountId, amount, currency, valueDate, null);
+    }
+
+    /**
+     * Builds an OFS message string for funds transfer initiation including idempotency key.
+     */
+    public static String buildFundsTransferInitiate(String transactionId, String sourceAccountId,
+                                                    String destinationAccountId, BigDecimal amount,
+                                                    String currency, String valueDate, String idempotencyKey) {
         String cleanDate = (valueDate != null) ? valueDate.replace("-", "") : "";
         String amt = (amount != null) ? amount.toPlainString() : "";
+        String idempPart = (idempotencyKey != null && !idempotencyKey.isBlank()) ? ",IDEMPOTENCY.KEY=" + idempotencyKey : "";
         return String.format(
-                "FUNDS.TRANSFER,INITIATE/I/PROCESS//%s,USER01/%s,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=%s,CREDIT.ACCT.NO=%s,AMOUNT=%s,CURRENCY=%s,VALUE.DATE=%s",
+                "FUNDS.TRANSFER,INITIATE/I/PROCESS//%s,USER01/%s,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=%s,CREDIT.ACCT.NO=%s,AMOUNT=%s,CURRENCY=%s,VALUE.DATE=%s%s",
                 transactionId != null ? transactionId : "",
                 transactionId != null ? transactionId : "",
                 sourceAccountId != null ? sourceAccountId : "",
                 destinationAccountId != null ? destinationAccountId : "",
                 amt,
                 currency != null ? currency : "",
-                cleanDate
+                cleanDate,
+                idempPart
         );
     }
 

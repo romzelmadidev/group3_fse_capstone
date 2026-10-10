@@ -280,6 +280,74 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
             self._send_json(200, result)
             return
 
+        if path == "/api/v1/risk/score":
+            tx_id = payload.get("transactionId") or payload.get("transaction_id") or f"TXN-{uuid.uuid4().hex[:8].upper()}"
+            amount = float(payload.get("amount", 0.0))
+            desc = payload.get("description") or payload.get("memo") or ""
+
+            desc_lower = str(desc).lower()
+            is_scam_memo = any(kw in desc_lower for kw in ["crypto", "broker", "bail", "police", "urgent investment", "forex", "binary"])
+
+            if is_scam_memo or amount >= 500000.0:
+                score = 75
+                decision = "ADVISORY_WARNING"
+                reason = "Potential high-risk payee or scam memo typology detected"
+            elif amount >= 250000.0:
+                score = 65
+                decision = "REQUIRE_2FA"
+                reason = "High-value threshold step-up required"
+            else:
+                score = 15
+                decision = "ALLOW"
+                reason = "Standard low risk transaction"
+
+            self._send_json(200, {
+                "transactionId": tx_id,
+                "score": score,
+                "decision": decision,
+                "riskReason": reason
+            })
+            return
+
+        if path in ("/risk/memo-check", "/api/v1/risk/memo-check"):
+            memo = str(payload.get("memo") or "").strip()
+            memo_lower = memo.lower()
+            if any(kw in memo_lower for kw in ["police", "bail", "arrest", "court", "fbi", "nbi", "law enforcement", "officer", "impersonation"]):
+                typology = "POLICE_IMPERSONATION_SCAM"
+                typology_prob = 0.94
+                tier = "HIGH"
+                advisory_tier = "ADVISORY_WARNING"
+                action = "ADVISORY_WARNING"
+                message = "High risk: Law enforcement impersonation scam indicators detected in payment memo."
+            elif any(kw in memo_lower for kw in ["crypto", "broker", "guaranteed", "urgent investment", "forex", "binary", "high return"]):
+                typology = "INVESTMENT_SCAM"
+                typology_prob = 0.88
+                tier = "HIGH"
+                advisory_tier = "ADVISORY_WARNING"
+                action = "ADVISORY_WARNING"
+                message = "High risk: Suspicious investment scam indicators detected."
+            else:
+                typology = "NONE"
+                typology_prob = 0.05
+                tier = "LOW"
+                advisory_tier = "NONE"
+                action = "ALLOW"
+                message = "Standard memo text, no scam typologies detected."
+
+            res = {
+                "decision_id": payload.get("decision_id", f"DEC-{uuid.uuid4().hex[:8].upper()}"),
+                "typology": typology,
+                "typology_prob": typology_prob,
+                "tier": tier,
+                "advisory_tier": advisory_tier,
+                "action": action,
+                "message": message,
+                "cached": False,
+                "latency_ms": 1.2
+            }
+            self._send_json(200, res)
+            return
+
         if path == "/api/v1/analyst/decision":
             res = analyst_store.record_decision(
                 case_id=payload.get("case_id", ""),

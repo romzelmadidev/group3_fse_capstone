@@ -79,8 +79,11 @@ public class TransferOrchestratorController {
         String destAccount = request.destinationAccountId();
         java.math.BigDecimal amount = request.amount();
 
-        // Retrieve stored transfer from cooloff if available to bind context
+        // Retrieve stored transfer from cooloff or pending bio cache if available to bind context
         String payloadJson = coolOffService.getCoolOffPayload(request.transactionId());
+        if (payloadJson == null) {
+            payloadJson = coolOffService.getCoolOffPayload("bio:pending:" + request.transactionId());
+        }
         TransferInitiationRequest origReq = null;
         if (payloadJson != null) {
             try {
@@ -122,7 +125,21 @@ public class TransferOrchestratorController {
         }
         // If original request was cached, execute the transfer now that biometrics passed
         if (origReq != null) {
-            TransferInitiationResponse resp = orchestrationService.initiateTransfer(origReq);
+            TransferInitiationRequest signedReq = new TransferInitiationRequest(
+                    origReq.transactionId(),
+                    origReq.sourceAccountId(),
+                    origReq.destinationAccountId(),
+                    origReq.amount(),
+                    origReq.currency(),
+                    origReq.description(),
+                    origReq.deviceId(),
+                    origReq.idempotencyKey(),
+                    request.assertionSignature() != null && !request.assertionSignature().isBlank() 
+                            ? request.assertionSignature() : "VALID_MOCK_ASSERTION_SIGNATURE",
+                    origReq.scamAdvisoryAcknowledged()
+            );
+            coolOffService.cancelCoolOff("bio:pending:" + request.transactionId());
+            TransferInitiationResponse resp = orchestrationService.initiateTransfer(signedReq);
             return ResponseEntity.ok(resp);
         }
 

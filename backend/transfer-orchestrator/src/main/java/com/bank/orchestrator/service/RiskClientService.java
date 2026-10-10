@@ -33,12 +33,22 @@ public class RiskClientService {
                     .timeout(Duration.ofMillis(2000))
                     .block();
         } catch (Exception e) {
-            log.warn("Risk service unavailable or timed out: {}. Applying default scoring.", e.getMessage());
-            // Fallback heuristics: transactions >= 500,000 get advisory warning
-            if (request.amount() != null && request.amount().compareTo(new java.math.BigDecimal("500000")) >= 0) {
-                return new RiskScoreResponse(request.transactionId(), 65, "ADVISORY_WARNING", "Large value transfer threshold");
+            log.warn("Risk service unavailable or timed out: {}. Applying tiered contingency scoring.", e.getMessage());
+            java.math.BigDecimal amt = request.amount() != null ? request.amount() : java.math.BigDecimal.ZERO;
+
+            // Tier 3: High Value (>= ₱250,000) -> Advisory Hold
+            if (amt.compareTo(new java.math.BigDecimal("250000.00")) >= 0) {
+                return new RiskScoreResponse(request.transactionId(), 75, "ADVISORY_WARNING",
+                        "Contingency: High-value transaction requires scam acknowledgment during risk engine degradation");
             }
-            return new RiskScoreResponse(request.transactionId(), 15, "ALLOW", "Default low risk");
+            // Tier 2: Mid Value (₱10,000 - ₱249,999.99) -> Step-Up Biometric Authentication
+            if (amt.compareTo(new java.math.BigDecimal("10000.00")) >= 0) {
+                return new RiskScoreResponse(request.transactionId(), 65, "REQUIRE_2FA",
+                        "Contingency: Strong Customer Authentication step-up required during risk engine degradation");
+            }
+            // Tier 1: Routine Low Value (< ₱10,000) -> STIP Allowance
+            return new RiskScoreResponse(request.transactionId(), 15, "ALLOW",
+                    "Contingency: Routine retail transaction permitted under Stand-In Processing limits");
         }
     }
 }
