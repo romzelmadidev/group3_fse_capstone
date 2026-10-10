@@ -67,17 +67,17 @@ public class KycController {
         return ResponseEntity.ok(pending);
     }
 
-    @GetMapping("/{userId}")
-    public ResponseEntity<KycProfileResponse> getKycProfile(@PathVariable("userId") String userId) {
-        KycProfileResponse profile = kycService.getKycProfile(userId);
-        return ResponseEntity.ok(profile);
-    }
-
     /** Review queue: Laya result, summary, confidence and maker/checker state. */
     @GetMapping("/reviews")
     public ResponseEntity<?> listReviews(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
         if (staffId(authHeader) == null) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         return ResponseEntity.ok(kycService.listReviews());
+    }
+
+    @GetMapping("/{userId}")
+    public ResponseEntity<KycProfileResponse> getKycProfile(@PathVariable("userId") String userId) {
+        KycProfileResponse profile = kycService.getKycProfile(userId);
+        return ResponseEntity.ok(profile);
     }
 
     /** One application with short-lived links to the ID front, back and selfie. */

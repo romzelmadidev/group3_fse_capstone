@@ -137,6 +137,7 @@ public class AccountProvisioningService {
     private String generateUniqueAccountNumber(AccountType type) {
         String prefix = switch (type) {
             case SAVINGS -> "1001";
+            case CHECKING -> "2001";
         };
 
         String candidate;
