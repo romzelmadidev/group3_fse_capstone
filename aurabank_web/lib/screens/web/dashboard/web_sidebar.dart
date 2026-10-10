@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:aurabank_core/services/bank_service.dart';
-import 'package:aurabank_core/widgets/aura_app_mark.dart';
+import 'package:aurabank_core/widgets/aura_logo.dart';
 
 class WebSidebar extends StatelessWidget {
   final int selectedIndex;
@@ -55,7 +55,7 @@ class WebSidebar extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
             child: Row(
               children: [
-                const AuraAppMark(size: 42, borderRadius: 12),
+                const AuraLogo(size: 42, style: AuraLogoStyle.violet, borderRadius: 12),
                 const SizedBox(width: 12),
                 const Text(
                   'AURA BANK',

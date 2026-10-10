@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:aurabank_core/services/bank_service.dart';
-import 'package:aurabank_core/widgets/aura_app_mark.dart';
+import 'package:aurabank_core/widgets/aura_logo.dart';
 import 'package:aurabank_core/models/bank_models.dart';
 import 'package:aurabank_core/theme/aura_theme.dart';
 import '../transfer/web_transfer_screen.dart';
@@ -158,7 +158,7 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
                 ),
                 child: const Row(
                   children: [
-                    AuraAppMark(size: 26, borderRadius: 7),
+                    AuraLogo(size: 26, style: AuraLogoStyle.violet, borderRadius: 7),
                     SizedBox(width: 8),
                     Text(
                       'Aura Bank',

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:aurabank_core/models/bank_models.dart';
-import 'package:aurabank_core/widgets/aura_app_mark.dart';
+import 'package:aurabank_core/widgets/aura_logo.dart';
 import 'package:aurabank_core/services/bank_service.dart';
 import 'package:aurabank_core/theme/aura_theme.dart';
 
@@ -177,7 +177,7 @@ class _WebCardsScreenState extends State<WebCardsScreen> {
           children: [
             Row(
               children: [
-                const AuraAppMark(size: 28, borderRadius: 8),
+                const AuraLogo(size: 28, style: AuraLogoStyle.violet, borderRadius: 8),
                 const SizedBox(width: 8),
                 const Text(
                   'Aura Bank',

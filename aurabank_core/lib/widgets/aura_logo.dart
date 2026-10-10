@@ -1,7 +1,4 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-
-import 'aura_app_mark.dart';
 
 enum AuraLogoStyle {
   wine, // Rich deep bordeaux wine (#4E0C1B -> #80142D)
@@ -29,10 +26,6 @@ class AuraLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (kIsWeb) {
-      return AuraAppMark(size: size, borderRadius: borderRadius);
-    }
-
     if (!showBadgeContainer) {
       return SizedBox(
         width: size,
