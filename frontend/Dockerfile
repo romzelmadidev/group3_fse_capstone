@@ -8,10 +8,12 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# Configure npm for corporate / proxied environments with custom TLS inspection
+ENV NODE_TLS_REJECT_UNAUTHORIZED=0
+
 # Install dependencies
 COPY package*.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm install
+RUN npm config set strict-ssl false && npm install
 
 # Build static distribution
 COPY . ./
