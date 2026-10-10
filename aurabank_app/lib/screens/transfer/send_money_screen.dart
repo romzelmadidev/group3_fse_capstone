@@ -1042,15 +1042,19 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
   void _showSourceAccountPicker() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      showDragHandle: false,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Center(
               child: Container(
@@ -1119,92 +1123,100 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
           ],
         ),
       ),
+      ),
+      ),
     );
   }
 
   void _showPartnerBankPicker() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      showDragHandle: false,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD5DADF),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Select Destination Bank',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: Colors.black,
-              ),
-            ),
-            const SizedBox(height: 14),
-            ...List.generate(_partnerBanks.length, (idx) {
-              final b = _partnerBanks[idx];
-              final isSel = idx == _selectedPartnerBankIndex;
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                decoration: BoxDecoration(
-                  color: isSel ? const Color(0xFFE6F6EF) : const Color(0xFFF7F7F7),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: isSel ? const Color(0xFF10171C) : const Color(0xFFE6E8EA),
-                    width: isSel ? 1.5 : 1.0,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD5DADF),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
-                child: ListTile(
-                  leading: Container(
-                    width: 36,
-                    height: 36,
+                const SizedBox(height: 16),
+                const Text(
+                  'Select Destination Bank',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                ...List.generate(_partnerBanks.length, (idx) {
+                  final b = _partnerBanks[idx];
+                  final isSel = idx == _selectedPartnerBankIndex;
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF10171C),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      b['avatar'] as String,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
+                      color: isSel ? const Color(0xFFE6F6EF) : const Color(0xFFF7F7F7),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: isSel ? const Color(0xFF10171C) : const Color(0xFFE6E8EA),
+                        width: isSel ? 1.5 : 1.0,
                       ),
                     ),
-                  ),
-                  title: Text(
-                    b['name'] as String,
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-                  ),
-                  subtitle: Text(
-                    b['group'] as String,
-                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF7D8892)),
-                  ),
-                  trailing: isSel
-                      ? const Icon(Icons.check_circle_rounded, color: Color(0xFF10171C), size: 22)
-                      : null,
-                  onTap: () {
-                    setState(() => _selectedPartnerBankIndex = idx);
-                    Navigator.of(ctx).pop();
-                  },
-                ),
-              );
-            }),
-          ],
+                    child: ListTile(
+                      leading: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10171C),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          b['avatar'] as String,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        b['name'] as String,
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                      ),
+                      subtitle: Text(
+                        b['group'] as String,
+                        style: const TextStyle(fontSize: 11.5, color: Color(0xFF7D8892)),
+                      ),
+                      trailing: isSel
+                          ? const Icon(Icons.check_circle_rounded, color: Color(0xFF10171C), size: 22)
+                          : null,
+                      onTap: () {
+                        setState(() => _selectedPartnerBankIndex = idx);
+                        Navigator.of(ctx).pop();
+                      },
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -1213,15 +1225,19 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
   void _showPurposePicker() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      showDragHandle: false,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Center(
               child: Container(
@@ -1290,6 +1306,8 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
             }),
           ],
         ),
+      ),
+      ),
       ),
     );
   }

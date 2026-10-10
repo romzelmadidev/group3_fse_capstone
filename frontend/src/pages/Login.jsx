@@ -5,9 +5,16 @@ import { errorMessage } from '../lib/api';
 import { Aurora, Button, ErrorNote, Logo } from '../components/ui';
 
 const DEMO = [
-  { email: 'beatriz.ocampo@bank.com', who: 'Beatriz Ocampo', role: 'Maker, onboarding' },
-  { email: 'diana.admin@bank.com', who: 'Diana Vance', role: 'Checker, compliance' },
-  { email: 'carlos.mendoza@bank.com', who: 'Carlos Mendoza', role: 'Maker, branch operations' },
+  { email: 'wax@bank.com', who: 'Wax', role: 'Admin' },
+  { email: 'hans@bank.com', who: 'Hans', role: 'Admin' },
+  { email: 'jm@bank.com', who: 'JM', role: 'Teller' },
+  { email: 'zel@bank.com', who: 'Zel', role: 'Admin' },
+  { email: 'jessy@bank.com', who: 'Jessy', role: 'Teller' },
+  { email: 'maye@bank.com', who: 'Maye', role: 'Admin' },
+  { email: 'angel@bank.com', who: 'Angel', role: 'Teller' },
+  { email: 'diana.admin@bank.com', who: 'Diana Vance', role: 'Admin' },
+  { email: 'carlos.mendoza@bank.com', who: 'Carlos Mendoza', role: 'Teller' },
+  { email: 'beatriz.ocampo@bank.com', who: 'Beatriz Ocampo', role: 'Teller' },
 ];
 
 const field =
@@ -96,17 +103,17 @@ export default function Login() {
               Use a different account
             </button>
           ) : (
-            <div className="mt-10">
-              <p className="label mb-3">Demo staff</p>
-              <div className="space-y-1.5">
+            <div className="mt-8">
+              <p className="label mb-3">Team &amp; demo accounts</p>
+              <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
                 {DEMO.map((d, i) => (
                   <button
-                    type="button" key={d.email} style={{ animationDelay: `${120 + i * 50}ms` }}
+                    type="button" key={d.email} style={{ animationDelay: `${120 + i * 30}ms` }}
                     onClick={() => { setEmail(d.email); setPassword('password123'); }}
-                    className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition-colors hover:bg-white animate-rise"
+                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-white animate-rise"
                   >
                     <span className="font-medium">{d.who}</span>
-                    <span className="text-ink-400">{d.role}</span>
+                    <span className="text-ink-400 text-xs">{d.role}</span>
                   </button>
                 ))}
               </div>

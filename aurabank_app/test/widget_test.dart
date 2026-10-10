@@ -21,6 +21,7 @@ import 'package:aurabank_app/services/bank_service.dart';
 import 'package:aurabank_app/services/biometric_service.dart';
 import 'package:aurabank_app/services/notification_stream_service.dart';
 import 'package:aurabank_app/widgets/require_device_approval.dart';
+import 'package:aurabank_core/services/device_storage.dart';
 
 void main() {
   testWidgets('First run shows the aurora onboarding and pages to sign in', (WidgetTester tester) async {
@@ -51,8 +52,14 @@ void main() {
     );
 
     expect(find.textContaining('Welcome back'), findsOneWidget);
-    expect(find.text('elijahriley.montefalco@gmail.com'), findsOneWidget);
     expect(find.text('Sign in'), findsOneWidget);
+
+    // Dynamically enter username and password
+    await tester.enterText(find.byType(TextField).first, 'user@aurabank.ph');
+    await tester.enterText(find.byType(TextField).last, 'Password@123');
+    await tester.pumpAndSettle();
+
+    expect(find.text('user@aurabank.ph'), findsOneWidget);
 
     // Verify password field is obscured initially
     final passwordFieldFinder = find.byType(TextField).last;
@@ -72,6 +79,40 @@ void main() {
 
     passwordField = tester.widget(passwordFieldFinder);
     expect(passwordField.obscureText, isTrue);
+  });
+
+  testWidgets('Login screen dynamically renders remembered account greeting and field values',
+      (WidgetTester tester) async {
+    // 1. Fresh state with no remembered login
+    await DeviceStorage.clearLastLoginEmail();
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: LoginScreen(),
+      ),
+    );
+    expect(find.textContaining('Welcome back'), findsOneWidget);
+    expect(find.text('Sign in'), findsOneWidget);
+    final usernameField = tester.widget<TextField>(find.byType(TextField).first);
+    expect(usernameField.controller?.text.isEmpty, isTrue);
+
+    // 2. Remembered account dynamically populates email and greets by name
+    await DeviceStorage.saveLastLoginEmail('maria.clara@aurabank.ph');
+    await DeviceStorage.saveLastLoginName('Maria Clara Santos');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LoginScreen(key: UniqueKey()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('maria.clara@aurabank.ph'), findsOneWidget);
+    expect(find.textContaining('Maria'), findsOneWidget);
+
+    // 3. Tapping Switch Account clears the remembered email and resets greeting
+    await tester.tap(find.text('Switch Account'));
+    await tester.pumpAndSettle();
+    expect(find.text('maria.clara@aurabank.ph'), findsNothing);
   });
 
   testWidgets('Statement of Account screen renders components and filters properly',

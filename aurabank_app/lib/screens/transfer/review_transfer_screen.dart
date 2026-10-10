@@ -1105,10 +1105,19 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
     if (!mounted) return;
     Navigator.of(context).pop(); // dismiss settling dialog
 
+    final status = result['status']?.toString().toUpperCase();
+    final isPendingReview = status == 'PENDING_REVIEW' ||
+        status == 'PENDING_APPROVAL' ||
+        result['risk_decision'] == 'REVIEW';
+    final holdReason =
+        result['warning_message'] ?? result['cause_of_suspicion'];
+
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (context) => TransactionReceiptScreen(
           isSuccess: result['success'] == true,
+          isPendingReview: isPendingReview,
+          holdReason: holdReason,
           senderName: widget.senderName,
           senderAccount: widget.senderAccount,
           recipientName: widget.recipientName,

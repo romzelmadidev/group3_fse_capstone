@@ -4,7 +4,7 @@ import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Lock, LockOpen, Undo2, Wal
 import { api, errorMessage } from '../lib/api';
 import { ago, dateTime, fullName, money, titleCase } from '../lib/format';
 import { BRANCH_ROLES, staffName, useAuth } from '../context/Auth';
-import { Badge, Button, Drawer, Empty, ErrorNote, PageHeader, SkeletonRows, cn, useLoad, useToast } from '../components/ui';
+import { Badge, Button, Drawer, Empty, ErrorNote, PageHeader, SearchBar, SkeletonRows, cn, useLoad, useToast } from '../components/ui';
 import { Lifecycle, REVERSIBLE } from './Reversals';
 
 /** Zel's freeze reasons; the code goes to account-service with the request. */
@@ -38,10 +38,24 @@ export default function Customers() {
   }, [accounts.data]);
   const owners = useMemo(() => new Map((accounts.data || []).map((a) => [a.account_id, a.owner_name])), [accounts.data]);
   const [userId, setUserId] = useState(null);
+  const [customerQ, setCustomerQ] = useState('');
+
+  const filteredCustomers = useMemo(() => {
+    const needle = customerQ.trim().toLowerCase();
+    if (!needle) return customers;
+    return customers.filter((c) => {
+      const matchName = c.name.toLowerCase().includes(needle);
+      const matchId = c.user_id.toLowerCase().includes(needle);
+      const matchAcc = c.accounts.some(
+        (a) => (a.account_number || '').toLowerCase().includes(needle) || (a.account_id || '').toLowerCase().includes(needle),
+      );
+      return matchName || matchId || matchAcc;
+    });
+  }, [customers, customerQ]);
 
   useEffect(() => {
-    if (!userId && customers.length) setUserId(customers[0].user_id);
-  }, [customers, userId]);
+    if (!userId && filteredCustomers.length) setUserId(filteredCustomers[0].user_id);
+  }, [filteredCustomers, userId]);
   const selected = customers.find((c) => c.user_id === userId);
 
   return (
@@ -52,16 +66,29 @@ export default function Customers() {
       />
       <div className="grid items-start gap-6 lg:grid-cols-[320px_1fr]">
         <div className="panel overflow-hidden animate-rise">
-          <p className="label px-5 pt-5">Customers{customers.length ? ` · ${customers.length}` : ''}</p>
+          <div className="px-5 pt-4 pb-2">
+            <p className="label">Customers{customers.length ? ` · ${customers.length}` : ''}</p>
+          </div>
+          <SearchBar
+            value={customerQ}
+            onChange={setCustomerQ}
+            placeholder="Search customers or accounts"
+            ariaLabel="Search customer list"
+            count={filteredCustomers.length}
+            total={customers.length}
+            className="px-4 py-2 border-t border-b border-ink-100"
+          />
           {accounts.loading && !accounts.data ? (
             <SkeletonRows rows={4} />
           ) : accounts.error ? (
             <div className="p-5"><ErrorNote message={errorMessage(accounts.error)} onRetry={accounts.reload} /></div>
           ) : !customers.length ? (
             <p className="px-5 py-6 text-sm text-ink-400">No customer accounts yet.</p>
+          ) : !filteredCustomers.length ? (
+            <p className="px-5 py-6 text-sm text-ink-400">No customers match &quot;{customerQ}&quot;.</p>
           ) : (
             <ul className="p-2">
-              {customers.map((c, i) => {
+              {filteredCustomers.map((c, i) => {
                 const on = userId === c.user_id;
                 const frozen = c.accounts.some((a) => a.status === 'LOCKED');
                 return (
@@ -266,32 +293,64 @@ function AccountRow({ account: a, balance: b, loading, on, onSelect, canFreeze, 
 
 function History({ account, owners, onOpen }) {
   const { data, error, loading, reload } = useLoad(() => api.get(`/transfers/accounts/${account.account_id}/transactions`).then((r) => r.data), [account.account_id]);
-  const rows = (data || []).slice(0, SHOWN);
+  const [txQ, setTxQ] = useState('');
+
+  const filteredRows = useMemo(() => {
+    const all = data || [];
+    const needle = txQ.trim().toLowerCase();
+    if (!needle) return all.slice(0, SHOWN);
+    return all.filter((t) => {
+      const out = t.source_account_id === account.account_id;
+      const other = out ? t.target_account_id : t.source_account_id;
+      const party = owners.get(other) || other || '';
+      const fields = [
+        t.transaction_id,
+        party,
+        String(t.amount || ''),
+        money(t.amount),
+        t.status,
+        t.type,
+        titleCase(t.status),
+      ].filter(Boolean).map(String);
+      return fields.some((f) => f.toLowerCase().includes(needle));
+    });
+  }, [data, txQ, account.account_id, owners]);
 
   return (
     <section className="panel overflow-hidden animate-rise" style={{ animationDelay: '180ms' }}>
       <div className="flex items-baseline justify-between gap-4 px-5 pb-3 pt-5">
         <p className="label">Transfers on {titleCase(account.account_type).toLowerCase()} {account.account_number}</p>
-        {data?.length > SHOWN && <p className="text-xs text-ink-400">Latest {SHOWN} of {data.length}</p>}
+        {data?.length > SHOWN && !txQ && <p className="text-xs text-ink-400">Latest {SHOWN} of {data.length}</p>}
       </div>
+      <SearchBar
+        value={txQ}
+        onChange={setTxQ}
+        placeholder="Search transfers by ID, party, amount or status"
+        ariaLabel="Search account transfers"
+        count={filteredRows.length}
+        total={data?.length}
+        className="border-y border-ink-100 px-5 py-2.5"
+      />
       {loading ? (
         <SkeletonRows rows={3} />
       ) : error ? (
         <div className="px-5 pb-5"><ErrorNote message={errorMessage(error)} onRetry={reload} /></div>
-      ) : !rows.length ? (
+      ) : !data?.length ? (
         <Empty icon={ArrowLeftRight} title="No transfers on this account yet" />
+      ) : !filteredRows.length ? (
+        <Empty icon={ArrowLeftRight} title="No matching transfers" body={`No transfers match "${txQ}".`} />
       ) : (
         <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-y border-ink-100 text-left">
+            <tr className="border-b border-ink-100 text-left">
               {['When', 'Counterparty', 'Reference', 'Amount', 'Status'].map((h) => (
                 <th key={h} className={cn('label px-4 py-3 font-semibold', h === 'Amount' && 'text-right')}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {rows.map((t, i) => {
+            {filteredRows.map((t, i) => {
               const out = t.source_account_id === account.account_id;
               const other = out ? t.target_account_id : t.source_account_id;
               return (
@@ -340,7 +399,7 @@ function TransferDrawer({ tx, account, owners, onClose }) {
     setBusy(true);
     try {
       await api.post('/reversals/request', { originalTransactionId: tx.transaction_id, reason: reason.trim(), makerId: staff.id });
-      toast('Reversal requested. A manager or compliance officer signs it off.');
+      toast('Reversal requested. An admin signs it off.');
       setReason('');
       open.reload();
     } catch (e) {

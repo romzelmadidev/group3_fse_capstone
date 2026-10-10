@@ -128,7 +128,7 @@ class BankCard {
   final String cardNumber;
   final String expiry;
   final String cvv;
-  final String holderName;
+  String holderName;
   final CardNetwork network;
   final bool isVirtual;
   bool isLocked;

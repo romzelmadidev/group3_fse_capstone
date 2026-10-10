@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../services/auth_api_service.dart';
+import '../../services/bank_service.dart';
+import '../../services/device_storage.dart';
 import '../../theme/aura_theme.dart';
 import '../../widgets/aura_logo.dart';
 import '../../widgets/aurora_background.dart';
@@ -98,10 +100,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
         email: result.maskedEmail ?? email,
         rawEmail: email,
         userId: result.userId,
-        onVerified: () => Navigator.of(ctx).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const RegistrationCompleteScreen()),
-          (_) => false,
-        ),
+        onVerified: () {
+          final fullName = '${_first.text.trim()} ${_last.text.trim()}'.trim();
+          final resolvedName = fullName.isNotEmpty ? fullName : 'Aura Customer';
+          BankService().setUserProfileFromAuth(
+            name: resolvedName,
+            email: email,
+            phoneNumber: _phone.text.replaceAll(_phoneSeparators, ''),
+            address: _address.text.trim(),
+            dob: _dob.text,
+          );
+          DeviceStorage.saveLastLoginEmail(email);
+          DeviceStorage.saveLastLoginName(resolvedName);
+          BankService().syncWithBackend();
+          Navigator.of(ctx).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const RegistrationCompleteScreen()),
+            (_) => false,
+          );
+        },
       ),
     ));
   }

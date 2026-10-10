@@ -29,6 +29,7 @@ CREATE TABLE users (
     max_concurrent_sessions NUMBER(3) DEFAULT 3 NOT NULL,
     failed_login_attempts   NUMBER(3) DEFAULT 0 NOT NULL,
     status                  VARCHAR2(20) DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'LOCKED', 'SUSPENDED')),
+    last_login_at           TIMESTAMP WITH TIME ZONE,
     last_known_latitude     NUMBER(10, 6) DEFAULT 14.5995,
     last_known_longitude    NUMBER(10, 6) DEFAULT 120.9842,
     last_known_location_name VARCHAR2(100) DEFAULT 'Manila, Philippines',
@@ -95,6 +96,9 @@ CREATE OR REPLACE TRIGGER trg_calc_available_balance
 BEFORE INSERT OR UPDATE ON balance_master
 FOR EACH ROW
 BEGIN
+    IF :NEW.balance_id IS NULL THEN
+        :NEW.balance_id := 'bal-' || :NEW.account_id;
+    END IF;
     :NEW.available_balance := :NEW.balance_amount - :NEW.hold_amount;
     :NEW.updated_at := CURRENT_TIMESTAMP;
 END;

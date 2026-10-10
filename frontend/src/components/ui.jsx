@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { Loader2, X, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Loader2, X, AlertTriangle, CheckCircle2, Search } from 'lucide-react';
 
 export const cn = (...c) => c.filter(Boolean).join(' ');
 
@@ -76,6 +76,51 @@ export function PageHeader({ title, description, actions }) {
         {description && <p className="mt-1.5 text-[15px] text-ink-500 max-w-2xl">{description}</p>}
       </div>
       {actions && <div className="flex gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+export function SearchBar({
+  value,
+  onChange,
+  placeholder = 'Search...',
+  ariaLabel = 'Search',
+  count,
+  total,
+  onClear,
+  className,
+}) {
+  const handleClear = () => {
+    if (onClear) onClear();
+    else if (typeof onChange === 'function') onChange('');
+  };
+
+  return (
+    <div className={cn('flex items-center gap-3 border-b border-ink-100 px-5 py-3 transition-colors', className)}>
+      <Search className="size-4 shrink-0 text-ink-400" />
+      <input
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        className="h-9 flex-1 bg-transparent text-sm placeholder:text-ink-300 focus:outline-none"
+      />
+      {value && total != null && count != null && (
+        <span className="shrink-0 rounded-full bg-ink-100 px-2.5 py-0.5 text-xs font-medium tabular-nums text-ink-500">
+          {count} of {total}
+        </span>
+      )}
+      {value && (
+        <button
+          type="button"
+          onClick={handleClear}
+          aria-label="Clear search"
+          className="grid size-6 shrink-0 place-items-center rounded-full text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink"
+        >
+          <X className="size-3.5" />
+        </button>
+      )}
     </div>
   );
 }

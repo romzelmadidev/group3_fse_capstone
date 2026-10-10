@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapPinned, Plane, Navigation } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { greatCircle, haversineKm } from '../lib/format';
-import { Badge, Button, ErrorNote, PageHeader, SkeletonRows, cn, useLoad, useToast } from '../components/ui';
+import { Badge, Button, ErrorNote, PageHeader, SearchBar, SkeletonRows, cn, useLoad, useToast } from '../components/ui';
 
 /** Demo destinations, with an IP that geolocates to each city. */
 const PLACES = [
@@ -33,6 +33,7 @@ export default function Geo() {
     [],
   );
   const [userId, setUserId] = useState(null);
+  const [customerQ, setCustomerQ] = useState('');
   const [current, setCurrent] = useState(null);
   const [target, setTarget] = useState(PLACES[5]);
   const [busy, setBusy] = useState(false);
@@ -40,9 +41,16 @@ export default function Geo() {
   // The hop just flown, so the map keeps showing it after the customer lands.
   const [hop, setHop] = useState(null);
 
+  const filteredCustomers = useMemo(() => {
+    const needle = customerQ.trim().toLowerCase();
+    const list = customers.data || [];
+    if (!needle) return list;
+    return list.filter((c) => c.name.toLowerCase().includes(needle) || c.user_id.toLowerCase().includes(needle));
+  }, [customers.data, customerQ]);
+
   useEffect(() => {
-    if (!userId && customers.data?.length) setUserId(customers.data[0].user_id);
-  }, [customers.data, userId]);
+    if (!userId && filteredCustomers.length) setUserId(filteredCustomers[0].user_id);
+  }, [filteredCustomers, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -88,16 +96,29 @@ export default function Geo() {
       />
       <div className="grid items-start gap-6 lg:grid-cols-[320px_1fr]">
         <div className="panel overflow-hidden animate-rise">
-          <p className="label px-5 pt-5">Customers{customers.data?.length ? ` · ${customers.data.length}` : ''}</p>
+          <div className="px-5 pt-4 pb-2">
+            <p className="label">Customers{customers.data?.length ? ` · ${customers.data.length}` : ''}</p>
+          </div>
+          <SearchBar
+            value={customerQ}
+            onChange={setCustomerQ}
+            placeholder="Search customers by name or ID"
+            ariaLabel="Search customer list"
+            count={filteredCustomers.length}
+            total={customers.data?.length}
+            className="px-4 py-2 border-t border-b border-ink-100"
+          />
           {customers.loading ? (
             <SkeletonRows rows={4} />
           ) : customers.error ? (
             <div className="p-5"><ErrorNote message={errorMessage(customers.error)} onRetry={customers.reload} /></div>
-          ) : !customers.data.length ? (
+          ) : !customers.data?.length ? (
             <p className="px-5 py-6 text-sm text-ink-400">No customer accounts yet.</p>
+          ) : !filteredCustomers.length ? (
+            <p className="px-5 py-6 text-sm text-ink-400">No customers match &quot;{customerQ}&quot;.</p>
           ) : (
             <ul className="p-2">
-              {customers.data.map((c, i) => {
+              {filteredCustomers.map((c, i) => {
                 const on = userId === c.user_id;
                 const initials = c.name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
                 return (

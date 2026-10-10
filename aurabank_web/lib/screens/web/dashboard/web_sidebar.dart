@@ -27,7 +27,7 @@ class WebSidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bank = BankService();
-    final name = bank.user.name.isNotEmpty ? bank.user.name : 'Elijah Montefalco';
+    final name = bank.user.name.isNotEmpty ? bank.user.name : 'Aura User';
     final acct = bank.savingsAccountNumber;
 
     return Container(

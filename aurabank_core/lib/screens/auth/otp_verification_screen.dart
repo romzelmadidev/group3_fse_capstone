@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../models/user_persona.dart';
 import '../../services/auth_api_service.dart';
+import '../../services/bank_service.dart';
+import '../../services/device_storage.dart';
 import '../../services/otp_service.dart';
 import '../../theme/aura_theme.dart';
 import 'pending_approval_screen.dart';
@@ -206,6 +208,20 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
           ),
         );
 
+        final resolvedName = result.fullName ??
+            widget.persona?.name ??
+            (widget.rawEmail != null ? widget.rawEmail!.split('@').first : 'Aura Customer');
+        BankService().setUserProfileFromAuth(
+          name: resolvedName,
+          email: result.email ?? widget.rawEmail ?? widget.email,
+          phoneNumber: result.phoneNumber,
+          accountId: result.primaryAccountId ?? widget.persona?.accountId,
+          balance: result.availableBalance ?? widget.persona?.balance,
+        );
+        DeviceStorage.saveLastLoginEmail(result.email ?? widget.rawEmail ?? widget.email);
+        DeviceStorage.saveLastLoginName(resolvedName);
+        BankService().syncWithBackend();
+
         if (widget.onVerified != null) {
           widget.onVerified!();
         } else {
@@ -216,12 +232,12 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 builder: (ctx) => PendingApprovalScreen(
                   user: widget.persona ??
                       UserPersona(
-                        name: 'Aura User',
+                        name: resolvedName,
                         role: 'Customer',
                         email: widget.email,
                         password: '',
-                        accountId: '1000-4491-0023',
-                        balance: 250000.0,
+                        accountId: result.primaryAccountId ?? '1000-4491-0023',
+                        balance: result.availableBalance ?? 250000.0,
                       ),
                   onApproved: () {
                     Navigator.of(ctx).pushReplacementNamed('/dashboard');

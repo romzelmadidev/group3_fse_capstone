@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'package:aurabank_core/services/auth_api_service.dart';
 import 'package:aurabank_core/services/bank_service.dart';
 import 'package:aurabank_core/services/notification_stream_service.dart';
 import 'package:aurabank_core/theme/aura_theme.dart';
+import 'package:aurabank_core/widgets/in_app_notification_banner.dart';
+import 'package:aurabank_core/widgets/notification_center_modal.dart';
 import 'package:flutter/material.dart';
 
 import 'screens/web/analytics/web_analytics_screen.dart';
@@ -30,18 +33,31 @@ class _WebShellState extends State<WebShell>
       CurvedAnimation(parent: _tabFade, curve: AuraMotion.emphasized);
   late int _currentIndex;
   QuickTransferDraft? _quickTransferDraft;
+  StreamSubscription? _bannerSubscription;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
     BankService().syncWithBackend();
-    final uid = AuthApiService().currentUserId ?? 'USR-0001';
-    NotificationStreamService().connect(uid);
+    final uid = AuthApiService().currentUserId;
+    if (AuthApiService().isAuthenticated && uid != null && uid.isNotEmpty) {
+      NotificationStreamService().connect(uid);
+    }
+    _bannerSubscription = NotificationStreamService().bannerStream.listen((notification) {
+      if (mounted) {
+        InAppNotificationBanner.show(
+          context,
+          notification,
+          onTap: () => NotificationCenterModal.show(context),
+        );
+      }
+    });
   }
 
   @override
   void dispose() {
+    _bannerSubscription?.cancel();
     NotificationStreamService().disconnect();
     _tabFade.dispose();
     super.dispose();
