@@ -30,7 +30,7 @@ foreach ($svc in $services) {
     $jvmArgs = @(
         "-javaagent:$AgentJar",
         "-Ddd.service=$($svc.Name)",
-        "-Ddd.env=local",
+        "-Ddd.env=dev",
         "-Ddd.version=1.0.0",
         "-Ddd.logs.injection=true",
         "-Ddd.agent.host=localhost",

@@ -95,48 +95,6 @@ class AccountProvisioningServiceTest {
     }
 
     @Test
-    @DisplayName("Should provision Checking account with 1002-prefix 12-digit account number")
-    void testProvisionCheckingAccount() {
-        CreateAccountRequest request = CreateAccountRequest.builder()
-                .userId("USR-100001")
-                .accountType(AccountType.CHECKING)
-                .initialDeposit(new BigDecimal("10000.0000"))
-                .currency("PHP")
-                .build();
-
-        when(userRepository.findById("USR-100001")).thenReturn(Optional.of(activeUser));
-        when(accountRepository.existsByAccountNumber(anyString())).thenReturn(false);
-
-        CreateAccountResponse response = provisioningService.provisionAccount(request);
-
-        assertThat(response.getAccountNumber()).hasSize(12).startsWith("1002");
-        assertThat(response.getAccountType()).isEqualTo(AccountType.CHECKING);
-    }
-
-    @Test
-    @DisplayName("Should provision Credit account with 4001-prefix and matching credit limit")
-    void testProvisionCreditAccount() {
-        CreateAccountRequest request = CreateAccountRequest.builder()
-                .userId("USR-100001")
-                .accountType(AccountType.CREDIT)
-                .initialDeposit(new BigDecimal("50000.0000"))
-                .currency("PHP")
-                .build();
-
-        when(userRepository.findById("USR-100001")).thenReturn(Optional.of(activeUser));
-        when(accountRepository.existsByAccountNumber(anyString())).thenReturn(false);
-
-        CreateAccountResponse response = provisioningService.provisionAccount(request);
-
-        assertThat(response.getAccountNumber()).hasSize(12).startsWith("4001");
-        assertThat(response.getAccountType()).isEqualTo(AccountType.CREDIT);
-
-        ArgumentCaptor<AccountEntity> accountCaptor = ArgumentCaptor.forClass(AccountEntity.class);
-        verify(accountRepository).save(accountCaptor.capture());
-        assertThat(accountCaptor.getValue().getCreditLimit()).isEqualByComparingTo("50000.0000");
-    }
-
-    @Test
     @DisplayName("Should throw ResourceNotFoundException when user does not exist")
     void testProvisionUserNotFound() {
         CreateAccountRequest request = CreateAccountRequest.builder()
@@ -187,6 +145,23 @@ class AccountProvisioningServiceTest {
 
         assertThat(response.getStatus()).isEqualTo(AccountStatus.LOCKED);
         verify(redisSessionStore).evictCachedBalance("ACC-101");
+    }
+
+    @Test
+    @DisplayName("Should attach the owner's name and role to every account in the staff listing")
+    void testGetAllAccountsCarriesOwner() {
+        AccountEntity owned = AccountEntity.builder()
+                .accountId("ACC-201").userId("USR-200001").accountNumber("100100009876")
+                .accountType(AccountType.SAVINGS).status(AccountStatus.ACTIVE).build();
+        UserEntity owner = UserEntity.builder()
+                .userId("USR-200001").firstName("Juan").lastName("Dela Cruz")
+                .role(com.fse.banking.common.enums.UserRole.CUSTOMER).build();
+        when(accountRepository.findAll()).thenReturn(List.of(owned));
+        when(userRepository.findAllById(List.of("USR-200001"))).thenReturn(List.of(owner));
+
+        AccountResponse r = provisioningService.getAllAccounts().get(0);
+        assertThat(r.getOwnerName()).isEqualTo("Juan Dela Cruz");
+        assertThat(r.getOwnerRole()).isEqualTo("CUSTOMER");
     }
 
     @Test

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:aurabank_app/main.dart';
+import 'package:aurabank_core/navigation/root_navigator.dart';
 import 'package:aurabank_app/screens/analytics/statement_screen.dart';
 import 'package:aurabank_app/screens/analytics/statement_preview_screen.dart';
 import 'package:aurabank_app/screens/home/home_screen.dart';
@@ -20,13 +21,27 @@ import 'package:aurabank_app/services/bank_service.dart';
 import 'package:aurabank_app/services/biometric_service.dart';
 import 'package:aurabank_app/services/notification_stream_service.dart';
 import 'package:aurabank_app/widgets/require_device_approval.dart';
+import 'package:aurabank_core/services/device_storage.dart';
 
 void main() {
-  testWidgets('Aura Bank splash screen test', (WidgetTester tester) async {
+  testWidgets('First run shows the aurora onboarding and pages to sign in', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(const AuraBankApp());
-    expect(find.text('Aura Bank'), findsOneWidget);
-    expect(find.text('Interbank Network Ledger'), findsNothing);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    // The aurora loops forever, so pump frames rather than settle.
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Aura'), findsOneWidget);
+    expect(find.textContaining('Manage'), findsOneWidget);
+    expect(find.text('Sign in'), findsOneWidget);
+    expect(find.bySemanticsLabel('Next'), findsOneWidget);
+
+    await tester.tap(find.bySemanticsLabel('Next'));
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.textContaining('Protected on'), findsOneWidget);
   });
 
   testWidgets('Login screen renders credentials and toggles password visibility', (WidgetTester tester) async {
@@ -36,9 +51,15 @@ void main() {
       ),
     );
 
-    expect(find.text('Welcome Back!'), findsOneWidget);
-    expect(find.text('elijahriley.montefalco@gmail.com'), findsOneWidget);
+    expect(find.textContaining('Welcome back'), findsOneWidget);
     expect(find.text('Sign in'), findsOneWidget);
+
+    // Dynamically enter username and password
+    await tester.enterText(find.byType(TextField).first, 'user@aurabank.ph');
+    await tester.enterText(find.byType(TextField).last, 'Password@123');
+    await tester.pumpAndSettle();
+
+    expect(find.text('user@aurabank.ph'), findsOneWidget);
 
     // Verify password field is obscured initially
     final passwordFieldFinder = find.byType(TextField).last;
@@ -58,6 +79,40 @@ void main() {
 
     passwordField = tester.widget(passwordFieldFinder);
     expect(passwordField.obscureText, isTrue);
+  });
+
+  testWidgets('Login screen dynamically renders remembered account greeting and field values',
+      (WidgetTester tester) async {
+    // 1. Fresh state with no remembered login
+    await DeviceStorage.clearLastLoginEmail();
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: LoginScreen(),
+      ),
+    );
+    expect(find.textContaining('Welcome back'), findsOneWidget);
+    expect(find.text('Sign in'), findsOneWidget);
+    final usernameField = tester.widget<TextField>(find.byType(TextField).first);
+    expect(usernameField.controller?.text.isEmpty, isTrue);
+
+    // 2. Remembered account dynamically populates email and greets by name
+    await DeviceStorage.saveLastLoginEmail('maria.clara@aurabank.ph');
+    await DeviceStorage.saveLastLoginName('Maria Clara Santos');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LoginScreen(key: UniqueKey()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('maria.clara@aurabank.ph'), findsOneWidget);
+    expect(find.textContaining('Maria'), findsOneWidget);
+
+    // 3. Tapping Switch Account clears the remembered email and resets greeting
+    await tester.tap(find.text('Switch Account'));
+    await tester.pumpAndSettle();
+    expect(find.text('maria.clara@aurabank.ph'), findsNothing);
   });
 
   testWidgets('Statement of Account screen renders components and filters properly',
@@ -137,68 +192,82 @@ void main() {
     expect(find.text('Download PDF'), findsOneWidget);
   });
 
-  testWidgets('Home screen renders balance, quick actions, and recent transactions',
+  testWidgets('Home screen renders wallet, actions, and recent transactions',
       (WidgetTester tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: HomeScreen(),
-      ),
-    );
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
 
-    expect(find.text('Available Balance'), findsOneWidget);
-    expect(find.text('Transfer'), findsOneWidget);
-    expect(find.text('Scan'), findsOneWidget);
+    expect(find.text('Your wallet'), findsOneWidget);
+    expect(find.text('Balance'), findsOneWidget);
+    expect(find.textContaining('₱ 50,000,000.00'), findsOneWidget);
+    for (final label in ['Send', 'Scan', 'Freeze', 'Insights']) {
+      expect(find.text(label), findsOneWidget);
+    }
+    await tester.tap(find.text('Hide balance'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('₱ 50,000,000.00'), findsNothing);
+
+    await tester.scrollUntilVisible(find.text('Jessie Mae Dela Paz'), 200);
+    expect(find.text('Recent transfers'), findsOneWidget);
+    expect(find.text('Angel Lou F. Yabut'), findsOneWidget);
+    expect(find.text('Mae G. Mercado'), findsOneWidget);
+    expect(find.text('-₱150,000.00'), findsOneWidget);
+    expect(find.text('+₱25,000.00'), findsOneWidget);
+  });
+
+  testWidgets('AppShell renders the tab bar with a centre scan action',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(home: AppShell()));
+
+    for (final label in ['Home', 'Cards', 'Insights', 'Profile']) {
+      expect(find.text(label), findsWidgets);
+    }
+    expect(find.bySemanticsLabel('Scan'), findsWidgets);
+  });
+
+  testWidgets('Cards screen shows the deck, freezes a card, and issues a Mastercard',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(const MaterialApp(home: CardsScreen()));
+
     expect(find.text('Cards'), findsOneWidget);
-    expect(find.text('Analytics'), findsOneWidget);
-    expect(find.text('Recent Transactions'), findsOneWidget);
-    expect(find.text('Angel Lou F. Yabut'), findsOneWidget);
-    expect(find.text('Settled'), findsOneWidget);
-    expect(find.text('- 150,000'), findsOneWidget);
-    expect(find.text('Mae G. Mercado'), findsOneWidget);
-    expect(find.text('Interbank Inward'), findsOneWidget);
-    expect(find.text('+ 25,000'), findsNWidgets(2));
-    expect(find.text('Jessie Mae Dela Paz'), findsOneWidget);
-    expect(find.text('Failed'), findsOneWidget);
-  });
+    expect(find.bySemanticsLabel(RegExp('Aura Debit, Visa ending 0809')), findsOneWidget);
+    expect(find.text('Savings account'), findsOneWidget);
 
-  testWidgets('AppShell renders luxury floating navbar with elevated scan action',
-      (WidgetTester tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: AppShell(),
-      ),
-    );
-
-    expect(find.text('Home'), findsWidgets);
-    expect(find.text('Cards'), findsWidgets);
-    expect(find.text('Scan'), findsWidgets);
-    expect(find.text('Analytics'), findsWidgets);
-    expect(find.text('Profile'), findsWidgets);
-  });
-
-  testWidgets('Cards screen displays cards and toggles card lock state',
-      (WidgetTester tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: CardsScreen(),
-      ),
-    );
-
-    expect(find.text('Card Control'), findsOneWidget);
-    expect(find.text('Lock Card'), findsOneWidget);
-    expect(find.text('Transaction History'), findsOneWidget);
-    expect(find.text('Angel Lou F. Yabut'), findsOneWidget);
-    expect(find.text('Same Bank Transfer • Settled'), findsOneWidget);
-    expect(find.text('Mae G. Mercado'), findsOneWidget);
-    expect(find.text('Other Bank Transfer • Settled'), findsOneWidget);
-    expect(find.text('Jessie Mae Dela Paz'), findsOneWidget);
-    expect(find.text('Same Bank Transfer • Failed'), findsOneWidget);
-
-    // Tap Lock Card
-    await tester.tap(find.text('Lock Card'));
+    await tester.tap(find.text('Freeze'));
+    await tester.pumpAndSettle();
+    expect(find.text('Unfreeze'), findsOneWidget);
+    expect(find.text('Frozen'), findsWidgets);
+    await tester.tap(find.text('Unfreeze'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Unlock Card'), findsOneWidget);
+    final before = BankService().cards.length;
+    await tester.tap(find.text('New card'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mastercard'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Issue virtual card'));
+    await tester.pumpAndSettle();
+
+    final cards = BankService().cards;
+    expect(cards.length, before + 1);
+    expect(cards.last.network.label, 'Mastercard');
+    expect(cards.last.isVirtual, isTrue);
+    expect(cards.last.cardNumber.replaceAll(' ', '').length, 16);
+    cards.removeLast();
+
+    await tester.scrollUntilVisible(
+      find.text('Recent card activity'),
+      200,
+      scrollable: find.byWidgetPredicate((w) => w is Scrollable && w.axisDirection == AxisDirection.down).first,
+    );
+    expect(find.text('Recent card activity'), findsOneWidget);
   });
 
   testWidgets('Send Money screen renders form inputs and navigates to review',
@@ -448,11 +517,14 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         navigatorKey: rootNavigatorKey,
+        routes: {
+          '/login': (context) => const LoginScreen(),
+        },
         home: const LoginScreen(),
       ),
     );
 
-    expect(find.text('Welcome Back!'), findsOneWidget);
+    expect(find.textContaining('Welcome back'), findsOneWidget);
 
     // Inject a DEVICE_REVOKED event
     NotificationStreamService().injectDeviceApprovalEvent({
@@ -464,7 +536,7 @@ void main() {
 
     // Verify unauthenticated client does NOT display revoked banner
     expect(find.text('Access revoked. You have been logged out of this session.'), findsNothing);
-    expect(find.text('Welcome Back!'), findsOneWidget);
+    expect(find.textContaining('Welcome back'), findsOneWidget);
   });
 
   testWidgets('Authenticated session suppresses duplicate DEVICE_REVOKED events',
@@ -475,6 +547,9 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         navigatorKey: rootNavigatorKey,
+        routes: {
+          '/login': (context) => const LoginScreen(),
+        },
         home: const Scaffold(
           body: Text('Active Session Screen'),
         ),

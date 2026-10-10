@@ -11,3 +11,4 @@ pandas>=2.0.0
 pyyaml>=6.0
 ddtrace>=2.0.0
 azure-storage-blob>=12.19.0
+pillow>=10.0.0

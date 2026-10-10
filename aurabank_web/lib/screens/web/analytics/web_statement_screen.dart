@@ -21,15 +21,15 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
-  static const Color brandPurple = Color(0xFF4A0E4E);
-  static const Color brandViolet = Color(0xFF6B21A8);
-  static const Color greenCredit = Color(0xFF16A34A);
-  static const Color redDebit = Color(0xFFDC2626);
-  static const Color textDark = Color(0xFF111827);
-  static const Color textGray = Color(0xFF6B7280);
-  static const Color cardBorder = Color(0xFFE5E7EB);
-  static const Color slateCardBg = Color(0xFFF8FAFC);
-  static const Color slateCardBorder = Color(0xFFE2E8F0);
+  static const Color brandPurple = Color(0xFF10171C);
+  static const Color brandViolet = Color(0xFF1C6E5A);
+  static const Color greenCredit = Color(0xFF17805F);
+  static const Color redDebit = Color(0xFFC8423B);
+  static const Color textDark = Color(0xFF10171C);
+  static const Color textGray = Color(0xFF7D8892);
+  static const Color cardBorder = Color(0xFFEAECEE);
+  static const Color slateCardBg = Color(0xFFF7F7F7);
+  static const Color slateCardBorder = Color(0xFFE6E8EA);
 
   @override
   void initState() {
@@ -78,7 +78,7 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
     final totalCount = statement.transactions.length;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: const Color(0xFFF7F7F7),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
@@ -276,7 +276,7 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFFF9FAFB),
+                color: const Color(0xFFF7F7F7),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: cardBorder),
               ),
@@ -334,7 +334,7 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              color: isSelected ? const Color(0xFFFAF5FF) : Colors.transparent,
+              color: isSelected ? const Color(0xFFF2FAF6) : Colors.transparent,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -413,9 +413,9 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF3F4F6),
+                  color: const Color(0xFFF1F3F4),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                  border: Border.all(color: const Color(0xFFEAECEE)),
                 ),
                 child: const Text(
                   'E-STATEMENT',
@@ -423,7 +423,7 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.5,
-                    color: Color(0xFF4B5563),
+                    color: Color(0xFF47525C),
                   ),
                 ),
               ),
@@ -448,8 +448,8 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
+                        children: [
+                          const Text(
                             'ACCOUNT HOLDER',
                             style: TextStyle(
                               fontSize: 9.5,
@@ -460,7 +460,9 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
                           ),
                           SizedBox(height: 4),
                           Text(
-                            'Elijah Riley Montefalco',
+                            _bankService.user.name.isNotEmpty
+                                ? _bankService.user.name
+                                : 'Aura Account Holder',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
@@ -484,7 +486,7 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF3E8FF),
+                        color: const Color(0xFFE6F6EF),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(Icons.person_rounded, size: 20, color: brandViolet),
@@ -539,7 +541,7 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF1F5F9),
+                        color: const Color(0xFFF1F3F4),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(Icons.calendar_today_rounded, size: 18, color: textGray),
@@ -578,9 +580,9 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
               final receivedCard = Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFECFDF5),
+                  color: const Color(0xFFE4F5EE),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFA7F3D0)),
+                  border: Border.all(color: const Color(0xFFA7E8D1)),
                 ),
                 child: Row(
                   children: [
@@ -616,7 +618,7 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFD1FAE5),
+                        color: const Color(0xFFE4F5EE),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(Icons.arrow_downward_rounded, size: 20, color: greenCredit),
@@ -628,7 +630,7 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
               final sentCard = Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFF1F2),
+                  color: const Color(0xFFFDF3F2),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: const Color(0xFFFECDD3)),
                 ),
@@ -666,7 +668,7 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFFE4E6),
+                        color: const Color(0xFFFBE9E7),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(Icons.arrow_upward_rounded, size: 20, color: redDebit),
@@ -701,7 +703,7 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: const Color(0xFFF9FAFB),
+              color: const Color(0xFFF7F7F7),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: cardBorder),
             ),
@@ -794,7 +796,7 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: const Color(0xFFF3F4F6),
+        color: const Color(0xFFF1F3F4),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -877,7 +879,7 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
   Widget _buildTransactionRow(BankTransaction tx) {
     final isIncoming = tx.isIncoming;
     final amountColor = isIncoming ? greenCredit : redDebit;
-    final prefix = isIncoming ? '+' : '–';
+    final prefix = isIncoming ? '+' : '-';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),

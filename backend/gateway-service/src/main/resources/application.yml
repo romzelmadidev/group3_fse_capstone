@@ -22,6 +22,7 @@ spring:
               - GET
               - POST
               - PUT
+              - PATCH
               - DELETE
               - OPTIONS
             allowedHeaders: "*"
@@ -29,7 +30,7 @@ spring:
         - id: account-service
           uri: ${ACCOUNT_SERVICE_URI:http://localhost:8081}
           predicates:
-            - Path=/api/accounts/**, /api/v1/accounts/**, /api/v1/auth/**, /api/v1/kyc/**
+            - Path=/api/accounts/**, /api/v1/accounts/**, /api/v1/auth/**, /api/v1/kyc/**, /api/v1/users/**
           filters:
             - name: RequestRateLimiter
               args:
@@ -40,19 +41,9 @@ spring:
         - id: transfer-orchestrator
           uri: ${TRANSFER_ORCHESTRATOR_URI:http://localhost:8082}
           predicates:
-            - Path=/api/v1/transfers/**, /api/v1/transfers, /api/v1/reversals/**, /api/v1/reversals
+            - Path=/api/v1/transfers/**, /api/v1/transfers, /api/v1/reversals/**, /api/v1/reversals, /api/v1/ledger/transfers/**, /api/v1/ledger/transfers
           filters:
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 20
-                redis-rate-limiter.burstCapacity: 40
-                key-resolver: "#{@userKeyResolver}"
-
-        - id: t24-mock-cbs
-          uri: ${CBS_SERVICE_URI:http://localhost:8085}
-          predicates:
-            - Path=/api/v1/cbs/**
-          filters:
+            - RewritePath=/api/v1/ledger/transfers(?<segment>/?.*), /api/v1/transfers$1
             - name: RequestRateLimiter
               args:
                 redis-rate-limiter.replenishRate: 20
@@ -62,20 +53,14 @@ spring:
         - id: compliance-service
           uri: ${COMPLIANCE_SERVICE_URI:http://localhost:8086}
           predicates:
-            - Path=/api/v1/compliance/**
+            - Path=/api/v1/compliance/**, /api/v1/ledger/audit/**, /api/v1/ledger/audit
           filters:
+            - RewritePath=/api/v1/ledger/audit(?<segment>/?.*), /api/v1/compliance/audit$1
             - name: RequestRateLimiter
               args:
                 redis-rate-limiter.replenishRate: 20
                 redis-rate-limiter.burstCapacity: 40
                 key-resolver: "#{@userKeyResolver}"
-
-        - id: ledger-users
-          uri: ${LEDGER_ENGINE_URI:http://localhost:8082}
-          predicates:
-            - Path=/api/v1/users/**
-          filters:
-            - RewritePath=/api/v1/users(?<segment>/?.*), /api/v1/ledger/users$1
 
         - id: notification-service
           uri: ${NOTIFICATION_SERVICE_URI:http://localhost:8083}

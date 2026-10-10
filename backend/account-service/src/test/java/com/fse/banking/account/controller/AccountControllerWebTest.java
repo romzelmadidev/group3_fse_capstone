@@ -118,7 +118,6 @@ class AccountControllerWebTest {
                 .accountNumber("100100001234")
                 .accountType(AccountType.SAVINGS)
                 .status(AccountStatus.LOCKED)
-                .creditLimit(BigDecimal.ZERO)
                 .createdAt(Instant.now())
                 .build();
 
@@ -157,5 +156,19 @@ class AccountControllerWebTest {
                 .andExpect(jsonPath("$.held_balance").value(15000000.0000))
                 .andExpect(jsonPath("$.available_balance").value(10000000.0000))
                 .andExpect(jsonPath("$.cached").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/accounts with a teller token should list every account, not the teller's own")
+    void testStaffListsAllAccounts() throws Exception {
+        when(jwtProvider.validateToken("teller-token")).thenReturn(true);
+        when(jwtProvider.getUserId("teller-token")).thenReturn("U3002");
+        when(jwtProvider.getRole("teller-token")).thenReturn("ROLE_TELLER");
+        when(accountProvisioningService.getAllAccounts()).thenReturn(java.util.List.of(
+                AccountResponse.builder().accountId("A2001").userId("U1001").accountType(AccountType.SAVINGS).build()));
+
+        mockMvc.perform(get("/api/v1/accounts").header("Authorization", "Bearer teller-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].user_id").value("U1001"));
     }
 }

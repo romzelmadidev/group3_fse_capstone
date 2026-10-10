@@ -49,6 +49,22 @@ public class ComplianceController {
         this.objectMapper = objectMapper;
     }
 
+    @GetMapping({"/audit", "/audit/records"})
+    public ResponseEntity<List<?>> getAuditRecords(
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "50") int size) {
+        List<?> records = cbsWebClient.get()
+                .uri(uriBuilder -> uriBuilder.path("/api/v1/cbs/audit")
+                        .queryParam("page", page)
+                        .queryParam("size", size)
+                        .build())
+                .retrieve()
+                .bodyToMono(List.class)
+                .timeout(Duration.ofSeconds(3))
+                .block();
+        return ResponseEntity.ok(records != null ? records : List.of());
+    }
+
     @GetMapping("/reports")
     public ResponseEntity<List<?>> getEodReports(@RequestParam(name = "eodDate", required = false) String eodDate) {
         String dateStr = eodDate != null ? eodDate : LocalDate.now().toString();

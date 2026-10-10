@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:http/http.dart' as http;
@@ -85,6 +86,12 @@ class AuthLoginResult {
   final bool? isPrimaryDevice;
   final bool? isApproved;
   final String? primaryDeviceId;
+  final String? fullName;
+  final String? email;
+  final String? phoneNumber;
+  final String? primaryAccountId;
+  final String? accountNumber;
+  final double? availableBalance;
 
   AuthLoginResult({
     required this.status,
@@ -100,6 +107,12 @@ class AuthLoginResult {
     this.isPrimaryDevice,
     this.isApproved,
     this.primaryDeviceId,
+    this.fullName,
+    this.email,
+    this.phoneNumber,
+    this.primaryAccountId,
+    this.accountNumber,
+    this.availableBalance,
   });
 }
 
@@ -114,6 +127,14 @@ class AuthVerifyResult {
   final bool? isPrimaryDevice;
   final bool? isApproved;
   final String? primaryDeviceId;
+  final String? userId;
+  final String? fullName;
+  final String? email;
+  final String? phoneNumber;
+  final String? primaryAccountId;
+  final String? accountNumber;
+  final double? availableBalance;
+  final UserPersona? persona;
 
   AuthVerifyResult({
     required this.success,
@@ -126,6 +147,14 @@ class AuthVerifyResult {
     this.isPrimaryDevice,
     this.isApproved,
     this.primaryDeviceId,
+    this.userId,
+    this.fullName,
+    this.email,
+    this.phoneNumber,
+    this.primaryAccountId,
+    this.accountNumber,
+    this.availableBalance,
+    this.persona,
   });
 }
 
@@ -263,6 +292,36 @@ class AuthApiService {
           currentUserId = data['user_id'] as String?;
           final resolvedType = data['device_type'] as String? ?? currentDeviceType;
 
+          final fullName = data['full_name'] as String? ?? data['fullName'] as String?;
+          final userEmail = data['email'] as String? ?? email;
+          final phone = data['phone_number'] as String? ?? data['phoneNumber'] as String?;
+          final primaryAccId = data['primary_account_id'] as String? ?? data['primaryAccountId'] as String?;
+          final accNum = data['account_number'] as String? ?? data['accountNumber'] as String?;
+          final bal = (data['available_balance'] ?? data['availableBalance']) as num?;
+          final balance = bal?.toDouble() ?? currentPersona?.balance;
+
+          if (fullName != null && fullName.isNotEmpty) {
+            currentPersona = UserPersona(
+              name: fullName,
+              role: data['role'] as String? ?? 'Customer',
+              email: userEmail,
+              password: password,
+              accountId: primaryAccId ?? currentPersona?.accountId ?? '1000-2000-3001',
+              balance: balance ?? 250000.00,
+            );
+          }
+
+          if (currentUserId != null) {
+            DeviceStorage.saveUserSessionProfile(
+              userId: currentUserId!,
+              email: userEmail,
+              name: fullName ?? currentPersona?.name ?? email,
+              phone: phone,
+              accountId: primaryAccId,
+              balance: balance,
+            );
+          }
+
           if (statusStr == 'MFA_REQUIRED') {
             final masked = data['masked_email'] as String? ?? email;
 
@@ -277,6 +336,12 @@ class AuthApiService {
               isPrimaryDevice: currentIsPrimaryDevice,
               isApproved: currentIsApproved,
               primaryDeviceId: currentPrimaryDeviceId,
+              fullName: fullName ?? currentPersona?.name,
+              email: userEmail,
+              phoneNumber: phone,
+              primaryAccountId: primaryAccId,
+              accountNumber: accNum,
+              availableBalance: balance,
             );
           } else if (isPendingStatus) {
             if (currentAccessToken != null) {
@@ -297,6 +362,12 @@ class AuthApiService {
               isPrimaryDevice: currentIsPrimaryDevice,
               isApproved: false,
               primaryDeviceId: currentPrimaryDeviceId,
+              fullName: fullName ?? currentPersona?.name,
+              email: userEmail,
+              phoneNumber: phone,
+              primaryAccountId: primaryAccId,
+              accountNumber: accNum,
+              availableBalance: balance,
             );
           } else {
             if (currentAccessToken != null) {
@@ -317,6 +388,12 @@ class AuthApiService {
               isPrimaryDevice: currentIsPrimaryDevice,
               isApproved: currentIsApproved,
               primaryDeviceId: currentPrimaryDeviceId,
+              fullName: fullName ?? currentPersona?.name,
+              email: userEmail,
+              phoneNumber: phone,
+              primaryAccountId: primaryAccId,
+              accountNumber: accNum,
+              availableBalance: balance,
             );
           }
         } else if (response.statusCode == 401 || response.statusCode == 403) {
@@ -358,6 +435,10 @@ class AuthApiService {
       isPrimaryDevice: true,
       isApproved: true,
       primaryDeviceId: currentDeviceId,
+      fullName: currentPersona?.name,
+      email: currentPersona?.email ?? email,
+      primaryAccountId: currentPersona?.accountId,
+      availableBalance: currentPersona?.balance,
     );
   }
 
@@ -413,6 +494,37 @@ class AuthApiService {
           if (currentUserId != null) {
             DeviceStorage.saveUserId(currentUserId!);
           }
+
+          final fullName = data['full_name'] as String? ?? data['fullName'] as String?;
+          final userEmail = data['email'] as String? ?? currentEmail;
+          final phone = data['phone_number'] as String? ?? data['phoneNumber'] as String?;
+          final primaryAccId = data['primary_account_id'] as String? ?? data['primaryAccountId'] as String?;
+          final accNum = data['account_number'] as String? ?? data['accountNumber'] as String?;
+          final bal = (data['available_balance'] ?? data['availableBalance']) as num?;
+          final balance = bal?.toDouble() ?? currentPersona?.balance;
+
+          if (fullName != null && fullName.isNotEmpty) {
+            currentPersona = UserPersona(
+              name: fullName,
+              role: data['role'] as String? ?? 'Customer',
+              email: userEmail ?? '',
+              password: '',
+              accountId: primaryAccId ?? currentPersona?.accountId ?? '1000-2000-3001',
+              balance: balance ?? 250000.00,
+            );
+          }
+
+          if (currentUserId != null && userEmail != null) {
+            DeviceStorage.saveUserSessionProfile(
+              userId: currentUserId!,
+              email: userEmail,
+              name: fullName ?? currentPersona?.name ?? userEmail,
+              phone: phone,
+              accountId: primaryAccId,
+              balance: balance,
+            );
+          }
+
           return AuthVerifyResult(
             success: true,
             accessToken: currentAccessToken,
@@ -423,6 +535,14 @@ class AuthApiService {
             isPrimaryDevice: currentIsPrimaryDevice,
             isApproved: currentIsApproved,
             primaryDeviceId: currentPrimaryDeviceId,
+            userId: currentUserId,
+            fullName: fullName ?? currentPersona?.name,
+            email: userEmail,
+            phoneNumber: phone,
+            primaryAccountId: primaryAccId,
+            accountNumber: accNum,
+            availableBalance: balance,
+            persona: currentPersona,
           );
         } else {
           final data = _tryDecodeJson(response.body);
@@ -442,6 +562,68 @@ class AuthApiService {
       errorMessage:
           'Backend connection failed: Unable to connect to backend for OTP verification. ($lastError)',
     );
+  }
+
+  /// Creates an unverified customer via /api/v1/auth/register. The backend
+  /// emails a 6-digit code, so success comes back as [AuthStatus.mfaRequired]
+  /// carrying user_id and masked_email for [verifyLoginOtp].
+  Future<AuthLoginResult> register(Map<String, String> profile) async {
+    final body = jsonEncode(profile);
+    for (final baseUrl in _endpoints) {
+      final http.Response response;
+      try {
+        response = await _client
+            .post(Uri.parse('$baseUrl/api/v1/auth/register'),
+                headers: {'Content-Type': 'application/json'}, body: body)
+            .timeout(const Duration(seconds: 15));
+      } on TimeoutException {
+        // The server may still have created the account; resending to another
+        // endpoint would only answer 409, so stop here.
+        return AuthLoginResult(
+            status: AuthStatus.failed, errorMessage: 'The server took too long to answer. Try signing in.');
+      } catch (_) {
+        continue; // Endpoint unreachable: try the next one.
+      }
+      _recordWorkingEndpoint(baseUrl);
+      final data = _tryDecodeJson(response.body);
+      if (response.statusCode == 201) {
+        currentUserId = data['user_id'] as String?;
+        currentEmail = profile['email'];
+        return AuthLoginResult(
+          status: AuthStatus.mfaRequired,
+          userId: currentUserId,
+          maskedEmail: data['masked_email'] as String? ?? profile['email'],
+        );
+      }
+      final invalid = data['invalid_params'];
+      final reason = invalid is List && invalid.isNotEmpty ? (invalid.first as Map)['reason'] as String? : null;
+      return AuthLoginResult(
+        status: AuthStatus.failed,
+        errorMessage: reason ?? data['detail'] as String? ?? 'Registration failed (${response.statusCode}).',
+      );
+    }
+    return AuthLoginResult(
+        status: AuthStatus.failed, errorMessage: 'Cannot reach Aura Bank right now. Check your connection.');
+  }
+
+  /// Emails a fresh code via /api/v1/auth/resend-otp. The server enforces a
+  /// 60-second cooldown and explains it in `detail`.
+  Future<AuthVerifyResult> resendOtp({required String userId}) async {
+    for (final baseUrl in _endpoints) {
+      try {
+        final response = await _client
+            .post(Uri.parse('$baseUrl/api/v1/auth/resend-otp'),
+                headers: {'Content-Type': 'application/json'}, body: jsonEncode({'user_id': userId}))
+            .timeout(const Duration(seconds: 10));
+        _recordWorkingEndpoint(baseUrl);
+        if (response.statusCode == 200) return AuthVerifyResult(success: true);
+        return AuthVerifyResult(
+          success: false,
+          errorMessage: _tryDecodeJson(response.body)['detail'] as String? ?? 'Could not send a new code.',
+        );
+      } catch (_) {}
+    }
+    return AuthVerifyResult(success: false, errorMessage: 'Cannot reach Aura Bank right now. Check your connection.');
   }
 
   Future<List<Map<String, dynamic>>> getRegisteredDevices({String? userId}) async {

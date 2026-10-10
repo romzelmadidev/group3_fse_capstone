@@ -89,8 +89,10 @@ dd-agent:
     - "4318:4318"       # OTLP HTTP receiver (Spring Boot trace intake)
     - "4317:4317"       # OTLP gRPC receiver
   environment:
-    - DD_API_KEY=38f78a4f829a542181926e4e9499146d
+    - DD_API_KEY=a65a6c84cbe468582ca3cc16c8b8cf81
     - DD_SITE=datadoghq.com
+    - DD_ENV=dev
+    - DD_TAGS=env:dev
     - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
     - DD_APM_ENABLED=true
     - DD_APM_NON_LOCAL_TRAFFIC=true

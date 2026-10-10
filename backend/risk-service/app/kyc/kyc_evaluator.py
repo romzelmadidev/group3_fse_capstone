@@ -139,6 +139,12 @@ class KycEvaluator:
             reasons.append("Submitted government ID has expired.")
         if "NAME_MISMATCH" in all_flags:
             reasons.append("Name on identity document does not match account registration details.")
+        if "SCREENSHOT_OF_CODE_DETECTED" in all_flags or "NON_IDENTITY_DOCUMENT" in all_flags:
+            reasons.append("Invalid document: Uploaded image appears to be a computer screen or code snippet rather than a valid government ID.")
+        if "IDENTICAL_ID_AND_SELFIE_PAYLOAD" in all_flags:
+            reasons.append("Invalid submission: The submitted selfie is an identical copy of the ID document.")
+        if "NO_FACE_IN_SELFIE" in all_flags or "NO_LIVE_HUMAN_FACE_DETECTED" in all_flags:
+            reasons.append("Biometric verification failed: No live human face detected in selfie.")
         if composite_score < 70.0 and not reasons:
             reasons.append(f"Composite confidence score ({composite_score}%) is below minimum acceptance threshold.")
 

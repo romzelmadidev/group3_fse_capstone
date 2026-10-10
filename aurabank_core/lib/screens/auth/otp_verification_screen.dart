@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../models/user_persona.dart';
 import '../../services/auth_api_service.dart';
+import '../../services/bank_service.dart';
+import '../../services/device_storage.dart';
 import '../../services/otp_service.dart';
 import '../../theme/aura_theme.dart';
 import 'pending_approval_screen.dart';
@@ -32,9 +35,13 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
 
-  int _secondsRemaining = 45;
+  /// Matches the backend's 5-minute OTP TTL.
+  static const int _codeLifetimeSeconds = 300;
+
+  int _secondsRemaining = _codeLifetimeSeconds;
   Timer? _timer;
   bool _isVerifying = false;
+  bool _isResending = false;
 
   @override
   void initState() {
@@ -86,7 +93,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
   void _startCountdown() {
     _timer?.cancel();
-    setState(() => _secondsRemaining = 45);
+    setState(() => _secondsRemaining = _codeLifetimeSeconds);
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_secondsRemaining > 0) {
         setState(() => _secondsRemaining--);
@@ -147,12 +154,12 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         ),
         content: const Text(
           'Please enter the complete 6-digit code.',
-          style: TextStyle(fontSize: 14, color: Color(0xFFD1D5DB)),
+          style: TextStyle(fontSize: 14, color: Color(0xFFD5DADF)),
         ),
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFF3F4F6),
+              backgroundColor: const Color(0xFFF1F3F4),
               foregroundColor: Colors.black,
               elevation: 0,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -201,6 +208,20 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
           ),
         );
 
+        final resolvedName = result.fullName ??
+            widget.persona?.name ??
+            (widget.rawEmail != null ? widget.rawEmail!.split('@').first : 'Aura Customer');
+        BankService().setUserProfileFromAuth(
+          name: resolvedName,
+          email: result.email ?? widget.rawEmail ?? widget.email,
+          phoneNumber: result.phoneNumber,
+          accountId: result.primaryAccountId ?? widget.persona?.accountId,
+          balance: result.availableBalance ?? widget.persona?.balance,
+        );
+        DeviceStorage.saveLastLoginEmail(result.email ?? widget.rawEmail ?? widget.email);
+        DeviceStorage.saveLastLoginName(resolvedName);
+        BankService().syncWithBackend();
+
         if (widget.onVerified != null) {
           widget.onVerified!();
         } else {
@@ -211,12 +232,12 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 builder: (ctx) => PendingApprovalScreen(
                   user: widget.persona ??
                       UserPersona(
-                        name: 'Aura User',
+                        name: resolvedName,
                         role: 'Customer',
                         email: widget.email,
                         password: '',
-                        accountId: '1000-4491-0023',
-                        balance: 250000.0,
+                        accountId: result.primaryAccountId ?? '1000-4491-0023',
+                        balance: result.availableBalance ?? 250000.0,
                       ),
                   onApproved: () {
                     Navigator.of(ctx).pushReplacementNamed('/dashboard');
@@ -253,32 +274,46 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   }
 
   void _resendCode() async {
+    if (_isResending) return;
+    setState(() => _isResending = true);
+    final result = await AuthApiService().resendOtp(userId: widget.userId ?? 'USR-0001');
+    if (!mounted) return;
+    setState(() => _isResending = false);
+    if (!result.success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.errorMessage ?? 'Could not send a new code.'),
+          backgroundColor: AuraColors.debitRed,
+        ),
+      );
+      return;
+    }
     for (final c in _controllers) {
       c.clear();
     }
     _startCountdown();
     _focusNodes[0].requestFocus();
-    await _fetchMailHogEmail();
-    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('New 6-digit code dispatched to ${widget.email}'),
         backgroundColor: AuraColors.primary,
       ),
     );
+    await _fetchMailHogEmail();
   }
 
   @override
   Widget build(BuildContext context) {
     final isExpired = _secondsRemaining <= 0;
-    final formattedTime =
-        '00:${_secondsRemaining.toString().padLeft(2, '0')}';
+    final formattedTime = '${(_secondsRemaining ~/ 60).toString().padLeft(2, '0')}:'
+        '${(_secondsRemaining % 60).toString().padLeft(2, '0')}';
 
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+        child: LayoutBuilder(builder: (context, box) => SingleChildScrollView(
+          // Phone width on every screen, so the six boxes stay one group on desktop.
+          padding: EdgeInsets.symmetric(horizontal: math.max(24.0, (box.maxWidth - 440) / 2), vertical: 16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -369,7 +404,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                             ? AuraColors.primary
                             : hasValue
                                 ? AuraColors.accentLight
-                                : const Color(0xFFD1D5DB),
+                                : const Color(0xFFD5DADF),
                         width: isFocused ? 2.0 : 1.2,
                       ),
                       boxShadow: isFocused
@@ -475,7 +510,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
               // Resend Code Button
               GestureDetector(
-                onTap: _resendCode,
+                onTap: _isResending ? null : _resendCode,
                 child: RichText(
                   text: const TextSpan(
                     style: TextStyle(fontSize: 13, color: AuraColors.textSecondary),
@@ -499,9 +534,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF9FAFB),
+                  color: const Color(0xFFF7F7F7),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFF3F4F6)),
+                  border: Border.all(color: const Color(0xFFF1F3F4)),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -589,7 +624,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
               const SizedBox(height: 20),
             ],
           ),
-        ),
+        )),
       ),
     );
   }

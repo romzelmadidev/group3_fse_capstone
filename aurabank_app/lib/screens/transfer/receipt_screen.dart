@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:aurabank_core/services/bank_service.dart';
 import '../../theme/aura_theme.dart';
+import '../../widgets/motion.dart';
 
 class TransactionReceiptScreen extends StatefulWidget {
   final bool isSuccess;
+  final bool isPendingReview;
   final String senderName;
   final String senderAccount;
   final String recipientName;
@@ -12,12 +15,14 @@ class TransactionReceiptScreen extends StatefulWidget {
   final double fee;
   final String referenceNumber;
   final String? failureReason;
+  final String? holdReason;
   final VoidCallback? onTryAgain;
   final VoidCallback? onBackToHome;
 
   const TransactionReceiptScreen({
     super.key,
     this.isSuccess = true,
+    this.isPendingReview = false,
     required this.senderName,
     required this.senderAccount,
     required this.recipientName,
@@ -27,23 +32,25 @@ class TransactionReceiptScreen extends StatefulWidget {
     this.fee = 0.0,
     required this.referenceNumber,
     this.failureReason,
+    this.holdReason,
     this.onTryAgain,
     this.onBackToHome,
   });
 
   @override
-  State<TransactionReceiptScreen> createState() => _TransactionReceiptScreenState();
+  State<TransactionReceiptScreen> createState() =>
+      _TransactionReceiptScreenState();
 }
 
 class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
   late bool _isSuccess;
 
   static const Color brandViolet = AuraColors.primary;
-  static const Color textDark = Color(0xFF0F172A);
-  static const Color textMuted = Color(0xFF64748B);
-  static const Color cardBorder = Color(0xFFF1F5F9);
-  static const Color greenSuccess = Color(0xFF10B981);
-  static const Color redFail = Color(0xFFDC2626);
+  static const Color textDark = Color(0xFF10171C);
+  static const Color textMuted = Color(0xFF6E7882);
+  static const Color cardBorder = Color(0xFFF1F3F4);
+  static const Color greenSuccess = Color(0xFF2FA37E);
+  static const Color redFail = Color(0xFFC8423B);
 
   @override
   void initState() {
@@ -63,21 +70,47 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December'
     ];
-    final dateStr = '${now.day.toString().padLeft(2, '0')} ${months[now.month - 1]} ${now.year}';
-    final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final dateStr =
+        '${now.day.toString().padLeft(2, '0')} ${months[now.month - 1]} ${now.year}';
+    final timeStr =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
-    final senderDisplay = widget.senderName.trim().isNotEmpty ? widget.senderName : 'Elijah Riley Montefalco';
-    final senderAccDisplay = widget.senderAccount.trim().isNotEmpty ? widget.senderAccount : '1235484874877';
-    final recipientDisplay = widget.recipientName.trim().isNotEmpty ? widget.recipientName : 'Jessie Mae R. Dela Paz';
-    final recipientBankDisplay = widget.recipientBank.trim().isNotEmpty ? widget.recipientBank : 'MeyBank';
-    final recipientAccDisplay = widget.recipientAccount.trim().isNotEmpty ? widget.recipientAccount : '1154848785378';
-    final refDisplay = widget.referenceNumber.trim().isNotEmpty ? widget.referenceNumber : '1235498758130';
+    final senderDisplay = widget.senderName.trim().isNotEmpty
+        ? widget.senderName
+        : (BankService().user.name.trim().isNotEmpty
+            ? BankService().user.name
+            : 'Aura Account Holder');
+    final senderAccDisplay = widget.senderAccount.trim().isNotEmpty
+        ? widget.senderAccount
+        : '1235484874877';
+    final recipientDisplay = widget.recipientName.trim().isNotEmpty
+        ? widget.recipientName
+        : 'Jessie Mae R. Dela Paz';
+    final recipientBankDisplay = widget.recipientBank.trim().isNotEmpty
+        ? widget.recipientBank
+        : 'MeyBank';
+    final recipientAccDisplay = widget.recipientAccount.trim().isNotEmpty
+        ? widget.recipientAccount
+        : '1154848785378';
+    final refDisplay = widget.referenceNumber.trim().isNotEmpty
+        ? widget.referenceNumber
+        : '1235498758130';
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: const Color(0xFFF7F7F7),
       body: SafeArea(
         child: Align(
           alignment: Alignment.topCenter,
@@ -101,7 +134,8 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
                           decoration: BoxDecoration(
                             color: Colors.white,
                             shape: BoxShape.circle,
-                            border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
+                            border: Border.all(
+                                color: const Color(0xFFE6E8EA), width: 1.0),
                             boxShadow: [
                               BoxShadow(
                                 color: Colors.black.withValues(alpha: 0.05),
@@ -111,7 +145,8 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
                             ],
                           ),
                           child: IconButton(
-                            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 17, color: textDark),
+                            icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                                size: 17, color: textDark),
                             padding: EdgeInsets.zero,
                             onPressed: _handleBackToHome,
                           ),
@@ -135,7 +170,8 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
                           decoration: BoxDecoration(
                             color: Colors.white,
                             shape: BoxShape.circle,
-                            border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
+                            border: Border.all(
+                                color: const Color(0xFFE6E8EA), width: 1.0),
                             boxShadow: [
                               BoxShadow(
                                 color: Colors.black.withValues(alpha: 0.05),
@@ -145,11 +181,14 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
                             ],
                           ),
                           child: IconButton(
-                            icon: const Icon(Icons.share_outlined, size: 20, color: brandViolet),
+                            icon: const Icon(Icons.share_outlined,
+                                size: 20, color: brandViolet),
                             padding: EdgeInsets.zero,
                             onPressed: () {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Receipt image saved to device.')),
+                                const SnackBar(
+                                    content:
+                                        Text('Receipt image saved to device.')),
                               );
                             },
                           ),
@@ -160,34 +199,44 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
 
                   const SizedBox(height: 24),
 
-                  // Status Icon Circle Hero (Scan - Image 6 / Scan - Failed)
-                  GestureDetector(
-                    onTap: () {
-                      setState(() => _isSuccess = !_isSuccess);
-                    },
-                    child: Container(
+                  // Status Icon Circle Hero (Scan - Image 6 / Scan - Failed / Pending Review)
+                  if (widget.isPendingReview)
+                    Container(
                       width: 96,
                       height: 96,
-                      decoration: BoxDecoration(
-                        color: _isSuccess ? const Color(0xFFD1FAE5) : const Color(0xFFFFD1D1),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFFEF3C7),
                         shape: BoxShape.circle,
                       ),
-                      child: Center(
-                        child: Icon(
-                          _isSuccess ? Icons.check_rounded : Icons.close_rounded,
-                          color: _isSuccess ? greenSuccess : const Color(0xFFEF4444),
-                          size: 54,
-                        ),
+                      child: const Icon(
+                        Icons.shield_outlined,
+                        color: Color(0xFFD97706),
+                        size: 50,
+                      ),
+                    )
+                  else
+                    GestureDetector(
+                      onTap: () {
+                        setState(() => _isSuccess = !_isSuccess);
+                      },
+                      child: AnimatedCheck(
+                        key: ValueKey(_isSuccess),
+                        size: 96,
+                        success: _isSuccess,
+                        color: _isSuccess
+                            ? AuraColors.mint
+                            : const Color(0xFFF6CFCB),
                       ),
                     ),
-                  ),
 
                   const SizedBox(height: 18),
 
                   // Sub-header title
-                  const Text(
-                    'Transaction Receipt',
-                    style: TextStyle(
+                  Text(
+                    widget.isPendingReview
+                        ? 'Transfer Held for Review'
+                        : 'Transaction Receipt',
+                    style: const TextStyle(
                       fontSize: 16.5,
                       fontWeight: FontWeight.w700,
                       color: Color(0xFF334155),
@@ -209,11 +258,28 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
                     ),
                   ),
 
-                  if (!_isSuccess) ...[
+                  if (widget.isPendingReview) ...[
+                    const SizedBox(height: 6),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Text(
+                        widget.holdReason ??
+                            'Held for review due to unusual location activity.',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            fontSize: 12.5,
+                            color: Color(0xFFB45309),
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ] else if (!_isSuccess) ...[
                     const SizedBox(height: 6),
                     const Text(
                       'Your money has not been deducted',
-                      style: TextStyle(fontSize: 12.5, color: textMuted, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          color: textMuted,
+                          fontWeight: FontWeight.w600),
                     ),
                   ],
 
@@ -229,7 +295,8 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
                       border: Border.all(color: cardBorder, width: 1.2),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF0F172A).withValues(alpha: 0.05),
+                          color:
+                              const Color(0xFF10171C).withValues(alpha: 0.05),
                           blurRadius: 18,
                           offset: const Offset(0, 4),
                         ),
@@ -237,43 +304,70 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
                     ),
                     child: Column(
                       children: [
-                        _buildReceiptRow('From', senderDisplay, 'Aura Bank: $senderAccDisplay'),
+                        _buildReceiptRow('From', senderDisplay,
+                            'Aura Bank: $senderAccDisplay'),
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 12),
-                          child: Divider(color: cardBorder, height: 1, thickness: 1),
+                          child: Divider(
+                              color: cardBorder, height: 1, thickness: 1),
                         ),
-                        _buildReceiptRow('To', recipientDisplay, '$recipientBankDisplay: $recipientAccDisplay'),
+                        _buildReceiptRow('To', recipientDisplay,
+                            '$recipientBankDisplay: $recipientAccDisplay'),
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 12),
-                          child: Divider(color: cardBorder, height: 1, thickness: 1),
+                          child: Divider(
+                              color: cardBorder, height: 1, thickness: 1),
                         ),
-                        _buildSimpleRow('Transfer Amount', 'PHP ${_formatAmount(widget.amount)}'),
+                        _buildSimpleRow('Transfer Amount',
+                            'PHP ${_formatAmount(widget.amount)}'),
                         const SizedBox(height: 14),
                         _buildSimpleRow(
                           'Transfer Fee',
-                          widget.fee == 0.0 ? 'FREE' : 'PHP ${_formatAmount(widget.fee)}',
+                          widget.fee == 0.0
+                              ? 'FREE'
+                              : 'PHP ${_formatAmount(widget.fee)}',
                           feeColor: widget.fee == 0.0 ? greenSuccess : textDark,
                         ),
                         const SizedBox(height: 14),
-                        _buildSimpleRow('Total Amount', 'PHP ${_formatAmount(widget.amount + widget.fee)}', isBold: true),
+                        _buildSimpleRow('Total Amount',
+                            'PHP ${_formatAmount(widget.amount + widget.fee)}',
+                            isBold: true),
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 12),
-                          child: Divider(color: cardBorder, height: 1, thickness: 1),
+                          child: Divider(
+                              color: cardBorder, height: 1, thickness: 1),
                         ),
                         _buildSimpleRow('Reference Number', refDisplay),
                         const SizedBox(height: 14),
                         _buildSimpleRow('Transaction Date', dateStr),
                         const SizedBox(height: 14),
                         _buildSimpleRow('Transaction Time', timeStr),
-
-                        if (!_isSuccess) ...[
+                        if (widget.isPendingReview) ...[
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 12),
-                            child: Divider(color: cardBorder, height: 1, thickness: 1),
+                            child: Divider(
+                                color: cardBorder, height: 1, thickness: 1),
                           ),
-                          _buildSimpleRow('Status', 'Failed', feeColor: redFail, isBold: true),
+                          _buildSimpleRow('Status', 'Pending Compliance Review',
+                              feeColor: const Color(0xFFD97706), isBold: true),
                           const SizedBox(height: 14),
-                          _buildSimpleRow('Failure Reason', widget.failureReason ?? 'Destination Bank Timeout'),
+                          _buildSimpleRow(
+                              'Review Reason',
+                              widget.holdReason ??
+                                  'Unusual Location Velocity (Impossible Travel)'),
+                        ] else if (!_isSuccess) ...[
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Divider(
+                                color: cardBorder, height: 1, thickness: 1),
+                          ),
+                          _buildSimpleRow('Status', 'Failed',
+                              feeColor: redFail, isBold: true),
+                          const SizedBox(height: 14),
+                          _buildSimpleRow(
+                              'Failure Reason',
+                              widget.failureReason ??
+                                  'Destination Bank Timeout'),
                         ],
                       ],
                     ),
@@ -305,9 +399,11 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.transparent,
                                 shadowColor: Colors.transparent,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(18)),
                               ),
-                              onPressed: widget.onTryAgain ?? () => Navigator.of(context).pop(),
+                              onPressed: widget.onTryAgain ??
+                                  () => Navigator.of(context).pop(),
                               child: const Text(
                                 'Try Again',
                                 style: TextStyle(
@@ -329,7 +425,9 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
                           decoration: BoxDecoration(
                             color: _isSuccess ? brandViolet : Colors.white,
                             borderRadius: BorderRadius.circular(18),
-                            border: _isSuccess ? null : Border.all(color: const Color(0xFFE2E8F0)),
+                            border: _isSuccess
+                                ? null
+                                : Border.all(color: const Color(0xFFE6E8EA)),
                             boxShadow: [
                               BoxShadow(
                                 color: _isSuccess
@@ -344,7 +442,8 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.transparent,
                               shadowColor: Colors.transparent,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18)),
                             ),
                             onPressed: _handleBackToHome,
                             child: Text(
@@ -418,7 +517,8 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
     );
   }
 
-  Widget _buildSimpleRow(String label, String value, {Color? feeColor, bool isBold = false}) {
+  Widget _buildSimpleRow(String label, String value,
+      {Color? feeColor, bool isBold = false}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [

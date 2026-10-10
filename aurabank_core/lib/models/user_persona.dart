@@ -21,10 +21,66 @@ class UserPersona {
 
   static const List<UserPersona> demoPersonas = [
     UserPersona(
+      name: 'Wax',
+      role: 'Customer',
+      email: 'wax@bank.com',
+      password: 'password123',
+      accountId: '1000-8801-0001',
+      balance: 1000000.00,
+    ),
+    UserPersona(
+      name: 'Hans',
+      role: 'Customer',
+      email: 'hans@bank.com',
+      password: 'password123',
+      accountId: '1000-8801-0002',
+      balance: 1000000.00,
+    ),
+    UserPersona(
+      name: 'JM',
+      role: 'Customer',
+      email: 'jm@bank.com',
+      password: 'password123',
+      accountId: '1000-8801-0003',
+      balance: 1000000.00,
+    ),
+    UserPersona(
+      name: 'Zel',
+      role: 'Customer',
+      email: 'zel@bank.com',
+      password: 'password123',
+      accountId: '1000-8801-0004',
+      balance: 1000000.00,
+    ),
+    UserPersona(
+      name: 'Jessy',
+      role: 'Customer',
+      email: 'jessy@bank.com',
+      password: 'password123',
+      accountId: '1000-8801-0005',
+      balance: 1000000.00,
+    ),
+    UserPersona(
+      name: 'Maye',
+      role: 'Customer',
+      email: 'maye@bank.com',
+      password: 'password123',
+      accountId: '1000-8801-0006',
+      balance: 1000000.00,
+    ),
+    UserPersona(
+      name: 'Angel',
+      role: 'Customer',
+      email: 'angel@bank.com',
+      password: 'password123',
+      accountId: '1000-8801-0007',
+      balance: 1000000.00,
+    ),
+    UserPersona(
       name: 'Elijah Riley Montefalco',
       role: 'Customer',
       email: 'elijahriley.montefalco@gmail.com',
-      password: 'Montefalco@2026',
+      password: 'password123',
       accountId: '1000-4491-0023',
       balance: 250000.00,
     ),
@@ -46,12 +102,95 @@ class UserPersona {
     ),
     UserPersona(
       name: 'Diana Vance',
-      role: 'Admin / Teller',
+      role: 'Admin',
       email: 'diana.admin@bank.com',
       password: 'password123',
       accountId: '1000-8800-9902',
       balance: 450000.00,
     ),
+  ];
+
+  static const List<Map<String, String>> transferableRecipients = [
+    {
+      'name': 'Wax',
+      'accountNo': '1000-8801-0001',
+      'tag': 'Team Member',
+    },
+    {
+      'name': 'Hans',
+      'accountNo': '1000-8801-0002',
+      'tag': 'Team Member',
+    },
+    {
+      'name': 'JM',
+      'accountNo': '1000-8801-0003',
+      'tag': 'Team Member',
+    },
+    {
+      'name': 'Zel',
+      'accountNo': '1000-8801-0004',
+      'tag': 'Team Member',
+    },
+    {
+      'name': 'Jessy',
+      'accountNo': '1000-8801-0005',
+      'tag': 'Team Member',
+    },
+    {
+      'name': 'Maye',
+      'accountNo': '1000-8801-0006',
+      'tag': 'Team Member',
+    },
+    {
+      'name': 'Angel',
+      'accountNo': '1000-8801-0007',
+      'tag': 'Team Member',
+    },
+    {
+      'name': 'Elijah Riley Montefalco',
+      'accountNo': '1000-4491-0023',
+      'tag': 'Verified Customer',
+    },
+    {
+      'name': 'Juan Dela Cruz',
+      'accountNo': '1000-2000-3001',
+      'tag': 'Verified Customer',
+    },
+    {
+      'name': 'Maria Clara Reyes',
+      'accountNo': '1000-2000-3002',
+      'tag': 'Verified Customer',
+    },
+    {
+      'name': 'Jose Protacio Rizal',
+      'accountNo': '1000-2000-3004',
+      'tag': 'Verified Customer',
+    },
+    {
+      'name': 'Andres Castro Bonifacio',
+      'accountNo': '1000-2000-3005',
+      'tag': 'Verified Customer',
+    },
+    {
+      'name': 'Gabriela Carlo Silang',
+      'accountNo': '1000-2000-3006',
+      'tag': 'Verified Customer',
+    },
+    {
+      'name': 'Emilio Dizon Jacinto',
+      'accountNo': '1000-2000-3007',
+      'tag': 'Verified Customer',
+    },
+    {
+      'name': 'Melchora Aquino Ramos',
+      'accountNo': '1000-2000-3008',
+      'tag': 'Verified Customer',
+    },
+    {
+      'name': 'Apolinario Marasigan Mabini',
+      'accountNo': '1000-2000-3009',
+      'tag': 'Verified Customer',
+    },
   ];
 }
 

@@ -50,6 +50,14 @@ public class CbsAuditQueryService {
     }
 
     @Transactional(value = "auditTransactionManager", readOnly = true)
+    public List<LedgerMutationAudit> getAllLedgerMutations(int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 200);
+        return ledgerMutationAuditRepository.findAll(
+                PageRequest.of(safePage, safeSize, org.springframework.data.domain.Sort.by("createdAt").descending())).getContent();
+    }
+
+    @Transactional(value = "auditTransactionManager", readOnly = true)
     public List<TransactionStatusAudit> getStatusHistory(String transactionId) {
         return transactionStatusAuditRepository.findByTransactionIdOrderByChangedAtAsc(transactionId);
     }

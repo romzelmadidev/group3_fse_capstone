@@ -26,6 +26,13 @@ public class CbsAuditController {
         this.auditQueryService = auditQueryService;
     }
 
+    @GetMapping({"", "/mutations", "/records"})
+    public ResponseEntity<List<LedgerMutationAudit>> getAllLedgerMutations(
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "50") int size) {
+        return ResponseEntity.ok(auditQueryService.getAllLedgerMutations(page, size));
+    }
+
     @GetMapping("/accounts/{accountId}/mutations")
     public ResponseEntity<List<LedgerMutationAudit>> getLedgerMutations(
             @PathVariable String accountId,

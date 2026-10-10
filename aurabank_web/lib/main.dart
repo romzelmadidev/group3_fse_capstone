@@ -1,3 +1,4 @@
+import 'package:aurabank_core/navigation/aura_entry_route.dart';
 import 'package:aurabank_core/navigation/root_navigator.dart';
 import 'package:aurabank_core/screens/auth/landing_screen.dart';
 import 'package:aurabank_core/screens/auth/login_screen.dart';
@@ -40,10 +41,12 @@ class AuraBankWeb extends StatelessWidget {
       routes: {
         '/': (context) => const LandingScreen(),
         '/login': (context) => const LoginScreen(),
-        '/dashboard': (context) => const WebShell(),
         '/otp': (context) => const OtpVerificationScreen(),
         '/security_gate': (context) => const SecurityGateScreen(),
       },
+      onGenerateRoute: (settings) => settings.name == '/dashboard'
+          ? auraEntryRoute(settings, (_) => const WebShell())
+          : null,
     );
   }
 }

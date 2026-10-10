@@ -1,4 +1,3 @@
-import 'package:aurabank_core/widgets/aura_logo.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'web_statement_screen.dart';
@@ -1172,7 +1171,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
       case 4:
         return full.sublist(9, 12);
       default:
-        return full.length > 5 ? full.sublist(0, 5) : full;
+        const throughOctober = 10;
+        return full.length > throughOctober ? full.sublist(0, throughOctober) : full;
     }
   }
 
@@ -1214,6 +1214,27 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
     return sum;
   }
 
+  double get _totalSentYear =>
+      _currentYearlyFilteredMonths.fold(0.0, (sum, month) => sum + month.sent);
+
+  double get _totalReceivedYear =>
+      _currentYearlyFilteredMonths.fold(0.0, (sum, month) => sum + month.received);
+
+  int get _transfersOutYear =>
+      _currentYearlyFilteredMonths.fold(0, (sum, month) => sum + month.outTransfers);
+
+  int get _transfersInYear =>
+      _currentYearlyFilteredMonths.fold(0, (sum, month) => sum + month.inTransfers);
+
+  String _weekRangeLabel(String dateSubtitle) {
+    final match = RegExp(r'([A-Za-z]+)\s+(\d+)\s+-\s+[A-Za-z]+\s+(\d+)').firstMatch(dateSubtitle);
+    if (match == null) return dateSubtitle;
+    final month = match.group(1)!;
+    final start = int.parse(match.group(2)!);
+    final end = int.parse(match.group(3)!);
+    return '$month $start–$end';
+  }
+
 
 
 
@@ -1244,45 +1265,24 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                         ),
                         const SizedBox(width: 8),
                       ],
-                      const AuraLogo(
-                        size: 38,
-                        style: AuraLogoStyle.violet,
-                        borderRadius: 10,
-                      ),
-                      const SizedBox(width: 14),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF10B981),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              const Text(
-                                'FINANCIAL INTELLIGENCE',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF6B7280),
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
                           const Text(
-                            'Analytics & Flow',
+                            'Reports',
                             style: TextStyle(
-                              fontSize: 26,
+                              fontSize: 22,
                               fontWeight: FontWeight.w800,
                               color: Color(0xFF111827),
-                              letterSpacing: -0.6,
+                              letterSpacing: -0.4,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            _isMonthly ? 'October 2026' : '2026',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF6B7280),
                             ),
                           ),
                         ],
@@ -1379,13 +1379,13 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
 
 
   Widget _buildDynamicKpiCards() {
-    final sentTitle = _isMonthly ? 'Total Sent' : 'Total Sent (2026)';
-    final sentAmount = _isMonthly ? _totalSentMonth : 508000.00;
-    final sentCount = _isMonthly ? '$_transfersOutMonth Transfers Out' : '185 Transfers Out';
+    final sentTitle = 'Sent';
+    final sentAmount = _isMonthly ? _totalSentMonth : _totalSentYear;
+    final sentCount = '${_isMonthly ? _transfersOutMonth : _transfersOutYear} transfers';
 
-    final receivedTitle = _isMonthly ? 'Total Received' : 'Total Received (2026)';
-    final receivedAmount = _isMonthly ? _totalReceivedMonth : 160000.00;
-    final receivedCount = _isMonthly ? '$_transfersInMonth Transfers In' : '43 Transfers In';
+    final receivedTitle = 'Received';
+    final receivedAmount = _isMonthly ? _totalReceivedMonth : _totalReceivedYear;
+    final receivedCount = '${_isMonthly ? _transfersInMonth : _transfersInYear} transfers';
 
     final netDiff = receivedAmount - sentAmount;
 
@@ -1393,257 +1393,31 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
       builder: (context, constraints) {
         final isWide = constraints.maxWidth >= 720;
         final children = [
-          // 1. Dark Purple/Violet Gradient Card: Total Sent
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF261250), Color(0xFF380084)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1.0),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF380084).withValues(alpha: 0.22),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      sentTitle,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFD8B4FE),
-                      ),
-                    ),
-                    Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.arrow_outward_rounded, size: 16, color: Colors.white),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'PHP ${_formatCurrency(sentAmount)}',
-                  style: const TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                    letterSpacing: -0.6,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      sentCount,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
-                        color: Color(0xFFC084FC),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    Container(
-                      width: 22,
-                      height: 22,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.arrow_downward_rounded, size: 13, color: Colors.white),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          _buildReportStatCard(
+            title: sentTitle,
+            amount: '₱${_formatCurrency(sentAmount)}',
+            caption: sentCount,
+            accent: const Color(0xFF6D28D9),
+            iconBg: const Color(0xFFF5F3FF),
+            icon: Icons.arrow_outward_rounded,
           ),
-
           if (isWide) const SizedBox(width: 20) else const SizedBox(height: 16),
-
-          // 2. White Card with Green Accent: Total Received
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      receivedTitle,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF6B21A8),
-                      ),
-                    ),
-                    Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFDCFCE7),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.south_west_rounded, size: 15, color: Color(0xFF16A34A)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'PHP ${_formatCurrency(receivedAmount)}',
-                  style: const TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF111827),
-                    letterSpacing: -0.6,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      receivedCount,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
-                        color: Color(0xFF6B7280),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    Container(
-                      width: 22,
-                      height: 22,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFFAF5FF),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.arrow_upward_rounded, size: 13, color: Color(0xFF7C3AED)),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          _buildReportStatCard(
+            title: receivedTitle,
+            amount: '₱${_formatCurrency(receivedAmount)}',
+            caption: receivedCount,
+            accent: const Color(0xFF059669),
+            iconBg: const Color(0xFFECFDF5),
+            icon: Icons.south_west_rounded,
           ),
-
           if (isWide) const SizedBox(width: 20) else const SizedBox(height: 16),
-
-          // 3. White Card: Net Volume Difference
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Net Volume Difference',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF4B5563),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFDCFCE7),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.trending_up_rounded, size: 13, color: Color(0xFF16A34A)),
-                          SizedBox(width: 3),
-                          Text(
-                            '+14.2% YoY',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF15803D),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '${netDiff >= 0 ? '+' : '-'} PHP ${_formatCurrency(netDiff.abs())}',
-                  style: const TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF111827),
-                    letterSpacing: -0.6,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Expenditure Ratio',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF6B7280),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    Text(
-                      '76% of Outflow',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1E103F),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          _buildReportStatCard(
+            title: 'Difference',
+            amount: '${netDiff < 0 ? '− ' : netDiff > 0 ? '+ ' : ''}₱${_formatCurrency(netDiff.abs())}',
+            caption: 'Received minus sent',
+            accent: const Color(0xFF6B7280),
+            iconBg: const Color(0xFFF3F4F6),
+            icon: netDiff < 0 ? Icons.remove_rounded : Icons.add_rounded,
           ),
         ];
 
@@ -1655,6 +1429,90 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
         }
         return Column(children: children);
       },
+    );
+  }
+
+  Widget _buildReportStatCard({
+    required String title,
+    required String amount,
+    required String caption,
+    required Color accent,
+    required Color iconBg,
+    required IconData icon,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 4, color: accent),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 20, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: iconBg,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(icon, size: 16, color: accent),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF374151),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      amount,
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF111827),
+                        letterSpacing: -0.6,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      caption,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF6B7280),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1684,9 +1542,9 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text(
-                    'Transfer Flow',
+                children: [
+                  const Text(
+                    'Money in and out',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
@@ -1694,10 +1552,10 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                       letterSpacing: -0.4,
                     ),
                   ),
-                  SizedBox(height: 3),
+                  const SizedBox(height: 3),
                   Text(
-                    'Smooth comparison of outgoing versus incoming capital',
-                    style: TextStyle(
+                    _isMonthly ? 'Each week of October' : 'Each month of 2026',
+                    style: const TextStyle(
                       fontSize: 12.5,
                       color: Color(0xFF6B7280),
                       fontWeight: FontWeight.w400,
@@ -1833,7 +1691,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                     : null,
               ),
               child: Text(
-                'Week ${index + 1}',
+                _weekRangeLabel(weeks[index].dateSubtitle),
                 style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
@@ -1848,12 +1706,10 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
   }
 
   Widget _buildMonthClickablePills() {
-    const months = ['January', 'February', 'March', 'April', 'May'];
+    final months = _currentYearlyFilteredMonths;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: months.asMap().entries.map((entry) {
-        final index = entry.key;
-        final m = entry.value;
+      children: List.generate(months.length, (index) {
         final isSelected = _selectedMonthIndex == index;
         return GestureDetector(
           onTap: () => _onSelectMonth(index),
@@ -1862,7 +1718,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             cursor: SystemMouseCursors.click,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 150),
-              padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 6.0),
+              padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 6.0),
               decoration: BoxDecoration(
                 color: isSelected ? Colors.white : Colors.transparent,
                 borderRadius: BorderRadius.circular(8),
@@ -1878,7 +1734,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                     : null,
               ),
               child: Text(
-                m,
+                months[index].shortLabel,
                 style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
@@ -1888,7 +1744,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             ),
           ),
         );
-      }).toList(),
+      }),
     );
   }
 
@@ -1938,7 +1794,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: const [
                   Text(
-                    'Settlement History Ledger',
+                    'Transfers',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
@@ -1948,7 +1804,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                   ),
                   SizedBox(height: 2),
                   Text(
-                    'Transfers settled & cleared in October 2026',
+                    'October 2026',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
@@ -2013,7 +1869,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             name: 'Drake Montefalco',
             category: 'Intra-Bank Direct Transfer',
             time: 'Oct 14, 2:45 PM',
-            amount: '- PHP 2,500.00',
+            amount: '- ₱2,500.00',
             isPositive: false,
             status: 'SETTLED',
             statusColor: const Color(0xFF059669),
@@ -2029,7 +1885,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             name: 'Klare Riego',
             category: 'CBS Wire Inward Remittance',
             time: 'Oct 14, 1:45 PM',
-            amount: '+ PHP 26,500.00',
+            amount: '+ ₱26,500.00',
             isPositive: true,
             status: 'RECEIVED',
             statusColor: const Color(0xFF059669),
@@ -2062,7 +1918,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             name: 'Angel Lou',
             category: 'Settlement Disbursement',
             time: 'Oct 03, 11:20 AM',
-            amount: '- PHP 2,500.00',
+            amount: '- ₱2,500.00',
             isPositive: false,
             status: 'SETTLED',
             statusColor: const Color(0xFF059669),
@@ -2100,7 +1956,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: const [
                   Text(
-                    'Monthly Summaries',
+                    'Each month',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
@@ -2110,7 +1966,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                   ),
                   SizedBox(height: 3),
                   Text(
-                    'Quarterly disbursement (2026)',
+                    'Sent and received in 2026',
                     style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w500,
@@ -2174,8 +2030,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             monthTitle: 'July 2026',
             transfersText: '24 transfers • ',
             greenAmount: '+ 55,000.00',
-            gross: 'PHP 42,000.00',
-            net: '+ PHP 26.5k net',
+            gross: '₱42,000.00',
+            net: '+ ₱26.5k net',
             avatarBg: const Color(0xFF380084),
           ),
           const Padding(
@@ -2187,8 +2043,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             monthTitle: 'August 2026',
             transfersText: '19 Transfers • ',
             greenAmount: '+ 39,000.00',
-            gross: 'PHP 38,200.00',
-            net: '+ PHP 13.8k net',
+            gross: '₱38,200.00',
+            net: '+ ₱13.8k net',
             avatarBg: const Color(0xFF6B21A8),
           ),
 
@@ -2217,8 +2073,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             monthTitle: 'June 2026',
             transfersText: '10 Transfers • ',
             greenAmount: '+ 32,000.00',
-            gross: 'PHP 50,000.00',
-            net: '+ PHP 15.2k net',
+            gross: '₱50,000.00',
+            net: '+ ₱15.2k net',
             avatarBg: const Color(0xFF7C3AED),
           ),
         ],
@@ -2604,14 +2460,14 @@ class _PointedTransferFlowPainter extends CustomPainter {
     _drawCalloutText(
       canvas: canvas,
       center: Offset(badgeX, greenY),
-      text: '+${_formatCompactK(scrubValGreen)}',
+      text: _formatPeso(scrubValGreen),
       color: const Color(0xFF10B981),
     );
 
     _drawCalloutText(
       canvas: canvas,
       center: Offset(badgeX, violetY),
-      text: '-${_formatCompactK(scrubValViolet)}',
+      text: _formatPeso(scrubValViolet),
       color: const Color(0xFF6B21A8),
     );
   }
@@ -2723,11 +2579,13 @@ class _PointedTransferFlowPainter extends CustomPainter {
     textPainter.paint(canvas, textOffset);
   }
 
-  String _formatCompactK(double val) {
-    if (val >= 1000) {
-      return '${(val / 1000).toStringAsFixed(1)}k';
-    }
-    return val.toStringAsFixed(0);
+  String _formatPeso(double val) {
+    final whole = val.round().abs().toString();
+    final grouped = whole.replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+    return '₱$grouped';
   }
 
   @override

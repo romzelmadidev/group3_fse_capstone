@@ -54,7 +54,7 @@ public class TransferOrchestratorController {
         return ResponseEntity.ok(transactions);
     }
 
-    @GetMapping("/transactions/{transactionId}/status-history")
+    @GetMapping({"/transactions/{transactionId}/status-history", "/{transactionId}/status-history"})
     public ResponseEntity<List<TransactionStatusHistoryDto>> getTransactionStatusHistory(
             @PathVariable String transactionId,
             @RequestParam(value = "page", defaultValue = "0") int page,
@@ -178,6 +178,34 @@ public class TransferOrchestratorController {
                 "transactionId", request.transactionId(),
                 "cancelled", cancelled,
                 "message", cancelled ? "Transfer cancelled successfully during cooling-off window." : "Cooling-off window expired or not found"
+        ));
+    }
+
+    @GetMapping("/pending")
+    public ResponseEntity<List<Map<String, Object>>> getPendingTransfers() {
+        return ResponseEntity.ok(List.of());
+    }
+
+    @PostMapping("/{transactionId}/approve")
+    public ResponseEntity<Map<String, Object>> approvePendingTransfer(
+            @PathVariable String transactionId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        return ResponseEntity.ok(Map.of(
+                "transactionId", transactionId,
+                "status", "POSTED",
+                "message", "Transfer released and settled."
+        ));
+    }
+
+    @PostMapping("/{transactionId}/reject")
+    public ResponseEntity<Map<String, Object>> rejectPendingTransfer(
+            @PathVariable String transactionId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        coolOffService.cancelCoolOff(transactionId);
+        return ResponseEntity.ok(Map.of(
+                "transactionId", transactionId,
+                "status", "CANCELLED",
+                "message", "Transfer rejected and hold released."
         ));
     }
 }

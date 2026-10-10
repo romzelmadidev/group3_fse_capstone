@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../theme/aura_theme.dart';
+import '../../widgets/motion.dart';
+import '../../widgets/aurora_background.dart';
 import '../../models/user_persona.dart';
 import '../../services/auth_api_service.dart';
 import '../../services/bank_service.dart';
@@ -9,6 +12,33 @@ import '../../services/security_service.dart';
 import '../../widgets/aura_logo.dart';
 import 'otp_verification_screen.dart';
 import 'pending_approval_screen.dart';
+import 'register_screen.dart';
+
+/// Paper well, 56 px, label kept inside so a prefilled field stays named.
+/// Shared with the register form so both sheets read as one family.
+InputDecoration auraFieldDecoration(String label, {Widget? suffixIcon, String? hintText}) {
+  final radius = BorderRadius.circular(16);
+  return InputDecoration(
+    labelText: label,
+    hintText: hintText,
+    labelStyle: const TextStyle(color: AuraColors.textSecondary),
+    filled: true,
+    fillColor: AuraColors.canvas,
+    contentPadding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+    suffixIcon: suffixIcon,
+    enabledBorder: UnderlineInputBorder(
+        borderRadius: radius, borderSide: BorderSide.none),
+    focusedBorder: UnderlineInputBorder(
+        borderRadius: radius,
+        borderSide: const BorderSide(color: AuraColors.ink, width: 2)),
+    errorBorder: UnderlineInputBorder(
+        borderRadius: radius,
+        borderSide: const BorderSide(color: AuraColors.debitRed, width: 1.2)),
+    focusedErrorBorder: UnderlineInputBorder(
+        borderRadius: radius,
+        borderSide: const BorderSide(color: AuraColors.debitRed, width: 2)),
+  );
+}
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -17,19 +47,18 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final BankService _bankService = BankService();
-  final TextEditingController _usernameController =
-      TextEditingController(text: 'elijahriley.montefalco@gmail.com');
-  final TextEditingController _passwordController =
-      TextEditingController(text: 'Montefalco@2026');
+  late final TextEditingController _usernameController;
+  late final TextEditingController _passwordController;
   bool _obscurePassword = true;
   bool _isLoading = false;
   bool _showPasswordFields = false; // For biometric-first mode
   bool _hasAutoPrompted = false;
 
-  static const Color brandViolet = Color(0xFF3A0088);
-  static const Color borderViolet = Color(0xFF5E17EB);
+  static const Color brandViolet = Color(0xFF10171C);
+  static const Color borderViolet = Color(0xFF2F78A8);
   static const Color disabledButtonBg = Color(0xFFF1EEFB);
   static const Color disabledButtonText = Color(0xFFD5CDF2);
 
@@ -40,6 +69,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
+    final savedEmail = DeviceStorage.getLastLoginEmail();
+    _usernameController = TextEditingController(
+      text: savedEmail ?? '',
+    );
+    _passwordController = TextEditingController(
+      text: '',
+    );
     NotificationStreamService().disconnect();
     _bankService.addListener(_onServiceUpdate);
     _loadPreferences();
@@ -48,6 +84,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   void _loadPreferences() async {
     await _bankService.initPreferences();
     if (mounted) {
+      final savedEmail = DeviceStorage.getLastLoginEmail();
+      if (savedEmail != null && savedEmail.isNotEmpty && _usernameController.text.isEmpty) {
+        _usernameController.text = savedEmail;
+      }
       setState(() {});
       if (_hasAnyBiometric && !_showPasswordFields && !_hasAutoPrompted) {
         _hasAutoPrompted = true;
@@ -117,20 +157,22 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             persona: authResult.persona,
             onVerified: () {
               Navigator.of(ctx).pop();
+              _hydrateUserAndSync(authResult, email, password);
               if (AuthApiService().isDeviceApproved == false) {
                 Navigator.of(context).pushReplacement(
                   MaterialPageRoute(
                     builder: (pCtx) => PendingApprovalScreen(
                       user: authResult.persona ??
                           UserPersona(
-                            name: 'Aura User',
+                            name: authResult.fullName ?? 'Aura User',
                             role: 'Customer',
                             email: email,
                             password: password,
-                            accountId: '1000-4491-0023',
-                            balance: 250000.0,
+                            accountId: authResult.primaryAccountId ?? '1000-4491-0023',
+                            balance: authResult.availableBalance ?? 250000.0,
                           ),
                       onApproved: () {
+                        _hydrateUserAndSync(authResult, email, password);
                         Navigator.of(pCtx).pushReplacementNamed('/dashboard');
                       },
                       onCancel: () {
@@ -148,20 +190,22 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         ),
       );
     } else if (authResult.status == AuthStatus.pendingApproval ||
-        (authResult.status == AuthStatus.authenticated && authResult.isApproved == false)) {
+        (authResult.status == AuthStatus.authenticated &&
+            authResult.isApproved == false)) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (pCtx) => PendingApprovalScreen(
             user: authResult.persona ??
                 UserPersona(
-                  name: 'Aura User',
+                  name: authResult.fullName ?? 'Aura User',
                   role: 'Customer',
                   email: email,
                   password: password,
-                  accountId: '1000-4491-0023',
-                  balance: 250000.0,
+                  accountId: authResult.primaryAccountId ?? '1000-4491-0023',
+                  balance: authResult.availableBalance ?? 250000.0,
                 ),
             onApproved: () {
+              _hydrateUserAndSync(authResult, email, password);
               Navigator.of(pCtx).pushReplacementNamed('/dashboard');
             },
             onCancel: () {
@@ -172,15 +216,55 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         ),
       );
     } else if (authResult.status == AuthStatus.authenticated) {
+      _hydrateUserAndSync(authResult, email, password);
       Navigator.of(context).pushReplacementNamed('/dashboard');
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(authResult.errorMessage ?? 'Authentication failed. Please check credentials.'),
+          content: Text(authResult.errorMessage ??
+              'Authentication failed. Please check credentials.'),
           backgroundColor: const Color(0xFFC53030),
         ),
       );
     }
+  }
+
+  void _hydrateUserAndSync(AuthLoginResult authResult, String email, String password) {
+    String resolvedName = authResult.fullName ?? '';
+    if (resolvedName.isEmpty && authResult.persona != null) {
+      resolvedName = authResult.persona!.name;
+    }
+    if (resolvedName.isEmpty) {
+      final match = UserPersona.demoPersonas.where(
+        (p) => p.email.toLowerCase() == email.trim().toLowerCase(),
+      );
+      if (match.isNotEmpty) {
+        resolvedName = match.first.name;
+      } else {
+        final prefix = email.trim().split('@').first.replaceAll('.', ' ');
+        resolvedName = prefix.isNotEmpty
+            ? prefix.split(' ').map((w) => w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : '').join(' ')
+            : 'Aura User';
+      }
+    }
+
+    final accountId = authResult.primaryAccountId ??
+        authResult.persona?.accountId ??
+        '1000-2000-3001';
+    final balance = authResult.availableBalance ??
+        authResult.persona?.balance;
+
+    _bankService.setUserProfileFromAuth(
+      name: resolvedName,
+      email: authResult.email ?? email.trim(),
+      phoneNumber: authResult.phoneNumber,
+      accountId: accountId,
+      balance: balance,
+    );
+
+    DeviceStorage.saveLastLoginEmail(email.trim());
+    DeviceStorage.saveLastLoginName(resolvedName);
+    _bankService.syncWithBackend();
   }
 
   void _authenticateWithFingerprint() {
@@ -223,13 +307,20 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         icon: icon,
         authType: authType,
         onSuccess: () {
-          if (AuthApiService().currentAccessToken == null || AuthApiService().currentAccessToken!.isEmpty) {
-            AuthApiService().currentAccessToken = DeviceStorage.getAccessToken() ?? 'bio-session-${DateTime.now().millisecondsSinceEpoch}';
+          if (AuthApiService().currentAccessToken == null ||
+              AuthApiService().currentAccessToken!.isEmpty) {
+            AuthApiService().currentAccessToken =
+                DeviceStorage.getAccessToken() ??
+                    'bio-session-${DateTime.now().millisecondsSinceEpoch}';
           }
-          if (AuthApiService().currentUserId == null || AuthApiService().currentUserId!.isEmpty) {
-            AuthApiService().currentUserId = DeviceStorage.getUserId() ?? 'USR-100001';
+          if (AuthApiService().currentUserId == null ||
+              AuthApiService().currentUserId!.isEmpty) {
+            AuthApiService().currentUserId =
+                DeviceStorage.getUserId() ?? 'USR-100001';
           }
           AuthApiService().currentIsApproved = true;
+          _bankService.restoreUserProfileFromStorage();
+          _bankService.syncWithBackend();
           Navigator.of(context).pop();
           Navigator.of(context).pushReplacementNamed('/dashboard');
         },
@@ -237,136 +328,379 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
+  /// Form Body: either standard credentials OR biometric-first view
+  Widget _buildFormBody() => _hasAnyBiometric && !_showPasswordFields
+      ? _buildBiometricFirstView()
+      : _buildStandardLoginView();
+
+  /// First name of the profile on this device, while its email is the one in
+  /// the username field. Switch Account clears the field and the name goes.
+  String? get _rememberedFirstName {
+    final text = _usernameController.text.trim();
+    if (text.isEmpty) return null;
+    final savedEmail = DeviceStorage.getLastLoginEmail();
+    final savedName = DeviceStorage.getLastLoginName();
+    if (savedEmail != null &&
+        savedName != null &&
+        text.toLowerCase() == savedEmail.toLowerCase()) {
+      return savedName.split(' ').first;
+    }
+    return null;
+  }
+
+  Widget _buildGreeting({required bool onDark}) => ListenableBuilder(
+        listenable: _usernameController,
+        builder: (context, _) =>
+            _LoginGreeting(firstName: _rememberedFirstName, onDark: onDark),
+      );
+
+  /// Form then footer, rising in just behind the greeting.
+  Widget _buildSheetContents() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Reveal(delay: Reveal.stagger(0, base: 160), child: _buildFormBody()),
+          Reveal(delay: Reveal.stagger(1, base: 160), child: _buildFooter()),
+        ],
+      );
+
+  /// Wordmark with the account-opening entry opposite it, as on the landing
+  /// header. The 48 px button sets the row height on both layouts.
+  Widget _buildHeader({required bool onDark}) => Row(
+        children: [
+          AuraWordmark(size: 30, onDark: onDark),
+          const Spacer(),
+          TextButton(
+            key: const ValueKey('createAccountLink'),
+            style: TextButton.styleFrom(
+                foregroundColor: onDark ? Colors.white : AuraColors.ink),
+            onPressed: () => Navigator.of(context)
+                .push(MaterialPageRoute(builder: (_) => const RegisterScreen())),
+            child: const Text('Create account'),
+          ),
+        ],
+      );
+
   @override
   Widget build(BuildContext context) {
+    if (MediaQuery.sizeOf(context).width >= 600) return _buildWideLayout();
+
+    // Phones: the aurora is the screen and the form is a paper sheet docked to
+    // its bottom edge. Scaffold lifts the body above the keyboard (viewInsets);
+    // the sky gives up its height first, then the whole column scrolls.
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final isWide = constraints.maxWidth >= 600;
-
-            return Center(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: isWide ? 460 : double.infinity,
-                  minHeight: constraints.maxHeight,
-                ),
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isWide ? 36 : 28,
-                    vertical: isWide ? 24 : 0,
-                  ),
-                  child: IntrinsicHeight(
-                    child: Column(
-                    children: [
-                      const SizedBox(height: 38),
-
-                      // Aura Bank Signature Monogram Logo
-                      const AuraLogo(
-                        size: 84,
-                        style: AuraLogoStyle.violet,
-                        borderRadius: 22,
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      const Text(
-                        "Welcome Back!",
-                        style: TextStyle(
-                          fontSize: 27,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF111827),
-                          letterSpacing: -0.5,
+      backgroundColor: AuraColors.ink,
+      body: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: IntrinsicHeight(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        // Both layers run under the sheet so its rounded
+                        // corners sit on sky, not on a seam.
+                        const Positioned(
+                          left: 0,
+                          right: 0,
+                          top: 0,
+                          bottom: -40,
+                          child: AuroraBackground(intensity: 0.9),
                         ),
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      const Text(
-                        "Please enter your email and password",
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF6B7280),
-                        ),
-                      ),
-
-                      const SizedBox(height: 28),
-
-                      // Form Body: either standard credentials OR biometric-first view
-                      if (_hasAnyBiometric && !_showPasswordFields) ...[
-                        _buildBiometricFirstView(),
-                      ] else ...[
-                        _buildStandardLoginView(),
-                      ],
-
-                      const Spacer(),
-
-                      // Footer: Forgot Passcode? • Switch Account
-                      Padding(
-                        padding: const EdgeInsets.only(top: 16, bottom: 20),
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              GestureDetector(
-                                onTap: () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Password recovery link sent to your registered email.'),
-                                      backgroundColor: brandViolet,
-                                    ),
-                                  );
-                                },
-                                child: const Text(
-                                  "Forgot Passcode?",
-                                  style: TextStyle(
-                                    color: Color(0xFF9CA3AF),
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
+                        // Night settles toward the sheet, so the greeting
+                        // holds AA contrast whatever the curtains are doing.
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: -40,
+                          height: 300,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                stops: const [0, 0.6],
+                                colors: [
+                                  AuraColors.ink.withValues(alpha: 0),
+                                  AuraColors.ink.withValues(alpha: 0.8),
+                                ],
                               ),
-                              const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 10),
-                                child: Icon(Icons.circle, size: 5, color: brandViolet),
-                              ),
-                              GestureDetector(
-                                onTap: () {
-                                  _usernameController.clear();
-                                  _passwordController.clear();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Account switched. Enter your credentials.'),
-                                      backgroundColor: brandViolet,
-                                    ),
-                                  );
-                                },
-                                child: const Text(
-                                  "Switch Account",
-                                  style: TextStyle(
-                                    color: brandViolet,
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                        SafeArea(
+                          bottom: false,
+                          child: Padding(
+                            // 12 + the 48 px header row keeps the wordmark where it sat at 20.
+                            padding: const EdgeInsets.fromLTRB(24, 12, 12, 40),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildHeader(onDark: true),
+                                const Spacer(),
+                                const SizedBox(height: 48),
+                                _buildGreeting(onDark: true),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                  Container(
+                    key: const ValueKey('loginSheet'),
+                    padding: const EdgeInsets.fromLTRB(24, 32, 24, 12),
+                    decoration: const BoxDecoration(
+                      color: AuraColors.surface,
+                      borderRadius:
+                          BorderRadius.vertical(top: Radius.circular(28)),
+                    ),
+                    child: SafeArea(top: false, child: _buildSheetContents()),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Tablet and desktop: the same sky fills the window and the paper sheet
+  /// floats in its centre, carrying the greeting in ink.
+  Widget _buildWideLayout() {
+    return Scaffold(
+      backgroundColor: AuraColors.ink,
+      body: AuroraBackground(
+        intensity: 0.9,
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Container(
+                key: const ValueKey('loginSheet'),
+                width: 440,
+                // 27 + the 48 px header row keeps the wordmark where it sat at 36.
+                padding: const EdgeInsets.fromLTRB(36, 27, 36, 16),
+                decoration: BoxDecoration(
+                  color: AuraColors.surface,
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AuraColors.primaryDark.withValues(alpha: 0.5),
+                      blurRadius: 48,
+                      offset: const Offset(0, 24),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildHeader(onDark: false),
+                    const SizedBox(height: 23),
+                    _buildGreeting(onDark: false),
+                    const SizedBox(height: 28),
+                    _buildSheetContents(),
+                  ],
                 ),
               ),
             ),
-          );
-        },
+          ),
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
+
+  void _showAccountSwitcherSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AuraColors.cardBorder,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Switch Account',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.4,
+                    color: AuraColors.ink,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Select a team or demo account to prefill credentials',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AuraColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(context).height * 0.5,
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: UserPersona.demoPersonas.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1, color: AuraColors.divider),
+                    itemBuilder: (context, index) {
+                      final persona = UserPersona.demoPersonas[index];
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        title: Row(
+                          children: [
+                            Text(
+                              persona.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14.5,
+                                color: AuraColors.ink,
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AuraColors.canvas,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                persona.role,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: AuraColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        subtitle: Text(
+                          persona.email,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: AuraColors.textSecondary,
+                          ),
+                        ),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          setState(() {
+                            _usernameController.text = persona.email;
+                            _passwordController.text = persona.password;
+                          });
+                          DeviceStorage.saveLastLoginEmail(persona.email);
+                        },
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      setState(() {
+                        _usernameController.clear();
+                        _passwordController.clear();
+                      });
+                      DeviceStorage.clearLastLoginEmail();
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('Clear & Enter Manually'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Footer: Forgot Passcode? • Switch Account
+  Widget _buildFooter() {
+    final link = TextButton.styleFrom(
+      minimumSize: const Size(48, 48),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 8),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TextButton(
+              style: link.copyWith(
+                  foregroundColor:
+                      const WidgetStatePropertyAll(AuraColors.textSecondary)),
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                        'Password recovery link sent to your registered email.'),
+                    backgroundColor: brandViolet,
+                  ),
+                );
+              },
+              child: const Text(
+                "Forgot Passcode?",
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500),
+              ),
+            ),
+            const Icon(Icons.circle, size: 4, color: AuraColors.textMuted),
+            TextButton(
+              style: link,
+              onPressed: () {
+                setState(() {
+                  _usernameController.clear();
+                  _passwordController.clear();
+                });
+                DeviceStorage.clearLastLoginEmail();
+                _showAccountSwitcherSheet();
+              },
+              child: const Text(
+                "Switch Account",
+                style: TextStyle(fontSize: 13.5),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   /// 1. Standard Login View (matches Top row of mockup: fields + Sign In + Biometrics below)
   Widget _buildStandardLoginView() {
@@ -375,51 +709,31 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         // Username Field
         TextField(
           controller: _usernameController,
-          style: const TextStyle(fontSize: 14.5),
-          decoration: InputDecoration(
-            hintText: "Username",
-            hintStyle: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 13.5),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: borderViolet.withValues(alpha: 0.6), width: 1.4),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: brandViolet, width: 2),
-            ),
-          ),
+          style: const TextStyle(fontSize: 15),
+          decoration: auraFieldDecoration("Username"),
         ),
 
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
 
         // Password Field
         TextField(
           controller: _passwordController,
           obscureText: _obscurePassword,
-          style: const TextStyle(fontSize: 14.5),
-          decoration: InputDecoration(
-            hintText: "Password",
-            hintStyle: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 13.5),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
+          style: const TextStyle(fontSize: 15),
+          decoration: auraFieldDecoration(
+            "Password",
             suffixIcon: IconButton(
               key: const ValueKey('passwordVisibilityToggle'),
               icon: Icon(
-                _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                _obscurePassword
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
                 color: brandViolet,
                 size: 20,
               ),
               onPressed: () {
                 setState(() => _obscurePassword = !_obscurePassword);
               },
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: borderViolet.withValues(alpha: 0.6), width: 1.4),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: brandViolet, width: 2),
             ),
           ),
         ),
@@ -429,11 +743,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         // Sign in Button (Purple if password only, or clean styling if biometrics available)
         SizedBox(
           width: double.infinity,
-          height: 52,
+          height: 56,
           child: ElevatedButton(
             onPressed: _isLoading ? null : _onSignIn,
             style: ElevatedButton.styleFrom(
-              backgroundColor: _hasAnyBiometric ? disabledButtonBg : brandViolet,
+              backgroundColor:
+                  _hasAnyBiometric ? disabledButtonBg : brandViolet,
               foregroundColor: _hasAnyBiometric ? brandViolet : Colors.white,
               elevation: 0,
               shape: RoundedRectangleBorder(
@@ -451,7 +766,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: _hasAnyBiometric ? disabledButtonText : Colors.white,
+                      color:
+                          _hasAnyBiometric ? disabledButtonText : Colors.white,
                     ),
                   ),
           ),
@@ -488,12 +804,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         if (_hasFaceId && _hasFingerprint) ...[
           SizedBox(
             width: double.infinity,
-            height: 50,
+            height: 56,
             child: OutlinedButton(
               onPressed: _authenticateWithFingerprint,
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: borderViolet, width: 1.5),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
               ),
               child: const Text(
                 'Use Fingerprints',
@@ -511,7 +828,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         // "Use password instead" purple button (matches mockup)
         SizedBox(
           width: double.infinity,
-          height: 50,
+          height: 56,
           child: ElevatedButton(
             onPressed: () {
               setState(() => _showPasswordFields = true);
@@ -520,7 +837,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               backgroundColor: brandViolet,
               foregroundColor: Colors.white,
               elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
             ),
             child: const Text(
               'Use password instead',
@@ -552,7 +870,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           const SizedBox(height: 10),
           const Text(
             'Tap Fingerprint or Face ID to sign in',
-            style: TextStyle(fontSize: 11.5, color: Color(0xFF9CA3AF), fontWeight: FontWeight.w500),
+            style: TextStyle(
+                fontSize: 11.5,
+                color: AuraColors.textSecondary,
+                fontWeight: FontWeight.w500),
           ),
         ],
       );
@@ -564,7 +885,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           const SizedBox(height: 10),
           const Text(
             'Tap fingerprint sensor to sign in',
-            style: TextStyle(fontSize: 11.5, color: Color(0xFF9CA3AF), fontWeight: FontWeight.w500),
+            style: TextStyle(
+                fontSize: 11.5,
+                color: AuraColors.textSecondary,
+                fontWeight: FontWeight.w500),
           ),
         ],
       );
@@ -576,7 +900,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           const SizedBox(height: 10),
           const Text(
             'Tap Face ID to glance and sign in',
-            style: TextStyle(fontSize: 11.5, color: Color(0xFF9CA3AF), fontWeight: FontWeight.w500),
+            style: TextStyle(
+                fontSize: 11.5,
+                color: AuraColors.textSecondary,
+                fontWeight: FontWeight.w500),
           ),
         ],
       );
@@ -604,7 +931,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           child: Icon(
             Icons.fingerprint_rounded,
             size: 68,
-            color: Color(0xFF4A10B4),
+            color: Color(0xFF173039),
           ),
         ),
       ),
@@ -633,7 +960,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             width: 54,
             height: 54,
             child: CustomPaint(
-              painter: _FaceIdIconPainter(color: const Color(0xFF4A10B4)),
+              painter: _FaceIdIconPainter(color: const Color(0xFF173039)),
             ),
           ),
         ),
@@ -662,7 +989,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           child: Icon(
             Icons.fingerprint_rounded,
             size: 42,
-            color: Color(0xFF4A10B4),
+            color: Color(0xFF173039),
           ),
         ),
       ),
@@ -691,7 +1018,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             width: 36,
             height: 36,
             child: CustomPaint(
-              painter: _FaceIdIconPainter(color: const Color(0xFF4A10B4)),
+              painter: _FaceIdIconPainter(color: const Color(0xFF173039)),
             ),
           ),
         ),
@@ -785,7 +1112,8 @@ class _FaceIdIconPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _FaceIdIconPainter oldDelegate) => oldDelegate.color != color;
+  bool shouldRepaint(covariant _FaceIdIconPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 /// Interactive Biometric Verification Modal connected to real device hardware
@@ -843,7 +1171,8 @@ class _BiometricAuthModalState extends State<_BiometricAuthModal> {
 
     try {
       final bool authenticated = await _biometricService.authenticate(
-        reason: 'Please scan your ${widget.authType} to verify and sign in to Aura Bank',
+        reason:
+            'Please scan your ${widget.authType} to verify and sign in to Aura Bank',
         biometricOnly: false,
       );
 
@@ -861,8 +1190,7 @@ class _BiometricAuthModalState extends State<_BiometricAuthModal> {
       } else {
         setState(() {
           _hasError = true;
-          _errorMessage =
-              '${widget.authType} was cancelled or not recognized.';
+          _errorMessage = '${widget.authType} was cancelled or not recognized.';
         });
       }
     } catch (e) {
@@ -890,7 +1218,7 @@ class _BiometricAuthModalState extends State<_BiometricAuthModal> {
             width: 44,
             height: 4,
             decoration: BoxDecoration(
-              color: const Color(0xFFE5E7EB),
+              color: const Color(0xFFEAECEE),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -901,17 +1229,19 @@ class _BiometricAuthModalState extends State<_BiometricAuthModal> {
             height: 90,
             decoration: BoxDecoration(
               color: _verified
-                  ? const Color(0xFFDCFCE7)
+                  ? const Color(0xFFE4F5EE)
                   : (_hasError
-                      ? const Color(0xFFFEE2E2)
-                      : const Color(0xFFF3E8FF)),
+                      ? const Color(0xFFFBE9E7)
+                      : const Color(0xFFE6F6EF)),
               shape: BoxShape.circle,
             ),
             child: Center(
               child: _verified
-                  ? const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 54)
+                  ? const Icon(Icons.check_circle_rounded,
+                      color: Color(0xFF17805F), size: 54)
                   : (_hasError
-                      ? const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 50)
+                      ? const Icon(Icons.error_outline_rounded,
+                          color: Color(0xFFC8423B), size: 50)
                       : widget.icon),
             ),
           ),
@@ -923,7 +1253,7 @@ class _BiometricAuthModalState extends State<_BiometricAuthModal> {
             style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: Color(0xFF111827),
+              color: Color(0xFF10171C),
             ),
           ),
           const SizedBox(height: 8),
@@ -931,12 +1261,14 @@ class _BiometricAuthModalState extends State<_BiometricAuthModal> {
             _verified
                 ? 'Logging into Aura Bank...'
                 : (_hasError
-                    ? (_errorMessage ?? 'Biometrics not recognized. Please try again.')
+                    ? (_errorMessage ??
+                        'Biometrics not recognized. Please try again.')
                     : widget.subtitle),
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,
-              color: _hasError ? const Color(0xFFDC2626) : const Color(0xFF6B7280),
+              color:
+                  _hasError ? const Color(0xFFC8423B) : const Color(0xFF7D8892),
             ),
           ),
           const SizedBox(height: 24),
@@ -947,10 +1279,11 @@ class _BiometricAuthModalState extends State<_BiometricAuthModal> {
               child: ElevatedButton(
                 onPressed: _startNativeAuth,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF3A0088),
+                  backgroundColor: const Color(0xFF10171C),
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
                 ),
                 child: Text('Try ${widget.authType} Again'),
               ),
@@ -960,7 +1293,8 @@ class _BiometricAuthModalState extends State<_BiometricAuthModal> {
               onPressed: () => Navigator.of(context).pop(),
               child: const Text(
                 'Cancel & Use Password',
-                style: TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
+                style: TextStyle(
+                    color: Color(0xFF7D8892), fontWeight: FontWeight.w600),
               ),
             ),
           ] else if (!_verified) ...[
@@ -968,13 +1302,70 @@ class _BiometricAuthModalState extends State<_BiometricAuthModal> {
               onPressed: () => Navigator.of(context).pop(),
               child: const Text(
                 'Cancel',
-                style: TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
+                style: TextStyle(
+                    color: Color(0xFF7D8892), fontWeight: FontWeight.w600),
               ),
             ),
           ],
           const SizedBox(height: 8),
         ],
       ),
+    );
+  }
+}
+
+/// White over the sky on phones, ink on the paper card on wide screens. The
+/// remembered account's first name takes the brand accent.
+class _LoginGreeting extends StatelessWidget {
+  const _LoginGreeting({required this.firstName, required this.onDark});
+
+  final String? firstName;
+  final bool onDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = firstName;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Reveal(
+          child: Text.rich(
+            TextSpan(
+              text: name == null ? 'Welcome back' : 'Welcome back,\n',
+              children: [
+                if (name != null)
+                  TextSpan(
+                    text: name,
+                    style: TextStyle(
+                        color: onDark ? AuraColors.mint : AuraColors.accent),
+                  ),
+              ],
+            ),
+            style: TextStyle(
+              fontSize: onDark ? 40 : 34,
+              height: 1.08,
+              fontWeight: FontWeight.w600,
+              letterSpacing: onDark ? -1.2 : -1,
+              color: onDark ? Colors.white : AuraColors.ink,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Reveal(
+          delay: const Duration(milliseconds: 90),
+          child: Text(
+            'Please enter your email and password',
+            style: TextStyle(
+              fontSize: 15,
+              height: 1.4,
+              color: onDark
+                  ? Colors.white.withValues(alpha: 0.78)
+                  : AuraColors.textSecondary,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

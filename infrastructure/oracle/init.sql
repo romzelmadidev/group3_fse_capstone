@@ -28,6 +28,8 @@ DROP TABLE notifications CASCADE CONSTRAINTS;
 DROP TABLE auth_sessions CASCADE CONSTRAINTS;
 DROP TABLE transactions CASCADE CONSTRAINTS;
 DROP TABLE credit_assessments CASCADE CONSTRAINTS;
+DROP TABLE kyc_submissions CASCADE CONSTRAINTS;
+DROP TABLE device_push_tokens CASCADE CONSTRAINTS;
 DROP TABLE balance_master CASCADE CONSTRAINTS;
 DROP TABLE accounts CASCADE CONSTRAINTS;
 DROP TABLE users CASCADE CONSTRAINTS;
@@ -69,7 +71,7 @@ CREATE TABLE users (
     last_login_at           TIMESTAMP WITH TIME ZONE,
     created_at              TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at              TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT chk_usr_role CHECK (role IN ('CUSTOMER', 'TELLER', 'MANAGER', 'ADMIN')),
+    CONSTRAINT chk_usr_role CHECK (role IN ('CUSTOMER', 'TELLER', 'ADMIN')),
     CONSTRAINT chk_usr_status CHECK (status IN ('ACTIVE', 'LOCKED', 'SUSPENDED'))
 );
 
@@ -85,13 +87,11 @@ CREATE TABLE accounts (
     account_type   VARCHAR2(20) NOT NULL,
     currency       VARCHAR2(3) DEFAULT 'PHP' NOT NULL,
     status         VARCHAR2(20) DEFAULT 'ACTIVE' NOT NULL,
-    credit_limit   NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
     created_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT fk_acc_user FOREIGN KEY (user_id) REFERENCES users(user_id),
     CONSTRAINT chk_acc_type CHECK (account_type IN ('SAVINGS')),
-    CONSTRAINT chk_acc_status CHECK (status IN ('ACTIVE', 'LOCKED', 'PENDING_APPROVAL')),
-    CONSTRAINT chk_acc_credit_limit CHECK (credit_limit >= 0)
+    CONSTRAINT chk_acc_status CHECK (status IN ('ACTIVE', 'LOCKED', 'PENDING_APPROVAL'))
 );
 
 -- ==============================================================================
@@ -234,17 +234,19 @@ CREATE TABLE gl_balances (
 -- 10. Table: reversal_requests (Maker-Checker Dispute Tickets)
 -- ==============================================================================
 CREATE TABLE reversal_requests (
-    ticket_id             VARCHAR2(64) PRIMARY KEY,
-    original_tx_id        VARCHAR2(64) NOT NULL,
-    maker_id              VARCHAR2(64) NOT NULL,
-    checker_id            VARCHAR2(64),
-    dispute_reason        VARCHAR2(100) NOT NULL,
-    maker_notes           VARCHAR2(500) NOT NULL,
-    checker_notes         VARCHAR2(500),
-    status                VARCHAR2(20) DEFAULT 'PENDING' NOT NULL CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
-    reversal_tx_id        VARCHAR2(64),
-    created_at            TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    resolved_at           TIMESTAMP WITH TIME ZONE,
+    ticket_id                VARCHAR2(64) PRIMARY KEY,
+    original_tx_id           VARCHAR2(64),
+    original_transaction_id  VARCHAR2(64),
+    maker_id                 VARCHAR2(64) NOT NULL,
+    checker_id               VARCHAR2(64),
+    dispute_reason           VARCHAR2(100) NOT NULL,
+    maker_notes              VARCHAR2(500),
+    checker_notes            VARCHAR2(500),
+    status                   VARCHAR2(30) DEFAULT 'PENDING' NOT NULL CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
+    reversal_tx_id           VARCHAR2(64),
+    reversal_transaction_id  VARCHAR2(64),
+    created_at               TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    resolved_at              TIMESTAMP WITH TIME ZONE,
     CONSTRAINT fk_rev_orig_tx FOREIGN KEY (original_tx_id) REFERENCES transactions(transaction_id)
 );
 
@@ -399,6 +401,76 @@ BEGIN
 END;
 /
 
+CREATE OR REPLACE TRIGGER trg_rev_sync_cols
+BEFORE INSERT OR UPDATE ON reversal_requests
+FOR EACH ROW
+BEGIN
+    IF :NEW.original_tx_id IS NULL AND :NEW.original_transaction_id IS NOT NULL THEN
+        :NEW.original_tx_id := :NEW.original_transaction_id;
+    END IF;
+    IF :NEW.original_transaction_id IS NULL AND :NEW.original_tx_id IS NOT NULL THEN
+        :NEW.original_transaction_id := :NEW.original_tx_id;
+    END IF;
+    IF :NEW.reversal_tx_id IS NULL AND :NEW.reversal_transaction_id IS NOT NULL THEN
+        :NEW.reversal_tx_id := :NEW.reversal_transaction_id;
+    END IF;
+    IF :NEW.reversal_transaction_id IS NULL AND :NEW.reversal_tx_id IS NOT NULL THEN
+        :NEW.reversal_transaction_id := :NEW.reversal_tx_id;
+    END IF;
+END;
+/
+
+-- ==============================================================================
+-- 17. Table: kyc_submissions (Laya e-KYC results + maker/checker review)
+-- Laya only recommends. Every submission waits for a maker recommendation and
+-- a checker decision by a different reviewer before kyc_status changes.
+-- ==============================================================================
+CREATE TABLE kyc_submissions (
+    submission_id     VARCHAR2(64) PRIMARY KEY,
+    user_id           VARCHAR2(64) NOT NULL,
+    id_type           VARCHAR2(40) NOT NULL,
+    front_blob_path   VARCHAR2(255) NOT NULL,
+    back_blob_path    VARCHAR2(255),
+    selfie_blob_path  VARCHAR2(255) NOT NULL,
+    laya_decision     VARCHAR2(20) NOT NULL,
+    confidence_score  NUMBER(5, 2) NOT NULL,
+    face_similarity   NUMBER(5, 4),
+    liveness_score    NUMBER(5, 4),
+    ocr_confidence    NUMBER(5, 4),
+    ocr_full_name     VARCHAR2(200),
+    ocr_dob           VARCHAR2(20),
+    ocr_id_number     VARCHAR2(60),
+    laya_flags        VARCHAR2(1000),
+    laya_summary      VARCHAR2(2000) NOT NULL,
+    status            VARCHAR2(20) DEFAULT 'PENDING_MAKER' NOT NULL,
+    maker_id          VARCHAR2(64),
+    maker_decision    VARCHAR2(10),
+    maker_note        VARCHAR2(500),
+    maker_at          TIMESTAMP WITH TIME ZONE,
+    checker_id        VARCHAR2(64),
+    checker_note      VARCHAR2(500),
+    checker_at        TIMESTAMP WITH TIME ZONE,
+    created_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT fk_kyc_user FOREIGN KEY (user_id) REFERENCES users(user_id),
+    CONSTRAINT chk_kyc_laya CHECK (laya_decision IN ('APPROVED', 'PENDING_REVIEW', 'REJECTED')),
+    CONSTRAINT chk_kyc_status CHECK (status IN ('PENDING_MAKER', 'PENDING_CHECKER', 'APPROVED', 'REJECTED')),
+    CONSTRAINT chk_kyc_maker_decision CHECK (maker_decision IN ('APPROVE', 'REJECT')),
+    CONSTRAINT chk_kyc_four_eyes CHECK (checker_id IS NULL OR checker_id <> maker_id)
+);
+
+-- ==============================================================================
+-- 18. Table: device_push_tokens (FCM registration per bound device)
+-- ==============================================================================
+CREATE TABLE device_push_tokens (
+    device_id     VARCHAR2(128) PRIMARY KEY,
+    user_id       VARCHAR2(64) NOT NULL,
+    push_token    VARCHAR2(512) NOT NULL,
+    platform      VARCHAR2(20) NOT NULL,
+    created_at    TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at    TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT chk_push_platform CHECK (platform IN ('ANDROID', 'IOS', 'WEB'))
+);
 -- Note: Authentication session tokens and revocations are persisted in Redis (redis-cache).
 
 -- ==============================================================================
@@ -411,6 +483,12 @@ CREATE INDEX idx_tx_to_acc ON transactions(to_account_id, created_at DESC);
 CREATE INDEX idx_tx_status ON transactions(status);
 CREATE INDEX idx_outbox_status ON outbox_events(status, created_at);
 CREATE INDEX idx_notif_user ON notifications(user_id, sent_at DESC);
+CREATE INDEX idx_kyc_status ON kyc_submissions(status, created_at);
+CREATE INDEX idx_kyc_user ON kyc_submissions(user_id, created_at DESC);
+CREATE INDEX idx_push_user ON device_push_tokens(user_id);
+CREATE INDEX idx_rev_status ON reversal_requests(status, created_at DESC);
+CREATE INDEX idx_rev_orig_tx ON reversal_requests(original_transaction_id);
+CREATE INDEX idx_tsh_tx ON transaction_status_history(transaction_id, changed_at ASC);
 
 -- ==============================================================================
 -- Seed Population: Realistic Banking Dataset
@@ -423,7 +501,7 @@ INSERT INTO users (
 ) VALUES (
     'usr-1001-cst-001', 'Juan', 'Santos', 'Dela Cruz', 'juan.dc@email.com', '+639171234567',
     TO_DATE('1990-05-15', 'YYYY-MM-DD'), 'PASSPORT-P9876543A', 'CUSTOMER',
-    '$2a$10$4gw7WpRKwOnwNP5i8AQR2e9raJhzryXNsf7Qu.LxSt7alkeeN9nAS', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE'
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE'
 );
 
 INSERT INTO users (
@@ -432,7 +510,7 @@ INSERT INTO users (
 ) VALUES (
     'usr-1002-cst-002', 'Maria', 'Clara', 'Reyes', 'maria.reyes@eastwestbanker.com', '+639189876543',
     TO_DATE('1992-08-20', 'YYYY-MM-DD'), 'UMID-0111-2233445-6', 'CUSTOMER',
-    '$2a$10$4gw7WpRKwOnwNP5i8AQR2e9raJhzryXNsf7Qu.LxSt7alkeeN9nAS', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE'
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE'
 );
 
 INSERT INTO users (
@@ -441,7 +519,7 @@ INSERT INTO users (
 ) VALUES (
     'usr-1003-tel-001', 'Crisostomo', 'Alfonso', 'Ibarra', 'crisostomo.ibarra@eastwestbanker.com', '+639201112233',
     TO_DATE('1985-01-10', 'YYYY-MM-DD'), 'DRIVERS-LIC-N01-90-123456', 'TELLER',
-    '$2a$10$4gw7WpRKwOnwNP5i8AQR2e9raJhzryXNsf7Qu.LxSt7alkeeN9nAS', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 5, 0, 'ACTIVE'
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 5, 0, 'ACTIVE'
 );
 
 INSERT INTO users (
@@ -450,7 +528,7 @@ INSERT INTO users (
 ) VALUES (
     'usr-1005-boo-001', 'Beatriz', 'Santos', 'Ocampo', 'beatriz.ocampo@bank.com', '+639204445566',
     TO_DATE('1984-07-19', 'YYYY-MM-DD'), 'PRC-9988-7711', 'ADMIN',
-    '$2a$10$4gw7WpRKwOnwNP5i8AQR2e9raJhzryXNsf7Qu.LxSt7alkeeN9nAS', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 5, 0, 'ACTIVE'
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 5, 0, 'ACTIVE'
 );
 
 INSERT INTO users (
@@ -459,7 +537,7 @@ INSERT INTO users (
 ) VALUES (
     'usr-1006-mgr-002', 'Carlos', 'Eduardo', 'Mendoza', 'carlos.mendoza@bank.com', '+639171122334',
     TO_DATE('1982-11-05', 'YYYY-MM-DD'), 'PRC-5544-3322', 'ADMIN',
-    '$2a$10$4gw7WpRKwOnwNP5i8AQR2e9raJhzryXNsf7Qu.LxSt7alkeeN9nAS', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 5, 0, 'ACTIVE'
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 5, 0, 'ACTIVE'
 );
 
 INSERT INTO users (
@@ -468,7 +546,7 @@ INSERT INTO users (
 ) VALUES (
     'usr-1004-adm-001', 'Diana', 'Core', 'Administrator', 'diana.admin@bank.com', '+639000000000',
     TO_DATE('1980-01-01', 'YYYY-MM-DD'), 'COMPANY-ID-EMP-001', 'ADMIN',
-    '$2a$10$4gw7WpRKwOnwNP5i8AQR2e9raJhzryXNsf7Qu.LxSt7alkeeN9nAS', NULL, 10, 0, 'ACTIVE'
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', NULL, 10, 0, 'ACTIVE'
 );
 
 INSERT INTO users (
@@ -478,8 +556,72 @@ INSERT INTO users (
 ) VALUES (
     'usr-1007-sec-003', 'Alex', 'James', 'Rivera', 'alex.rivera@bank.com', '+639178889900',
     TO_DATE('1988-04-18', 'YYYY-MM-DD'), 'PRC-7788-9900', 'ADMIN',
-    '$2a$10$4gw7WpRKwOnwNP5i8AQR2e9raJhzryXNsf7Qu.LxSt7alkeeN9nAS', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 5, 0, 'ACTIVE',
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 5, 0, 'ACTIVE',
     14.5995, 120.9842, 'Manila, Philippines', '112.198.45.10'
+);
+
+-- Team Member Accounts (Password: 'password123')
+INSERT INTO users (
+    user_id, first_name, middle_name, last_name, email, phone_number, dob,
+    government_id, role, password_hash, pin_hash, max_concurrent_sessions, failed_login_attempts, status, last_login_at
+) VALUES (
+    'USR-TM-WAX', 'Wax', 'Aura', 'Team', 'wax@bank.com', '+639990001001',
+    TO_DATE('1995-01-01', 'YYYY-MM-DD'), 'PSA-TM-WAX01', 'ADMIN',
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC'
+);
+
+INSERT INTO users (
+    user_id, first_name, middle_name, last_name, email, phone_number, dob,
+    government_id, role, password_hash, pin_hash, max_concurrent_sessions, failed_login_attempts, status, last_login_at
+) VALUES (
+    'USR-TM-HANS', 'Hans', 'Aura', 'Team', 'hans@bank.com', '+639990001002',
+    TO_DATE('1995-01-02', 'YYYY-MM-DD'), 'PSA-TM-HANS02', 'ADMIN',
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC'
+);
+
+INSERT INTO users (
+    user_id, first_name, middle_name, last_name, email, phone_number, dob,
+    government_id, role, password_hash, pin_hash, max_concurrent_sessions, failed_login_attempts, status, last_login_at
+) VALUES (
+    'USR-TM-JM', 'JM', 'Aura', 'Team', 'jm@bank.com', '+639990001003',
+    TO_DATE('1995-01-03', 'YYYY-MM-DD'), 'PSA-TM-JM03', 'TELLER',
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC'
+);
+
+INSERT INTO users (
+    user_id, first_name, middle_name, last_name, email, phone_number, dob,
+    government_id, role, password_hash, pin_hash, max_concurrent_sessions, failed_login_attempts, status, last_login_at
+) VALUES (
+    'USR-TM-ZEL', 'Zel', 'Aura', 'Team', 'zel@bank.com', '+639990001004',
+    TO_DATE('1995-01-04', 'YYYY-MM-DD'), 'PSA-TM-ZEL04', 'ADMIN',
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC'
+);
+
+INSERT INTO users (
+    user_id, first_name, middle_name, last_name, email, phone_number, dob,
+    government_id, role, password_hash, pin_hash, max_concurrent_sessions, failed_login_attempts, status, last_login_at
+) VALUES (
+    'USR-TM-JESSY', 'Jessy', 'Aura', 'Team', 'jessy@bank.com', '+639990001005',
+    TO_DATE('1995-01-05', 'YYYY-MM-DD'), 'PSA-TM-JESSY05', 'TELLER',
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC'
+);
+
+INSERT INTO users (
+    user_id, first_name, middle_name, last_name, email, phone_number, dob,
+    government_id, role, password_hash, pin_hash, max_concurrent_sessions, failed_login_attempts, status, last_login_at
+) VALUES (
+    'USR-TM-MAYE', 'Maye', 'Aura', 'Team', 'maye@bank.com', '+639990001006',
+    TO_DATE('1995-01-06', 'YYYY-MM-DD'), 'PSA-TM-MAYE06', 'ADMIN',
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC'
+);
+
+INSERT INTO users (
+    user_id, first_name, middle_name, last_name, email, phone_number, dob,
+    government_id, role, password_hash, pin_hash, max_concurrent_sessions, failed_login_attempts, status, last_login_at
+) VALUES (
+    'USR-TM-ANGEL', 'Angel', 'Aura', 'Team', 'angel@bank.com', '+639990001007',
+    TO_DATE('1995-01-07', 'YYYY-MM-DD'), 'PSA-TM-ANGEL07', 'TELLER',
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC'
 );
 
 INSERT INTO users (
@@ -489,7 +631,7 @@ INSERT INTO users (
 ) VALUES (
     'usr-2003-cst-003', 'Jose', 'Protacio', 'Rizal', 'jose.rizal@retailbank.ph', '+639195556677',
     TO_DATE('1987-06-19', 'YYYY-MM-DD'), 'PRC-1861-1234', 'CUSTOMER',
-    '$2a$10$4gw7WpRKwOnwNP5i8AQR2e9raJhzryXNsf7Qu.LxSt7alkeeN9nAS', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE',
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE',
     14.2117, 121.1656, 'Calamba, Laguna, Philippines', '112.198.33.15'
 );
 
@@ -500,7 +642,7 @@ INSERT INTO users (
 ) VALUES (
     'usr-2004-cst-004', 'Andres', 'Castro', 'Bonifacio', 'andres.bonifacio@retailbank.ph', '+639173334455',
     TO_DATE('1989-11-30', 'YYYY-MM-DD'), 'PSA-1863-1130', 'CUSTOMER',
-    '$2a$10$4gw7WpRKwOnwNP5i8AQR2e9raJhzryXNsf7Qu.LxSt7alkeeN9nAS', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE',
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE',
     7.1907, 125.4578, 'Davao City, Philippines', '112.198.99.77'
 );
 
@@ -511,7 +653,7 @@ INSERT INTO users (
 ) VALUES (
     'usr-2005-cst-005', 'Gabriela', 'Cario', 'Silang', 'gabriela.silang@retailbank.ph', '+639178881122',
     TO_DATE('1991-03-19', 'YYYY-MM-DD'), 'PSA-1988-1234', 'CUSTOMER',
-    '$2a$10$4gw7WpRKwOnwNP5i8AQR2e9raJhzryXNsf7Qu.LxSt7alkeeN9nAS', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE',
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE',
     17.5705, 120.3878, 'Vigan, Ilocos Sur, Philippines', '112.198.71.12'
 );
 
@@ -522,7 +664,7 @@ INSERT INTO users (
 ) VALUES (
     'usr-2006-cst-006', 'Emilio', 'Dizon', 'Jacinto', 'emilio.jacinto@retailbank.ph', '+639192223344',
     TO_DATE('1993-12-15', 'YYYY-MM-DD'), 'PSA-1991-5678', 'CUSTOMER',
-    '$2a$10$4gw7WpRKwOnwNP5i8AQR2e9raJhzryXNsf7Qu.LxSt7alkeeN9nAS', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE',
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE',
     14.6760, 121.0437, 'Quezon City, Philippines', '112.198.22.44'
 );
 
@@ -533,7 +675,7 @@ INSERT INTO users (
 ) VALUES (
     'usr-2007-cst-007', 'Melchora', 'Aquino', 'Ramos', 'melchora.aquino@retailbank.ph', '+639174445566',
     TO_DATE('1984-01-06', 'YYYY-MM-DD'), 'PSA-1980-9988', 'CUSTOMER',
-    '$2a$10$4gw7WpRKwOnwNP5i8AQR2e9raJhzryXNsf7Qu.LxSt7alkeeN9nAS', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE',
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE',
     14.6507, 120.9830, 'Caloocan, Philippines', '112.198.63.89'
 );
 
@@ -544,34 +686,87 @@ INSERT INTO users (
 ) VALUES (
     'usr-2008-cst-008', 'Apolinario', 'Marasigan', 'Mabini', 'apolinario.mabini@retailbank.ph', '+639187778899',
     TO_DATE('1986-07-23', 'YYYY-MM-DD'), 'PSA-1984-7766', 'CUSTOMER',
-    '$2a$10$4gw7WpRKwOnwNP5i8AQR2e9raJhzryXNsf7Qu.LxSt7alkeeN9nAS', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE',
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE',
     13.7565, 121.0583, 'Batangas City, Philippines', '112.198.54.33'
 );
 
+INSERT INTO users (
+    user_id, first_name, middle_name, last_name, email, phone_number, dob,
+    government_id, role, password_hash, pin_hash, max_concurrent_sessions, failed_login_attempts, status,
+    last_known_latitude, last_known_longitude, last_known_location_name, last_known_ip
+) VALUES (
+    'USR-159305', 'Elijah Riley', 'Santos', 'Montefalco', 'elijahriley.montefalco@gmail.com', '+639678304637',
+    TO_DATE('1994-04-12', 'YYYY-MM-DD'), 'PSA-1994-1593', 'CUSTOMER',
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE',
+    14.5995, 120.9842, 'Manila, Philippines', '112.198.45.10'
+);
+
+INSERT INTO users (
+    user_id, first_name, middle_name, last_name, email, phone_number, dob,
+    government_id, role, password_hash, pin_hash, max_concurrent_sessions, failed_login_attempts, status,
+    last_known_latitude, last_known_longitude, last_known_location_name, last_known_ip
+) VALUES (
+    'USR-142004', 'Elijah', 'Riley', 'Montefalco', 'elijah.montefalco@bank.ph', '+639678304999',
+    TO_DATE('1994-04-12', 'YYYY-MM-DD'), 'PSA-1994-1420', 'CUSTOMER',
+    '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', '$2a$10$e8V9m5gQ4F9oY9o8O8V7eeY9o8O8V7ee', 3, 0, 'ACTIVE',
+    14.5995, 120.9842, 'Manila, Philippines', '112.198.45.10'
+);
+
 -- 2. Accounts (Savings Only: Exactly 1 per Customer)
-INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
-VALUES ('1000-2000-3001', 'usr-1001-cst-001', '1000-2000-3001', 'SAVINGS', 'ACTIVE', 0.0000);
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-2000-3001', 'usr-1001-cst-001', '1000-2000-3001', 'SAVINGS', 'ACTIVE');
 
-INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
-VALUES ('1000-2000-3002', 'usr-1002-cst-002', '1000-2000-3002', 'SAVINGS', 'ACTIVE', 0.0000);
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-2000-3002', 'usr-1002-cst-002', '1000-2000-3002', 'SAVINGS', 'ACTIVE');
 
-INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
-VALUES ('1000-2000-3004', 'usr-2003-cst-003', '1000-2000-3004', 'SAVINGS', 'ACTIVE', 0.0000);
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-2000-3004', 'usr-2003-cst-003', '1000-2000-3004', 'SAVINGS', 'ACTIVE');
 
-INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
-VALUES ('1000-2000-3005', 'usr-2004-cst-004', '1000-2000-3005', 'SAVINGS', 'ACTIVE', 0.0000);
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-2000-3005', 'usr-2004-cst-004', '1000-2000-3005', 'SAVINGS', 'ACTIVE');
 
-INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
-VALUES ('1000-2000-3006', 'usr-2005-cst-005', '1000-2000-3006', 'SAVINGS', 'ACTIVE', 0.0000);
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-2000-3006', 'usr-2005-cst-005', '1000-2000-3006', 'SAVINGS', 'ACTIVE');
 
-INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
-VALUES ('1000-2000-3007', 'usr-2006-cst-006', '1000-2000-3007', 'SAVINGS', 'ACTIVE', 0.0000);
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-2000-3007', 'usr-2006-cst-006', '1000-2000-3007', 'SAVINGS', 'ACTIVE');
 
-INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
-VALUES ('1000-2000-3008', 'usr-2007-cst-007', '1000-2000-3008', 'SAVINGS', 'ACTIVE', 0.0000);
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-2000-3008', 'usr-2007-cst-007', '1000-2000-3008', 'SAVINGS', 'ACTIVE');
 
-INSERT INTO accounts (account_id, user_id, account_number, account_type, status, credit_limit)
-VALUES ('1000-2000-3009', 'usr-2008-cst-008', '1000-2000-3009', 'SAVINGS', 'ACTIVE', 0.0000);
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-2000-3009', 'usr-2008-cst-008', '1000-2000-3009', 'SAVINGS', 'ACTIVE');
+
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-2000-3010', 'USR-159305', '1000-2000-3010', 'SAVINGS', 'ACTIVE');
+
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-4491-0023', 'USR-159305', '1000-4491-0023', 'SAVINGS', 'ACTIVE');
+
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-2000-3011', 'USR-142004', '1000-2000-3011', 'SAVINGS', 'ACTIVE');
+
+-- Team Member Accounts
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-8801-0001', 'USR-TM-WAX', '1000-8801-0001', 'SAVINGS', 'ACTIVE');
+
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-8801-0002', 'USR-TM-HANS', '1000-8801-0002', 'SAVINGS', 'ACTIVE');
+
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-8801-0003', 'USR-TM-JM', '1000-8801-0003', 'SAVINGS', 'ACTIVE');
+
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-8801-0004', 'USR-TM-ZEL', '1000-8801-0004', 'SAVINGS', 'ACTIVE');
+
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-8801-0005', 'USR-TM-JESSY', '1000-8801-0005', 'SAVINGS', 'ACTIVE');
+
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-8801-0006', 'USR-TM-MAYE', '1000-8801-0006', 'SAVINGS', 'ACTIVE');
+
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('1000-8801-0007', 'USR-TM-ANGEL', '1000-8801-0007', 'SAVINGS', 'ACTIVE');
 
 -- 3. Balance Master (Exact 4-decimal precision with Surrogate balance_id PK)
 INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
@@ -597,6 +792,47 @@ VALUES ('bal-1000-2000-3008', '1000-2000-3008', 2950000.0000, 0.0000);
 
 INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
 VALUES ('bal-1000-2000-3009', '1000-2000-3009', 9100000.0000, 0.0000);
+
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3010', '1000-2000-3010', 50000.0000, 0.0000);
+
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-4491-0023', '1000-4491-0023', 250000.0000, 0.0000);
+
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3011', '1000-2000-3011', 50000.0000, 0.0000);
+
+-- Team Member Balances (PHP 1,000,000.00 each)
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-8801-0001', '1000-8801-0001', 1000000.0000, 0.0000);
+
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-8801-0002', '1000-8801-0002', 1000000.0000, 0.0000);
+
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-8801-0003', '1000-8801-0003', 1000000.0000, 0.0000);
+
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-8801-0004', '1000-8801-0004', 1000000.0000, 0.0000);
+
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-8801-0005', '1000-8801-0005', 1000000.0000, 0.0000);
+
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-8801-0006', '1000-8801-0006', 1000000.0000, 0.0000);
+
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-8801-0007', '1000-8801-0007', 1000000.0000, 0.0000);
+
+-- 4. Transactions
+-- Tx 1: High-value transfer pending Customer Email Verification (> 50k PHP hold applied)
+INSERT INTO transactions (
+    transaction_id, from_account_id, to_account_id, type, amount,
+    before_balance, after_balance, status, requires_2fa_otp, approved_by_user_id
+) VALUES (
+    'tx-4001-hld-001', '1000-2000-3001', '1000-2000-3002', 'TRANSFER', 5000000.0000,
+    25000000.0000, 20000000.0000, 'PENDING_APPROVAL', 1, NULL
+);
 
 -- Baseline Chart of Accounts Seeds
 INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)
