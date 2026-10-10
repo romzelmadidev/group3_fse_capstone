@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 3000",
+    "dev": "node --insecure-http-parser node_modules/vite/bin/vite.js --port 3000",
     "build": "vite build",
     "preview": "vite preview --port 3000"
   },
