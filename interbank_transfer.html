@@ -203,7 +203,7 @@
               </svg>
             </div>
 
-            <!-- ================= NODE 2: LEG 1 CBS NOSTRO MUTATION ================= -->
+            <!-- ================= NODE 2: STEP 1 CBS NOSTRO MUTATION ================= -->
             <div id="node-2" onclick="handleNodeClick(2)" class="node-card cursor-not-allowed rounded-xl border border-slate-800 bg-slate-950/60 p-4 transition-all duration-200 opacity-60">
               <div class="flex items-start justify-between">
                 <div class="flex items-center gap-3">
@@ -215,7 +215,7 @@
                   </div>
                   <div>
                     <div class="text-xs font-bold text-white flex items-center gap-2">
-                      Node 2: Leg 1 Local Nostro Booking (T24 OFS)
+                      Node 2: Step 1 Local Nostro Booking (T24 OFS)
                       <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700">Port :8085</span>
                     </div>
                     <div class="text-[11px] text-slate-400 mt-0.5">
@@ -247,7 +247,7 @@
               </svg>
             </div>
 
-            <!-- ================= NODE 3: LEG 2 BILATERAL HTTP WIRE DISPATCH ================= -->
+            <!-- ================= NODE 3: STEP 2 BILATERAL HTTP WIRE DISPATCH ================= -->
             <div id="node-3" onclick="handleNodeClick(3)" class="node-card cursor-not-allowed rounded-xl border border-slate-800 bg-slate-950/60 p-4 transition-all duration-200 opacity-60">
               <div class="flex items-start justify-between">
                 <div class="flex items-center gap-3">
@@ -259,7 +259,7 @@
                   </div>
                   <div>
                     <div class="text-xs font-bold text-white flex items-center gap-2">
-                      Node 3: Leg 2 Bilateral HTTP Wire Dispatch
+                      Node 3: Step 2 Bilateral HTTP Wire Dispatch
                       <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700">Timeout Guard: 4.0s</span>
                     </div>
                     <div class="text-[11px] text-slate-400 mt-0.5">
@@ -337,7 +337,7 @@
                         Node 4B: Saga Compensation
                       </div>
                       <div class="text-[10px] text-slate-400">
-                        Reverses Leg 1 &bull; Fully refunds Alice
+                        Reverses Step 1 &bull; Fully refunds Alice
                       </div>
                     </div>
                   </div>
@@ -426,7 +426,7 @@
               </div>
               <div class="flex items-center justify-between py-1 border-b border-slate-900">
                 <span class="text-slate-400 font-sans">Partner Settlement Ref:</span>
-                <span class="font-semibold text-slate-500" id="ui-partner-ref">-- Pending Leg 2 --</span>
+                <span class="font-semibold text-slate-500" id="ui-partner-ref">-- Pending Step 2 --</span>
               </div>
               <div class="flex items-center justify-between py-1">
                 <span class="text-slate-400 font-sans">Orchestrator Stage:</span>
@@ -581,7 +581,7 @@
 
       if (targetStep === 3) {
         if (state.step < 3) {
-          showAlert('Prerequisite Missing: You must commit Node 2 (Leg 1 Local Nostro Booking) before dispatching the wire in Node 3!');
+          showAlert('Prerequisite Missing: You must commit Node 2 (Step 1 Local Nostro Booking) before dispatching the wire in Node 3!');
           return;
         }
       }
@@ -650,7 +650,7 @@
       // Update right display
       document.getElementById('stat-active-step-num').innerText = 'STEP 2';
       document.getElementById('stat-step-title').innerHTML = '<span class="px-2 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs">ACTIVE: NODE 2</span>';
-      document.getElementById('stat-step-sub').innerText = 'Awaiting Leg 1 CBS local Nostro booking';
+      document.getElementById('stat-step-sub').innerText = 'Awaiting Step 1 CBS local Nostro booking';
       document.getElementById('ui-stage-label').innerText = '1/4 Validated';
       document.getElementById('ui-subtitle').innerText = 'Step 1 complete. Click Node 2 to execute CBS ledger mutation.';
       document.getElementById('ui-callout-msg').innerText = 'Node 1 prerequisite satisfied. Next step will acquire Oracle row lock on Nostro account.';
@@ -672,7 +672,7 @@
         
         document.getElementById('ui-title').innerText = 'Transfer Failed: Insufficient Balance';
         document.getElementById('ui-subtitle').innerText = 'Cannot debit Alice checking account';
-        document.getElementById('ui-callout-msg').innerText = 'CBS rejected Leg 1 mutation. No funds were debited and Nostro buffer balance remains untouched.';
+        document.getElementById('ui-callout-msg').innerText = 'CBS rejected Step 1 mutation. No funds were debited and Nostro buffer balance remains untouched.';
         document.getElementById('ui-icon-box').className = 'mx-auto w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 mb-3';
         document.getElementById('ui-icon-svg').innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />';
         return;
@@ -683,8 +683,8 @@
       state.nostroBal += state.transferAmount;
       updateBalanceCards();
 
-      logTerminal('Leg 1 OFS Command Dispatched: FUNDS.TRANSFER,INITIATE/I/PROCESS//IB-OUT-9901,USER01/123456,DEBIT=acc-2002-chk-001,CREDIT=ACC-NOSTRO-BANK-B,AMOUNT=1000.00', 'highlight');
-      logTerminal('Leg 1 Committed: Alice debited ₱1,000.00 &bull; ACC-NOSTRO-BANK-B credited ₱1,000.00 &bull; Status: COMMITTED', 'success');
+      logTerminal('Step 1 OFS Command Dispatched: FUNDS.TRANSFER,INITIATE/I/PROCESS//IB-OUT-9901,USER01/123456,DEBIT=acc-2002-chk-001,CREDIT=ACC-NOSTRO-BANK-B,AMOUNT=1000.00', 'highlight');
+      logTerminal('Step 1 Committed: Alice debited ₱1,000.00 &bull; ACC-NOSTRO-BANK-B credited ₱1,000.00 &bull; Status: COMMITTED', 'success');
 
       state.step = 3;
       state.status = 'LEG1_COMMITTED';
@@ -692,7 +692,7 @@
       // Update Node 2 UI
       document.getElementById('node-2').className = 'node-card rounded-xl border border-emerald-500/50 bg-slate-900/90 p-4 transition-all shadow-sm';
       document.getElementById('node-2-badge').className = 'px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
-      document.getElementById('node-2-badge').innerText = 'LEG 1 COMMITTED';
+      document.getElementById('node-2-badge').innerText = 'STEP 1 COMMITTED';
       document.getElementById('node-2-actions').classList.add('hidden');
       document.getElementById('arrow-1-2').classList.remove('animate-bounce');
 
@@ -714,9 +714,9 @@
       document.getElementById('stat-active-step-num').innerText = 'STEP 3';
       document.getElementById('stat-step-title').innerHTML = '<span class="px-2 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs">ACTIVE: NODE 3</span>';
       document.getElementById('stat-step-sub').innerText = 'Awaiting bilateral HTTP wire dispatch';
-      document.getElementById('ui-stage-label').innerText = '2/4 Leg 1 Booked';
-      document.getElementById('ui-subtitle').innerText = 'Leg 1 Nostro buffer credited. Click Node 3 to dispatch wire to Bank B.';
-      document.getElementById('ui-callout-msg').innerText = 'Leg 1 holds funds in Nostro buffer. If wire to Bank B fails, an automated Saga rollback will reverse this entry.';
+      document.getElementById('ui-stage-label').innerText = '2/4 Step 1 Booked';
+      document.getElementById('ui-subtitle').innerText = 'Step 1 Nostro buffer credited. Click Node 3 to dispatch wire to Bank B.';
+      document.getElementById('ui-callout-msg').innerText = 'Step 1 holds funds in Nostro buffer. If wire to Bank B fails, an automated Saga rollback will reverse this entry.';
     }
 
     // ================= NODE 3 EXECUTION (BRANCHING) =================
@@ -878,7 +878,7 @@
       if (e) e.stopPropagation();
       if (state.step !== '4b') return;
 
-      // Reverse Leg 1: Refund Alice, Debit Nostro buffer back to original
+      // Reverse Step 1: Refund Alice, Debit Nostro buffer back to original
       state.aliceBal += state.transferAmount;
       state.nostroBal -= state.transferAmount;
       updateBalanceCards();
@@ -976,7 +976,7 @@
       // Reset Right Screen
       document.getElementById('ui-title').innerText = 'Wire Transfer Ready';
       document.getElementById('ui-subtitle').innerText = 'Click Node 1 to initiate verification';
-      document.getElementById('ui-partner-ref').innerText = '-- Pending Leg 2 --';
+      document.getElementById('ui-partner-ref').innerText = '-- Pending Step 2 --';
       document.getElementById('ui-partner-ref').className = 'font-semibold text-slate-500';
       document.getElementById('ui-stage-label').innerText = '0/4 Ready';
       document.getElementById('ui-callout-msg').innerText = 'Step 1 prerequisite pending: verify payload and lock idempotency key to prevent double spending.';

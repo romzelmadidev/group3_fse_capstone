@@ -1675,7 +1675,7 @@ export default function T24TestConsole() {
                   <code className="rounded bg-purple-100 px-1.5 py-0.5 font-mono text-2xs font-bold text-purple-900">
                     ACC-NOSTRO-BANK-B
                   </code>
-                  . Powered by an autonomous <strong>3-Leg Saga Orchestrator</strong> with automated 2-phase compensating reversal.
+                  . Powered by an autonomous <strong>Multi-Step Saga Orchestrator</strong> with automated compensating reversal.
                 </p>
               </div>
 
@@ -1712,7 +1712,7 @@ export default function T24TestConsole() {
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  Executes <strong>Leg 1</strong> (Debits sender, credits Nostro buffer) and <strong>Leg 2</strong> (Dispatches wire to Bank B).
+                  Executes <strong>Step 1</strong> (Debits sender, credits Nostro buffer) and <strong>Step 2</strong> (Dispatches wire to Bank B).
                   If partner fails or times out (&gt;4s), an automated <strong>Saga Compensating Reversal</strong> refunds sender.
                 </p>
 
@@ -1871,7 +1871,7 @@ export default function T24TestConsole() {
                   >
                     {isInterbankExecuting ? (
                       <>
-                        <RefreshCw className="h-4 w-4 animate-spin" /> Orchestrating 3-Leg Saga...
+                        <RefreshCw className="h-4 w-4 animate-spin" /> Orchestrating Multi-Step Transfer...
                       </>
                     ) : (
                       <>
@@ -2026,7 +2026,7 @@ export default function T24TestConsole() {
                   </div>
 
                   <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                    <div className="text-2xs font-semibold text-slate-700">Leg 3 Accounting Impact:</div>
+                    <div className="text-2xs font-semibold text-slate-700">Step 3 (Inward Settlement) Accounting Impact:</div>
                     <ul className="mt-1 list-disc list-inside text-3xs text-slate-500 space-y-0.5 font-mono">
                       <li>Debit: ACC-NOSTRO-BANK-B (Reduces bilateral buffer liability)</li>
                       <li>Credit: {inwardForm.beneficiaryAccountId} (Instantly spendable funds)</li>
@@ -2095,7 +2095,7 @@ export default function T24TestConsole() {
 
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
               <div className="rounded-xl border border-purple-100 bg-purple-50/40 p-4">
-                <div className="font-bold text-xs text-purple-950">Leg 1: Outward Initiation</div>
+                <div className="font-bold text-xs text-purple-950">Step 1: Local Fund Reservation</div>
                 <div className="mt-1 font-mono text-2xs text-purple-900">
                   AuraBank Customer &rarr; Nostro Buffer
                 </div>
@@ -2107,7 +2107,7 @@ export default function T24TestConsole() {
               </div>
 
               <div className="rounded-xl border border-purple-100 bg-purple-50/40 p-4">
-                <div className="font-bold text-xs text-purple-950">Leg 2: Bilateral Dispatch</div>
+                <div className="font-bold text-xs text-purple-950">Step 2: Partner Bank Wire Dispatch</div>
                 <div className="mt-1 font-mono text-2xs text-purple-900">
                   HTTP Wire &rarr; Bank B Gateway
                 </div>
@@ -2119,7 +2119,7 @@ export default function T24TestConsole() {
               </div>
 
               <div className="rounded-xl border border-purple-100 bg-purple-50/40 p-4">
-                <div className="font-bold text-xs text-purple-950">Leg 3: Inward Settlement</div>
+                <div className="font-bold text-xs text-purple-950">Step 3: Inward Wire Credit</div>
                 <div className="mt-1 font-mono text-2xs text-purple-900">
                   Bank B Wire &rarr; AuraBank Customer
                 </div>
