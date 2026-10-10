@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:aurabank_core/services/bank_service.dart';
 import '../../theme/aura_theme.dart';
 import '../../widgets/motion.dart';
 
 class TransactionReceiptScreen extends StatefulWidget {
   final bool isSuccess;
+  final bool isPendingReview;
   final String senderName;
   final String senderAccount;
   final String recipientName;
@@ -13,12 +15,14 @@ class TransactionReceiptScreen extends StatefulWidget {
   final double fee;
   final String referenceNumber;
   final String? failureReason;
+  final String? holdReason;
   final VoidCallback? onTryAgain;
   final VoidCallback? onBackToHome;
 
   const TransactionReceiptScreen({
     super.key,
     this.isSuccess = true,
+    this.isPendingReview = false,
     required this.senderName,
     required this.senderAccount,
     required this.recipientName,
@@ -28,6 +32,7 @@ class TransactionReceiptScreen extends StatefulWidget {
     this.fee = 0.0,
     required this.referenceNumber,
     this.failureReason,
+    this.holdReason,
     this.onTryAgain,
     this.onBackToHome,
   });
@@ -85,7 +90,9 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
 
     final senderDisplay = widget.senderName.trim().isNotEmpty
         ? widget.senderName
-        : 'Elijah Riley Montefalco';
+        : (BankService().user.name.trim().isNotEmpty
+            ? BankService().user.name
+            : 'Aura Account Holder');
     final senderAccDisplay = widget.senderAccount.trim().isNotEmpty
         ? widget.senderAccount
         : '1235484874877';
@@ -192,27 +199,44 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
 
                   const SizedBox(height: 24),
 
-                  // Status Icon Circle Hero (Scan - Image 6 / Scan - Failed)
-                  GestureDetector(
-                    onTap: () {
-                      setState(() => _isSuccess = !_isSuccess);
-                    },
-                    child: AnimatedCheck(
-                      key: ValueKey(_isSuccess),
-                      size: 96,
-                      success: _isSuccess,
-                      color: _isSuccess
-                          ? AuraColors.mint
-                          : const Color(0xFFF6CFCB),
+                  // Status Icon Circle Hero (Scan - Image 6 / Scan - Failed / Pending Review)
+                  if (widget.isPendingReview)
+                    Container(
+                      width: 96,
+                      height: 96,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFFEF3C7),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.shield_outlined,
+                        color: Color(0xFFD97706),
+                        size: 50,
+                      ),
+                    )
+                  else
+                    GestureDetector(
+                      onTap: () {
+                        setState(() => _isSuccess = !_isSuccess);
+                      },
+                      child: AnimatedCheck(
+                        key: ValueKey(_isSuccess),
+                        size: 96,
+                        success: _isSuccess,
+                        color: _isSuccess
+                            ? AuraColors.mint
+                            : const Color(0xFFF6CFCB),
+                      ),
                     ),
-                  ),
 
                   const SizedBox(height: 18),
 
                   // Sub-header title
-                  const Text(
-                    'Transaction Receipt',
-                    style: TextStyle(
+                  Text(
+                    widget.isPendingReview
+                        ? 'Transfer Held for Review'
+                        : 'Transaction Receipt',
+                    style: const TextStyle(
                       fontSize: 16.5,
                       fontWeight: FontWeight.w700,
                       color: Color(0xFF334155),
@@ -234,7 +258,21 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
                     ),
                   ),
 
-                  if (!_isSuccess) ...[
+                  if (widget.isPendingReview) ...[
+                    const SizedBox(height: 6),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Text(
+                        widget.holdReason ??
+                            'Held for review due to unusual location activity.',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            fontSize: 12.5,
+                            color: Color(0xFFB45309),
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ] else if (!_isSuccess) ...[
                     const SizedBox(height: 6),
                     const Text(
                       'Your money has not been deducted',
@@ -304,7 +342,20 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
                         _buildSimpleRow('Transaction Date', dateStr),
                         const SizedBox(height: 14),
                         _buildSimpleRow('Transaction Time', timeStr),
-                        if (!_isSuccess) ...[
+                        if (widget.isPendingReview) ...[
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Divider(
+                                color: cardBorder, height: 1, thickness: 1),
+                          ),
+                          _buildSimpleRow('Status', 'Pending Compliance Review',
+                              feeColor: const Color(0xFFD97706), isBold: true),
+                          const SizedBox(height: 14),
+                          _buildSimpleRow(
+                              'Review Reason',
+                              widget.holdReason ??
+                                  'Unusual Location Velocity (Impossible Travel)'),
+                        ] else if (!_isSuccess) ...[
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 12),
                             child: Divider(

@@ -448,8 +448,8 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
+                        children: [
+                          const Text(
                             'ACCOUNT HOLDER',
                             style: TextStyle(
                               fontSize: 9.5,
@@ -460,7 +460,9 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
                           ),
                           SizedBox(height: 4),
                           Text(
-                            'Elijah Riley Montefalco',
+                            _bankService.user.name.isNotEmpty
+                                ? _bankService.user.name
+                                : 'Aura Account Holder',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
@@ -877,7 +879,7 @@ class _WebStatementScreenState extends State<WebStatementScreen> {
   Widget _buildTransactionRow(BankTransaction tx) {
     final isIncoming = tx.isIncoming;
     final amountColor = isIncoming ? greenCredit : redDebit;
-    final prefix = isIncoming ? '+' : '–';
+    final prefix = isIncoming ? '+' : '-';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),

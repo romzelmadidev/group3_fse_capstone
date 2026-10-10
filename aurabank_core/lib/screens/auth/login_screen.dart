@@ -50,10 +50,8 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
   final BankService _bankService = BankService();
-  final TextEditingController _usernameController =
-      TextEditingController(text: 'elijahriley.montefalco@gmail.com');
-  final TextEditingController _passwordController =
-      TextEditingController(text: 'Montefalco@2026');
+  late final TextEditingController _usernameController;
+  late final TextEditingController _passwordController;
   bool _obscurePassword = true;
   bool _isLoading = false;
   bool _showPasswordFields = false; // For biometric-first mode
@@ -71,6 +69,13 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void initState() {
     super.initState();
+    final savedEmail = DeviceStorage.getLastLoginEmail();
+    _usernameController = TextEditingController(
+      text: savedEmail ?? '',
+    );
+    _passwordController = TextEditingController(
+      text: '',
+    );
     NotificationStreamService().disconnect();
     _bankService.addListener(_onServiceUpdate);
     _loadPreferences();
@@ -79,6 +84,10 @@ class _LoginScreenState extends State<LoginScreen>
   void _loadPreferences() async {
     await _bankService.initPreferences();
     if (mounted) {
+      final savedEmail = DeviceStorage.getLastLoginEmail();
+      if (savedEmail != null && savedEmail.isNotEmpty && _usernameController.text.isEmpty) {
+        _usernameController.text = savedEmail;
+      }
       setState(() {});
       if (_hasAnyBiometric && !_showPasswordFields && !_hasAutoPrompted) {
         _hasAutoPrompted = true;
@@ -148,20 +157,22 @@ class _LoginScreenState extends State<LoginScreen>
             persona: authResult.persona,
             onVerified: () {
               Navigator.of(ctx).pop();
+              _hydrateUserAndSync(authResult, email, password);
               if (AuthApiService().isDeviceApproved == false) {
                 Navigator.of(context).pushReplacement(
                   MaterialPageRoute(
                     builder: (pCtx) => PendingApprovalScreen(
                       user: authResult.persona ??
                           UserPersona(
-                            name: 'Aura User',
+                            name: authResult.fullName ?? 'Aura User',
                             role: 'Customer',
                             email: email,
                             password: password,
-                            accountId: '1000-4491-0023',
-                            balance: 250000.0,
+                            accountId: authResult.primaryAccountId ?? '1000-4491-0023',
+                            balance: authResult.availableBalance ?? 250000.0,
                           ),
                       onApproved: () {
+                        _hydrateUserAndSync(authResult, email, password);
                         Navigator.of(pCtx).pushReplacementNamed('/dashboard');
                       },
                       onCancel: () {
@@ -186,14 +197,15 @@ class _LoginScreenState extends State<LoginScreen>
           builder: (pCtx) => PendingApprovalScreen(
             user: authResult.persona ??
                 UserPersona(
-                  name: 'Aura User',
+                  name: authResult.fullName ?? 'Aura User',
                   role: 'Customer',
                   email: email,
                   password: password,
-                  accountId: '1000-4491-0023',
-                  balance: 250000.0,
+                  accountId: authResult.primaryAccountId ?? '1000-4491-0023',
+                  balance: authResult.availableBalance ?? 250000.0,
                 ),
             onApproved: () {
+              _hydrateUserAndSync(authResult, email, password);
               Navigator.of(pCtx).pushReplacementNamed('/dashboard');
             },
             onCancel: () {
@@ -204,6 +216,7 @@ class _LoginScreenState extends State<LoginScreen>
         ),
       );
     } else if (authResult.status == AuthStatus.authenticated) {
+      _hydrateUserAndSync(authResult, email, password);
       Navigator.of(context).pushReplacementNamed('/dashboard');
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -214,6 +227,44 @@ class _LoginScreenState extends State<LoginScreen>
         ),
       );
     }
+  }
+
+  void _hydrateUserAndSync(AuthLoginResult authResult, String email, String password) {
+    String resolvedName = authResult.fullName ?? '';
+    if (resolvedName.isEmpty && authResult.persona != null) {
+      resolvedName = authResult.persona!.name;
+    }
+    if (resolvedName.isEmpty) {
+      final match = UserPersona.demoPersonas.where(
+        (p) => p.email.toLowerCase() == email.trim().toLowerCase(),
+      );
+      if (match.isNotEmpty) {
+        resolvedName = match.first.name;
+      } else {
+        final prefix = email.trim().split('@').first.replaceAll('.', ' ');
+        resolvedName = prefix.isNotEmpty
+            ? prefix.split(' ').map((w) => w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : '').join(' ')
+            : 'Aura User';
+      }
+    }
+
+    final accountId = authResult.primaryAccountId ??
+        authResult.persona?.accountId ??
+        '1000-2000-3001';
+    final balance = authResult.availableBalance ??
+        authResult.persona?.balance;
+
+    _bankService.setUserProfileFromAuth(
+      name: resolvedName,
+      email: authResult.email ?? email.trim(),
+      phoneNumber: authResult.phoneNumber,
+      accountId: accountId,
+      balance: balance,
+    );
+
+    DeviceStorage.saveLastLoginEmail(email.trim());
+    DeviceStorage.saveLastLoginName(resolvedName);
+    _bankService.syncWithBackend();
   }
 
   void _authenticateWithFingerprint() {
@@ -268,6 +319,8 @@ class _LoginScreenState extends State<LoginScreen>
                 DeviceStorage.getUserId() ?? 'USR-100001';
           }
           AuthApiService().currentIsApproved = true;
+          _bankService.restoreUserProfileFromStorage();
+          _bankService.syncWithBackend();
           Navigator.of(context).pop();
           Navigator.of(context).pushReplacementNamed('/dashboard');
         },
@@ -283,10 +336,16 @@ class _LoginScreenState extends State<LoginScreen>
   /// First name of the profile on this device, while its email is the one in
   /// the username field. Switch Account clears the field and the name goes.
   String? get _rememberedFirstName {
-    final user = _bankService.user;
-    return _usernameController.text.trim() == user.email
-        ? user.name.split(' ').first
-        : null;
+    final text = _usernameController.text.trim();
+    if (text.isEmpty) return null;
+    final savedEmail = DeviceStorage.getLastLoginEmail();
+    final savedName = DeviceStorage.getLastLoginName();
+    if (savedEmail != null &&
+        savedName != null &&
+        text.toLowerCase() == savedEmail.toLowerCase()) {
+      return savedName.split(' ').first;
+    }
+    return null;
   }
 
   Widget _buildGreeting({required bool onDark}) => ListenableBuilder(
@@ -457,6 +516,139 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
+  void _showAccountSwitcherSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AuraColors.cardBorder,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Switch Account',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.4,
+                    color: AuraColors.ink,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Select a team or demo account to prefill credentials',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AuraColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(context).height * 0.5,
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: UserPersona.demoPersonas.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1, color: AuraColors.divider),
+                    itemBuilder: (context, index) {
+                      final persona = UserPersona.demoPersonas[index];
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        title: Row(
+                          children: [
+                            Text(
+                              persona.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14.5,
+                                color: AuraColors.ink,
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AuraColors.canvas,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                persona.role,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: AuraColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        subtitle: Text(
+                          persona.email,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: AuraColors.textSecondary,
+                          ),
+                        ),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          setState(() {
+                            _usernameController.text = persona.email;
+                            _passwordController.text = persona.password;
+                          });
+                          DeviceStorage.saveLastLoginEmail(persona.email);
+                        },
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      setState(() {
+                        _usernameController.clear();
+                        _passwordController.clear();
+                      });
+                      DeviceStorage.clearLastLoginEmail();
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('Clear & Enter Manually'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   /// Footer: Forgot Passcode? • Switch Account
   Widget _buildFooter() {
     final link = TextButton.styleFrom(
@@ -492,14 +684,12 @@ class _LoginScreenState extends State<LoginScreen>
             TextButton(
               style: link,
               onPressed: () {
-                _usernameController.clear();
-                _passwordController.clear();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Account switched. Enter your credentials.'),
-                    backgroundColor: brandViolet,
-                  ),
-                );
+                setState(() {
+                  _usernameController.clear();
+                  _passwordController.clear();
+                });
+                DeviceStorage.clearLastLoginEmail();
+                _showAccountSwitcherSheet();
               },
               child: const Text(
                 "Switch Account",

@@ -1,10 +1,10 @@
 // Ported from Zel's admin portal (AdminExecutivePortal.jsx: Transactions & Reversals, maker-checker rollback), now on his dual-control /reversals API.
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Undo2, XCircle } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { ago, dateTime, money, titleCase } from '../lib/format';
 import { BRANCH_ROLES, REVERSAL_CHECKERS, staffName, useAuth } from '../context/Auth';
-import { Badge, Button, Drawer, Empty, ErrorNote, PageHeader, SkeletonRows, cn, useLoad, useToast } from '../components/ui';
+import { Badge, Button, Drawer, Empty, ErrorNote, PageHeader, SearchBar, SkeletonRows, cn, useLoad, useToast } from '../components/ui';
 import { Step } from './Kyc';
 
 /** Ledger statuses a reversal can undo (same rule as executeT24Reversal). */
@@ -21,6 +21,7 @@ export default function Reversals() {
   const { staff } = useAuth();
   const [tab, setTab] = useState('PENDING');
   const [openId, setOpenId] = useState(null);
+  const [q, setQ] = useState('');
   const { data, error, loading, reload } = useLoad(async () => {
     // shortcut: reads the whole journal to show each ticket's amount; ask for amount on ReversalTicketDto when volumes grow.
     const [tickets, journal] = await Promise.all([
@@ -31,9 +32,30 @@ export default function Reversals() {
     return tickets.map((t) => ({ ...t, tx: byId.get(t.originalTransactionId) }));
   }, []);
 
-  const pending = (data || []).filter((t) => t.status === 'PENDING');
-  const rows = tab === 'PENDING' ? pending : (data || []).filter((t) => t.status !== 'PENDING');
+  const pending = useMemo(() => (data || []).filter((t) => t.status === 'PENDING'), [data]);
+  const tabRows = useMemo(
+    () => (tab === 'PENDING' ? pending : (data || []).filter((t) => t.status !== 'PENDING')),
+    [data, pending, tab],
+  );
   const counts = { PENDING: pending.length, DONE: (data?.length || 0) - pending.length };
+  const rows = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return tabRows;
+    return tabRows.filter((t) => {
+      const fields = [
+        t.ticketId,
+        t.originalTransactionId,
+        t.disputeReason,
+        t.status,
+        LABEL[t.status],
+        staffName(t.makerId),
+        staffName(t.checkerId),
+        t.tx ? String(t.tx.amount) : '',
+        t.tx ? money(t.tx.amount) : '',
+      ].filter(Boolean).map(String);
+      return fields.some((f) => f.toLowerCase().includes(needle));
+    });
+  }, [tabRows, q]);
   const open = data?.find((t) => t.ticketId === openId);
 
   return (
@@ -57,16 +79,27 @@ export default function Reversals() {
           ))}
         </div>
 
+        <SearchBar
+          value={q}
+          onChange={setQ}
+          placeholder="Search by ticket ID, transaction ID, dispute reason, amount or staff"
+          ariaLabel="Search reversals"
+          count={rows.length}
+          total={tabRows.length}
+        />
+
         {loading && !data ? (
           <SkeletonRows />
         ) : error ? (
           <div className="p-5"><ErrorNote message={errorMessage(error)} onRetry={reload} /></div>
-        ) : rows.length === 0 ? (
+        ) : tabRows.length === 0 ? (
           <Empty
             icon={Undo2}
             title={tab === 'PENDING' ? 'No reversals waiting' : 'Nothing decided yet'}
             body={BRANCH_ROLES.includes(staff?.role) ? "Open a settled transfer in a customer's history to request one." : 'Requests from branch operations appear here for a second person to sign off.'}
           />
+        ) : rows.length === 0 ? (
+          <Empty icon={Undo2} title="No matching reversals" body={`No reversals match "${q}".`} />
         ) : (
           <ul>
             {rows.map((t, i) => (
@@ -120,7 +153,7 @@ function ReversalDrawer({ ticket: t, onClose, onChanged }) {
     t.status !== 'PENDING' ? null : isMaker ? (
       <p className="text-sm text-ink-500">You requested this reversal. Another reviewer has to sign off.</p>
     ) : !REVERSAL_CHECKERS.includes(staff?.role) ? (
-      <p className="text-sm text-ink-500">A manager or compliance officer signs off reversals.</p>
+      <p className="text-sm text-ink-500">An admin signs off reversals.</p>
     ) : (
       <div className="space-y-3">
         <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (required to reject)" aria-label="Checker note"

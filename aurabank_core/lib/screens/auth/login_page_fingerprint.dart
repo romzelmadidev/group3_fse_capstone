@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_api_service.dart';
+import '../../services/bank_service.dart';
 import '../../services/biometric_service.dart';
 import '../../services/device_storage.dart';
 
@@ -65,6 +66,8 @@ class _LoginPageFingerprintState extends State<LoginPageFingerprint> {
         AuthApiService().currentUserId = DeviceStorage.getUserId() ?? 'USR-100001';
       }
       AuthApiService().currentIsApproved = true;
+      BankService().restoreUserProfileFromStorage();
+      BankService().syncWithBackend();
       if (widget.onLoginSuccess != null) {
         widget.onLoginSuccess!();
       } else {

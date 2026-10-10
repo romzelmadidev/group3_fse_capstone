@@ -3,7 +3,7 @@ import { ScanFace, Sparkles, UserCheck, UserX, Undo2, Maximize2, ImageOff } from
 import { api, errorMessage } from '../lib/api';
 import { ago, dateTime, fullName, idTypeLabel, titleCase } from '../lib/format';
 import { staffName, useAuth } from '../context/Auth';
-import { Badge, Button, ConfidenceRing, Drawer, Empty, ErrorNote, PageHeader, SkeletonRows, cn, useLoad, useToast } from '../components/ui';
+import { Badge, Button, ConfidenceRing, Drawer, Empty, ErrorNote, PageHeader, SearchBar, SkeletonRows, cn, useLoad, useToast } from '../components/ui';
 
 const STAGES = [
   { key: 'PENDING_MAKER', label: 'Needs maker' },
@@ -17,6 +17,7 @@ const LAYA_LABEL = { APPROVED: 'Recommends approve', PENDING_REVIEW: 'Unsure', R
 export default function Kyc() {
   const [stage, setStage] = useState('PENDING_MAKER');
   const [openId, setOpenId] = useState(null);
+  const [q, setQ] = useState('');
   const { data, error, loading, reload } = useLoad(() => api.get('/kyc/reviews').then((r) => r.data), []);
 
   const counts = useMemo(() => {
@@ -24,7 +25,31 @@ export default function Kyc() {
     (data || []).forEach((r) => (c[r.status in c ? r.status : 'DONE'] += 1));
     return c;
   }, [data]);
-  const rows = (data || []).filter((r) => (stage === 'DONE' ? !['PENDING_MAKER', 'PENDING_CHECKER'].includes(r.status) : r.status === stage));
+
+  const stageRows = useMemo(
+    () => (data || []).filter((r) => (stage === 'DONE' ? !['PENDING_MAKER', 'PENDING_CHECKER'].includes(r.status) : r.status === stage)),
+    [data, stage],
+  );
+
+  const rows = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return stageRows;
+    return stageRows.filter((r) => {
+      const fields = [
+        r.user_id,
+        r.id_type,
+        idTypeLabel(r.id_type),
+        r.laya_summary,
+        r.laya_decision,
+        LAYA_LABEL[r.laya_decision],
+        staffName(r.maker_id),
+        r.maker_decision,
+        r.status,
+        titleCase(r.status),
+      ].filter(Boolean).map(String);
+      return fields.some((f) => f.toLowerCase().includes(needle));
+    });
+  }, [stageRows, q]);
 
   return (
     <>
@@ -50,12 +75,23 @@ export default function Kyc() {
           ))}
         </div>
 
+        <SearchBar
+          value={q}
+          onChange={setQ}
+          placeholder="Search by user ID, document type, summary or decision"
+          ariaLabel="Search identity reviews"
+          count={rows.length}
+          total={stageRows.length}
+        />
+
         {loading ? (
           <SkeletonRows />
         ) : error ? (
           <div className="p-5"><ErrorNote message={errorMessage(error)} onRetry={reload} /></div>
-        ) : rows.length === 0 ? (
+        ) : stageRows.length === 0 ? (
           <Empty icon={ScanFace} title="Nothing waiting here" body="New applications appear as soon as a customer finishes the ID and selfie steps in the app." />
+        ) : rows.length === 0 ? (
+          <Empty icon={ScanFace} title="No matching reviews" body={`No identity reviews match "${q}".`} />
         ) : (
           <ul>
             {rows.map((r, i) => (

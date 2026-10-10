@@ -396,7 +396,9 @@ class _FaceIdVerificationScreenState extends State<FaceIdVerificationScreen>
     final recipient = widget.recipientName.isNotEmpty ? widget.recipientName : 'Jessie Mae Dela Paz';
     final recipientAcc = widget.recipientAccount.isNotEmpty ? widget.recipientAccount : '1234568898951';
     final recipientBank = widget.recipientBank.isNotEmpty ? widget.recipientBank : 'Aura Bank';
-    final sender = widget.senderName.isNotEmpty ? widget.senderName : 'Elijah Riley Montefalco';
+    final sender = widget.senderName.isNotEmpty
+        ? widget.senderName
+        : (BankService().user.name.isNotEmpty ? BankService().user.name : 'Aura Account Holder');
     final senderAcc = widget.senderAccount.isNotEmpty ? widget.senderAccount : '123256847878';
     final purpose = (widget.remarks != null && widget.remarks!.trim().isNotEmpty)
         ? widget.remarks!.trim()

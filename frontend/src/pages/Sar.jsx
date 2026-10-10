@@ -1,15 +1,37 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FileWarning, Send, Undo2, XCircle } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { ago, dateTime, titleCase } from '../lib/format';
 import { staffName, useAuth } from '../context/Auth';
-import { Badge, Button, Drawer, Empty, ErrorNote, PageHeader, SkeletonRows, useLoad, useToast } from '../components/ui';
+import { Badge, Button, Drawer, Empty, ErrorNote, PageHeader, SearchBar, SkeletonRows, useLoad, useToast } from '../components/ui';
 
 const STATUS_TONE = { DRAFT: 'ember', PENDING_CHECKER: 'sky', FILED: 'ink', DISMISSED: 'neutral' };
 
 export default function Sar() {
   const { data, error, loading, reload } = useLoad(() => api.get('/risk/sar').then((r) => r.data), []);
   const [open, setOpen] = useState(null);
+  const [q, setQ] = useState('');
+
+  const rows = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const all = data || [];
+    if (!needle) return all;
+    return all.filter((r) => {
+      const fields = [
+        r.report_number,
+        r.transaction_id,
+        r.reason_code,
+        titleCase(r.reason_code),
+        String(r.amount || ''),
+        String(r.risk_score || ''),
+        r.review?.status,
+        titleCase(r.review?.status),
+        r.review?.maker?.id ? staffName(r.review.maker.id) : '',
+        r.review?.checker?.id ? staffName(r.review.checker.id) : '',
+      ].filter(Boolean).map(String);
+      return fields.some((f) => f.toLowerCase().includes(needle));
+    });
+  }, [data, q]);
 
   return (
     <>
@@ -18,15 +40,25 @@ export default function Sar() {
         description="Laya drafts a Suspicious Transaction Report for the AMLC when it blocks or flags a transfer. A maker recommends filing or dismissing, and a different checker signs off."
       />
       <div className="panel overflow-hidden animate-rise" style={{ animationDelay: '60ms' }}>
+        <SearchBar
+          value={q}
+          onChange={setQ}
+          placeholder="Search SAR reports by report number, transaction ID, reason or status"
+          ariaLabel="Search SAR reports"
+          count={rows.length}
+          total={data?.length}
+        />
         {loading ? (
           <SkeletonRows />
         ) : error ? (
           <div className="p-5"><ErrorNote message={errorMessage(error)} onRetry={reload} /></div>
         ) : !data?.length ? (
           <Empty icon={FileWarning} title="No reports drafted" body="Drafts appear here when Laya blocks a transfer or scores it 80 or above." />
+        ) : !rows.length ? (
+          <Empty icon={FileWarning} title="No matching reports" body={`No reports match "${q}".`} />
         ) : (
           <ul>
-            {data.map((r, i) => (
+            {rows.map((r, i) => (
               <li key={r.transaction_id} className="row-enter" style={{ '--i': i }}>
                 <button onClick={() => setOpen(r.transaction_id)} className="flex w-full items-center gap-5 border-b border-ink-100 px-5 py-4 text-left transition-colors last:border-0 hover:bg-paper">
                   <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-danger-wash text-danger"><FileWarning className="size-5" /></div>

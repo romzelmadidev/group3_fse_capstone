@@ -8,6 +8,8 @@ import '../../widgets/motion.dart';
 import '../../widgets/transaction_tile.dart';
 import '../cards/cards_screen.dart' show CardActionButton;
 import '../transfer/send_money_screen.dart';
+import '../../services/notification_stream_service.dart';
+import 'package:aurabank_core/widgets/notification_center_modal.dart';
 
 class HomeScreen extends StatefulWidget {
   final Function(int)? onNavigateTab;
@@ -239,7 +241,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildHeader() {
     final name = _bankService.user.name.isNotEmpty
         ? _bankService.user.name
-        : 'Elijah Montefalco';
+        : 'Aura User';
     final parts = name.trim().split(RegExp(r'\s+'));
     final short =
         parts.length > 1 ? '${parts.first} ${parts.last[0]}.' : parts.first;
@@ -275,11 +277,44 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-        IconButton(
-          tooltip: 'Notifications',
-          onPressed: () {},
-          icon: const Icon(Icons.notifications_none_rounded,
-              color: AuraColors.ink),
+        ListenableBuilder(
+          listenable: NotificationStreamService(),
+          builder: (context, _) {
+            final unread = NotificationStreamService().unreadCount;
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  tooltip: 'Notifications',
+                  onPressed: () => NotificationCenterModal.show(context),
+                  icon: const Icon(Icons.notifications_none_rounded,
+                      color: AuraColors.ink),
+                ),
+                if (unread > 0)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: AuraColors.debitRed,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      child: Text(
+                        unread > 9 ? '9+' : '$unread',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
         ),
       ],
     );

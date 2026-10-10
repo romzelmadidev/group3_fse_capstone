@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowLeftRight, MapPin, ShieldAlert } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { ago, money, titleCase } from '../lib/format';
 import { useAuth, staffName } from '../context/Auth';
-import { Badge, Button, Drawer, Empty, ErrorNote, PageHeader, SkeletonRows, useLoad, useToast } from '../components/ui';
+import { Badge, Button, Drawer, Empty, ErrorNote, PageHeader, SearchBar, SkeletonRows, useLoad, useToast } from '../components/ui';
 
 /** Why a transfer is on hold, in plain words. */
 export function holdReason(t) {
@@ -17,18 +17,55 @@ export function holdReason(t) {
 export default function Transfers() {
   const { data, error, loading, reload } = useLoad(() => api.get('/transfers/pending').then((r) => r.data), []);
   const [open, setOpen] = useState(null);
-  const rows = (data || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const [q, setQ] = useState('');
+
+  const sorted = useMemo(
+    () => [...(data || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+    [data],
+  );
+
+  const rows = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return sorted;
+    return sorted.filter((t) => {
+      const why = holdReason(t);
+      const fields = [
+        t.transactionId,
+        t.fromAccountId,
+        t.toAccountId,
+        String(t.amount),
+        money(t.amount),
+        why.label,
+        why.detail,
+        t.riskReason,
+        t.locationName,
+        t.ipAddress,
+        staffName(t.approvedByUserId),
+      ].filter(Boolean).map(String);
+      return fields.some((f) => f.toLowerCase().includes(needle));
+    });
+  }, [sorted, q]);
 
   return (
     <>
       <PageHeader title="Held transfers" description="Funds are reserved on the sender's account and nothing has moved. Release or reject each one." />
       <div className="panel overflow-hidden animate-rise" style={{ animationDelay: '60ms' }}>
+        <SearchBar
+          value={q}
+          onChange={setQ}
+          placeholder="Search by transfer ID, account number, customer, amount or reason"
+          ariaLabel="Search held transfers"
+          count={rows.length}
+          total={sorted.length}
+        />
         {loading ? (
           <SkeletonRows />
         ) : error ? (
           <div className="p-5"><ErrorNote message={errorMessage(error)} onRetry={reload} /></div>
-        ) : rows.length === 0 ? (
+        ) : sorted.length === 0 ? (
           <Empty icon={ArrowLeftRight} title="No transfers on hold" body="Transfers flagged by Laya, above the OTP threshold, or from an impossible location appear here." />
+        ) : rows.length === 0 ? (
+          <Empty icon={ArrowLeftRight} title="No matching transfers" body={`No transfers on hold match "${q}". Clear the search to view all pending transfers.`} />
         ) : (
           <table className="w-full text-sm">
             <thead>

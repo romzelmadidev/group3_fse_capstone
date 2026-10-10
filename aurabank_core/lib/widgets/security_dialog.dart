@@ -15,7 +15,7 @@ class SecurityApprovalDialog extends StatelessWidget {
   static Future<void> show(BuildContext context, SecurityAlertEvent alert, {VoidCallback? onHandled}) {
     return showDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (ctx) => SecurityApprovalDialog(alert: alert, onHandled: onHandled),
     );
   }
@@ -159,7 +159,7 @@ class SecurityApprovalDialog extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'A 3rd mobile device is requesting access. Only 1 secondary slot is available — approving this device will log out the current secondary.',
+              'A 3rd mobile device is requesting access. Only 1 secondary slot is available: approving this device will log out the current secondary.',
               style: TextStyle(
                 fontSize: 13,
                 color: isDark ? Colors.grey[300] : Colors.grey[800],
@@ -329,7 +329,7 @@ class SecurityApprovalDialog extends StatelessWidget {
   }
 }
 
-/// Dialog displayed on a device when its session is terminated —
+/// Dialog displayed on a device when its session is terminated:
 /// either because a 3rd mobile signed in (auto-logout) or the primary
 /// user manually revoked access.
 class DeviceRevokedWarningDialog extends StatelessWidget {

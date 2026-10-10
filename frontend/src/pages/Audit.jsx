@@ -1,26 +1,30 @@
 import { useMemo, useState } from 'react';
-import { Search, ScrollText } from 'lucide-react';
+import { ScrollText } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { dateTime, money, titleCase } from '../lib/format';
-import { Badge, Empty, ErrorNote, PageHeader, SkeletonRows, useLoad } from '../components/ui';
+import { Badge, Empty, ErrorNote, PageHeader, SearchBar, SkeletonRows, useLoad } from '../components/ui';
 
 export default function Audit() {
   const { data, error, loading, reload } = useLoad(() => api.get('/ledger/audit').then((r) => r.data), []);
   const [q, setQ] = useState('');
+  const allSorted = useMemo(() => [...(data || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)), [data]);
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const all = [...(data || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    return (needle ? all.filter((r) => JSON.stringify(r).toLowerCase().includes(needle)) : all).slice(0, 200);
-  }, [data, q]);
+    return (needle ? allSorted.filter((r) => JSON.stringify(r).toLowerCase().includes(needle)) : allSorted).slice(0, 200);
+  }, [allSorted, q]);
 
   return (
     <>
       <PageHeader title="Audit trail" description="Append-only ledger journal from the PostgreSQL audit vault. Every debit and credit, as written." />
       <div className="panel overflow-hidden animate-rise" style={{ animationDelay: '60ms' }}>
-        <div className="flex items-center gap-3 border-b border-ink-100 px-5 py-3">
-          <Search className="size-4 text-ink-400" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by transaction, account or user" aria-label="Search audit trail" className="h-9 flex-1 bg-transparent text-sm focus:outline-none" />
-        </div>
+        <SearchBar
+          value={q}
+          onChange={setQ}
+          placeholder="Search by transaction, account, user or type"
+          ariaLabel="Search audit trail"
+          count={rows.length}
+          total={allSorted.length}
+        />
         {loading ? (
           <SkeletonRows />
         ) : error ? (

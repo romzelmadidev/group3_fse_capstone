@@ -501,8 +501,8 @@ class _WebAnnualReportScreenState extends State<WebAnnualReportScreen> {
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
+                        children: [
+                          const Text(
                             'Account Holder',
                             style: TextStyle(
                               fontSize: 9.5,
@@ -513,7 +513,9 @@ class _WebAnnualReportScreenState extends State<WebAnnualReportScreen> {
                           ),
                           SizedBox(height: 4),
                           Text(
-                            'Elijah Riley Montefalco',
+                            _bankService.user.name.isNotEmpty
+                                ? _bankService.user.name
+                                : 'Aura Account Holder',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,

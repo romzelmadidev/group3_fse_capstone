@@ -80,18 +80,19 @@ public class TransactionEventConsumer {
             boolean sent = emailService.sendTransactionReceipt(event);
 
             // Push real-time toast to customer browser via SSE
-            if (sent) {
-                Map<String, Object> toast = new LinkedHashMap<>();
-                toast.put("transferId", event.getTransferId());
-                toast.put("amount", receiptGenerator.formatCurrencyPhp(event.getAmount()));
-                toast.put("afterBalance", receiptGenerator.formatCurrencyPhp(event.getAfterBalance()));
-                toast.put("status", "SUCCESS");
-                toast.put("message", "Transfer completed successfully. An official receipt has been emailed to you.");
-                streamController.pushToast(event.getUserId(), toast);
-            }
+            Map<String, Object> toast = new LinkedHashMap<>();
+            toast.put("type", "TRANSACTION_ALERT");
+            toast.put("transferId", event.getTransferId());
+            toast.put("amount", receiptGenerator.formatCurrencyPhp(event.getAmount()));
+            toast.put("afterBalance", receiptGenerator.formatCurrencyPhp(event.getAfterBalance()));
+            toast.put("counterparty", event.getDestinationAccount() != null ? event.getDestinationAccount() : "Beneficiary");
+            toast.put("status", "SUCCESS");
+            toast.put("message", "Transfer completed successfully. An official receipt has been emailed to you.");
+            streamController.pushToast(event.getUserId(), toast);
         } else if ("REJECTED".equalsIgnoreCase(event.getStatus()) || "FAILED".equalsIgnoreCase(event.getStatus())) {
             log.info("Transfer rejected/failed: transferId={}. Sending alert toast.", event.getTransferId());
             Map<String, Object> toast = new LinkedHashMap<>();
+            toast.put("type", "TRANSACTION_ALERT");
             toast.put("transferId", event.getTransferId());
             toast.put("status", "FAILED");
             toast.put("message", "Transaction failed or was rejected. No funds were debited.");

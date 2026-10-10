@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:aurabank_app/screens/auth/login_screen.dart';
 import 'package:aurabank_app/widgets/aurora_background.dart';
+import 'package:aurabank_core/services/device_storage.dart';
 
 Future<void> _pumpLogin(WidgetTester tester, Size size) async {
+  DeviceStorage.saveLastLoginEmail('elijahriley.montefalco@gmail.com');
+  DeviceStorage.saveLastLoginName('Elijah Riley Montefalco');
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);

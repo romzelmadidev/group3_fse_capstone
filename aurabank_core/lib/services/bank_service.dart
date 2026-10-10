@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/bank_models.dart';
+import 'auth_api_service.dart';
 import 'device_storage.dart';
+import 'notification_stream_service.dart';
 
 enum AppEnvironment { local, prod }
 
@@ -700,13 +702,74 @@ class BankService extends ChangeNotifier {
     }
   }
 
-    Future<void> initPreferences() async {
+  Future<void> initPreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       user.faceIdEnabled = prefs.getBool('face_id_enabled') ?? false;
       user.fingerprintEnabled = prefs.getBool('fingerprint_enabled') ?? false;
+      restoreUserProfileFromStorage();
       notifyListeners();
     } catch (_) {}
+  }
+
+  void restoreUserProfileFromStorage() {
+    final savedName = DeviceStorage.getUserName();
+    final savedEmail = DeviceStorage.getUserEmail();
+    if (savedName != null && savedName.isNotEmpty && savedEmail != null && savedEmail.isNotEmpty) {
+      user.name = savedName;
+      user.email = savedEmail;
+      final savedPhone = DeviceStorage.getUserPhone();
+      if (savedPhone != null && savedPhone.isNotEmpty) user.phoneNumber = savedPhone;
+      final savedAddress = DeviceStorage.getUserAddress();
+      if (savedAddress != null && savedAddress.isNotEmpty) user.address = savedAddress;
+      final savedAcc = DeviceStorage.getUserAccountId();
+      if (savedAcc != null && savedAcc.isNotEmpty) activeAccountId = savedAcc;
+      final savedBal = DeviceStorage.getUserBalance();
+      if (savedBal != null) availableBalance = savedBal;
+      for (final c in cards) {
+        c.holderName = savedName;
+      }
+      notifyListeners();
+    }
+  }
+
+  void setUserProfileFromAuth({
+    required String name,
+    required String email,
+    String? phoneNumber,
+    String? address,
+    String? dob,
+    String? gender,
+    String? civilStatus,
+    String? accountId,
+    double? balance,
+  }) {
+    user.name = name;
+    user.email = email;
+    if (phoneNumber != null && phoneNumber.isNotEmpty) user.phoneNumber = phoneNumber;
+    if (address != null && address.isNotEmpty) user.address = address;
+    if (dob != null && dob.isNotEmpty) user.dob = dob;
+    if (gender != null && gender.isNotEmpty) user.gender = gender;
+    if (civilStatus != null && civilStatus.isNotEmpty) user.civilStatus = civilStatus;
+    if (accountId != null && accountId.isNotEmpty) {
+      activeAccountId = accountId;
+    }
+    if (balance != null) {
+      availableBalance = balance;
+    }
+    for (final c in cards) {
+      c.holderName = name;
+    }
+    DeviceStorage.saveUserSessionProfile(
+      userId: AuthApiService().currentUserId ?? 'U1001',
+      email: email,
+      name: name,
+      phone: phoneNumber,
+      address: address,
+      accountId: accountId,
+      balance: balance,
+    );
+    notifyListeners();
   }
 
   Future<void> setFaceIdEnabled(bool enabled) async {
@@ -745,7 +808,12 @@ class BankService extends ChangeNotifier {
     String? gender,
     String? civilStatus,
   }) {
-    if (name != null) user.name = name;
+    if (name != null) {
+      user.name = name;
+      for (final c in cards) {
+        c.holderName = name;
+      }
+    }
     if (phoneNumber != null) user.phoneNumber = phoneNumber;
     if (email != null) user.email = email;
     if (address != null) user.address = address;
@@ -758,9 +826,14 @@ class BankService extends ChangeNotifier {
   // Fetch live accounts & transactions from backend database if running
   Future<void> syncWithBackend() async {
     try {
-      // 1. Fetch Accounts for U1001 from Oracle / Account Service
+      // 1. Fetch Accounts for active user from Oracle / Account Service
+      final effectiveUserId = AuthApiService().currentUserId ??
+          DeviceStorage.getUserId() ??
+          ((user.email.toLowerCase().contains('juan') || activeAccountId.contains('3001'))
+              ? 'usr-1001-cst-001'
+              : 'U1001');
       final accRes = await http
-          .get(Uri.parse('$baseUrl/api/v1/accounts?userId=U1001'))
+          .get(Uri.parse('$baseUrl/api/v1/accounts?userId=$effectiveUserId'))
           .timeout(const Duration(seconds: 2));
 
       if (accRes.statusCode == 200) {
@@ -857,7 +930,7 @@ class BankService extends ChangeNotifier {
       'target_account_id': targetAccount,
       'amount': amount,
       'memo': memo ?? '',
-      'user_id': 'U1001',
+      'user_id': AuthApiService().currentUserId ?? DeviceStorage.getUserId() ?? 'U1001',
       'emulator': isEmulator,
       if (deviceId != null) 'device_id': deviceId,
       if (isPrimaryDevice != null) 'is_primary_device': isPrimaryDevice,
@@ -946,9 +1019,11 @@ class BankService extends ChangeNotifier {
         DateTime.now().day.toString().padLeft(2, '0');
     final fallbackRef = 'FT$dateStr${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
 
-    final effectiveUserId = (user.email.toLowerCase().contains('juan') || activeAccountId.contains('3001'))
-        ? 'usr-1001-cst-001'
-        : 'U1001';
+    final effectiveUserId = AuthApiService().currentUserId ??
+        DeviceStorage.getUserId() ??
+        ((user.email.toLowerCase().contains('juan') || activeAccountId.contains('3001'))
+            ? 'usr-1001-cst-001'
+            : 'U1001');
 
     final payload = {
       'accountId': activeAccountId,
@@ -1015,6 +1090,9 @@ class BankService extends ChangeNotifier {
             'status': data['status'] ?? 'COMMITTED',
             'threat_category': data['threat_category'] ?? data['threatCategory'],
             'cause_of_suspicion': data['cause_of_suspicion'] ?? data['causeOfSuspicion'],
+            'warning_message': data['warning_message'] ?? data['warningMessage'],
+            'warning_title': data['warning_title'] ?? data['warningTitle'],
+            'risk_decision': data['risk_decision'] ?? data['riskDecision'],
             'sar_draft_created': data['sar_draft_created'] ?? data['sarDraftCreated'] ?? false,
             'sar_report_id': data['sar_report_id'] ?? data['sarReportId'],
           };
@@ -1069,6 +1147,13 @@ class BankService extends ChangeNotifier {
       );
       octStatement.transactions.insert(0, newTxn);
     }
+    NotificationStreamService().notifyTransfer(
+      amount: amount,
+      recipient: recipientName,
+      reference: ref,
+      isIncoming: false,
+      status: 'COMMITTED',
+    );
     notifyListeners();
   }
 
@@ -1085,9 +1170,11 @@ class BankService extends ChangeNotifier {
     required String locationName,
     String? ipAddress,
   }) async {
-    final effectiveUserId = (user.email.toLowerCase().contains('juan') || activeAccountId.contains('3001'))
-        ? 'usr-1001-cst-001'
-        : 'U1001';
+    final effectiveUserId = AuthApiService().currentUserId ??
+        DeviceStorage.getUserId() ??
+        ((user.email.toLowerCase().contains('juan') || activeAccountId.contains('3001'))
+            ? 'usr-1001-cst-001'
+            : 'U1001');
 
     final payload = {
       'latitude': latitude,
