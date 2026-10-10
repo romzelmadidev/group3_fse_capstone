@@ -56,15 +56,15 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
 
   bool _isSubmitting = false;
 
-  static const Color brandViolet = Color(0xFF10171C);
-  static const Color borderLight = Color(0xFFEAECEE);
-  static const Color bgSurface = Color(0xFFF7F7F7);
+  static const Color brandViolet = Color(0xFF380084);
+  static const Color borderLight = Color(0xFFE5E7EB);
+  static const Color bgSurface = Color(0xFFF9FAFB);
 
   List<Map<String, dynamic>> get _sourceAccounts => [
         {
           'type': 'Savings',
           'title': 'Savings Account',
-          'accountNo': 'AUR-SAV-9821 (${_bankService.savingsAccountNumber})',
+          'accountNo': 'AUR-SAV-9821(1000-2000-3001)',
           'balance': _bankService.availableBalance,
         },
       ];
@@ -208,7 +208,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: const Color(0xFFC8423B),
+        backgroundColor: const Color(0xFFDC2626),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         content: Row(
           children: [
@@ -259,7 +259,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       width: 56,
                       height: 56,
                       decoration: const BoxDecoration(
-                        color: Color(0xFFF2FAF6),
+                        color: Color(0xFFFAF5FF),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
@@ -275,7 +275,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF10171C),
+                        color: Color(0xFF111827),
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -284,7 +284,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 13,
-                        color: Color(0xFF7D8892),
+                        color: Color(0xFF6B7280),
                         height: 1.4,
                       ),
                     ),
@@ -292,9 +292,9 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF2FAF6),
+                        color: const Color(0xFFFAF5FF),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFFE6F6EF)),
+                        border: Border.all(color: const Color(0xFFF3E8FF)),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -307,7 +307,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
-                                  color: Color(0xFF7D8892),
+                                  color: Color(0xFF6B7280),
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -316,7 +316,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                                 style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF10171C),
+                                  color: Color(0xFF111827),
                                 ),
                               ),
                             ],
@@ -329,7 +329,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
-                                  color: Color(0xFF7D8892),
+                                  color: Color(0xFF6B7280),
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -340,7 +340,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                                 style: const TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFF10171C),
+                                  color: Color(0xFF111827),
                                 ),
                               ),
                             ],
@@ -352,7 +352,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                     Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF7F7F7),
+                        color: const Color(0xFFF9FAFB),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: borderLight),
                       ),
@@ -373,8 +373,8 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                                 ? 'FREE'
                                 : 'PHP ${_formatCurrency(_transferFee)}',
                             color: _transferFee == 0
-                                ? const Color(0xFF17805F)
-                                : const Color(0xFF2E3A43),
+                                ? const Color(0xFF16A34A)
+                                : const Color(0xFF374151),
                           ),
                         ],
                       ),
@@ -418,7 +418,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       child: const Text(
                         'Cancel Transaction',
                         style: TextStyle(
-                          color: Color(0xFF7D8892),
+                          color: Color(0xFF6B7280),
                           fontWeight: FontWeight.w600,
                           fontSize: 13,
                         ),
@@ -467,10 +467,10 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       width: 68,
                       height: 68,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF2FAF6),
+                        color: const Color(0xFFFAF5FF),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: const Color(0xFFC9EBDD),
+                          color: const Color(0xFFE9D5FF),
                           width: 2,
                         ),
                       ),
@@ -487,7 +487,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF10171C),
+                        color: Color(0xFF111827),
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -496,7 +496,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 13,
-                        color: Color(0xFF7D8892),
+                        color: Color(0xFF6B7280),
                         height: 1.4,
                       ),
                     ),
@@ -505,16 +505,16 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE4F5EE),
+                        color: const Color(0xFFECFDF5),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFFA7E8D1)),
+                        border: Border.all(color: const Color(0xFFA7F3D0)),
                       ),
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
                             Icons.verified_rounded,
-                            color: Color(0xFF17805F),
+                            color: Color(0xFF059669),
                             size: 15,
                           ),
                           SizedBox(width: 8),
@@ -627,7 +627,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       child: const Text(
                         'Cancel Transaction',
                         style: TextStyle(
-                          color: Color(0xFF7D8892),
+                          color: Color(0xFF6B7280),
                           fontWeight: FontWeight.w600,
                           fontSize: 13,
                         ),
@@ -657,7 +657,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
           label,
           style: const TextStyle(
             fontSize: 12.5,
-            color: Color(0xFF7D8892),
+            color: Color(0xFF6B7280),
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -666,7 +666,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
           style: TextStyle(
             fontSize: fontSize,
             fontWeight: isBold ? FontWeight.w800 : FontWeight.w600,
-            color: color ?? const Color(0xFF10171C),
+            color: color ?? const Color(0xFF111827),
           ),
         ),
       ],
@@ -712,12 +712,12 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                   width: 58,
                   height: 58,
                   decoration: BoxDecoration(
-                    color: held ? const Color(0xFFFCEFDD) : const Color(0xFFE4F5EE),
+                    color: held ? const Color(0xFFFCEFDD) : const Color(0xFFDCFCE7),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     held ? Icons.hourglass_top_rounded : Icons.check_circle_rounded,
-                    color: held ? const Color(0xFFB7681E) : const Color(0xFF17805F),
+                    color: held ? const Color(0xFFB7681E) : const Color(0xFF16A34A),
                     size: 34,
                   ),
                 ),
@@ -728,7 +728,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF7D8892),
+                    color: Color(0xFF6B7280),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -738,7 +738,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                   style: const TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.w900,
-                    color: Color(0xFF10171C),
+                    color: Color(0xFF111827),
                     letterSpacing: -0.5,
                   ),
                 ),
@@ -747,7 +747,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF7F7F7),
+                    color: const Color(0xFFF9FAFB),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: borderLight),
                   ),
@@ -768,7 +768,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       _buildModalRow(
                         'Transfer Fee',
                         _transferFee == 0 ? 'FREE' : 'PHP ${_formatCurrency(_transferFee)}',
-                        color: _transferFee == 0 ? const Color(0xFF17805F) : const Color(0xFF10171C),
+                        color: _transferFee == 0 ? const Color(0xFF16A34A) : const Color(0xFF111827),
                       ),
                       const SizedBox(height: 8),
                       _buildModalRow(
@@ -786,7 +786,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       _buildModalRow(
                         'Status',
                         held ? 'PENDING VERIFICATION' : 'COMPLETED',
-                        color: held ? const Color(0xFFB7681E) : const Color(0xFF17805F),
+                        color: held ? const Color(0xFFB7681E) : const Color(0xFF16A34A),
                       ),
                       if (held) ...[
                         const SizedBox(height: 8),
@@ -824,7 +824,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7F7),
+      backgroundColor: const Color(0xFFF9FAFB),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 28.0),
@@ -890,7 +890,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF7D8892),
+              color: Color(0xFF6B7280),
               letterSpacing: 0.8,
             ),
           ),
@@ -900,7 +900,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: const Color(0xFFF7F7F7),
+              color: const Color(0xFFF9FAFB),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: borderLight),
             ),
@@ -930,13 +930,13 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF10171C),
+                          color: Color(0xFF111827),
                         ),
                       ),
                       const SizedBox(height: 2),
                       RichText(
                         text: TextSpan(
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF7D8892)),
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
                           children: [
                             TextSpan(
                               text: '${_currentSourceAccountData['accountNo']} • Available: ',
@@ -945,7 +945,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                               text: '₱${_formatCurrency(_currentSourceAccountData['balance'] as double)}',
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
-                                color: Color(0xFF10171C),
+                                color: Color(0xFF111827),
                               ),
                             ),
                           ],
@@ -960,95 +960,38 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
 
           const SizedBox(height: 20),
 
-          // Channel Segmented Buttons: Aura to Aura vs Other Bank
+          const Text(
+            'Send to',
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF374151),
+            ),
+          ),
+          const SizedBox(height: 6),
           Container(
-            height: 44,
+            height: 48,
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: const Color(0xFFF1F3F4),
-              borderRadius: BorderRadius.circular(12),
+              color: const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
               children: [
                 Expanded(
-                  child: InkWell(
+                  child: _buildSendToOption(
+                    label: 'Aura Bank',
+                    icon: Icons.account_balance_rounded,
+                    selected: _isAuraToAura,
                     onTap: () => setState(() => _isAuraToAura = true),
-                    borderRadius: BorderRadius.circular(9),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: _isAuraToAura ? Colors.white : Colors.transparent,
-                        borderRadius: BorderRadius.circular(9),
-                        boxShadow: _isAuraToAura
-                            ? [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.05),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 1),
-                                ),
-                              ]
-                            : null,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.bolt_rounded,
-                            size: 16,
-                            color: _isAuraToAura ? brandViolet : const Color(0xFF7D8892),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Aura to Aura',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: _isAuraToAura ? const Color(0xFF10171C) : const Color(0xFF47525C),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
                 ),
-                const SizedBox(width: 8),
                 Expanded(
-                  child: InkWell(
+                  child: _buildSendToOption(
+                    label: 'Another bank',
+                    icon: Icons.account_balance_outlined,
+                    selected: !_isAuraToAura,
                     onTap: () => setState(() => _isAuraToAura = false),
-                    borderRadius: BorderRadius.circular(9),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: !_isAuraToAura ? Colors.white : Colors.transparent,
-                        borderRadius: BorderRadius.circular(9),
-                        boxShadow: !_isAuraToAura
-                            ? [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.05),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 1),
-                                ),
-                              ]
-                            : null,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.account_balance_rounded,
-                            size: 15,
-                            color: !_isAuraToAura ? brandViolet : const Color(0xFF7D8892),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Other Bank',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: !_isAuraToAura ? const Color(0xFF10171C) : const Color(0xFF47525C),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
                 ),
               ],
@@ -1063,7 +1006,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF2E3A43),
+                color: Color(0xFF374151),
               ),
             ),
             const SizedBox(height: 6),
@@ -1078,7 +1021,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                 child: DropdownButton<String>(
                   value: _selectedPartnerBank,
                   isExpanded: true,
-                  icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: Color(0xFF7D8892)),
+                  icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: Color(0xFF6B7280)),
                   items: const [
                     DropdownMenuItem(value: 'MeyBank', child: Text('MeyBank (Group 2 Partner)')),
                     DropdownMenuItem(value: 'Apex Digital Bank', child: Text('Apex Digital Bank (Group 1 Partner)')),
@@ -1193,7 +1136,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
             style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF2E3A43),
+              color: Color(0xFF374151),
             ),
           ),
           const SizedBox(height: 6),
@@ -1208,7 +1151,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
               style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF10171C),
+                color: Color(0xFF111827),
                 letterSpacing: 0.5,
               ),
               decoration: const InputDecoration(
@@ -1226,7 +1169,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
             style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF2E3A43),
+              color: Color(0xFF374151),
             ),
           ),
           const SizedBox(height: 6),
@@ -1241,7 +1184,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
               style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF10171C),
+                color: Color(0xFF111827),
               ),
               decoration: const InputDecoration(
                 border: InputBorder.none,
@@ -1261,12 +1204,12 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF2E3A43),
+                  color: Color(0xFF374151),
                 ),
               ),
               RichText(
                 text: TextSpan(
-                  style: const TextStyle(fontSize: 11.5, color: Color(0xFF7D8892)),
+                  style: const TextStyle(fontSize: 11.5, color: Color(0xFF6B7280)),
                   children: [
                     const TextSpan(text: 'Transfer Fee: '),
                     TextSpan(
@@ -1298,7 +1241,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF7D8892),
+                    color: Color(0xFF6B7280),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -1309,7 +1252,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF10171C),
+                      color: Color(0xFF111827),
                     ),
                     decoration: const InputDecoration(
                       border: InputBorder.none,
@@ -1338,10 +1281,9 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
 
           const SizedBox(height: 18),
 
-          // Purpose & Remarks side by side
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Purpose Dropdown
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1351,12 +1293,14 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF2E3A43),
+                        color: Color(0xFF374151),
                       ),
                     ),
                     const SizedBox(height: 6),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      height: 48,
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
                       decoration: BoxDecoration(
                         color: bgSurface,
                         borderRadius: BorderRadius.circular(10),
@@ -1366,8 +1310,8 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                         child: DropdownButton<String>(
                           value: _selectedPurpose,
                           isExpanded: true,
-                          itemHeight: 64,
-                          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: Color(0xFF7D8892)),
+                          isDense: true,
+                          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: Color(0xFF6B7280)),
                           items: _purposes.map((p) {
                             final title = p['title'] as String;
                             final subtitle = p['subtitle'] as String;
@@ -1381,9 +1325,9 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                                     width: 36,
                                     height: 36,
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFFF2FAF6),
+                                      color: const Color(0xFFFAF5FF),
                                       borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(color: const Color(0xFFE6F6EF)),
+                                      border: Border.all(color: const Color(0xFFF3E8FF)),
                                     ),
                                     child: Icon(
                                       icon,
@@ -1402,7 +1346,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                                           style: const TextStyle(
                                             fontSize: 13,
                                             fontWeight: FontWeight.w700,
-                                            color: Color(0xFF10171C),
+                                            color: Color(0xFF111827),
                                           ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -1412,7 +1356,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                                           style: const TextStyle(
                                             fontSize: 10.5,
                                             fontWeight: FontWeight.w400,
-                                            color: Color(0xFF7D8892),
+                                            color: Color(0xFF6B7280),
                                           ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -1426,35 +1370,17 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                           selectedItemBuilder: (context) {
                             return _purposes.map((p) {
                               final title = p['title'] as String;
-                              final icon = p['icon'] as IconData;
-                              return Row(
-                                children: [
-                                  Container(
-                                    width: 28,
-                                    height: 28,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFF2FAF6),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Icon(
-                                      icon,
-                                      size: 16,
-                                      color: brandViolet,
-                                    ),
+                              return Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  title,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF111827),
                                   ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      title,
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF10171C),
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               );
                             }).toList();
                           },
@@ -1467,24 +1393,24 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                   ],
                 ),
               ),
-
               const SizedBox(width: 14),
-
-              // Remarks (Optional)
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Remarks (Optional)',
+                      'Remarks (optional)',
                       style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF2E3A43),
+                        color: Color(0xFF374151),
                       ),
                     ),
                     const SizedBox(height: 6),
                     Container(
+                      height: 48,
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
                       decoration: BoxDecoration(
                         color: bgSurface,
                         borderRadius: BorderRadius.circular(10),
@@ -1492,19 +1418,21 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       ),
                       child: TextField(
                         controller: _remarksController,
+                        textAlignVertical: TextAlignVertical.center,
                         style: const TextStyle(
-                          fontSize: 13,
+                          fontSize: 14,
                           fontWeight: FontWeight.w500,
-                          color: Color(0xFF10171C),
+                          color: Color(0xFF111827),
                         ),
                         decoration: const InputDecoration(
                           hintText: 'Enter details...',
                           hintStyle: TextStyle(
-                            color: Color(0xFF9AA3AB),
-                            fontSize: 13,
+                            color: Color(0xFF9CA3AF),
+                            fontSize: 14,
                           ),
                           border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          isCollapsed: true,
+                          contentPadding: EdgeInsets.zero,
                         ),
                       ),
                     ),
@@ -1514,6 +1442,50 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSendToOption({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final color = selected ? const Color(0xFF111827) : const Color(0xFF4B5563);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1534,7 +1506,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF2E3A43),
+            color: Color(0xFF374151),
           ),
         ),
       ),
@@ -1576,7 +1548,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF10171C),
+              color: Color(0xFF111827),
               letterSpacing: -0.2,
             ),
           ),
@@ -1586,7 +1558,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFFF7F7F7),
+              color: const Color(0xFFF9FAFB),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: borderLight),
             ),
@@ -1599,13 +1571,13 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       width: 28,
                       height: 28,
                       decoration: const BoxDecoration(
-                        color: Color(0xFFEFF6FB),
+                        color: Color(0xFFEDE9FE),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
                         Icons.arrow_upward_rounded,
                         size: 15,
-                        color: Color(0xFF1C6E5A),
+                        color: Color(0xFF6B21A8),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -1618,7 +1590,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                             style: TextStyle(
                               fontSize: 9.5,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF7D8892),
+                              color: Color(0xFF6B7280),
                               letterSpacing: 0.5,
                             ),
                           ),
@@ -1628,7 +1600,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                             style: const TextStyle(
                               fontSize: 12.5,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF10171C),
+                              color: Color(0xFF111827),
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -1646,7 +1618,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                     child: Container(
                       width: 2,
                       height: 16,
-                      color: const Color(0xFFC9EBDD),
+                      color: const Color(0xFFE9D5FF),
                     ),
                   ),
                 ),
@@ -1658,13 +1630,13 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       width: 28,
                       height: 28,
                       decoration: const BoxDecoration(
-                        color: Color(0xFFE4F5EE),
+                        color: Color(0xFFD1FAE5),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
                         Icons.arrow_downward_rounded,
                         size: 15,
-                        color: Color(0xFF17805F),
+                        color: Color(0xFF059669),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -1680,7 +1652,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                                   style: const TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
-                                    color: Color(0xFF10171C),
+                                    color: Color(0xFF111827),
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -1689,7 +1661,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                               const Icon(
                                 Icons.check_circle,
                                 size: 13,
-                                color: Color(0xFF2FA37E),
+                                color: Color(0xFF10B981),
                               ),
                             ],
                           ),
@@ -1700,7 +1672,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                                 : '$_selectedPartnerBank ••••• $last5',
                             style: const TextStyle(
                               fontSize: 11,
-                              color: Color(0xFF7D8892),
+                              color: Color(0xFF6B7280),
                               fontWeight: FontWeight.w500,
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -1724,7 +1696,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                 'Transfer Amount',
                 style: TextStyle(
                   fontSize: 12.5,
-                  color: Color(0xFF7D8892),
+                  color: Color(0xFF6B7280),
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -1733,7 +1705,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF10171C),
+                  color: Color(0xFF111827),
                 ),
               ),
             ],
@@ -1749,7 +1721,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                 'Transfer Fee',
                 style: TextStyle(
                   fontSize: 12.5,
-                  color: Color(0xFF7D8892),
+                  color: Color(0xFF6B7280),
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -1758,7 +1730,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
-                  color: _transferFee == 0 ? const Color(0xFF2FA37E) : const Color(0xFF10171C),
+                  color: _transferFee == 0 ? const Color(0xFF10B981) : const Color(0xFF111827),
                 ),
               ),
             ],
@@ -1777,7 +1749,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                 'Balance After Transfer',
                 style: TextStyle(
                   fontSize: 12.5,
-                  color: Color(0xFF7D8892),
+                  color: Color(0xFF6B7280),
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -1786,7 +1758,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                 style: const TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF10171C),
+                  color: Color(0xFF111827),
                 ),
               ),
             ],
@@ -1798,7 +1770,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              color: const Color(0xFFE6F6EF).withValues(alpha: 0.5),
+              color: const Color(0xFFF3E8FF).withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -1812,7 +1784,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF10171C),
+                        color: Color(0xFF111827),
                       ),
                     ),
                     SizedBox(height: 2),
@@ -1820,7 +1792,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       'Debited immediately',
                       style: TextStyle(
                         fontSize: 10.5,
-                        color: Color(0xFF7D8892),
+                        color: Color(0xFF6B7280),
                         fontWeight: FontWeight.w500,
                       ),
                     ),

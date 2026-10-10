@@ -1,4 +1,3 @@
-import 'package:aurabank_core/widgets/aura_logo.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'web_statement_screen.dart';
@@ -131,9 +130,9 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 3,
             transactions: const [
-              AnalyticsTxItem(name: 'Annual Software License', initial: 'S', avatarBg: Color(0xFF2F78A8), time: 'Jan 03, 11:30 am', amount: 12000.0, isReceived: false),
-              AnalyticsTxItem(name: 'Client Retainer', initial: 'C', avatarBg: Color(0xFF1C6E5A), time: 'Jan 05, 2:15 pm', amount: 8000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Office Supplies', initial: 'O', avatarBg: Color(0xFFD9822B), time: 'Jan 06, 4:00 pm', amount: 6000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Annual Software License', initial: 'S', avatarBg: Color(0xFF3949AB), time: 'Jan 03, 11:30 am', amount: 12000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Client Retainer', initial: 'C', avatarBg: Color(0xFF00897B), time: 'Jan 05, 2:15 pm', amount: 8000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Office Supplies', initial: 'O', avatarBg: Color(0xFFE65100), time: 'Jan 06, 4:00 pm', amount: 6000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -145,8 +144,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 2,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Direct Credit', initial: 'D', avatarBg: Color(0xFF2F78A8), time: 'Jan 10, 10:00 am', amount: 10000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Operational Expenses', initial: 'O', avatarBg: Color(0xFFD9705A), time: 'Jan 12, 1:45 pm', amount: 15000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Direct Credit', initial: 'D', avatarBg: Color(0xFF5E17EB), time: 'Jan 10, 10:00 am', amount: 10000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Operational Expenses', initial: 'O', avatarBg: Color(0xFFD81B60), time: 'Jan 12, 1:45 pm', amount: 15000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -158,8 +157,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 4,
             transactions: const [
-              AnalyticsTxItem(name: 'Consultancy Inward', initial: 'C', avatarBg: Color(0xFF2FA37E), time: 'Jan 18, 9:20 am', amount: 12000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Marketing Campaign', initial: 'M', avatarBg: Color(0xFF6E7BD9), time: 'Jan 19, 3:30 pm', amount: 22000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Consultancy Inward', initial: 'C', avatarBg: Color(0xFF2ECC71), time: 'Jan 18, 9:20 am', amount: 12000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Marketing Campaign', initial: 'M', avatarBg: Color(0xFF8E24AA), time: 'Jan 19, 3:30 pm', amount: 22000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -171,7 +170,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 2,
             outTransfers: 3,
             transactions: const [
-              AnalyticsTxItem(name: 'Direct Settlement', initial: 'S', avatarBg: Color(0xFF3FA7C9), time: 'Jan 25, 2:00 pm', amount: 15000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Direct Settlement', initial: 'S', avatarBg: Color(0xFF00ACC1), time: 'Jan 25, 2:00 pm', amount: 15000.0, isReceived: true, status: 'RECEIVED'),
               AnalyticsTxItem(name: 'Interbank Clearing', initial: 'I', avatarBg: Color(0xFFE53935), time: 'Jan 28, 5:15 pm', amount: 19000.0, isReceived: false),
             ],
           ),
@@ -191,8 +190,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Consulting Honorarium', initial: 'C', avatarBg: Color(0xFF2F78A8), time: 'Feb 03, 10:15 am', amount: 14000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Other Bank Transfer', initial: 'O', avatarBg: Color(0xFFD9822B), time: 'Feb 05, 3:20 pm', amount: 11000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Consulting Honorarium', initial: 'C', avatarBg: Color(0xFF7C4DFF), time: 'Feb 03, 10:15 am', amount: 14000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Other Bank Transfer', initial: 'O', avatarBg: Color(0xFFE65100), time: 'Feb 05, 3:20 pm', amount: 11000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -204,8 +203,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 2,
             outTransfers: 3,
             transactions: const [
-              AnalyticsTxItem(name: 'Commercial Inward', initial: 'M', avatarBg: Color(0xFF1C6E5A), time: 'Feb 10, 1:15 pm', amount: 18000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Supplier Settlement', initial: 'S', avatarBg: Color(0xFF2F78A8), time: 'Feb 12, 4:40 pm', amount: 16000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Commercial Inward', initial: 'M', avatarBg: Color(0xFF00897B), time: 'Feb 10, 1:15 pm', amount: 18000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Supplier Settlement', initial: 'S', avatarBg: Color(0xFF3949AB), time: 'Feb 12, 4:40 pm', amount: 16000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -217,8 +216,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Direct Wire', initial: 'W', avatarBg: Color(0xFF2F78A8), time: 'Feb 17, 11:00 am', amount: 20000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Software Upgrade', initial: 'S', avatarBg: Color(0xFFD9705A), time: 'Feb 19, 2:50 pm', amount: 12000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Direct Wire', initial: 'W', avatarBg: Color(0xFF5E17EB), time: 'Feb 17, 11:00 am', amount: 20000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Software Upgrade', initial: 'S', avatarBg: Color(0xFFD81B60), time: 'Feb 19, 2:50 pm', amount: 12000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -230,8 +229,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Service Deposit', initial: 'S', avatarBg: Color(0xFF2FA37E), time: 'Feb 24, 9:30 am', amount: 15000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Facility Lease', initial: 'F', avatarBg: Color(0xFF6E7BD9), time: 'Feb 27, 4:10 pm', amount: 13000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Service Deposit', initial: 'S', avatarBg: Color(0xFF2ECC71), time: 'Feb 24, 9:30 am', amount: 15000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Facility Lease', initial: 'F', avatarBg: Color(0xFF8E24AA), time: 'Feb 27, 4:10 pm', amount: 13000.0, isReceived: false),
             ],
           ),
         ],
@@ -250,8 +249,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 3,
             transactions: const [
-              AnalyticsTxItem(name: 'Apex Digital Wire', initial: 'A', avatarBg: Color(0xFF17805F), time: 'Mar 04, 11:20 am', amount: 8000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Q1 Compliance Filing', initial: 'C', avatarBg: Color(0xFFD9822B), time: 'Mar 06, 2:10 pm', amount: 16000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Apex Digital Wire', initial: 'A', avatarBg: Color(0xFF047857), time: 'Mar 04, 11:20 am', amount: 8000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Q1 Compliance Filing', initial: 'C', avatarBg: Color(0xFFE65100), time: 'Mar 06, 2:10 pm', amount: 16000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -263,8 +262,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 3,
             transactions: const [
-              AnalyticsTxItem(name: 'Project Payout', initial: 'P', avatarBg: Color(0xFF2F78A8), time: 'Mar 11, 1:45 pm', amount: 12000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Marketing Campaign', initial: 'M', avatarBg: Color(0xFF2F78A8), time: 'Mar 13, 3:30 pm', amount: 21000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Project Payout', initial: 'P', avatarBg: Color(0xFF5E17EB), time: 'Mar 11, 1:45 pm', amount: 12000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Marketing Campaign', initial: 'M', avatarBg: Color(0xFF3949AB), time: 'Mar 13, 3:30 pm', amount: 21000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -276,8 +275,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Client Honorarium', initial: 'C', avatarBg: Color(0xFF1C6E5A), time: 'Mar 18, 10:00 am', amount: 15000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Server Infrastructure', initial: 'S', avatarBg: Color(0xFFD9705A), time: 'Mar 20, 4:15 pm', amount: 18000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Client Honorarium', initial: 'C', avatarBg: Color(0xFF00897B), time: 'Mar 18, 10:00 am', amount: 15000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Server Infrastructure', initial: 'S', avatarBg: Color(0xFFD81B60), time: 'Mar 20, 4:15 pm', amount: 18000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -289,8 +288,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Settlement Credit', initial: 'S', avatarBg: Color(0xFF2FA37E), time: 'Mar 25, 2:20 pm', amount: 10000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Office Maintenance', initial: 'O', avatarBg: Color(0xFF6E7BD9), time: 'Mar 29, 5:00 pm', amount: 14000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Settlement Credit', initial: 'S', avatarBg: Color(0xFF2ECC71), time: 'Mar 25, 2:20 pm', amount: 10000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Office Maintenance', initial: 'O', avatarBg: Color(0xFF8E24AA), time: 'Mar 29, 5:00 pm', amount: 14000.0, isReceived: false),
             ],
           ),
         ],
@@ -309,8 +308,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 2,
             outTransfers: 1,
             transactions: const [
-              AnalyticsTxItem(name: 'Enterprise Contract', initial: 'E', avatarBg: Color(0xFF2F78A8), time: 'Apr 03, 9:45 am', amount: 25000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Cloud Maintenance', initial: 'C', avatarBg: Color(0xFFD9822B), time: 'Apr 05, 3:30 pm', amount: 8000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Enterprise Contract', initial: 'E', avatarBg: Color(0xFF5E17EB), time: 'Apr 03, 9:45 am', amount: 25000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Cloud Maintenance', initial: 'C', avatarBg: Color(0xFFE65100), time: 'Apr 05, 3:30 pm', amount: 8000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -322,8 +321,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 2,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Partner Bank Settlement', initial: 'P', avatarBg: Color(0xFF1C6E5A), time: 'Apr 10, 11:15 am', amount: 32000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Vendor Clearing', initial: 'V', avatarBg: Color(0xFF2F78A8), time: 'Apr 12, 2:40 pm', amount: 14000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Partner Bank Settlement', initial: 'P', avatarBg: Color(0xFF00897B), time: 'Apr 10, 11:15 am', amount: 32000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Vendor Clearing', initial: 'V', avatarBg: Color(0xFF3949AB), time: 'Apr 12, 2:40 pm', amount: 14000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -335,8 +334,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 1,
             transactions: const [
-              AnalyticsTxItem(name: 'Project Milestone B', initial: 'P', avatarBg: Color(0xFF2FA37E), time: 'Apr 17, 10:20 am', amount: 18000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Other Bank Transfer', initial: 'O', avatarBg: Color(0xFFD9705A), time: 'Apr 19, 4:10 pm', amount: 6500.0, isReceived: false),
+              AnalyticsTxItem(name: 'Project Milestone B', initial: 'P', avatarBg: Color(0xFF2ECC71), time: 'Apr 17, 10:20 am', amount: 18000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Other Bank Transfer', initial: 'O', avatarBg: Color(0xFFD81B60), time: 'Apr 19, 4:10 pm', amount: 6500.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -348,8 +347,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 2,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Retainer Inflow', initial: 'R', avatarBg: Color(0xFF6E7BD9), time: 'Apr 25, 1:30 pm', amount: 28500.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Facility Lease Share', initial: 'F', avatarBg: Color(0xFF3FA7C9), time: 'Apr 28, 5:00 pm', amount: 12000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Retainer Inflow', initial: 'R', avatarBg: Color(0xFF8E24AA), time: 'Apr 25, 1:30 pm', amount: 28500.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Facility Lease Share', initial: 'F', avatarBg: Color(0xFF00ACC1), time: 'Apr 28, 5:00 pm', amount: 12000.0, isReceived: false),
             ],
           ),
         ],
@@ -368,8 +367,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Advisory Inflow', initial: 'A', avatarBg: Color(0xFF2F78A8), time: 'May 03, 11:00 am', amount: 9000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Office Supplies', initial: 'O', avatarBg: Color(0xFFD9822B), time: 'May 05, 2:15 pm', amount: 12000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Advisory Inflow', initial: 'A', avatarBg: Color(0xFF7C4DFF), time: 'May 03, 11:00 am', amount: 9000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Office Supplies', initial: 'O', avatarBg: Color(0xFFE65100), time: 'May 05, 2:15 pm', amount: 12000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -381,8 +380,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 1,
             transactions: const [
-              AnalyticsTxItem(name: 'Client Deposit', initial: 'C', avatarBg: Color(0xFF1C6E5A), time: 'May 11, 10:45 am', amount: 14000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Logistics Fee', initial: 'L', avatarBg: Color(0xFF2F78A8), time: 'May 13, 3:30 pm', amount: 10000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Client Deposit', initial: 'C', avatarBg: Color(0xFF00897B), time: 'May 11, 10:45 am', amount: 14000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Logistics Fee', initial: 'L', avatarBg: Color(0xFF3949AB), time: 'May 13, 3:30 pm', amount: 10000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -394,8 +393,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 2,
             outTransfers: 3,
             transactions: const [
-              AnalyticsTxItem(name: 'Settlement Inward', initial: 'S', avatarBg: Color(0xFF2F78A8), time: 'May 18, 1:20 pm', amount: 22000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Equipment Maintenance', initial: 'E', avatarBg: Color(0xFFD9705A), time: 'May 20, 4:50 pm', amount: 25000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Settlement Inward', initial: 'S', avatarBg: Color(0xFF5E17EB), time: 'May 18, 1:20 pm', amount: 22000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Equipment Maintenance', initial: 'E', avatarBg: Color(0xFFD81B60), time: 'May 20, 4:50 pm', amount: 25000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -407,8 +406,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Contract Payout', initial: 'C', avatarBg: Color(0xFF2FA37E), time: 'May 26, 11:30 am', amount: 16000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Rent Allocation', initial: 'R', avatarBg: Color(0xFF6E7BD9), time: 'May 29, 2:10 pm', amount: 13000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Contract Payout', initial: 'C', avatarBg: Color(0xFF2ECC71), time: 'May 26, 11:30 am', amount: 16000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Rent Allocation', initial: 'R', avatarBg: Color(0xFF8E24AA), time: 'May 29, 2:10 pm', amount: 13000.0, isReceived: false),
             ],
           ),
         ],
@@ -427,8 +426,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Inward Wire', initial: 'I', avatarBg: Color(0xFF3FA7C9), time: 'Jun 04, 10:15 am', amount: 12000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Software Licensing', initial: 'S', avatarBg: Color(0xFFD9822B), time: 'Jun 06, 3:45 pm', amount: 15000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Inward Wire', initial: 'I', avatarBg: Color(0xFF00ACC1), time: 'Jun 04, 10:15 am', amount: 12000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Software Licensing', initial: 'S', avatarBg: Color(0xFFE65100), time: 'Jun 06, 3:45 pm', amount: 15000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -440,8 +439,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 2,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Apex Digital Wire', initial: 'A', avatarBg: Color(0xFF17805F), time: 'Jun 10, 1:30 pm', amount: 28000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Supplier Order', initial: 'S', avatarBg: Color(0xFF2F78A8), time: 'Jun 12, 4:20 pm', amount: 12500.0, isReceived: false),
+              AnalyticsTxItem(name: 'Apex Digital Wire', initial: 'A', avatarBg: Color(0xFF047857), time: 'Jun 10, 1:30 pm', amount: 28000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Supplier Order', initial: 'S', avatarBg: Color(0xFF3949AB), time: 'Jun 12, 4:20 pm', amount: 12500.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -453,8 +452,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Service Fee', initial: 'S', avatarBg: Color(0xFF2F78A8), time: 'Jun 17, 11:10 am', amount: 14000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Insurance Premium', initial: 'I', avatarBg: Color(0xFFD9705A), time: 'Jun 19, 2:50 pm', amount: 18000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Service Fee', initial: 'S', avatarBg: Color(0xFF5E17EB), time: 'Jun 17, 11:10 am', amount: 14000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Insurance Premium', initial: 'I', avatarBg: Color(0xFFD81B60), time: 'Jun 19, 2:50 pm', amount: 18000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -466,8 +465,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Professional Fee', initial: 'P', avatarBg: Color(0xFF2FA37E), time: 'Jun 25, 9:40 am', amount: 19000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Same Bank Transfer', initial: 'S', avatarBg: Color(0xFF6E7BD9), time: 'Jun 28, 5:15 pm', amount: 16500.0, isReceived: false),
+              AnalyticsTxItem(name: 'Professional Fee', initial: 'P', avatarBg: Color(0xFF2ECC71), time: 'Jun 25, 9:40 am', amount: 19000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Same Bank Transfer', initial: 'S', avatarBg: Color(0xFF8E24AA), time: 'Jun 28, 5:15 pm', amount: 16500.0, isReceived: false),
             ],
           ),
         ],
@@ -486,8 +485,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 1,
             transactions: const [
-              AnalyticsTxItem(name: 'Inward Remittance', initial: 'I', avatarBg: Color(0xFF2F78A8), time: 'Jul 03, 10:30 am', amount: 10000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Interbank Transfer', initial: 'I', avatarBg: Color(0xFFD9822B), time: 'Jul 06, 2:15 pm', amount: 8000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Inward Remittance', initial: 'I', avatarBg: Color(0xFF7C4DFF), time: 'Jul 03, 10:30 am', amount: 10000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Interbank Transfer', initial: 'I', avatarBg: Color(0xFFE65100), time: 'Jul 06, 2:15 pm', amount: 8000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -499,8 +498,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 3,
             transactions: const [
-              AnalyticsTxItem(name: 'Service Contract', initial: 'S', avatarBg: Color(0xFF1C6E5A), time: 'Jul 10, 1:45 pm', amount: 16000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Hardware Maintenance', initial: 'H', avatarBg: Color(0xFF2F78A8), time: 'Jul 12, 4:30 pm', amount: 19000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Service Contract', initial: 'S', avatarBg: Color(0xFF00897B), time: 'Jul 10, 1:45 pm', amount: 16000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Hardware Maintenance', initial: 'H', avatarBg: Color(0xFF3949AB), time: 'Jul 12, 4:30 pm', amount: 19000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -512,8 +511,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 2,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Commercial Inflow', initial: 'C', avatarBg: Color(0xFF2F78A8), time: 'Jul 17, 11:20 am', amount: 21000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Office Supplies', initial: 'O', avatarBg: Color(0xFFD9705A), time: 'Jul 19, 3:15 pm', amount: 14000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Commercial Inflow', initial: 'C', avatarBg: Color(0xFF5E17EB), time: 'Jul 17, 11:20 am', amount: 21000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Office Supplies', initial: 'O', avatarBg: Color(0xFFD81B60), time: 'Jul 19, 3:15 pm', amount: 14000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -525,8 +524,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 2,
             outTransfers: 1,
             transactions: const [
-              AnalyticsTxItem(name: 'Retainer Payment', initial: 'R', avatarBg: Color(0xFF2FA37E), time: 'Jul 26, 10:00 am', amount: 25000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Supplier Transfer', initial: 'S', avatarBg: Color(0xFF6E7BD9), time: 'Jul 29, 4:45 pm', amount: 11000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Retainer Payment', initial: 'R', avatarBg: Color(0xFF2ECC71), time: 'Jul 26, 10:00 am', amount: 25000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Supplier Transfer', initial: 'S', avatarBg: Color(0xFF8E24AA), time: 'Jul 29, 4:45 pm', amount: 11000.0, isReceived: false),
             ],
           ),
         ],
@@ -545,8 +544,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Project Milestone', initial: 'P', avatarBg: Color(0xFF3FA7C9), time: 'Aug 03, 11:15 am', amount: 18000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Internet Fiber', initial: 'I', avatarBg: Color(0xFFD9822B), time: 'Aug 05, 3:20 pm', amount: 11000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Project Milestone', initial: 'P', avatarBg: Color(0xFF00ACC1), time: 'Aug 03, 11:15 am', amount: 18000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Internet Fiber', initial: 'I', avatarBg: Color(0xFFE65100), time: 'Aug 05, 3:20 pm', amount: 11000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -558,8 +557,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 3,
             transactions: const [
-              AnalyticsTxItem(name: 'Apex Digital Transfer', initial: 'A', avatarBg: Color(0xFF17805F), time: 'Aug 10, 10:45 am', amount: 9500.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Vendor Payout', initial: 'V', avatarBg: Color(0xFF2F78A8), time: 'Aug 12, 2:50 pm', amount: 20500.0, isReceived: false),
+              AnalyticsTxItem(name: 'Apex Digital Transfer', initial: 'A', avatarBg: Color(0xFF047857), time: 'Aug 10, 10:45 am', amount: 9500.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Vendor Payout', initial: 'V', avatarBg: Color(0xFF3949AB), time: 'Aug 12, 2:50 pm', amount: 20500.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -571,8 +570,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 2,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Customer Wire Settlement', initial: 'C', avatarBg: Color(0xFF2F78A8), time: 'Aug 17, 1:15 pm', amount: 34000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Cloud Hosting Subscription', initial: 'C', avatarBg: Color(0xFFD9705A), time: 'Aug 19, 4:10 pm', amount: 15000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Customer Wire Settlement', initial: 'C', avatarBg: Color(0xFF5E17EB), time: 'Aug 17, 1:15 pm', amount: 34000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Cloud Hosting Subscription', initial: 'C', avatarBg: Color(0xFFD81B60), time: 'Aug 19, 4:10 pm', amount: 15000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -584,8 +583,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Consultation Fee', initial: 'C', avatarBg: Color(0xFF2FA37E), time: 'Aug 25, 9:30 am', amount: 12500.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Operational Expenses', initial: 'O', avatarBg: Color(0xFF6E7BD9), time: 'Aug 28, 5:00 pm', amount: 16500.0, isReceived: false),
+              AnalyticsTxItem(name: 'Consultation Fee', initial: 'C', avatarBg: Color(0xFF2ECC71), time: 'Aug 25, 9:30 am', amount: 12500.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Operational Expenses', initial: 'O', avatarBg: Color(0xFF8E24AA), time: 'Aug 28, 5:00 pm', amount: 16500.0, isReceived: false),
             ],
           ),
         ],
@@ -604,8 +603,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Client Retainer', initial: 'C', avatarBg: Color(0xFF2F78A8), time: 'Sep 03, 10:15 am', amount: 14000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Software Licenses', initial: 'S', avatarBg: Color(0xFFD9822B), time: 'Sep 05, 3:30 pm', amount: 9500.0, isReceived: false),
+              AnalyticsTxItem(name: 'Client Retainer', initial: 'C', avatarBg: Color(0xFF7C4DFF), time: 'Sep 03, 10:15 am', amount: 14000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Software Licenses', initial: 'S', avatarBg: Color(0xFFE65100), time: 'Sep 05, 3:30 pm', amount: 9500.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -618,7 +617,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             outTransfers: 3,
             transactions: const [
               AnalyticsTxItem(name: 'MeyBank Inward Clearing', initial: 'M', avatarBg: Color(0xFF701A75), time: 'Sep 10, 1:40 pm', amount: 22500.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Supplier Clearing Payout', initial: 'S', avatarBg: Color(0xFF2F78A8), time: 'Sep 12, 4:15 pm', amount: 18000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Supplier Clearing Payout', initial: 'S', avatarBg: Color(0xFF3949AB), time: 'Sep 12, 4:15 pm', amount: 18000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -630,8 +629,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 4,
             transactions: const [
-              AnalyticsTxItem(name: 'Direct Settlement', initial: 'D', avatarBg: Color(0xFF1C6E5A), time: 'Sep 17, 11:20 am', amount: 16000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Office Equipment Refresh', initial: 'O', avatarBg: Color(0xFF2F78A8), time: 'Sep 19, 2:50 pm', amount: 24500.0, isReceived: false),
+              AnalyticsTxItem(name: 'Direct Settlement', initial: 'D', avatarBg: Color(0xFF00897B), time: 'Sep 17, 11:20 am', amount: 16000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Office Equipment Refresh', initial: 'O', avatarBg: Color(0xFF5E17EB), time: 'Sep 19, 2:50 pm', amount: 24500.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -643,8 +642,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 2,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Dividend Credit', initial: 'D', avatarBg: Color(0xFF2FA37E), time: 'Sep 25, 9:50 am', amount: 28000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Other Bank Transfer', initial: 'O', avatarBg: Color(0xFFD9705A), time: 'Sep 28, 4:30 pm', amount: 12000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Dividend Credit', initial: 'D', avatarBg: Color(0xFF2ECC71), time: 'Sep 25, 9:50 am', amount: 28000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Other Bank Transfer', initial: 'O', avatarBg: Color(0xFFD81B60), time: 'Sep 28, 4:30 pm', amount: 12000.0, isReceived: false),
             ],
           ),
         ],
@@ -664,9 +663,9 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 3,
             transactions: const [
-              AnalyticsTxItem(name: 'Angel Lou F. Yabut', initial: 'A', avatarBg: Color(0xFF2F78A8), time: 'Oct 03, 2:45 pm', amount: 2500.0, isReceived: false),
-              AnalyticsTxItem(name: 'Mae G. Mercado', initial: 'M', avatarBg: Color(0xFF2F78A8), time: 'Oct 04, 9:15 am', amount: 4500.0, isReceived: false),
-              AnalyticsTxItem(name: 'Direct Deposit', initial: 'D', avatarBg: Color(0xFF1C6E5A), time: 'Oct 02, 10:00 am', amount: 8000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Angel Lou F. Yabut', initial: 'A', avatarBg: Color(0xFF7C4DFF), time: 'Oct 03, 2:45 pm', amount: 2500.0, isReceived: false),
+              AnalyticsTxItem(name: 'Mae G. Mercado', initial: 'M', avatarBg: Color(0xFF7928CA), time: 'Oct 04, 9:15 am', amount: 4500.0, isReceived: false),
+              AnalyticsTxItem(name: 'Direct Deposit', initial: 'D', avatarBg: Color(0xFF00897B), time: 'Oct 02, 10:00 am', amount: 8000.0, isReceived: true, status: 'RECEIVED'),
             ],
           ),
           FlowPointData(
@@ -680,7 +679,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             transactions: const [
               AnalyticsTxItem(name: 'Drake Montefalco', initial: 'D', avatarBg: Color(0xFF220055), time: 'Oct 14, 2:45 pm', amount: 2500.0, isReceived: false),
               AnalyticsTxItem(name: 'Klare Riego', initial: 'K', avatarBg: Color(0xFFBA68C8), time: 'Oct 14, 1:45 pm', amount: 26500.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Business Supplies', initial: 'B', avatarBg: Color(0xFF2F78A8), time: 'Oct 11, 4:20 pm', amount: 16000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Business Supplies', initial: 'B', avatarBg: Color(0xFF3949AB), time: 'Oct 11, 4:20 pm', amount: 16000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -692,7 +691,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 5,
             transactions: const [
-              AnalyticsTxItem(name: 'Jessie Mae Dela Paz', initial: 'J', avatarBg: Color(0xFF3FA7C9), time: 'Oct 16, 11:30 am', amount: 5000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Jessie Mae Dela Paz', initial: 'J', avatarBg: Color(0xFF00ACC1), time: 'Oct 16, 11:30 am', amount: 5000.0, isReceived: true, status: 'RECEIVED'),
               AnalyticsTxItem(name: 'Hardware Reorder', initial: 'H', avatarBg: Color(0xFF5E35B1), time: 'Oct 18, 3:15 pm', amount: 27500.0, isReceived: false),
               AnalyticsTxItem(name: 'Cloud Services', initial: 'C', avatarBg: Color(0xFF43A047), time: 'Oct 20, 8:40 am', amount: 5000.0, isReceived: false),
             ],
@@ -706,8 +705,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Mae G. Mercado', initial: 'M', avatarBg: Color(0xFF2F78A8), time: 'Oct 24, 10:15 am', amount: 18500.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Office Lease Share', initial: 'O', avatarBg: Color(0xFFD9705A), time: 'Oct 26, 4:00 pm', amount: 10500.0, isReceived: false),
+              AnalyticsTxItem(name: 'Mae G. Mercado', initial: 'M', avatarBg: Color(0xFF5E17EB), time: 'Oct 24, 10:15 am', amount: 18500.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Office Lease Share', initial: 'O', avatarBg: Color(0xFFD81B60), time: 'Oct 26, 4:00 pm', amount: 10500.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -720,8 +719,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             outTransfers: 4,
             transactions: const [
               AnalyticsTxItem(name: 'Payroll Reimbursement', initial: 'P', avatarBg: Color(0xFF1E88E5), time: 'Oct 30, 2:00 pm', amount: 25000.0, isReceived: false),
-              AnalyticsTxItem(name: 'Consulting Honorarium', initial: 'C', avatarBg: Color(0xFF2FA37E), time: 'Oct 31, 5:30 pm', amount: 5000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Petty Cash', initial: 'P', avatarBg: Color(0xFF6E7BD9), time: 'Oct 31, 6:00 pm', amount: 4000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Consulting Honorarium', initial: 'C', avatarBg: Color(0xFF2ECC71), time: 'Oct 31, 5:30 pm', amount: 5000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Petty Cash', initial: 'P', avatarBg: Color(0xFF8E24AA), time: 'Oct 31, 6:00 pm', amount: 4000.0, isReceived: false),
             ],
           ),
         ],
@@ -740,8 +739,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Retainer Credit', initial: 'R', avatarBg: Color(0xFF2F78A8), time: 'Nov 03, 10:20 am', amount: 16000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Operations Reserve', initial: 'O', avatarBg: Color(0xFFD9822B), time: 'Nov 05, 3:15 pm', amount: 14000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Retainer Credit', initial: 'R', avatarBg: Color(0xFF7C4DFF), time: 'Nov 03, 10:20 am', amount: 16000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Operations Reserve', initial: 'O', avatarBg: Color(0xFFE65100), time: 'Nov 05, 3:15 pm', amount: 14000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -753,8 +752,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 2,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Client Settlement', initial: 'C', avatarBg: Color(0xFF1C6E5A), time: 'Nov 10, 1:45 pm', amount: 21000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Hardware Upgrade', initial: 'H', avatarBg: Color(0xFF2F78A8), time: 'Nov 12, 4:20 pm', amount: 11000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Client Settlement', initial: 'C', avatarBg: Color(0xFF00897B), time: 'Nov 10, 1:45 pm', amount: 21000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Hardware Upgrade', initial: 'H', avatarBg: Color(0xFF3949AB), time: 'Nov 12, 4:20 pm', amount: 11000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -766,8 +765,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 3,
             transactions: const [
-              AnalyticsTxItem(name: 'Direct Deposit', initial: 'D', avatarBg: Color(0xFF2F78A8), time: 'Nov 17, 11:30 am', amount: 15000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Vendor Clearing', initial: 'V', avatarBg: Color(0xFFD9705A), time: 'Nov 19, 3:00 pm', amount: 25000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Direct Deposit', initial: 'D', avatarBg: Color(0xFF5E17EB), time: 'Nov 17, 11:30 am', amount: 15000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Vendor Clearing', initial: 'V', avatarBg: Color(0xFFD81B60), time: 'Nov 19, 3:00 pm', amount: 25000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -779,8 +778,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 2,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Inward Wire', initial: 'I', avatarBg: Color(0xFF2FA37E), time: 'Nov 25, 10:00 am', amount: 24000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Facility Share', initial: 'F', avatarBg: Color(0xFF6E7BD9), time: 'Nov 28, 4:40 pm', amount: 18000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Inward Wire', initial: 'I', avatarBg: Color(0xFF2ECC71), time: 'Nov 25, 10:00 am', amount: 24000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Facility Share', initial: 'F', avatarBg: Color(0xFF8E24AA), time: 'Nov 28, 4:40 pm', amount: 18000.0, isReceived: false),
             ],
           ),
         ],
@@ -799,8 +798,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Holiday Retainer', initial: 'H', avatarBg: Color(0xFF2F78A8), time: 'Dec 03, 11:15 am', amount: 18000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Holiday Corporate Event', initial: 'C', avatarBg: Color(0xFFD9822B), time: 'Dec 05, 3:30 pm', amount: 12000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Holiday Retainer', initial: 'H', avatarBg: Color(0xFF7C4DFF), time: 'Dec 03, 11:15 am', amount: 18000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Holiday Corporate Event', initial: 'C', avatarBg: Color(0xFFE65100), time: 'Dec 05, 3:30 pm', amount: 12000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -812,8 +811,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 2,
             outTransfers: 3,
             transactions: const [
-              AnalyticsTxItem(name: 'Project Bonus Release', initial: 'P', avatarBg: Color(0xFF1C6E5A), time: 'Dec 10, 1:20 pm', amount: 24000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Operational Reserve', initial: 'O', avatarBg: Color(0xFF2F78A8), time: 'Dec 12, 4:10 pm', amount: 19000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Project Bonus Release', initial: 'P', avatarBg: Color(0xFF00897B), time: 'Dec 10, 1:20 pm', amount: 24000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Operational Reserve', initial: 'O', avatarBg: Color(0xFF3949AB), time: 'Dec 12, 4:10 pm', amount: 19000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -825,8 +824,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 2,
             outTransfers: 3,
             transactions: const [
-              AnalyticsTxItem(name: 'Client Wire', initial: 'C', avatarBg: Color(0xFF2F78A8), time: 'Dec 17, 10:45 am', amount: 35000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Annual Vendor Settlement', initial: 'V', avatarBg: Color(0xFFD9705A), time: 'Dec 19, 2:50 pm', amount: 28000.0, isReceived: false),
+              AnalyticsTxItem(name: 'Client Wire', initial: 'C', avatarBg: Color(0xFF5E17EB), time: 'Dec 17, 10:45 am', amount: 35000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Annual Vendor Settlement', initial: 'V', avatarBg: Color(0xFFD81B60), time: 'Dec 19, 2:50 pm', amount: 28000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -838,8 +837,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 3,
             outTransfers: 4,
             transactions: const [
-              AnalyticsTxItem(name: '13th Month Settlement', initial: 'M', avatarBg: Color(0xFF2FA37E), time: 'Dec 24, 9:30 am', amount: 42000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Year-End Clearing', initial: 'Y', avatarBg: Color(0xFF6E7BD9), time: 'Dec 27, 4:00 pm', amount: 34000.0, isReceived: false),
+              AnalyticsTxItem(name: '13th Month Settlement', initial: 'M', avatarBg: Color(0xFF2ECC71), time: 'Dec 24, 9:30 am', amount: 42000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Year-End Clearing', initial: 'Y', avatarBg: Color(0xFF8E24AA), time: 'Dec 27, 4:00 pm', amount: 34000.0, isReceived: false),
             ],
           ),
           FlowPointData(
@@ -851,7 +850,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             inTransfers: 1,
             outTransfers: 2,
             transactions: const [
-              AnalyticsTxItem(name: 'Final Inward Settlement', initial: 'F', avatarBg: Color(0xFF3FA7C9), time: 'Dec 30, 2:15 pm', amount: 20000.0, isReceived: true, status: 'RECEIVED'),
+              AnalyticsTxItem(name: 'Final Inward Settlement', initial: 'F', avatarBg: Color(0xFF00ACC1), time: 'Dec 30, 2:15 pm', amount: 20000.0, isReceived: true, status: 'RECEIVED'),
               AnalyticsTxItem(name: 'Year-End Reserve', initial: 'R', avatarBg: Color(0xFF5E35B1), time: 'Dec 31, 5:00 pm', amount: 15000.0, isReceived: false),
             ],
           ),
@@ -1172,7 +1171,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
       case 4:
         return full.sublist(9, 12);
       default:
-        return full.length > 5 ? full.sublist(0, 5) : full;
+        const throughOctober = 10;
+        return full.length > throughOctober ? full.sublist(0, throughOctober) : full;
     }
   }
 
@@ -1214,6 +1214,27 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
     return sum;
   }
 
+  double get _totalSentYear =>
+      _currentYearlyFilteredMonths.fold(0.0, (sum, month) => sum + month.sent);
+
+  double get _totalReceivedYear =>
+      _currentYearlyFilteredMonths.fold(0.0, (sum, month) => sum + month.received);
+
+  int get _transfersOutYear =>
+      _currentYearlyFilteredMonths.fold(0, (sum, month) => sum + month.outTransfers);
+
+  int get _transfersInYear =>
+      _currentYearlyFilteredMonths.fold(0, (sum, month) => sum + month.inTransfers);
+
+  String _weekRangeLabel(String dateSubtitle) {
+    final match = RegExp(r'([A-Za-z]+)\s+(\d+)\s+-\s+[A-Za-z]+\s+(\d+)').firstMatch(dateSubtitle);
+    if (match == null) return dateSubtitle;
+    final month = match.group(1)!;
+    final start = int.parse(match.group(2)!);
+    final end = int.parse(match.group(3)!);
+    return '$month $start–$end';
+  }
+
 
 
 
@@ -1221,7 +1242,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7F7),
+      backgroundColor: const Color(0xFFF9FAFB),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 24.0),
@@ -1244,45 +1265,24 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                         ),
                         const SizedBox(width: 8),
                       ],
-                      const AuraLogo(
-                        size: 38,
-                        style: AuraLogoStyle.violet,
-                        borderRadius: 10,
-                      ),
-                      const SizedBox(width: 14),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF2FA37E),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              const Text(
-                                'FINANCIAL INTELLIGENCE',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF7D8892),
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
                           const Text(
-                            'Analytics & Flow',
+                            'Reports',
                             style: TextStyle(
-                              fontSize: 26,
+                              fontSize: 22,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF10171C),
-                              letterSpacing: -0.6,
+                              color: Color(0xFF111827),
+                              letterSpacing: -0.4,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            _isMonthly ? 'October 2026' : '2026',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF6B7280),
                             ),
                           ),
                         ],
@@ -1296,7 +1296,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(30),
-                      border: Border.all(color: const Color(0xFFEAECEE)),
+                      border: Border.all(color: const Color(0xFFE5E7EB)),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.04),
@@ -1350,12 +1350,12 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
         decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF10171C) : Colors.transparent,
+          color: isActive ? const Color(0xFF380084) : Colors.transparent,
           borderRadius: BorderRadius.circular(24),
           boxShadow: isActive
               ? [
                   BoxShadow(
-                    color: const Color(0xFF10171C).withValues(alpha: 0.3),
+                    color: const Color(0xFF380084).withValues(alpha: 0.3),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -1367,7 +1367,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
           style: TextStyle(
             fontSize: 12.5,
             fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
-            color: isActive ? Colors.white : const Color(0xFF7D8892),
+            color: isActive ? Colors.white : const Color(0xFF6B7280),
           ),
         ),
       ),
@@ -1379,13 +1379,13 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
 
 
   Widget _buildDynamicKpiCards() {
-    final sentTitle = _isMonthly ? 'Total Sent' : 'Total Sent (2026)';
-    final sentAmount = _isMonthly ? _totalSentMonth : 508000.00;
-    final sentCount = _isMonthly ? '$_transfersOutMonth Transfers Out' : '185 Transfers Out';
+    final sentTitle = 'Sent';
+    final sentAmount = _isMonthly ? _totalSentMonth : _totalSentYear;
+    final sentCount = '${_isMonthly ? _transfersOutMonth : _transfersOutYear} transfers';
 
-    final receivedTitle = _isMonthly ? 'Total Received' : 'Total Received (2026)';
-    final receivedAmount = _isMonthly ? _totalReceivedMonth : 160000.00;
-    final receivedCount = _isMonthly ? '$_transfersInMonth Transfers In' : '43 Transfers In';
+    final receivedTitle = 'Received';
+    final receivedAmount = _isMonthly ? _totalReceivedMonth : _totalReceivedYear;
+    final receivedCount = '${_isMonthly ? _transfersInMonth : _transfersInYear} transfers';
 
     final netDiff = receivedAmount - sentAmount;
 
@@ -1393,257 +1393,31 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
       builder: (context, constraints) {
         final isWide = constraints.maxWidth >= 720;
         final children = [
-          // 1. Dark Purple/Violet Gradient Card: Total Sent
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF1A2329), Color(0xFF10171C)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1.0),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF10171C).withValues(alpha: 0.22),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      sentTitle,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFD8B4FE),
-                      ),
-                    ),
-                    Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.arrow_outward_rounded, size: 16, color: Colors.white),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'PHP ${_formatCurrency(sentAmount)}',
-                  style: const TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                    letterSpacing: -0.6,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      sentCount,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
-                        color: Color(0xFFC084FC),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    Container(
-                      width: 22,
-                      height: 22,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.arrow_downward_rounded, size: 13, color: Colors.white),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          _buildReportStatCard(
+            title: sentTitle,
+            amount: '₱${_formatCurrency(sentAmount)}',
+            caption: sentCount,
+            accent: const Color(0xFF6D28D9),
+            iconBg: const Color(0xFFF5F3FF),
+            icon: Icons.arrow_outward_rounded,
           ),
-
           if (isWide) const SizedBox(width: 20) else const SizedBox(height: 16),
-
-          // 2. White Card with Green Accent: Total Received
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFEAECEE)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      receivedTitle,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1C6E5A),
-                      ),
-                    ),
-                    Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE4F5EE),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.south_west_rounded, size: 15, color: Color(0xFF17805F)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'PHP ${_formatCurrency(receivedAmount)}',
-                  style: const TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF10171C),
-                    letterSpacing: -0.6,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      receivedCount,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
-                        color: Color(0xFF7D8892),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    Container(
-                      width: 22,
-                      height: 22,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFF2FAF6),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.arrow_upward_rounded, size: 13, color: Color(0xFF2F78A8)),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          _buildReportStatCard(
+            title: receivedTitle,
+            amount: '₱${_formatCurrency(receivedAmount)}',
+            caption: receivedCount,
+            accent: const Color(0xFF059669),
+            iconBg: const Color(0xFFECFDF5),
+            icon: Icons.south_west_rounded,
           ),
-
           if (isWide) const SizedBox(width: 20) else const SizedBox(height: 16),
-
-          // 3. White Card: Net Volume Difference
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFEAECEE)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Net Volume Difference',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF47525C),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE4F5EE),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.trending_up_rounded, size: 13, color: Color(0xFF17805F)),
-                          SizedBox(width: 3),
-                          Text(
-                            '+14.2% YoY',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF15803D),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '${netDiff >= 0 ? '+' : '-'} PHP ${_formatCurrency(netDiff.abs())}',
-                  style: const TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF10171C),
-                    letterSpacing: -0.6,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Expenditure Ratio',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF7D8892),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    Text(
-                      '76% of Outflow',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF26313A),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          _buildReportStatCard(
+            title: 'Difference',
+            amount: '${netDiff < 0 ? '− ' : netDiff > 0 ? '+ ' : ''}₱${_formatCurrency(netDiff.abs())}',
+            caption: 'Received minus sent',
+            accent: const Color(0xFF6B7280),
+            iconBg: const Color(0xFFF3F4F6),
+            icon: netDiff < 0 ? Icons.remove_rounded : Icons.add_rounded,
           ),
         ];
 
@@ -1658,6 +1432,90 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
     );
   }
 
+  Widget _buildReportStatCard({
+    required String title,
+    required String amount,
+    required String caption,
+    required Color accent,
+    required Color iconBg,
+    required IconData icon,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 4, color: accent),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 20, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: iconBg,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(icon, size: 16, color: accent),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF374151),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      amount,
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF111827),
+                        letterSpacing: -0.6,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      caption,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF6B7280),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildInteractiveTransferFlowSection() {
     return Container(
       width: double.infinity,
@@ -1665,7 +1523,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFEAECEE)),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -1684,22 +1542,22 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text(
-                    'Transfer Flow',
+                children: [
+                  const Text(
+                    'Money in and out',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF10171C),
+                      color: Color(0xFF111827),
                       letterSpacing: -0.4,
                     ),
                   ),
-                  SizedBox(height: 3),
+                  const SizedBox(height: 3),
                   Text(
-                    'Smooth comparison of outgoing versus incoming capital',
-                    style: TextStyle(
+                    _isMonthly ? 'Each week of October' : 'Each month of 2026',
+                    style: const TextStyle(
                       fontSize: 12.5,
-                      color: Color(0xFF7D8892),
+                      color: Color(0xFF6B7280),
                       fontWeight: FontWeight.w400,
                     ),
                   ),
@@ -1708,9 +1566,9 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildLegendDot(const Color(0xFF2FA37E), 'Received'),
+                  _buildLegendDot(const Color(0xFF10B981), 'Received'),
                   const SizedBox(width: 16),
-                  _buildLegendDot(const Color(0xFF10171C), 'Sent'),
+                  _buildLegendDot(const Color(0xFF380084), 'Sent'),
                 ],
               ),
             ],
@@ -1774,9 +1632,9 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
             decoration: BoxDecoration(
-              color: const Color(0xFFF7F7F7),
+              color: const Color(0xFFF9FAFB),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFEAECEE)),
+              border: Border.all(color: const Color(0xFFE5E7EB)),
             ),
             child: _isMonthly ? _buildWeekClickablePills() : _buildMonthClickablePills(),
           ),
@@ -1821,7 +1679,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
               decoration: BoxDecoration(
                 color: isSelected ? Colors.white : Colors.transparent,
                 borderRadius: BorderRadius.circular(8),
-                border: isSelected ? Border.all(color: const Color(0xFFEAECEE)) : null,
+                border: isSelected ? Border.all(color: const Color(0xFFE5E7EB)) : null,
                 boxShadow: isSelected
                     ? [
                         BoxShadow(
@@ -1833,11 +1691,11 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                     : null,
               ),
               child: Text(
-                'Week ${index + 1}',
+                _weekRangeLabel(weeks[index].dateSubtitle),
                 style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
-                  color: isSelected ? const Color(0xFF10171C) : const Color(0xFF7D8892),
+                  color: isSelected ? const Color(0xFF111827) : const Color(0xFF6B7280),
                 ),
               ),
             ),
@@ -1848,12 +1706,10 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
   }
 
   Widget _buildMonthClickablePills() {
-    const months = ['January', 'February', 'March', 'April', 'May'];
+    final months = _currentYearlyFilteredMonths;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: months.asMap().entries.map((entry) {
-        final index = entry.key;
-        final m = entry.value;
+      children: List.generate(months.length, (index) {
         final isSelected = _selectedMonthIndex == index;
         return GestureDetector(
           onTap: () => _onSelectMonth(index),
@@ -1862,11 +1718,11 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             cursor: SystemMouseCursors.click,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 150),
-              padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 6.0),
+              padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 6.0),
               decoration: BoxDecoration(
                 color: isSelected ? Colors.white : Colors.transparent,
                 borderRadius: BorderRadius.circular(8),
-                border: isSelected ? Border.all(color: const Color(0xFFEAECEE)) : null,
+                border: isSelected ? Border.all(color: const Color(0xFFE5E7EB)) : null,
                 boxShadow: isSelected
                     ? [
                         BoxShadow(
@@ -1878,17 +1734,17 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                     : null,
               ),
               child: Text(
-                m,
+                months[index].shortLabel,
                 style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
-                  color: isSelected ? const Color(0xFF10171C) : const Color(0xFF7D8892),
+                  color: isSelected ? const Color(0xFF111827) : const Color(0xFF6B7280),
                 ),
               ),
             ),
           ),
         );
-      }).toList(),
+      }),
     );
   }
 
@@ -1904,7 +1760,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
         const SizedBox(width: 5),
         Text(
           label,
-          style: const TextStyle(fontSize: 11.5, color: Color(0xFF47525C), fontWeight: FontWeight.w600),
+          style: const TextStyle(fontSize: 11.5, color: Color(0xFF4B5563), fontWeight: FontWeight.w600),
         ),
       ],
     );
@@ -1917,7 +1773,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFEAECEE)),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -1938,21 +1794,21 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: const [
                   Text(
-                    'Settlement History Ledger',
+                    'Transfers',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF10171C),
+                      color: Color(0xFF111827),
                       letterSpacing: -0.3,
                     ),
                   ),
                   SizedBox(height: 2),
                   Text(
-                    'Transfers settled & cleared in October 2026',
+                    'October 2026',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
-                      color: Color(0xFF7D8892),
+                      color: Color(0xFF6B7280),
                     ),
                   ),
                 ],
@@ -1966,20 +1822,20 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                     ),
                   );
                 },
-                icon: const Icon(Icons.receipt_long_rounded, size: 15, color: Color(0xFF10171C)),
+                icon: const Icon(Icons.receipt_long_rounded, size: 15, color: Color(0xFF380084)),
                 label: const Text(
                   'View Statement',
                   style: TextStyle(
-                    color: Color(0xFF10171C),
+                    color: Color(0xFF380084),
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 style: TextButton.styleFrom(
-                  backgroundColor: const Color(0xFFF2FAF6),
+                  backgroundColor: const Color(0xFFFAF5FF),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
-                    side: const BorderSide(color: Color(0xFFC9EBDD)),
+                    side: const BorderSide(color: Color(0xFFE9D5FF)),
                   ),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 ),
@@ -1993,14 +1849,14 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: const Color(0xFFF7F7F7),
+              color: const Color(0xFFF9FAFB),
               borderRadius: BorderRadius.circular(6),
             ),
             child: const Text(
               'Wednesday, October 14, 2026',
               style: TextStyle(
                 fontSize: 11,
-                color: Color(0xFF47525C),
+                color: Color(0xFF4B5563),
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.2,
               ),
@@ -2013,27 +1869,27 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             name: 'Drake Montefalco',
             category: 'Intra-Bank Direct Transfer',
             time: 'Oct 14, 2:45 PM',
-            amount: '- PHP 2,500.00',
+            amount: '- ₱2,500.00',
             isPositive: false,
             status: 'SETTLED',
-            statusColor: const Color(0xFF17805F),
-            statusBg: const Color(0xFFE4F5EE),
+            statusColor: const Color(0xFF059669),
+            statusBg: const Color(0xFFECFDF5),
           ),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
-            child: Divider(height: 1, color: Color(0xFFF1F3F4)),
+            child: Divider(height: 1, color: Color(0xFFF3F4F6)),
           ),
           _buildTransactionItem(
-            avatarBg: const Color(0xFF2F78A8),
+            avatarBg: const Color(0xFF7C3AED),
             initial: 'K',
             name: 'Klare Riego',
             category: 'CBS Wire Inward Remittance',
             time: 'Oct 14, 1:45 PM',
-            amount: '+ PHP 26,500.00',
+            amount: '+ ₱26,500.00',
             isPositive: true,
             status: 'RECEIVED',
-            statusColor: const Color(0xFF17805F),
-            statusBg: const Color(0xFFE4F5EE),
+            statusColor: const Color(0xFF059669),
+            statusBg: const Color(0xFFECFDF5),
           ),
 
           const SizedBox(height: 18),
@@ -2042,14 +1898,14 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: const Color(0xFFF7F7F7),
+              color: const Color(0xFFF9FAFB),
               borderRadius: BorderRadius.circular(6),
             ),
             child: const Text(
               'Friday, October 03, 2026',
               style: TextStyle(
                 fontSize: 11,
-                color: Color(0xFF47525C),
+                color: Color(0xFF4B5563),
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.2,
               ),
@@ -2057,16 +1913,16 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
           ),
           const SizedBox(height: 10),
           _buildTransactionItem(
-            avatarBg: const Color(0xFF1C6E5A),
+            avatarBg: const Color(0xFF6B21A8),
             initial: 'A',
             name: 'Angel Lou',
             category: 'Settlement Disbursement',
             time: 'Oct 03, 11:20 AM',
-            amount: '- PHP 2,500.00',
+            amount: '- ₱2,500.00',
             isPositive: false,
             status: 'SETTLED',
-            statusColor: const Color(0xFF17805F),
-            statusBg: const Color(0xFFE4F5EE),
+            statusColor: const Color(0xFF059669),
+            statusBg: const Color(0xFFECFDF5),
           ),
         ],
       ),
@@ -2080,7 +1936,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFEAECEE)),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -2100,21 +1956,21 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: const [
                   Text(
-                    'Monthly Summaries',
+                    'Each month',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF26313A),
+                      color: Color(0xFF1E103F),
                       letterSpacing: -0.4,
                     ),
                   ),
                   SizedBox(height: 3),
                   Text(
-                    'Quarterly disbursement (2026)',
+                    'Sent and received in 2026',
                     style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w500,
-                      color: Color(0xFF1C6E5A),
+                      color: Color(0xFF6B21A8),
                     ),
                   ),
                 ],
@@ -2155,14 +2011,14 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: const Color(0xFFF7F7F7),
+              color: const Color(0xFFF9FAFB),
               borderRadius: BorderRadius.circular(6),
             ),
             child: const Text(
               'Quarter 3 (Q3 2026)',
               style: TextStyle(
                 fontSize: 11,
-                color: Color(0xFF47525C),
+                color: Color(0xFF4B5563),
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.2,
               ),
@@ -2174,22 +2030,22 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             monthTitle: 'July 2026',
             transfersText: '24 transfers • ',
             greenAmount: '+ 55,000.00',
-            gross: 'PHP 42,000.00',
-            net: '+ PHP 26.5k net',
-            avatarBg: const Color(0xFF10171C),
+            gross: '₱42,000.00',
+            net: '+ ₱26.5k net',
+            avatarBg: const Color(0xFF380084),
           ),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
-            child: Divider(height: 1, color: Color(0xFFF1F3F4)),
+            child: Divider(height: 1, color: Color(0xFFF3F4F6)),
           ),
           _buildQuarterRow(
             initial: 'Aug',
             monthTitle: 'August 2026',
             transfersText: '19 Transfers • ',
             greenAmount: '+ 39,000.00',
-            gross: 'PHP 38,200.00',
-            net: '+ PHP 13.8k net',
-            avatarBg: const Color(0xFF1C6E5A),
+            gross: '₱38,200.00',
+            net: '+ ₱13.8k net',
+            avatarBg: const Color(0xFF6B21A8),
           ),
 
           const SizedBox(height: 18),
@@ -2198,14 +2054,14 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: const Color(0xFFF7F7F7),
+              color: const Color(0xFFF9FAFB),
               borderRadius: BorderRadius.circular(6),
             ),
             child: const Text(
               'Quarter 2 (Q2 2026)',
               style: TextStyle(
                 fontSize: 11,
-                color: Color(0xFF47525C),
+                color: Color(0xFF4B5563),
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.2,
               ),
@@ -2217,9 +2073,9 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             monthTitle: 'June 2026',
             transfersText: '10 Transfers • ',
             greenAmount: '+ 32,000.00',
-            gross: 'PHP 50,000.00',
-            net: '+ PHP 15.2k net',
-            avatarBg: const Color(0xFF2F78A8),
+            gross: '₱50,000.00',
+            net: '+ ₱15.2k net',
+            avatarBg: const Color(0xFF7C3AED),
           ),
         ],
       ),
@@ -2269,7 +2125,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                       style: const TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 13.5,
-                        color: Color(0xFF10171C),
+                        color: Color(0xFF111827),
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -2278,7 +2134,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                         Text(
                           transfersText,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 11, color: Color(0xFF7D8892)),
+                          style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
                         ),
                         Text(
                           greenAmount,
@@ -2286,7 +2142,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF17805F),
+                            color: Color(0xFF059669),
                           ),
                         ),
                       ],
@@ -2306,7 +2162,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
               style: const TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 13,
-                color: Color(0xFF10171C),
+                color: Color(0xFF111827),
               ),
             ),
             const SizedBox(height: 2),
@@ -2314,7 +2170,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
               net,
               style: const TextStyle(
                 fontSize: 11,
-                color: Color(0xFF17805F),
+                color: Color(0xFF059669),
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -2366,14 +2222,14 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                       style: const TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 13.5,
-                        color: Color(0xFF10171C),
+                        color: Color(0xFF111827),
                       ),
                     ),
                     const SizedBox(height: 1),
                     Text(
                       '$category • $time',
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 11, color: Color(0xFF7D8892)),
+                      style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
                     ),
                   ],
                 ),
@@ -2390,7 +2246,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
               style: TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 13.5,
-                color: isPositive ? const Color(0xFF17805F) : const Color(0xFF10171C),
+                color: isPositive ? const Color(0xFF059669) : const Color(0xFF111827),
                 letterSpacing: -0.2,
               ),
             ),
@@ -2454,13 +2310,13 @@ class _PointedTransferFlowPainter extends CustomPainter {
 
     // Baseline axis
     final axisPaint = Paint()
-      ..color = const Color(0xFFF1F3F4)
+      ..color = const Color(0xFFF3F4F6)
       ..strokeWidth = 1.0;
     canvas.drawLine(Offset(0, h - 8), Offset(w, h - 8), axisPaint);
 
     // Subtle horizontal grid guides
     final gridPaint = Paint()
-      ..color = const Color(0xFFF7F7F7)
+      ..color = const Color(0xFFF9FAFB)
       ..strokeWidth = 1.0;
     canvas.drawLine(Offset(paddingX, paddingTop + usableH * 0.33), Offset(w - paddingX, paddingTop + usableH * 0.33), gridPaint);
     canvas.drawLine(Offset(paddingX, paddingTop + usableH * 0.66), Offset(w - paddingX, paddingTop + usableH * 0.66), gridPaint);
@@ -2505,8 +2361,8 @@ class _PointedTransferFlowPainter extends CustomPainter {
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: [
-        const Color(0xFF2FA37E).withValues(alpha: 0.14),
-        const Color(0xFF2FA37E).withValues(alpha: 0.0),
+        const Color(0xFF2ECC71).withValues(alpha: 0.14),
+        const Color(0xFF2ECC71).withValues(alpha: 0.0),
       ],
     ).createShader(Rect.fromLTWH(0, paddingTop, w, usableH));
     canvas.drawPath(greenAreaPath, Paint()..shader = greenShader);
@@ -2519,15 +2375,15 @@ class _PointedTransferFlowPainter extends CustomPainter {
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: [
-        const Color(0xFF2F78A8).withValues(alpha: 0.12),
-        const Color(0xFF2F78A8).withValues(alpha: 0.0),
+        const Color(0xFF5E17EB).withValues(alpha: 0.12),
+        const Color(0xFF5E17EB).withValues(alpha: 0.0),
       ],
     ).createShader(Rect.fromLTWH(0, paddingTop, w, usableH));
     canvas.drawPath(violetAreaPath, Paint()..shader = violetShader);
 
     // 2. Draw Main Spline / Line Strokes
     final greenStrokePaint = Paint()
-      ..color = const Color(0xFF2FA37E)
+      ..color = const Color(0xFF2ECC71)
       ..strokeWidth = 2.8
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
@@ -2535,7 +2391,7 @@ class _PointedTransferFlowPainter extends CustomPainter {
     canvas.drawPath(greenPath, greenStrokePaint);
 
     final violetStrokePaint = Paint()
-      ..color = const Color(0xFF2F78A8)
+      ..color = const Color(0xFF5E17EB)
       ..strokeWidth = 2.8
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
@@ -2544,10 +2400,10 @@ class _PointedTransferFlowPainter extends CustomPainter {
 
     // 3. Draw All Pointed Vertices / Nodes on both lines
     final greenNodePaint = Paint()
-      ..color = const Color(0xFF2FA37E)
+      ..color = const Color(0xFF2ECC71)
       ..style = PaintingStyle.fill;
     final violetNodePaint = Paint()
-      ..color = const Color(0xFF2F78A8)
+      ..color = const Color(0xFF5E17EB)
       ..style = PaintingStyle.fill;
     final whiteInnerPaint = Paint()
       ..color = Colors.white
@@ -2577,19 +2433,19 @@ class _PointedTransferFlowPainter extends CustomPainter {
 
     // 5. Draw Vertical Guideline
     final dashPaint = Paint()
-      ..color = const Color(0xFF5AA9D6).withValues(alpha: 0.40)
+      ..color = const Color(0xFF8B5CF6).withValues(alpha: 0.40)
       ..strokeWidth = 1.2
       ..style = PaintingStyle.stroke;
     _drawDashedVerticalLine(canvas, scrubX, paddingTop - 12, h - 8, dashPaint);
 
     // 6. Draw Highlighted Active Scrub Rings
     // Active Green Ring
-    canvas.drawCircle(Offset(scrubX, scrubYGreen), 8.0, Paint()..color = const Color(0xFF2FA37E).withValues(alpha: 0.25));
+    canvas.drawCircle(Offset(scrubX, scrubYGreen), 8.0, Paint()..color = const Color(0xFF2ECC71).withValues(alpha: 0.25));
     canvas.drawCircle(Offset(scrubX, scrubYGreen), 5.5, greenNodePaint);
     canvas.drawCircle(Offset(scrubX, scrubYGreen), 3.0, whiteInnerPaint);
 
     // Active Violet Ring
-    canvas.drawCircle(Offset(scrubX, scrubYViolet), 8.0, Paint()..color = const Color(0xFF2F78A8).withValues(alpha: 0.25));
+    canvas.drawCircle(Offset(scrubX, scrubYViolet), 8.0, Paint()..color = const Color(0xFF5E17EB).withValues(alpha: 0.25));
     canvas.drawCircle(Offset(scrubX, scrubYViolet), 5.5, violetNodePaint);
     canvas.drawCircle(Offset(scrubX, scrubYViolet), 3.0, whiteInnerPaint);
 
@@ -2604,15 +2460,15 @@ class _PointedTransferFlowPainter extends CustomPainter {
     _drawCalloutText(
       canvas: canvas,
       center: Offset(badgeX, greenY),
-      text: '+${_formatCompactK(scrubValGreen)}',
-      color: const Color(0xFF2FA37E),
+      text: _formatPeso(scrubValGreen),
+      color: const Color(0xFF10B981),
     );
 
     _drawCalloutText(
       canvas: canvas,
       center: Offset(badgeX, violetY),
-      text: '-${_formatCompactK(scrubValViolet)}',
-      color: const Color(0xFF1C6E5A),
+      text: _formatPeso(scrubValViolet),
+      color: const Color(0xFF6B21A8),
     );
   }
 
@@ -2723,11 +2579,13 @@ class _PointedTransferFlowPainter extends CustomPainter {
     textPainter.paint(canvas, textOffset);
   }
 
-  String _formatCompactK(double val) {
-    if (val >= 1000) {
-      return '${(val / 1000).toStringAsFixed(1)}k';
-    }
-    return val.toStringAsFixed(0);
+  String _formatPeso(double val) {
+    final whole = val.round().abs().toString();
+    final grouped = whole.replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+    return '₱$grouped';
   }
 
   @override
