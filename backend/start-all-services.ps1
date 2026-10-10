@@ -10,8 +10,10 @@ if (-not (Test-Path $AgentJar)) {
 $services = @(
     @{ Name = "gateway-service"; Port = 8080; Jar = "gateway-service/target/gateway-service-1.0.0-SNAPSHOT.jar" },
     @{ Name = "account-service"; Port = 8081; Jar = "account-service/target/account-service-1.0.0-SNAPSHOT.jar" },
-    @{ Name = "ledger-mutation-engine"; Port = 8082; Jar = "ledger-mutation-engine/target/ledger-mutation-engine-1.0.0-SNAPSHOT.jar" },
-    @{ Name = "notification-service"; Port = 8083; Jar = "notification-service/target/notification-service-1.0.0-SNAPSHOT.jar" }
+    @{ Name = "transfer-orchestrator"; Port = 8082; Jar = "transfer-orchestrator/target/transfer-orchestrator-1.0.0-SNAPSHOT.jar" },
+    @{ Name = "notification-service"; Port = 8083; Jar = "notification-service/target/notification-service-1.0.0-SNAPSHOT.jar" },
+    @{ Name = "t24-mock-cbs"; Port = 8085; Jar = "t24-mock-cbs/target/t24-mock-cbs-1.0.0-SNAPSHOT.jar" },
+    @{ Name = "compliance-service"; Port = 8086; Jar = "compliance-service/target/compliance-service-1.0.0-SNAPSHOT.jar" }
 )
 
 Write-Host "======================================================================" -ForegroundColor Cyan
@@ -64,6 +66,6 @@ $riskProc = Start-Process -FilePath $pythonExe -ArgumentList "-m", "app.server" 
 Write-Host "  -> Process ID: $($riskProc.Id) (logging to risk-service.stdout.log)" -ForegroundColor Green
 
 Write-Host "======================================================================" -ForegroundColor Cyan
-Write-Host "All 5 banking services launched. Tail logs with: Get-Content <service>.log -Wait" -ForegroundColor Cyan
+Write-Host "All 7 banking services launched. Tail logs with: Get-Content <service>.log -Wait" -ForegroundColor Cyan
 Write-Host "Traces available at: https://app.datadoghq.com/apm/traces" -ForegroundColor Cyan
 Write-Host "======================================================================" -ForegroundColor Cyan
