@@ -19,7 +19,7 @@ public class LedgerMutationAudit {
     @Column(name = "audit_id")
     private Long auditId;
 
-    @Column(name = "transaction_id", nullable = false, unique = true, length = 64)
+    @Column(name = "transaction_id", nullable = false, length = 64)
     private String transactionId;
 
     @Column(name = "account_id", nullable = false, length = 36)

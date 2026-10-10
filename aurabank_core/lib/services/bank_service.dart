@@ -1076,12 +1076,24 @@ class BankService extends ChangeNotifier {
           final data = jsonDecode(response.body);
           final t24Ref = data['t24_reference'] ?? data['t24Reference'] ?? data['transaction_id'] ?? fallbackRef;
           final newBal = (data['balance_after'] ?? data['available_balance'] as num?)?.toDouble();
-          if (newBal != null) {
-            availableBalance = newBal;
+          final status = (data['status'] ?? 'COMMITTED').toString().toUpperCase();
+          final isHeld = status == 'PENDING_APPROVAL' ||
+              status == 'PENDING_REVIEW' ||
+              (data['risk_decision'] ?? data['riskDecision']) == 'REVIEW';
+          // A held transfer has only reserved the funds. It is not settled, so it must not
+          // show up as a completed debit or fire a "Fund Transfer Settled" notification.
+          if (isHeld) {
+            availableBalance = newBal ?? availableBalance - amount;
+            notifyListeners();
           } else {
-            availableBalance -= amount;
+            // _applyLocalTransfer takes the amount off itself, so apply it first and
+            // let the server's figure win afterwards (it used to be debited twice).
+            _applyLocalTransfer(amount, recipientName, t24Ref, remarks);
+            if (newBal != null) {
+              availableBalance = newBal;
+              notifyListeners();
+            }
           }
-          _applyLocalTransfer(amount, recipientName, t24Ref, remarks);
           return {
             'success': true,
             'reference': t24Ref,

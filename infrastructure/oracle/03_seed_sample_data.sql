@@ -118,7 +118,7 @@ INSERT INTO users (
     TIMESTAMP '2023-01-15 08:00:00 UTC', TIMESTAMP '2023-01-15 08:00:00 UTC'
 );
 
--- Team Member 1: Wax (Customer in Core/Mobile/Web, Admin in Console)
+-- Team Member 1: Wax (Admin in Console)
 INSERT INTO users (
     user_id, first_name, middle_name, last_name, email, phone_number,
     dob, government_id, role, password_hash, pin_hash,
@@ -126,13 +126,13 @@ INSERT INTO users (
     created_at, updated_at
 ) VALUES (
     'USR-TM-WAX', 'Wax', 'Aura', 'Team', 'wax@bank.com', '09990001001',
-    TO_DATE('1995-01-01', 'YYYY-MM-DD'), 'PSA-TM-WAX01', 'CUSTOMER',
+    TO_DATE('1995-01-01', 'YYYY-MM-DD'), 'PSA-TM-WAX01', 'ADMIN',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', NULL,
     5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC',
     TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC'
 );
 
--- Team Member 2: Hans (Customer in Core/Mobile/Web, Admin in Console)
+-- Team Member 2: Hans (Admin in Console)
 INSERT INTO users (
     user_id, first_name, middle_name, last_name, email, phone_number,
     dob, government_id, role, password_hash, pin_hash,
@@ -140,13 +140,13 @@ INSERT INTO users (
     created_at, updated_at
 ) VALUES (
     'USR-TM-HANS', 'Hans', 'Aura', 'Team', 'hans@bank.com', '09990001002',
-    TO_DATE('1995-01-02', 'YYYY-MM-DD'), 'PSA-TM-HANS02', 'CUSTOMER',
+    TO_DATE('1995-01-02', 'YYYY-MM-DD'), 'PSA-TM-HANS02', 'ADMIN',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', NULL,
     5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC',
     TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC'
 );
 
--- Team Member 3: JM (Customer in Core/Mobile/Web, Teller in Console)
+-- Team Member 3: JM (Teller in Console)
 INSERT INTO users (
     user_id, first_name, middle_name, last_name, email, phone_number,
     dob, government_id, role, password_hash, pin_hash,
@@ -154,13 +154,13 @@ INSERT INTO users (
     created_at, updated_at
 ) VALUES (
     'USR-TM-JM', 'JM', 'Aura', 'Team', 'jm@bank.com', '09990001003',
-    TO_DATE('1995-01-03', 'YYYY-MM-DD'), 'PSA-TM-JM03', 'CUSTOMER',
+    TO_DATE('1995-01-03', 'YYYY-MM-DD'), 'PSA-TM-JM03', 'TELLER',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', NULL,
     5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC',
     TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC'
 );
 
--- Team Member 4: Zel (Customer in Core/Mobile/Web, Admin in Console)
+-- Team Member 4: Zel (Admin in Console)
 INSERT INTO users (
     user_id, first_name, middle_name, last_name, email, phone_number,
     dob, government_id, role, password_hash, pin_hash,
@@ -168,13 +168,13 @@ INSERT INTO users (
     created_at, updated_at
 ) VALUES (
     'USR-TM-ZEL', 'Zel', 'Aura', 'Team', 'zel@bank.com', '09990001004',
-    TO_DATE('1995-01-04', 'YYYY-MM-DD'), 'PSA-TM-ZEL04', 'CUSTOMER',
+    TO_DATE('1995-01-04', 'YYYY-MM-DD'), 'PSA-TM-ZEL04', 'ADMIN',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', NULL,
     5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC',
     TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC'
 );
 
--- Team Member 5: Jessy (Customer in Core/Mobile/Web, Teller in Console)
+-- Team Member 5: Jessy (Teller in Console)
 INSERT INTO users (
     user_id, first_name, middle_name, last_name, email, phone_number,
     dob, government_id, role, password_hash, pin_hash,
@@ -182,13 +182,13 @@ INSERT INTO users (
     created_at, updated_at
 ) VALUES (
     'USR-TM-JESSY', 'Jessy', 'Aura', 'Team', 'jessy@bank.com', '09990001005',
-    TO_DATE('1995-01-05', 'YYYY-MM-DD'), 'PSA-TM-JESSY05', 'CUSTOMER',
+    TO_DATE('1995-01-05', 'YYYY-MM-DD'), 'PSA-TM-JESSY05', 'TELLER',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', NULL,
     5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC',
     TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC'
 );
 
--- Team Member 6: Maye (Customer in Core/Mobile/Web, Admin in Console)
+-- Team Member 6: Maye (Admin in Console)
 INSERT INTO users (
     user_id, first_name, middle_name, last_name, email, phone_number,
     dob, government_id, role, password_hash, pin_hash,
@@ -196,13 +196,13 @@ INSERT INTO users (
     created_at, updated_at
 ) VALUES (
     'USR-TM-MAYE', 'Maye', 'Aura', 'Team', 'maye@bank.com', '09990001006',
-    TO_DATE('1995-01-06', 'YYYY-MM-DD'), 'PSA-TM-MAYE06', 'CUSTOMER',
+    TO_DATE('1995-01-06', 'YYYY-MM-DD'), 'PSA-TM-MAYE06', 'ADMIN',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', NULL,
     5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC',
     TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC'
 );
 
--- Team Member 7: Angel (Customer in Core/Mobile/Web, Teller in Console)
+-- Team Member 7: Angel (Teller in Console)
 INSERT INTO users (
     user_id, first_name, middle_name, last_name, email, phone_number,
     dob, government_id, role, password_hash, pin_hash,
@@ -210,7 +210,7 @@ INSERT INTO users (
     created_at, updated_at
 ) VALUES (
     'USR-TM-ANGEL', 'Angel', 'Aura', 'Team', 'angel@bank.com', '09990001007',
-    TO_DATE('1995-01-07', 'YYYY-MM-DD'), 'PSA-TM-ANGEL07', 'CUSTOMER',
+    TO_DATE('1995-01-07', 'YYYY-MM-DD'), 'PSA-TM-ANGEL07', 'TELLER',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', NULL,
     5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC',
     TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC'

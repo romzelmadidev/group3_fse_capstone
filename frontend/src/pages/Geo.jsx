@@ -5,6 +5,7 @@ import { MapPinned, Plane, Navigation } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { greatCircle, haversineKm } from '../lib/format';
 import { Badge, Button, ErrorNote, PageHeader, SearchBar, SkeletonRows, cn, useLoad, useToast } from '../components/ui';
+import { staffName } from '../context/Auth';
 
 /** Demo destinations, with an IP that geolocates to each city. */
 const PLACES = [
@@ -23,8 +24,9 @@ export default function Geo() {
     () => api.get('/accounts').then((r) => {
       const byOwner = new Map();
       for (const a of r.data) {
-        if (a.owner_role !== 'CUSTOMER') continue;
-        const c = byOwner.get(a.user_id) || { user_id: a.user_id, name: a.owner_name || a.user_id, accounts: 0 };
+        if (a.owner_role !== 'CUSTOMER' && !a.user_id?.startsWith('USR-TM-')) continue;
+        const displayName = staffName(a.user_id) !== a.user_id ? staffName(a.user_id) : (a.owner_name || a.user_id);
+        const c = byOwner.get(a.user_id) || { user_id: a.user_id, name: displayName, accounts: 0 };
         c.accounts += 1;
         byOwner.set(a.user_id, c);
       }

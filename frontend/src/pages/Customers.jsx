@@ -29,14 +29,18 @@ export default function Customers() {
   const customers = useMemo(() => {
     const byOwner = new Map();
     for (const a of accounts.data || []) {
-      if (a.owner_role !== 'CUSTOMER') continue;
-      const c = byOwner.get(a.user_id) || { user_id: a.user_id, name: a.owner_name || a.user_id, accounts: [] };
+      if (a.owner_role !== 'CUSTOMER' && !a.user_id?.startsWith('USR-TM-')) continue;
+      const displayName = staffName(a.user_id) !== a.user_id ? staffName(a.user_id) : (a.owner_name || a.user_id);
+      const c = byOwner.get(a.user_id) || { user_id: a.user_id, name: displayName, accounts: [] };
       c.accounts.push(a);
       byOwner.set(a.user_id, c);
     }
     return [...byOwner.values()].sort((x, y) => x.name.localeCompare(y.name));
   }, [accounts.data]);
-  const owners = useMemo(() => new Map((accounts.data || []).map((a) => [a.account_id, a.owner_name])), [accounts.data]);
+  const owners = useMemo(
+    () => new Map((accounts.data || []).map((a) => [a.account_id, staffName(a.user_id) !== a.user_id ? staffName(a.user_id) : (a.owner_name || a.user_id)])),
+    [accounts.data],
+  );
   const [userId, setUserId] = useState(null);
   const [customerQ, setCustomerQ] = useState('');
 

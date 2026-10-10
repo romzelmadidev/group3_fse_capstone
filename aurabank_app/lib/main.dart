@@ -1,3 +1,4 @@
+import 'package:aurabank_core/navigation/aura_entry_route.dart';
 import 'package:aurabank_core/navigation/root_navigator.dart';
 import 'services/bank_service.dart';
 import 'services/device_storage.dart';
@@ -45,7 +46,6 @@ class AuraBankApp extends StatelessWidget {
       routes: {
         '/': (context) => const LandingScreen(),
         '/login': (context) => const LoginScreen(),
-        '/dashboard': (context) => const AppShell(initialIndex: 0),
         '/cards': (context) => const CardsScreen(),
         '/analytics': (context) => const AppShell(initialIndex: 3),
         '/settings': (context) => const SettingsScreen(),
@@ -57,6 +57,9 @@ class AuraBankApp extends StatelessWidget {
         '/security_gate': (context) => const SecurityGateScreen(),
         '/risk_showcase': (context) => const RiskEngineShowcaseScreen(),
       },
+      onGenerateRoute: (settings) => settings.name == '/dashboard'
+          ? auraEntryRoute(settings, (_) => const AppShell(initialIndex: 0))
+          : null,
     );
   }
 }

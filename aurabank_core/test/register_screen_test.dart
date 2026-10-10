@@ -1,5 +1,6 @@
 import 'package:aurabank_core/screens/auth/register_screen.dart';
 import 'package:aurabank_core/services/auth_api_service.dart';
+import 'package:aurabank_core/widgets/aurora_background.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -83,4 +84,59 @@ void main() {
     expect(find.byKey(const ValueKey('registerError')), findsOneWidget);
     expect(find.text('Email juan@example.ph is already registered.'), findsOneWidget);
   });
+
+  for (final size in const [Size(390, 844), Size(375, 667), Size(460, 1000)]) {
+    testWidgets('phone ${size.width.toInt()}x${size.height.toInt()}: sheet docks below sky, corners sit on sky, not covered',
+        (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(const MaterialApp(home: RegisterScreen()));
+      await tester.pump(const Duration(seconds: 1));
+
+      final sky = tester.getRect(find.byType(AuroraBackground));
+      final sheet = tester.getRect(find.byKey(const ValueKey('registerSheet')));
+      final heading = tester.getRect(find.text('Open an account'));
+      final firstName = tester.getRect(_field('First name'));
+
+      expect(sky.topLeft, Offset.zero);
+      expect(sky.width, size.width);
+      expect(sky.bottom, greaterThan(sheet.top), reason: 'sky runs under sheet corners');
+      expect(sheet.width, size.width);
+      expect(heading.bottom, lessThan(sheet.top));
+      // Ensure the sheet top is above the first field with proper padding, never clipped or covered
+      expect(firstName.top - sheet.top, inInclusiveRange(30, 36));
+    });
+  }
+
+  testWidgets('phone with keyboard open: register sheet scrolls and Create account remains reachable', (tester) async {
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    tester.view.physicalSize = const Size(375, 667);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(const MaterialApp(home: RegisterScreen()));
+    await tester.pump(const Duration(seconds: 1));
+
+    await tester.ensureVisible(find.text('Create account'));
+    await tester.pump();
+    expect(tester.getRect(find.text('Create account')).bottom, lessThanOrEqualTo(667 - 300));
+  });
+
+  testWidgets('desktop: floating card centred with heading inside', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(const MaterialApp(home: RegisterScreen()));
+    await tester.pump(const Duration(seconds: 1));
+
+    final card = tester.getRect(find.byKey(const ValueKey('registerSheet')));
+    final heading = tester.getRect(find.text('Open an account'));
+
+    expect(card.width, 440);
+    expect(card.center.dx, closeTo(720, 1));
+    expect(card.contains(heading.center), isTrue);
+  });
 }
+

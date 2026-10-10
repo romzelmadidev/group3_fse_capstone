@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../models/user_persona.dart';
 import '../../services/bank_service.dart';
 import '../../widgets/aura_logo.dart';
 import '../../widgets/require_device_approval.dart';
@@ -97,56 +98,14 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
     },
   ];
 
-  static const List<Map<String, String>> _allOracleCustomers = [
-    {
-      'name': 'Juan Dela Cruz',
-      'accountNo': '1000-2000-3001',
-      'tag': 'Verified Customer',
-    },
-    {
-      'name': 'Maria Clara Reyes',
-      'accountNo': '1000-2000-3002',
-      'tag': 'Verified Customer',
-    },
-    {
-      'name': 'Jose Protacio Rizal',
-      'accountNo': '1000-2000-3004',
-      'tag': 'Verified Customer',
-    },
-    {
-      'name': 'Andres Castro Bonifacio',
-      'accountNo': '1000-2000-3005',
-      'tag': 'Verified Customer',
-    },
-    {
-      'name': 'Gabriela Cario Silang',
-      'accountNo': '1000-2000-3006',
-      'tag': 'Verified Customer',
-    },
-    {
-      'name': 'Emilio Dizon Jacinto',
-      'accountNo': '1000-2000-3007',
-      'tag': 'Verified Customer',
-    },
-    {
-      'name': 'Melchora Aquino Ramos',
-      'accountNo': '1000-2000-3008',
-      'tag': 'Verified Customer',
-    },
-    {
-      'name': 'Apolinario Marasigan Mabini',
-      'accountNo': '1000-2000-3009',
-      'tag': 'Verified Customer',
-    },
-  ];
-
   List<Map<String, String>> get _availableRecipients {
     final currentAcc = _bankService.savingsAccountNumber;
     final currentId = _bankService.activeAccountId;
-    final filtered = _allOracleCustomers.where((c) =>
+    final all = UserPersona.transferableRecipients;
+    final filtered = all.where((c) =>
       c['accountNo'] != currentAcc && c['accountNo'] != currentId
     ).toList();
-    return filtered.isNotEmpty ? filtered : _allOracleCustomers;
+    return filtered.isNotEmpty ? filtered : all;
   }
 
   String? _selectedCustomerName;
@@ -159,7 +118,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
     _bankService.addListener(_onServiceUpdate);
 
     final recipients = _availableRecipients;
-    final initialRecipient = recipients.isNotEmpty ? recipients.first : _allOracleCustomers[1];
+    final initialRecipient = recipients.isNotEmpty ? recipients.first : UserPersona.transferableRecipients.first;
 
     _selectedCustomerName = widget.initialRecipientName ?? initialRecipient['name'];
     _accountController = TextEditingController(

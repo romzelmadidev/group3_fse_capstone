@@ -134,60 +134,68 @@ class _RegisterScreenState extends State<RegisterScreen> {
   /// Phone: the sky carries the heading and the paper sheet docks below it,
   /// reaching the bottom edge however short the form is.
   Widget _phoneLayout() {
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              // Both layers run under the sheet so its corners sit on sky.
-              const Positioned(left: 0, right: 0, top: 0, bottom: -40, child: AuroraBackground(intensity: 0.9)),
-              Positioned(
-                left: 0,
-                right: 0,
-                top: 0,
-                bottom: -40,
-                // Night settles under the heading so white text holds AA contrast.
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [AuraColors.ink.withValues(alpha: 0.25), AuraColors.ink.withValues(alpha: 0.85)],
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const ClampingScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: IntrinsicHeight(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    // Both layers run under the sheet so its corners sit on sky.
+                    const Positioned(left: 0, right: 0, top: 0, bottom: -40, child: AuroraBackground(intensity: 0.9)),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: 0,
+                      bottom: -40,
+                      // Night settles under the heading so white text holds AA contrast.
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [AuraColors.ink.withValues(alpha: 0.25), AuraColors.ink.withValues(alpha: 0.85)],
+                          ),
+                        ),
+                      ),
                     ),
+                    SafeArea(
+                      bottom: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const AuraWordmark(size: 30, onDark: true),
+                            const SizedBox(height: 56),
+                            _heading(onDark: true),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                Expanded(
+                  child: Container(
+                    key: const ValueKey('registerSheet'),
+                    padding: const EdgeInsets.fromLTRB(24, 32, 24, 12),
+                    decoration: const BoxDecoration(
+                      color: AuraColors.surface,
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                    ),
+                    child: SafeArea(top: false, child: _formBody()),
                   ),
                 ),
-              ),
-              SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const AuraWordmark(size: 30, onDark: true),
-                      const SizedBox(height: 56),
-                      _heading(onDark: true),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: Container(
-            key: const ValueKey('registerSheet'),
-            padding: const EdgeInsets.fromLTRB(24, 32, 24, 12),
-            decoration: const BoxDecoration(
-              color: AuraColors.surface,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              ],
             ),
-            child: SafeArea(top: false, child: _formBody()),
           ),
         ),
-      ],
+      ),
     );
   }
 

@@ -184,6 +184,13 @@ class NotificationStreamService extends ChangeNotifier {
                 try {
                   final data = jsonDecode(dataStr) as Map<String, dynamic>;
                   final type = data['type'] as String? ?? currentEvent;
+                  // Never act on another customer's event, even if a server misroutes it.
+                  final owner = (data['user_id'] ?? data['userId'])?.toString();
+                  if (owner != null && owner.isNotEmpty && owner != _activeUserId) {
+                    debugPrint('[NotificationStream] Dropped $type addressed to a different user.');
+                    currentEvent = '';
+                    return;
+                  }
                   if (type == 'SECURITY_ALERT') {
                     final alert = SecurityAlertEvent.fromJson(data);
                     _onSecurityAlertReceived(alert);
@@ -307,7 +314,14 @@ class NotificationStreamService extends ChangeNotifier {
                   id.isNotEmpty &&
                   isAfterSession &&
                   _seenNotificationIds.add(id)) {
-                _onTransactionAlertReceived(item);
+                // The SSE toast for this transfer may already be on screen under a
+                // different id; the persisted record names the transfer in its text.
+                final text = item['message']?.toString() ?? '';
+                final alreadyShown = _notifications.any((n) {
+                  final t = n.metadata['transferId']?.toString();
+                  return t != null && t.isNotEmpty && text.contains(t);
+                });
+                if (!alreadyShown) _onTransactionAlertReceived(item);
               }
             }
           }
@@ -320,7 +334,11 @@ class NotificationStreamService extends ChangeNotifier {
   void postNotification(AppNotification notif, {bool showBanner = true}) {
     final existingIndex = _notifications.indexWhere((n) => n.id == notif.id);
     if (existingIndex >= 0) {
-      _notifications[existingIndex] = notif;
+      // Same id arriving again (SSE then poll, or a double send): refresh the
+      // entry but never pop a second banner.
+      _notifications[existingIndex] = notif..isRead = _notifications[existingIndex].isRead;
+      notifyListeners();
+      return;
     } else {
       _notifications.insert(0, notif);
       if (_notifications.length > 50) {
@@ -606,7 +624,11 @@ class NotificationStreamService extends ChangeNotifier {
       timestamp: DateTime.tryParse(data['timestamp'] as String? ?? '') ?? DateTime.now(),
       metadata: data,
     );
-    postNotification(notif, showBanner: isForThisDevice);
+    // Other devices' approvals/revocations are not this session's business;
+    // listing them is what filled the notification centre on every login.
+    if (isForThisDevice && _seenNotificationIds.add(notif.id)) {
+      postNotification(notif, showBanner: true);
+    }
 
     // If this client is not logged in, ignore session revocation events completely.
     // An unauthenticated user or login screen session cannot be revoked.

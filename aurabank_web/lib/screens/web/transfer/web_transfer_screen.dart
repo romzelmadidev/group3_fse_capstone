@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:aurabank_core/models/user_persona.dart';
 import 'package:aurabank_core/services/bank_service.dart';
 
 class QuickTransferDraft {
@@ -34,43 +35,20 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
   String _selectedPartnerBank = 'MeyBank';
   String _selectedPurpose = 'Remittance';
 
-  static const List<Map<String, String>> _seededCustomers = [
-    {
-      'name': 'Maria Clara Reyes',
-      'accountNo': '1000-2000-3002',
-    },
-    {
-      'name': 'Jose Protacio Rizal',
-      'accountNo': '1000-2000-3004',
-    },
-    {
-      'name': 'Andres Castro Bonifacio',
-      'accountNo': '1000-2000-3005',
-    },
-    {
-      'name': 'Gabriela Carlo Silang',
-      'accountNo': '1000-2000-3006',
-    },
-    {
-      'name': 'Emilio Dizon Jacinto',
-      'accountNo': '1000-2000-3007',
-    },
-    {
-      'name': 'Melchora Aquino Ramos',
-      'accountNo': '1000-2000-3008',
-    },
-    {
-      'name': 'Apolinario Marasigan Mabini',
-      'accountNo': '1000-2000-3009',
-    },
-  ];
+  List<Map<String, String>> get _availableRecipients {
+    final currentAcc = _bankService.savingsAccountNumber;
+    final currentId = _bankService.activeAccountId;
+    final all = UserPersona.transferableRecipients;
+    final filtered = all.where((c) =>
+      c['accountNo'] != currentAcc && c['accountNo'] != currentId
+    ).toList();
+    return filtered.isNotEmpty ? filtered : all;
+  }
 
-  String? _selectedCustomerName = 'Maria Clara Reyes';
+  String? _selectedCustomerName;
 
-  final TextEditingController _accountController =
-      TextEditingController(text: '1000-2000-3002');
-  final TextEditingController _recipientController =
-      TextEditingController(text: 'Maria Clara Reyes');
+  late final TextEditingController _accountController;
+  late final TextEditingController _recipientController;
   final TextEditingController _amountController =
       TextEditingController(text: '5000');
   final TextEditingController _remarksController =
@@ -117,6 +95,12 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
   @override
   void initState() {
     super.initState();
+    final recipients = _availableRecipients;
+    final initialRecipient = recipients.isNotEmpty ? recipients.first : UserPersona.transferableRecipients.first;
+    _selectedCustomerName = initialRecipient['name'];
+    _accountController = TextEditingController(text: initialRecipient['accountNo'] ?? '');
+    _recipientController = TextEditingController(text: initialRecipient['name'] ?? '');
+
     _bankService.addListener(_onServiceUpdate);
     final draft = widget.draft;
     if (draft != null) _applyDraft(draft);
@@ -575,7 +559,11 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
 
                                 final isOk = result['success'] == true;
                                 if (isOk) {
-                                  _showReceiptModal((result['reference'] ??
+                                  final st = result['status']?.toString().toUpperCase();
+                                  final held = st == 'PENDING_APPROVAL' ||
+                                      st == 'PENDING_REVIEW' ||
+                                      result['risk_decision'] == 'REVIEW';
+                                  _showReceiptModal(held: held, (result['reference'] ??
                                           result['t24_reference'] ??
                                           'FT${DateTime.now().millisecondsSinceEpoch.toString().substring(3)}')
                                       as String);
@@ -686,7 +674,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
   }
 
   // Step 3: Transaction Receipt Modal (Clean Desktop Architecture)
-  void _showReceiptModal(String ref) {
+  void _showReceiptModal(String ref, {bool held = false}) {
     final now = DateTime.now();
     final months = [
       'January', 'February', 'March', 'April', 'May', 'June',
@@ -723,19 +711,19 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                 Container(
                   width: 58,
                   height: 58,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFE4F5EE),
+                  decoration: BoxDecoration(
+                    color: held ? const Color(0xFFFCEFDD) : const Color(0xFFE4F5EE),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.check_circle_rounded,
-                    color: Color(0xFF17805F),
+                  child: Icon(
+                    held ? Icons.hourglass_top_rounded : Icons.check_circle_rounded,
+                    color: held ? const Color(0xFFB7681E) : const Color(0xFF17805F),
                     size: 34,
                   ),
                 ),
                 const SizedBox(height: 14),
-                const Text(
-                  'Transaction Receipt',
+                Text(
+                  held ? 'Transfer On Hold' : 'Transaction Receipt',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 15,
@@ -795,7 +783,15 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       const SizedBox(height: 8),
                       _buildModalRow('Transaction Time', timeStr),
                       const SizedBox(height: 8),
-                      _buildModalRow('Status', 'COMPLETED', color: const Color(0xFF17805F)),
+                      _buildModalRow(
+                        'Status',
+                        held ? 'PENDING VERIFICATION' : 'COMPLETED',
+                        color: held ? const Color(0xFFB7681E) : const Color(0xFF17805F),
+                      ),
+                      if (held) ...[
+                        const SizedBox(height: 8),
+                        _buildModalRow('Note', 'Funds are reserved, not yet sent to the recipient'),
+                      ],
                     ],
                   ),
                 ),
@@ -1137,11 +1133,13 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
               ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
-                  value: _selectedCustomerName,
+                  value: (_availableRecipients.any((c) => c['name'] == _selectedCustomerName) || _selectedCustomerName == 'CUSTOM')
+                      ? _selectedCustomerName
+                      : (_availableRecipients.isNotEmpty ? _availableRecipients.first['name'] : 'CUSTOM'),
                   isExpanded: true,
                   icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: Color(0xFF6B7280)),
                   items: [
-                    ..._seededCustomers.map((cust) => DropdownMenuItem<String>(
+                    ..._availableRecipients.map((cust) => DropdownMenuItem<String>(
                       value: cust['name'],
                       child: Row(
                         children: [
@@ -1177,7 +1175,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                     setState(() {
                       _selectedCustomerName = val;
                       if (val != 'CUSTOM') {
-                        final found = _seededCustomers.firstWhere((c) => c['name'] == val);
+                        final found = _availableRecipients.firstWhere((c) => c['name'] == val);
                         _recipientController.text = found['name']!;
                         _accountController.text = found['accountNo']!;
                       }
