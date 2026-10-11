@@ -328,9 +328,58 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
+    // Set caller as primary device
+    final origDeviceId = AuthApiService().currentDeviceId;
+    AuthApiService().currentDeviceId = 'dev_1';
+    AuthApiService().currentIsPrimaryDevice = true;
+    addTearDown(() {
+      AuthApiService().currentDeviceId = origDeviceId;
+      AuthApiService().currentIsPrimaryDevice = null;
+    });
+
+    final testTrustedDevices = [
+      {
+        'id': 'dev_1',
+        'name': 'iPhone 15 Pro',
+        'os': 'Primary Trusted Device',
+        'location': 'San Francisco, US • iOS 17.5',
+        'isPrimary': true,
+        'isApproved': true,
+        'status': 'Active Now',
+        'isActive': true,
+        'icon': Icons.phone_iphone_rounded,
+      },
+      {
+        'id': 'dev_2',
+        'name': 'iPad Air',
+        'os': 'Secondary Device (Approved)',
+        'location': 'San Francisco, US • iPadOS 17.5',
+        'isPrimary': false,
+        'isApproved': true,
+        'status': 'Approved',
+        'isActive': true,
+        'icon': Icons.tablet_mac_rounded,
+      },
+    ];
+
+    final testWebSessions = [
+      {
+        'id': 'web_1',
+        'browser': 'Chrome • macOS',
+        'details': 'Active Web Session • Connected',
+        'location': 'San Francisco, US • IP: 192.0.2.1',
+        'isApproved': true,
+        'status': 'Active Now',
+        'icon': Icons.laptop_mac_rounded,
+      },
+    ];
+
     await tester.pumpWidget(
-      const MaterialApp(
-        home: DevicesSessionsScreen(),
+      MaterialApp(
+        home: DevicesSessionsScreen(
+          initialTrustedDevices: testTrustedDevices,
+          initialWebSessions: testWebSessions,
+        ),
       ),
     );
 
@@ -374,6 +423,96 @@ void main() {
     // Verify web sessions are terminated and empty state is rendered
     expect(find.text('Chrome • macOS'), findsNothing);
     expect(find.text('No active web sessions.'), findsOneWidget);
+  });
+
+  testWidgets('Secondary or desktop devices cannot revoke primary device and cannot approve pending requests',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final testTrustedDevices = [
+      {
+        'id': 'dev_1',
+        'name': 'iPhone 15 Pro',
+        'os': 'Primary Trusted Device',
+        'location': 'San Francisco, US • iOS 17.5',
+        'isPrimary': true,
+        'isApproved': true,
+        'status': 'Active Now',
+        'isActive': true,
+        'icon': Icons.phone_iphone_rounded,
+      },
+      {
+        'id': 'dev_2',
+        'name': 'iPad Air',
+        'os': 'Secondary Device (Approved)',
+        'location': 'San Francisco, US • iPadOS 17.5',
+        'isPrimary': false,
+        'isApproved': true,
+        'status': 'Approved',
+        'isActive': true,
+        'icon': Icons.tablet_mac_rounded,
+      },
+    ];
+
+    final testWebSessions = [
+      {
+        'id': 'web_1',
+        'browser': 'Chrome • macOS',
+        'details': 'Active Web Session • Connected',
+        'location': 'San Francisco, US • IP: 192.0.2.1',
+        'isApproved': true,
+        'status': 'Active Now',
+        'icon': Icons.laptop_mac_rounded,
+      },
+    ];
+
+    // Set caller as secondary device
+    AuthApiService().currentIsPrimaryDevice = false;
+    addTearDown(() {
+      AuthApiService().currentIsPrimaryDevice = null;
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DevicesSessionsScreen(
+          initialTrustedDevices: testTrustedDevices,
+          initialWebSessions: testWebSessions,
+        ),
+      ),
+    );
+
+    expect(find.text('Devices & Sessions'), findsOneWidget);
+    expect(find.text('iPhone 15 Pro'), findsOneWidget);
+    expect(find.text('PRIMARY'), findsOneWidget);
+
+    // Primary device card must NOT have a Revoke button when viewed from secondary device
+    // Only iPad Air (secondary) has a Revoke button
+    expect(find.text('Revoke'), findsNWidgets(1));
+
+    // Neither pending devices nor web sessions should have an Approve button
+    expect(find.text('Approve'), findsNothing);
+  });
+
+  testWidgets('Devices & Sessions screen does not load mock devices by default',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: DevicesSessionsScreen(),
+      ),
+    );
+
+    expect(find.text('iPhone 15 Pro'), findsNothing);
+    expect(find.text('iPad Air'), findsNothing);
+    expect(find.text('Chrome • macOS'), findsNothing);
+    expect(find.text('Safari • iPadOS Web'), findsNothing);
   });
 
   testWidgets('Security Gate screen cycles scan, screen share warning, and fraud block',

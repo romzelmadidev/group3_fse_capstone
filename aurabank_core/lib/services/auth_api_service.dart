@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'package:flutter/foundation.dart' show debugPrint, defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:http/http.dart' as http;
 import '../models/user_persona.dart';
 import 'bank_service.dart';
@@ -213,7 +213,10 @@ class AuthApiService {
   String? currentAccessToken;
 
   bool get isDeviceApproved => currentIsApproved ?? (currentIsPrimaryDevice == true);
-  bool get isPrimaryDevice => currentIsPrimaryDevice ?? true;
+  bool get isPrimaryDevice =>
+      !kIsWeb &&
+      currentDeviceType.toUpperCase() != 'WEB' &&
+      (currentIsPrimaryDevice ?? DeviceStorage.getIsPrimaryDevice() ?? false);
   bool get isAuthenticated =>
       (currentAccessToken != null && currentAccessToken!.isNotEmpty) ||
       (DeviceStorage.getAccessToken() != null && DeviceStorage.getAccessToken()!.isNotEmpty);
@@ -222,7 +225,15 @@ class AuthApiService {
     currentDeviceId = preset.id;
     currentDeviceName = preset.name;
     currentDeviceType = preset.deviceType;
+    if (preset.deviceType.toUpperCase() == 'WEB') {
+      currentIsPrimaryDevice = false;
+    } else if (preset.id == 'dev-iphone-primary') {
+      currentIsPrimaryDevice = true;
+    } else {
+      currentIsPrimaryDevice = false;
+    }
     DeviceIdentity().setDevice(preset.id, preset.name, newType: preset.deviceType);
+    DeviceStorage.savePrimaryDeviceStatus(isPrimary: currentIsPrimaryDevice == true);
   }
 
   http.Client get _client => httpClient ?? http.Client();
@@ -281,13 +292,19 @@ class AuthApiService {
           final data = jsonDecode(response.body) as Map<String, dynamic>;
           final statusStr = data['status'] as String? ?? 'AUTHENTICATED';
           currentIsPrimaryDevice = data['is_primary_device'] as bool?;
+          currentPrimaryDeviceId = data['primary_device_id'] as String?;
+          if (currentIsPrimaryDevice != null) {
+            DeviceStorage.savePrimaryDeviceStatus(
+              isPrimary: currentIsPrimaryDevice!,
+              primaryDeviceId: currentPrimaryDeviceId,
+            );
+          }
           final isPendingStatus = statusStr == 'PENDING_CONFIRMATION' ||
               statusStr == 'PENDING_APPROVAL' ||
               data['is_approved'] == false;
           currentIsApproved = isPendingStatus
               ? false
-              : (data['is_approved'] as bool? ?? (currentIsPrimaryDevice ?? true));
-          currentPrimaryDeviceId = data['primary_device_id'] as String?;
+              : (data['is_approved'] as bool? ?? (currentIsPrimaryDevice == true));
           currentAccessToken = data['access_token'] as String?;
           currentUserId = data['user_id'] as String?;
           final resolvedType = data['device_type'] as String? ?? currentDeviceType;
@@ -420,7 +437,7 @@ class AuthApiService {
     // allow the user to authenticate with demo credentials to test the UI.
     currentAccessToken = 'mock-dev-jwt-token';
     currentUserId = 'USR-0001';
-    currentIsPrimaryDevice = true;
+    currentIsPrimaryDevice = (!kIsWeb && currentDeviceType.toUpperCase() != 'WEB' && currentDeviceId == 'dev-iphone-primary');
     currentIsApproved = true;
 
     return AuthLoginResult(
@@ -432,9 +449,9 @@ class AuthApiService {
       deviceId: currentDeviceId,
       deviceName: currentDeviceName,
       deviceType: currentDeviceType,
-      isPrimaryDevice: true,
+      isPrimaryDevice: currentIsPrimaryDevice,
       isApproved: true,
-      primaryDeviceId: currentDeviceId,
+      primaryDeviceId: currentIsPrimaryDevice == true ? currentDeviceId : 'dev-iphone-primary',
       fullName: currentPersona?.name,
       email: currentPersona?.email ?? email,
       primaryAccountId: currentPersona?.accountId,
@@ -479,13 +496,19 @@ class AuthApiService {
           final data = jsonDecode(response.body) as Map<String, dynamic>;
           final statusStr = data['status'] as String? ?? 'AUTHENTICATED';
           currentIsPrimaryDevice = data['is_primary_device'] as bool?;
+          currentPrimaryDeviceId = data['primary_device_id'] as String?;
+          if (currentIsPrimaryDevice != null) {
+            DeviceStorage.savePrimaryDeviceStatus(
+              isPrimary: currentIsPrimaryDevice!,
+              primaryDeviceId: currentPrimaryDeviceId,
+            );
+          }
           final isPendingStatus = statusStr == 'PENDING_CONFIRMATION' ||
               statusStr == 'PENDING_APPROVAL' ||
               data['is_approved'] == false;
           currentIsApproved = isPendingStatus
               ? false
-              : (data['is_approved'] as bool? ?? (currentIsPrimaryDevice ?? true));
-          currentPrimaryDeviceId = data['primary_device_id'] as String?;
+              : (data['is_approved'] as bool? ?? (currentIsPrimaryDevice == true));
           currentAccessToken = data['access_token'] as String?;
           final resolvedType = data['device_type'] as String? ?? currentDeviceType;
           if (currentAccessToken != null) {
@@ -679,6 +702,11 @@ class AuthApiService {
   }
 
   Future<bool> approveDevice({required String deviceId, String? userId}) async {
+    // STRICT: Only primary devices are allowed to approve access requests
+    if (!isPrimaryDevice) {
+      debugPrint('[AuthApi] Approval blocked: caller is not the primary device.');
+      return false;
+    }
     final uid = userId ?? currentUserId ?? DeviceStorage.getUserId();
     if (uid == null) return false;
     final token = currentAccessToken ?? DeviceStorage.getAccessToken();

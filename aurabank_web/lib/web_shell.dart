@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:aurabank_core/models/notification_model.dart';
 import 'package:aurabank_core/services/auth_api_service.dart';
 import 'package:aurabank_core/services/bank_service.dart';
 import 'package:aurabank_core/services/notification_stream_service.dart';
@@ -49,7 +50,14 @@ class _WebShellState extends State<WebShell>
         InAppNotificationBanner.show(
           context,
           notification,
-          onTap: () => NotificationCenterModal.show(context),
+          onTap: () {
+            if (notification.category == NotificationCategory.security ||
+                notification.category == NotificationCategory.session) {
+              Navigator.of(context).pushNamed('/devices');
+            } else {
+              NotificationCenterModal.show(context);
+            }
+          },
         );
       }
     });

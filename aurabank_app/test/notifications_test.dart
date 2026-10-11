@@ -1,7 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:aurabank_core/models/notification_model.dart';
 import 'package:aurabank_core/services/notification_stream_service.dart';
+import 'package:aurabank_core/services/auth_api_service.dart';
 import 'package:aurabank_core/widgets/notification_center_modal.dart';
 import 'package:aurabank_app/screens/home/home_screen.dart';
 
@@ -130,6 +134,125 @@ void main() {
 
       service.markAllAsRead();
       expect(service.unreadCount, 0);
+    });
+
+    test('injectAlert presents review alert on primary device and informational notice on secondary device', () {
+      service.clearAll();
+      AuthApiService().currentAccessToken = 'mock.jwt';
+
+      // 1. Primary device receives full actionable alert
+      AuthApiService().currentIsPrimaryDevice = true;
+      service.injectAlert(SecurityAlertEvent(
+        title: 'Security Alert: Desktop Login Request',
+        message: 'A desktop/web session (Chrome) is requesting access.',
+        deviceName: 'Chrome on Windows',
+        clientIp: '192.168.1.10',
+        timestamp: DateTime.now().toIso8601String(),
+        targetDeviceId: 'dev-primary-mobile',
+        notificationId: 'SEC-TEST-PRIMARY-1',
+        status: 'PENDING_APPROVAL',
+      ));
+
+      expect(service.notifications.length, 1);
+      expect(service.notifications.first.title, 'Security Alert: Desktop Login Request');
+      expect(service.notifications.first.metadata['isCallerPrimary'], true);
+
+      // 2. Secondary device receives informational advisory
+      AuthApiService().currentIsPrimaryDevice = false;
+      service.injectAlert(SecurityAlertEvent(
+        title: 'Security Alert: Desktop Login Request',
+        message: 'A desktop/web session (Chrome) is requesting access.',
+        deviceName: 'Chrome on Windows',
+        clientIp: '192.168.1.10',
+        timestamp: DateTime.now().toIso8601String(),
+        targetDeviceId: 'dev-primary-mobile',
+        notificationId: 'SEC-TEST-SECONDARY-1',
+        status: 'PENDING_APPROVAL',
+      ));
+
+      expect(service.notifications.length, 2);
+      expect(service.notifications.first.title, 'Security Notice: New Login Attempt');
+      expect(service.notifications.first.message, contains('primary mobile device'));
+      expect(service.notifications.first.metadata['isCallerPrimary'], false);
+
+      AuthApiService().currentIsPrimaryDevice = null;
+    });
+
+    test('postNotification suppresses duplicate banners for identical notification ID', () async {
+      service.clearAll();
+      final bannerEvents = <AppNotification>[];
+      final sub = service.bannerStream.listen((n) => bannerEvents.add(n));
+
+      final notif = AppNotification(
+        id: 'NOTIF-DUP-TEST-1',
+        title: 'Security Alert: New Device',
+        message: 'A new device logged in.',
+        category: NotificationCategory.security,
+        timestamp: DateTime.now(),
+      );
+
+      service.postNotification(notif, showBanner: true);
+      service.postNotification(notif, showBanner: true);
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(service.notifications.length, 1);
+      expect(bannerEvents.length, 1);
+      await sub.cancel();
+    });
+
+    test('fetchHistory populates notifications and emits banner for recent alert', () async {
+      service.clearAll();
+      final bannerEvents = <AppNotification>[];
+      final sub = service.bannerStream.listen((n) => bannerEvents.add(n));
+
+      final now = DateTime.now();
+      service.httpClient = MockClient((request) async {
+        if (request.url.path.contains('/notifications/history')) {
+          final historyData = [
+            {
+              'notificationId': 'NOTIF-RECENT-SEC-1',
+              'type': 'SECURITY_ALERT',
+              'message': 'A desktop/web session is requesting access.',
+              'sentAt': now.subtract(const Duration(seconds: 15)).toIso8601String(),
+            },
+            {
+              'notificationId': 'NOTIF-OLD-SEC-2',
+              'type': 'SECURITY_ALERT',
+              'message': 'Older alert from hours ago.',
+              'sentAt': now.subtract(const Duration(hours: 3)).toIso8601String(),
+            },
+          ];
+          return http.Response(jsonEncode(historyData), 200, headers: {'content-type': 'application/json'});
+        }
+        return http.Response('[]', 200);
+      });
+
+      await service.fetchHistory('usr-test');
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(service.notifications.length, 2);
+      expect(bannerEvents.length, 1);
+      expect(bannerEvents.first.id, 'NOTIF-RECENT-SEC-1');
+      service.httpClient = null;
+      await sub.cancel();
+    });
+
+    test('device approval event posts notification for primary device', () async {
+      service.clearAll();
+      AuthApiService().currentIsPrimaryDevice = true;
+
+      service.injectDeviceApprovalEvent({
+        'type': 'DEVICE_APPROVED',
+        'user_id': 'USR-100001',
+        'device_id': 'laptop-chrome-12345',
+        'notification_id': 'DEV-APPRV-999',
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+
+      expect(service.notifications.length, 1);
+      expect(service.notifications.first.title, 'Device Authorized');
+      expect(service.notifications.first.message, contains('laptop-chrome-12345'));
+      AuthApiService().currentIsPrimaryDevice = null;
     });
   });
 

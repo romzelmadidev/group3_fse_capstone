@@ -413,8 +413,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const Divider(color: AuraColors.divider, height: 1),
                     _buildNavTile(
                       title: 'Trusted Hardware & Sessions',
-                      subtitle: 'iPhone 15 Pro (Primary) & active logins',
-                      badgeText: '2 Devices',
+                      subtitle: 'Manage 2-device policy & active logins',
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(builder: (context) => const DevicesSessionsScreen()),
