@@ -22,7 +22,7 @@ graph TB
 
     subgraph Application_Tier ["Application Microservices Tier"]
         ACCT["account-service (:8081)<br/>(Auth, KYC, Users, Account Provisioning)"]
-        ORCH["transfer-orchestrator (:8082)<br/>(Sagas, Idempotency, Holds, Biometrics, Interbank)"]
+        ORCH["transfer-orchestrator (:8082)<br/>(Sagas, Idempotency, Holds, Biometrics, DLQ)"]
         NOTIF["notification-service (:8083)<br/>(MailHog SMTP, SSE Streams, Push Alerts)"]
         RISK["risk-service (:8084)<br/>(FastAPI / NanoJev, Geo-Velocity, NLP Memos)"]
         COMP["compliance-service (:8086)<br/>(PDF Statements, Azurite Drive, DLQ Proxy)"]
@@ -74,7 +74,7 @@ The core banking capabilities are segregated into distinct bounded contexts:
 | :--- | :--- | :--- | :--- |
 | **`gateway-service`** | `8080` | Public Perimeter | Edge security, rate limiting, JWT token verification, dynamic route rewrites, and CORS policy enforcement. |
 | **`t24-mock-cbs`** *(Added)* | `8085` | **Internal Only** | **Sole custodian of core banking logic.** Implements the Temenos Open Financial Services (OFS) wire protocol, pessimistic row locking (`SELECT FOR UPDATE`), double-entry General Ledger balancing, and End-Of-Day (EOD/COB) batch processing. |
-| **`transfer-orchestrator`** *(Split)* | `8082` | Via Gateway | Autonomous transfer saga coordinator. Handles distributed idempotency via Redis, anti-scam cooling-off holds, FIDO2 biometric step-up challenges, automated saga compensation on failure, and the bilateral Nostro-Vostro interbank corridor. |
+| **`transfer-orchestrator`** *(Split)* | `8082` | Via Gateway | Autonomous transfer saga coordinator. Handles distributed idempotency via Redis, anti-scam cooling-off holds, FIDO2 biometric step-up challenges, automated saga compensation on downstream failure, and Dead Letter Queue routing. |
 | **`account-service`** | `8081` | Via Gateway | Identity and Access Management (IAM), staff role-based access control (RBAC), KYC profile verification queues, device binding, and account provisioning. |
 | **`compliance-service`** *(Split)* | `8086` | Via Gateway | PDF statement generation (OpenPDF), Azurite blob operations, and audit log ingestion proxying to the CBS audit vault. |
 | **`notification-service`** | `8083` | Via Gateway | Dispatches transactional HTML receipts, login OTP emails, and Server-Sent Events (SSE) notification streams. |
@@ -157,8 +157,8 @@ Between commit `9c0d045ccb4d4e52430f34beb6f52baaab2ae189` and the final HEAD on 
    * **Two-Stage Risk Scoring:** The NanoJev/Laya fraud scoring and SAR reporting pipelines from the risk service were retained and called non-blockingly during transfer orchestration.
    * **Device Management & Attestation:** Mobile device registration and 1-web / 2-mobile concurrency limits were preserved in `account-service` while resolving path-matching bugs in Spring MVC routing.
 
-3. **Interbank Corridor Coexistence:**
-   The bilateral Nostro-Vostro interbank corridor (Feature 6) was integrated directly into the `transfer-orchestrator` and added as Tab 8 on the T24 console, ensuring zero regression on existing intra-bank transfers, COB batch processing, or maker-checker workflows.
+3. **Decoupled Architecture for Future Clearing Extensions:**
+   The core T24 banking ledger and saga orchestrator are intentionally architected with clear domain boundaries, allowing future external clearing corridors (such as SWIFT, PhilPaSSplus, or partner networks) to be integrated via dedicated adapters without mutating the core T24 CBS engine.
 
 4. **Continuous Regression Verification:**
-   Following every merge commit, the full suite of unit tests across `t24-mock-cbs` (40 tests) and `transfer-orchestrator` (18 tests) was executed alongside the live end-to-end suite (`scripts/verify-all-banking-features.mjs`) to verify that all 24 positive and negative banking invariants remained operational.
+   Following every merge commit, the full suite of unit tests across `t24-mock-cbs` and `transfer-orchestrator` was executed alongside the live end-to-end suite (`scripts/verify-all-banking-features.mjs`) to verify that all core positive and negative banking invariants remained operational.

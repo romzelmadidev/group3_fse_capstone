@@ -66,8 +66,7 @@ The master relational database utilizes logical schemas to enforce separation be
   * **Role Guard Invariant**: Restricts mobile client login to `CUSTOMER` while requiring staff to access the web administrative portal.
 
 ### B. Core Accounts & Pessimistic Balance Master
-* **`accounts`**: Account catalog supporting both retail savings accounts and bilateral interbank accounts (`SAVINGS`, `CHECKING`).
-  * Dedicated Nostro settlement account: `ACC-NOSTRO-BANK-B`.
+* **`accounts`**: Account catalog supporting retail savings and commercial checking accounts (`SAVINGS`, `CHECKING`).
 * **`balance_master`**: High-concurrency balance ledger updated under `SELECT FOR UPDATE` row-level locks.
   * Fields: `balance_id` (Surrogate Primary Key), `account_id` (Unique Foreign Key), `balance_amount` (Working Ledger Balance), `hold_amount` (Active Restraints/Holds), `available_balance` (Virtual Generated Column: `balance_amount - hold_amount`).
   * Check Constraint: `CHECK (balance_amount >= hold_amount)` enforces instant solvency at the database engine level.
@@ -82,7 +81,7 @@ The master relational database utilizes logical schemas to enforce separation be
 ### D. Double-Entry General Ledger (GL)
 Every successful funds transfer writes balanced double-entry accounting records into `gl_ledger`:
 * Customer Deposits Liability: `GL-20100` (Customer Demand Deposits).
-* Nostro Settlement Asset: `GL-10200` (Due from Partner Bank B / Nostro Asset).
+* Clearing & Settlement Asset: `GL-10200` (Due from Clearing Institutions).
 * Bank Fee Income: `GL-4001` (Account Maintenance Fee Revenue).
 * Interest Expense: `GL-5001` (Interest Expense on Deposits).
 * **Balancing Rule**: $\sum \text{Debit Amount} = \sum \text{Credit Amount}$ for every transaction.
@@ -146,8 +145,7 @@ graph LR
 * **`1000-2000-3003`**: Primary Checking Account (Juan Dela Cruz) — Starting Balance: ₱100,000.00
 * **`1000-2000-3004`**: Tertiary Savings Account (Branch Pool) — Starting Balance: ₱5,200,000.00
 * **`1000-2000-3005`**: Quaternary Savings Account (Branch Reserve) — Starting Balance: ₱3,750,000.00
-* **`acc-2002-chk-001`**: Commercial Checking Account (Inward Wire Beneficiary) — Starting Balance: ₱8,500,000.00
-* **`ACC-NOSTRO-BANK-B`**: Bilateral Interbank Settlement Buffer (Nostro Asset) — Starting Balance: ₱5,000,000.00
+* **`acc-2002-chk-001`**: Commercial Checking Account — Starting Balance: ₱8,500,000.00
 
 ### Staff & Customer Personas
 All accounts are pre-seeded with the uniform password: **`password123`**.

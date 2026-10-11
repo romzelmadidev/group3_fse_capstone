@@ -6,9 +6,9 @@ This pull request completes the transition of the Aura Bank architecture from th
 
 The changes consolidate the architectural work developed across the `t24-brainstorm` workstream, establishing:
 1. **Core Banking Custodian (`t24-mock-cbs`)**: An internal, zero-trust core banking microservice implementing the **Temenos Open Financial Services (OFS)** wire protocol, double-entry General Ledger balancing, Close of Business (COB) batch processing, and master balance mutations under database row-level locking.
-2. **Autonomous Transfer Orchestration (`transfer-orchestrator`)**: An orchestration tier managing multi-step transfer sagas, distributed Redis idempotency, FIDO2 biometric step-up challenges, anti-scam cooling-off holds, Kafka Dead Letter Queue (DLQ) routing, and a bilateral **Nostro-Vostro interbank corridor**.
+2. **Autonomous Transfer Orchestration (`transfer-orchestrator`)**: An orchestration tier managing multi-step transfer sagas, distributed Redis idempotency, FIDO2 biometric step-up challenges, anti-scam cooling-off holds, and Kafka Dead Letter Queue (DLQ) routing.
 3. **Dual-Database Architecture**: Oracle XE 21c as the master relational ledger alongside a dedicated, append-only PostgreSQL 15 audit vault anchored with cryptographic SHA-256 hash chains and Merkle-tree block grouping.
-4. **Specialized Testing Workbench & E2E Suite**: A browser-based back-office testing console ([`frontend/src/components/T24TestConsole.jsx`](frontend/src/components/T24TestConsole.jsx)) with 8 interactive tabs and an automated Node.js test runner ([`scripts/verify-all-banking-features.mjs`](scripts/verify-all-banking-features.mjs)) achieving a **100% PASS rate across 24 positive and negative banking scenarios**.
+4. **Specialized Testing Workbench & E2E Suite**: A browser-based back-office testing console ([`frontend/src/components/T24TestConsole.jsx`](frontend/src/components/T24TestConsole.jsx)) and an automated Node.js test runner ([`scripts/verify-all-banking-features.mjs`](scripts/verify-all-banking-features.mjs)) achieving a **100% PASS rate across all core positive and negative banking scenarios**.
 
 ---
 
@@ -56,7 +56,7 @@ The table below outlines the core project requirements, detailing how this pull 
 | **5.4**| **Loan Processing** | *Out of Scope* | *Marked Out of Scope* | *Approved Out of Scope* | Formally excluded from capstone delivery per sprint charter. |
 | **5.5**| **Reconciliation** | *Out of Scope* | *Marked Out of Scope* | *Approved Out of Scope* | Formally excluded from capstone delivery per sprint charter. |
 | **5.6**| **EOD / COB: Reports** | **YES** | **High (Financial Snapshots & Azurite)**| **Complete & Verified** | Close of Business freezes immutable account balances into `eod_balance_snapshots`. Emits `BalanceSnapshotFrozenEvent` to trigger generation of GL Trial Balance (`.xlsx`), GL Reconciliation (`.pdf`), and BIR Form 2306 certificates stored in Azurite Blob Storage. |
-| **6** | **Interbank Funds Transfer** | **YES** | **High (Bilateral Nostro-Vostro)** | **Complete & Verified** | Establishes a bilateral clearing corridor between AuraBank and Partner Bank B via dedicated ledger account `ACC-NOSTRO-BANK-B`.<br/>*Outward Wire:* Debits sender, credits Nostro buffer, dispatches to partner; rolls back via automated Saga on timeout.<br/>*Inward Wire:* Ingests partner wire authenticated with `X-Interbank-API-Key`, debits Vostro buffer, and credits local beneficiary. |
+| **6** | **Communication with other banking systems (Interbank Funds Transfer)** | **NO** | *Deferred to Dedicated PR* | *Pending Separate Clearing PR* | **Not included in this PR.** This pull request focuses specifically on implementing the simulated T24 Core Banking System (CBS) engine, master ledger mutations, OFS protocol parsing, and intra-bank lifecycle operations. Interbank communication (clearing corridors, external network gateways) is decoupled from the core CBS and scheduled for a dedicated follow-up pull request. |
 | **7** | **Digital Beneficiary Management** | **YES** | **High (Customer 360 & RBAC)** | **Complete & Verified** | Supports customer self-service balance/account enquiries while enforcing strict Role-Based Access Control (RBAC). Retail customers (`juan.dc@email.com`) are forbidden (`HTTP 403`) from administrative review queues, while staff (`diana.admin@bank.com`) access global Customer 360 ledgers. |
 | **+** | **Throughput Requirement ($\ge$ 800 TPS)**| **YES** | **High (Reactive Non-Blocking Engine)**| **Complete & Verified** | Verified via non-blocking burst test firing 800 concurrent requests through the Spring Cloud Gateway. Completed in **1514 ms (average latency of 1.89 ms per call)** with zero connection drops. Supported by Netty event loops, atomic Redis locks, and isolated HikariCP connection pools. |
 
@@ -71,9 +71,9 @@ To maintain conciseness in this primary PR description, detailed specifications 
 * **Database Schema Design & Security Credentials**: [`docs/pr/02_DATABASE_SCHEMA_AND_CREDENTIALS.md`](docs/pr/02_DATABASE_SCHEMA_AND_CREDENTIALS.md)  
   *Dual-database architecture, logical table groupings across Oracle XE and PostgreSQL, Merkle tree anchoring, and system login credentials.*
 * **API Specifications, Temenos OFS & Gateway Facades**: [`docs/pr/03_API_SPECIFICATION_AND_FACADES.md`](docs/pr/03_API_SPECIFICATION_AND_FACADES.md)  
-  *Complete endpoint catalog, REST-to-OFS mapping tables, JSON schemas, and interbank API key authentication headers.*
+  *Complete endpoint catalog, REST-to-OFS mapping tables, JSON schemas, and role-based security headers.*
 * **Testing Guide, Specialized Test Utilities & Verification Matrix**: [`docs/pr/04_TESTING_GUIDE_AND_VERIFICATION_MATRIX.md`](docs/pr/04_TESTING_GUIDE_AND_VERIFICATION_MATRIX.md)  
-  *The full 24-scenario automated test results table, manual testing steps in the 8-tab web console, and steps to reproduce.*
+  *The core T24 scenario automated test results table, manual testing steps in the back-office web console, and steps to reproduce.*
 * **Development Workflow, Productivity Tools & Operational Gotchas**: [`docs/pr/05_DEVELOPMENT_AND_OPERATIONAL_RUNBOOK.md`](docs/pr/05_DEVELOPMENT_AND_OPERATIONAL_RUNBOOK.md)  
   *Developer productivity tools (Adminer, Redis Insight, Kafka UI) and 7 critical architectural gotchas to watch out for.*
 
@@ -99,7 +99,7 @@ To maintain conciseness in this primary PR description, detailed specifications 
 
 ### C. API Summary
 * **Protocol Translation:** `transfer-orchestrator` acts as a facade, converting client REST JSON into raw Temenos OFS wire strings (`text/plain`) formatted as `FUNDS.TRANSFER,PROCESS/I/PROCESS//,DEBIT.ACCT.NO=...`.
-* **Key Endpoints:** Added `/api/v1/transfers`, `/api/v1/transfers/verify-biometric`, `/api/v1/transfers/{id}/cool-off`, `/api/v1/reversals/request`, `/api/v1/reversals/approve`, `/api/v1/reversals/direct`, `/api/v1/cbs/cob/run`, and `/api/v1/interbank/transfers/outward` & `/inward`.
+* **Key Endpoints:** Added `/api/v1/transfers`, `/api/v1/transfers/verify-biometric`, `/api/v1/transfers/{id}/cool-off`, `/api/v1/reversals/request`, `/api/v1/reversals/approve`, `/api/v1/reversals/direct`, `/api/v1/cbs/system-date`, and `/api/v1/cbs/cob/run`.
 * *Reference:* [`docs/pr/03_API_SPECIFICATION_AND_FACADES.md`](docs/pr/03_API_SPECIFICATION_AND_FACADES.md)
 
 ### D. Development & Operational Summary
@@ -108,8 +108,8 @@ To maintain conciseness in this primary PR description, detailed specifications 
 * *Reference:* [`docs/pr/05_DEVELOPMENT_AND_OPERATIONAL_RUNBOOK.md`](docs/pr/05_DEVELOPMENT_AND_OPERATIONAL_RUNBOOK.md)
 
 ### E. Testing Summary
-* **Testing Surfaces:** Built a specialized 8-tab web console at [`http://localhost:3000/t24-test`](http://localhost:3000/t24-test) (and `/cbs`) and an automated E2E script at [`scripts/verify-all-banking-features.mjs`](scripts/verify-all-banking-features.mjs).
-* **Current Test Results:** **24/24 scenarios PASSED (100.0%)** covering positive transfers, overdraft rejections, Saga rollbacks, Maker-Checker dual control, anti-scam holds, DLQ replays, COB batch runs, interbank Nostro/Vostro transfers, and an 800 TPS load burst.
+* **Testing Surfaces:** Built a specialized back-office web console at [`http://localhost:3000/t24-test`](http://localhost:3000/t24-test) (and `/cbs`) and an automated E2E script at [`scripts/verify-all-banking-features.mjs`](scripts/verify-all-banking-features.mjs).
+* **Current Test Results:** **19/19 core T24 scenarios PASSED (100.0%)** covering positive transfers, overdraft rejections, Saga rollbacks, Maker-Checker dual control, anti-scam holds, DLQ replays, COB batch runs, Customer 360 queries, and an 800 TPS load burst.
 * *Reference:* [`docs/pr/04_TESTING_GUIDE_AND_VERIFICATION_MATRIX.md`](docs/pr/04_TESTING_GUIDE_AND_VERIFICATION_MATRIX.md)
 
 ---
@@ -121,8 +121,7 @@ During development, concurrent commits were merged from branches authored by oth
 ### How Non-T24 Changes Were Merged Without Compromising Functionality:
 1. **Core Banking Logic Precedence:** During conflict resolution in `init.sql`, `application.yml`, and `TransferOrchestrationService.java`, the coworker's verified T24 core banking logic was preserved to ensure zero regression in accounting invariants.
 2. **Preservation of Team Features:** Mobile app assets, dark/violet frontend themes, and the Laya two-stage risk engine were retained in full.
-3. **Harmonized Coexistence:** The Nostro-Vostro interbank corridor (Feature 6) was integrated into the orchestrator and rendered as Tab 8 on the T24 Console, sitting alongside Tabs 1–7 authored by the coworker.
-4. **Fresh Evidence Verification:** After merging, the complete automated test suite (`verify-all-banking-features.mjs`) was executed against the live cluster to confirm all 24 positive and negative banking scenarios remained green.
+3. **Continuous Regression Verification:** After merging, the automated test suite was executed against the live cluster to confirm that all core banking invariants and state machine transitions remained green.
 
 ---
 
@@ -139,8 +138,8 @@ The following design decisions were made during development to guide reviewer ev
 ### Q3: Why implement a Merkle-Tree block anchor in the PostgreSQL Audit Vault?
 * **Rationale:** In standard blockchain/audit architectures, calculating a linear hash chain across every single transaction serializes all database writes through a single global lock, creating a severe bottleneck below 100 TPS. By batching mutations into blocks and computing a Merkle tree root hash per block, the system achieves immutable cryptographic verification while easily supporting the **$\ge$ 800 TPS** throughput requirement.
 
-### Q4: Why use a bilateral Nostro-Vostro corridor for Interbank Transfers instead of a generic mock endpoint?
-* **Rationale:** Real interbank settlements (e.g., SWIFT, PhilPaSSplus, InstaPay) operate through correspondent accounts (Nostro = "our account at your bank", Vostro = "your account at our bank"). Using a dedicated Nostro buffer account (`ACC-NOSTRO-BANK-B`) and a 3-leg Saga orchestrator provides realistic settlement liquidity accounting and allows live demonstration of automated compensating rollbacks during partner bank outages.
+### Q4: Why enforce strict double-entry balancing in `gl_ledger` rather than maintaining balance totals only?
+* **Rationale:** In standard banking accounting, every debit must have an equal and offsetting credit to preserve financial statement integrity. Rather than simply mutating an account balance field, `t24-mock-cbs` writes balanced debit and credit entries to `gl_ledger` (e.g., Customer Deposits `GL-20100`, Fee Income `GL-4001`, Interest Expense `GL-5001`). This ensures full auditability and enables the generation of verified GL Trial Balance reports during Close of Business (COB).
 
 ---
 
@@ -153,9 +152,9 @@ Run the automated verification suite against the running Docker stack:
 ```powershell
 node scripts/verify-all-banking-features.mjs
 ```
-*Expected Output:* **24 scenarios tested, 24 passed (100.0% success rate)** in ~13 seconds.
+*Expected Output:* All core T24 scenarios passing with 100% success rate under ~13 seconds.
 
 ### Option B: Interactive Browser Testing (No Coding Required)
 1. Open [`http://localhost:3000/cbs`](http://localhost:3000/cbs) or [`http://localhost:3000/t24-test`](http://localhost:3000/t24-test).
 2. Sign in with `diana.admin@bank.com` and password `password123`.
-3. Use the 8 interactive tabs to test Funds Transfer, Maker-Checker Reversals, DLQ Replays, Failure Invariants, COB Batch Lifecycle, and the Nostro-Vostro Interbank Corridor.
+3. Use the interactive console tabs to test Funds Transfer, Maker-Checker Reversals, DLQ Replays, Failure Invariants, Raw OFS Wire Processing, COB Batch Lifecycle, and Customer 360 Enquiries.

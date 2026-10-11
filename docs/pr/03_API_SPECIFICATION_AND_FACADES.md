@@ -49,8 +49,6 @@ sequenceDiagram
 | **Reversal Queue** | `/api/v1/reversals` | `GET` | JSON | `/api/v1/cbs/reversals` | OFS (`text/plain`) | Lists pending maker-checker reversal tickets. |
 | **Txn History** | `/api/v1/transfers/accounts/{id}/transactions` | `GET` | JSON | `/api/v1/cbs/accounts/{id}/transactions` | OFS (`text/plain`) | Queries committed account ledger transactions (`ENQUIRY.SELECT`). |
 | **Status History** | `/api/v1/transfers/transactions/{id}/status-history` | `GET` | JSON | `/api/v1/cbs/transactions/{id}/status-history` | OFS (`text/plain`) | Retrieves 4-stage audit history for a transaction. |
-| **Outward Wire** | `/api/v1/interbank/transfers/outward` | `POST` | JSON | Internal Wire Client $\rightarrow$ Partner Bank B | JSON / Wire | Debits sender, credits Nostro buffer, calls Partner Bank. |
-| **Inward Wire** | `/api/v1/interbank/transfers/inward` | `POST` | JSON | `/api/v1/cbs/funds-transfer` | OFS (`text/plain`) | Ingests incoming wire from Partner Bank B (`X-Interbank-API-Key`). |
 | **System Date** | `/api/v1/cbs/system-date` | `GET` | OFS | Native CBS Endpoint | OFS (`text/plain`) | Returns banking business date and posting window status. |
 | **COB Run** | `/api/v1/cbs/cob/run` | `POST` | OFS | Native CBS Endpoint | OFS (`text/plain`) | Executes Close-of-Business EOD batch processing. |
 | **DLQ Incidents** | `/api/v1/cbs/audit/failed-transactions` | `GET` | JSON | Native CBS Endpoint | JSON | Queries dead-lettered failure incidents from PostgreSQL. |
@@ -193,38 +191,6 @@ sequenceDiagram
     ```
   * **Dual Control Violation Handling:** If `checkerId == makerId`, the API rejects with `HTTP 400 Bad Request`:
     `"Dual control violation: Checker cannot be the same person as Maker (usr-1003-tel-001) (BSP Circular 982)"`
-
----
-
-### E. Bilateral Nostro-Vostro Interbank Corridor
-* **Outward Wire (AuraBank $\rightarrow$ Partner Bank B):** `POST /api/v1/interbank/transfers/outward`
-  * **Payload:**
-    ```json
-    {
-      "sourceAccountId": "1000-2000-3001",
-      "destinationAccountId": "B-ACC-778899",
-      "destinationBank": "BANK-B",
-      "senderName": "Juan Dela Cruz",
-      "amount": 500.00,
-      "currency": "PHP"
-    }
-    ```
-  * **Mechanism:** Debits sender `1000-2000-3001` and credits Nostro buffer `ACC-NOSTRO-BANK-B`. If partner times out, an **automated Saga rollback** refunds the customer immediately (`HTTP 502 Bad Gateway`).
-* **Inward Wire (Partner Bank B $\rightarrow$ AuraBank):** `POST /api/v1/interbank/transfers/inward`
-  * **Security Header:** `X-Interbank-API-Key: aura-bank-interbank-secure-key-2026`
-  * **Payload:**
-    ```json
-    {
-      "senderAccountId": "B-ACC-778899",
-      "beneficiaryAccountId": "acc-2002-chk-001",
-      "sourceBank": "BANK-B",
-      "senderName": "Partner Client B",
-      "amount": 2500.00,
-      "currency": "PHP",
-      "partnerReference": "B-TXN-EXT-1092"
-    }
-    ```
-  * **Response:** `HTTP 200 OK` with `status: "SETTLED"`, crediting beneficiary `acc-2002-chk-001`.
 
 ---
 
