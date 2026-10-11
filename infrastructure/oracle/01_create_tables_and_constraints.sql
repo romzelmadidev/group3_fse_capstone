@@ -77,7 +77,7 @@ CREATE TABLE balance_master (
     account_id        VARCHAR2(64) NOT NULL UNIQUE,
     balance_amount    NUMBER(18, 4) DEFAULT 0.0000 NOT NULL CHECK (balance_amount >= 0),
     hold_amount       NUMBER(18, 4) DEFAULT 0.0000 NOT NULL CHECK (hold_amount >= 0),
-    available_balance NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    available_balance NUMBER(18, 4) GENERATED ALWAYS AS (balance_amount - hold_amount) VIRTUAL,
     created_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT fk_bm_account FOREIGN KEY (account_id) REFERENCES accounts(account_id),
@@ -89,17 +89,13 @@ COMMENT ON COLUMN balance_master.balance_id IS 'Surrogate primary key (e.g. BM-A
 COMMENT ON COLUMN balance_master.account_id IS 'Unique foreign key referencing accounts(account_id)';
 COMMENT ON COLUMN balance_master.balance_amount IS 'Total ledger balance with 4 decimal places precision (@Digits(14,4))';
 COMMENT ON COLUMN balance_master.hold_amount IS 'Funds frozen for pending approvals (Maker-Checker threshold > 100,000)';
-COMMENT ON COLUMN balance_master.available_balance IS 'Spendable balance: (balance_amount - hold_amount)';
+COMMENT ON COLUMN balance_master.available_balance IS 'Spendable balance: (balance_amount - hold_amount) virtual generated column';
 
--- Trigger to automatically calculate and maintain available_balance
-CREATE OR REPLACE TRIGGER trg_calc_available_balance
-BEFORE INSERT OR UPDATE ON balance_master
+-- Trigger to maintain updated_at timestamp on balance_master updates
+CREATE OR REPLACE TRIGGER trg_balance_master_updated_at
+BEFORE UPDATE ON balance_master
 FOR EACH ROW
 BEGIN
-    IF :NEW.balance_id IS NULL THEN
-        :NEW.balance_id := 'bal-' || :NEW.account_id;
-    END IF;
-    :NEW.available_balance := :NEW.balance_amount - :NEW.hold_amount;
     :NEW.updated_at := CURRENT_TIMESTAMP;
 END;
 /
@@ -122,6 +118,7 @@ CREATE TABLE transactions (
     status                 VARCHAR2(30) NOT NULL CHECK (status IN ('PENDING_APPROVAL', 'COMMITTED', 'FAILED')),
     requires_maker_checker NUMBER(1) DEFAULT 0 NOT NULL CHECK (requires_maker_checker IN (0, 1)),
     approved_by_user_id    VARCHAR2(64),
+    idempotency_key        VARCHAR2(64) UNIQUE,
     memo                   VARCHAR2(255),
     created_at             TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at             TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -141,16 +138,15 @@ COMMENT ON COLUMN transactions.requires_maker_checker IS 'Flag (1=True, 0=False)
 -- ------------------------------------------------------------------------------
 CREATE TABLE outbox_events (
     event_id       VARCHAR2(64) PRIMARY KEY,
-    aggregate_type VARCHAR2(50) NOT NULL CHECK (aggregate_type IN ('TRANSACTION', 'CUSTOMER_VERIFICATION', 'MAKER_CHECKER', 'BALANCE_MUTATION')),
+    aggregate_type VARCHAR2(50) NOT NULL,
     aggregate_id   VARCHAR2(64) NOT NULL,
-    event_type     VARCHAR2(50) NOT NULL CHECK (event_type IN ('VERIFICATION_PENDING', 'VERIFICATION_CONFIRMED', 'MAKER_PENDING', 'CHECKER_APPROVED', 'MUTATION_COMMITTED', 'TRANSFER_PENDING_APPROVAL', 'TRANSFER_EXECUTED', 'TRANSFER_REVERSED')),
+    event_type     VARCHAR2(50) NOT NULL,
     kafka_topic    VARCHAR2(100) NOT NULL,
     payload        CLOB NOT NULL,
     status         VARCHAR2(20) DEFAULT 'PENDING' NOT NULL CHECK (status IN ('PENDING', 'PUBLISHED', 'FAILED')),
     retry_count    NUMBER(4) DEFAULT 0 NOT NULL,
     created_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    published_at   TIMESTAMP WITH TIME ZONE,
-    CONSTRAINT fk_oe_aggregate FOREIGN KEY (aggregate_id) REFERENCES transactions(transaction_id)
+    published_at   TIMESTAMP WITH TIME ZONE
 );
 
 COMMENT ON TABLE outbox_events IS 'Transactional outbox table for reliable asynchronous event delivery to Kafka';
@@ -173,3 +169,217 @@ CREATE TABLE notifications (
 );
 
 COMMENT ON TABLE notifications IS 'User alerts for transaction confirmations and security notices';
+
+-- ------------------------------------------------------------------------------
+-- 7. GL_ACCOUNTS TABLE (Chart of Accounts)
+-- ------------------------------------------------------------------------------
+CREATE TABLE gl_accounts (
+    gl_code      VARCHAR2(32) PRIMARY KEY,
+    account_name VARCHAR2(100) NOT NULL,
+    account_type VARCHAR2(20) NOT NULL CHECK (account_type IN ('ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE')),
+    currency     VARCHAR2(3) DEFAULT 'PHP' NOT NULL,
+    is_active    NUMBER(1) DEFAULT 1 NOT NULL CHECK (is_active IN (0, 1))
+);
+
+-- ------------------------------------------------------------------------------
+-- 8. GL_LEDGER TABLE (Double-Entry Journal Postings)
+-- ------------------------------------------------------------------------------
+CREATE TABLE gl_ledger (
+    journal_id     VARCHAR2(64) PRIMARY KEY,
+    transaction_id VARCHAR2(64) NOT NULL,
+    gl_code        VARCHAR2(32) NOT NULL,
+    debit_amount   NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    credit_amount  NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    posting_date   DATE NOT NULL,
+    created_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT fk_gl_account FOREIGN KEY (gl_code) REFERENCES gl_accounts(gl_code),
+    CONSTRAINT chk_gl_amounts CHECK (debit_amount >= 0 AND credit_amount >= 0)
+);
+
+CREATE INDEX idx_gl_ledger_tx ON gl_ledger(transaction_id);
+CREATE INDEX idx_gl_ledger_date ON gl_ledger(posting_date, gl_code);
+
+-- ------------------------------------------------------------------------------
+-- 9. GL_BALANCES TABLE (Real-Time Debit/Credit Accumulators)
+-- ------------------------------------------------------------------------------
+CREATE TABLE gl_balances (
+    gl_code       VARCHAR2(32) NOT NULL,
+    fiscal_period VARCHAR2(20) NOT NULL,
+    total_debit   NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    total_credit  NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    net_balance   NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    updated_at    TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT pk_gl_balances PRIMARY KEY (gl_code, fiscal_period),
+    CONSTRAINT fk_glb_account FOREIGN KEY (gl_code) REFERENCES gl_accounts(gl_code)
+);
+
+-- ------------------------------------------------------------------------------
+-- 10. REVERSAL_REQUESTS TABLE (Maker-Checker Dispute Tickets)
+-- ------------------------------------------------------------------------------
+CREATE TABLE reversal_requests (
+    ticket_id             VARCHAR2(64) PRIMARY KEY,
+    original_tx_id        VARCHAR2(64) NOT NULL,
+    maker_id              VARCHAR2(64) NOT NULL,
+    checker_id            VARCHAR2(64),
+    dispute_reason        VARCHAR2(100) NOT NULL,
+    maker_notes           VARCHAR2(500) NOT NULL,
+    checker_notes         VARCHAR2(500),
+    status                VARCHAR2(20) DEFAULT 'PENDING' NOT NULL CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
+    reversal_tx_id        VARCHAR2(64),
+    created_at            TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    resolved_at           TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT fk_rev_orig_tx FOREIGN KEY (original_tx_id) REFERENCES transactions(transaction_id)
+);
+
+CREATE INDEX idx_rev_orig_tx ON reversal_requests(original_tx_id);
+CREATE INDEX idx_rev_status ON reversal_requests(status);
+
+-- ------------------------------------------------------------------------------
+-- 11. UNCOLLECTED_FEES TABLE (Zero-Overdraft Arrears Tracking)
+-- ------------------------------------------------------------------------------
+CREATE TABLE uncollected_fees (
+    fee_id           VARCHAR2(64) PRIMARY KEY,
+    account_id       VARCHAR2(64) NOT NULL,
+    fee_type         VARCHAR2(50) NOT NULL,
+    amount_due       NUMBER(18, 4) NOT NULL,
+    amount_collected NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    is_settled       NUMBER(1) DEFAULT 0 NOT NULL CHECK (is_settled IN (0, 1)),
+    created_at       TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT fk_uncol_acc FOREIGN KEY (account_id) REFERENCES accounts(account_id),
+    CONSTRAINT chk_settled_integrity CHECK (
+        (is_settled = 1 AND amount_collected >= amount_due) OR
+        (is_settled = 0 AND amount_collected < amount_due)
+    )
+);
+
+CREATE INDEX idx_uncollected_acc ON uncollected_fees(account_id, is_settled);
+
+-- ------------------------------------------------------------------------------
+-- 12. INTEREST_ACCRUALS TABLE (Daily Accrued Interest & BIR Withholding)
+-- ------------------------------------------------------------------------------
+CREATE TABLE interest_accruals (
+    accrual_id     VARCHAR2(64) PRIMARY KEY,
+    account_id     VARCHAR2(64) NOT NULL,
+    accrual_date   DATE NOT NULL,
+    daily_rate     NUMBER(12, 8) NOT NULL,
+    accrued_amount NUMBER(18, 4) NOT NULL,
+    tax_withheld   NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    net_accrual    NUMBER(18, 4) NOT NULL,
+    is_capitalized NUMBER(1) DEFAULT 0 NOT NULL CHECK (is_capitalized IN (0, 1)),
+    created_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT fk_int_acc FOREIGN KEY (account_id) REFERENCES accounts(account_id),
+    CONSTRAINT chk_net_accrual CHECK (net_accrual = accrued_amount - tax_withheld)
+);
+
+CREATE INDEX idx_int_acc_date ON interest_accruals(account_id, accrual_date);
+
+-- ------------------------------------------------------------------------------
+-- 13. EOD_BALANCE_SNAPSHOTS TABLE (Closing State Freezes)
+-- ------------------------------------------------------------------------------
+CREATE TABLE eod_balance_snapshots (
+    snapshot_id     VARCHAR2(64) PRIMARY KEY,
+    account_id      VARCHAR2(64) NOT NULL,
+    business_date   DATE NOT NULL,
+    closing_balance NUMBER(18, 4) NOT NULL,
+    frozen_at       TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT fk_snap_acc FOREIGN KEY (account_id) REFERENCES accounts(account_id)
+);
+
+CREATE INDEX idx_eod_snap_date ON eod_balance_snapshots(business_date, account_id);
+
+-- ------------------------------------------------------------------------------
+-- 14. SYSTEM_DATES TABLE (Core Business Date & COB State Machine)
+-- ------------------------------------------------------------------------------
+CREATE TABLE system_dates (
+    system_date_id        VARCHAR2(64) PRIMARY KEY,
+    business_date         DATE NOT NULL,
+    status                VARCHAR2(30) DEFAULT 'ONLINE' NOT NULL CHECK (status IN ('ONLINE', 'EOD_CUTOFF', 'COB_PROCESSING', 'ROLLOVER', 'ERROR_HALTED')),
+    posting_window_open   NUMBER(1) DEFAULT 1 NOT NULL CHECK (posting_window_open IN (0, 1)),
+    last_cob_completed_at TIMESTAMP WITH TIME ZONE,
+    updated_at            TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+-- ------------------------------------------------------------------------------
+-- 15. COB_BATCH_LOG TABLE (Master COB Operational Audit Log)
+-- ------------------------------------------------------------------------------
+CREATE TABLE cob_batch_log (
+    batch_id               VARCHAR2(64) PRIMARY KEY,
+    business_date          DATE NOT NULL,
+    started_at             TIMESTAMP WITH TIME ZONE NOT NULL,
+    completed_at           TIMESTAMP WITH TIME ZONE,
+    status                 VARCHAR2(20) DEFAULT 'RUNNING' NOT NULL CHECK (status IN ('RUNNING', 'COMPLETED', 'FAILED')),
+    current_phase          VARCHAR2(50),
+    accounts_processed     NUMBER(10) DEFAULT 0 NOT NULL,
+    total_fees_collected   NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    total_interest_accrued NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    total_tax_withheld     NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    error_message          VARCHAR2(1000)
+);
+
+CREATE INDEX idx_cob_log_date ON cob_batch_log(business_date);
+
+-- ------------------------------------------------------------------------------
+-- 16. TRANSACTION_STATUS_HISTORY TABLE (Master Transition Log)
+-- ------------------------------------------------------------------------------
+CREATE TABLE transaction_status_history (
+    history_id     VARCHAR2(64) PRIMARY KEY,
+    transaction_id VARCHAR2(64) NOT NULL,
+    from_status    VARCHAR2(30),
+    to_status      VARCHAR2(30) NOT NULL,
+    change_reason  VARCHAR2(100) NOT NULL,
+    reason_details VARCHAR2(500),
+    actor_id       VARCHAR2(64) NOT NULL,
+    actor_type     VARCHAR2(30) NOT NULL,
+    changed_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    metadata_json  CLOB,
+    CONSTRAINT fk_tsh_tx FOREIGN KEY (transaction_id) REFERENCES transactions(transaction_id)
+);
+
+CREATE INDEX idx_tsh_tx ON transaction_status_history(transaction_id, changed_at ASC);
+
+-- ------------------------------------------------------------------------------
+-- Baseline Seeds
+-- ------------------------------------------------------------------------------
+INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)
+VALUES ('1010-CASH-VAULT', 'Cash and Cash Equivalents Vault', 'ASSET', 'PHP', 1);
+
+INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)
+VALUES ('2100-CUST-LIAB', 'Customer Deposit Liabilities (Subledger Control)', 'LIABILITY', 'PHP', 1);
+
+INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)
+VALUES ('4010-FEE-INCOME', 'Fee and Commission Income', 'REVENUE', 'PHP', 1);
+
+INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)
+VALUES ('5010-INT-EXPENSE', 'Deposit Interest Expense', 'EXPENSE', 'PHP', 1);
+
+INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)
+VALUES ('2150-TAX-WITHHOLD-PAYABLE', 'BIR Final Withholding Tax Payable (20%)', 'LIABILITY', 'PHP', 1);
+
+INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)
+VALUES ('20100', 'Demand Deposit - Customer Accounts', 'LIABILITY', 'PHP', 1);
+
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('1010-CASH-VAULT', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('2100-CUST-LIAB', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('4010-FEE-INCOME', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('5010-INT-EXPENSE', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('2150-TAX-WITHHOLD-PAYABLE', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('20100', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('20100', '2026-M10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
+INSERT INTO system_dates (system_date_id, business_date, status, posting_window_open, last_cob_completed_at, updated_at)
+VALUES ('SYS-DATE-1', TRUNC(CURRENT_DATE), 'ONLINE', 1, NULL, CURRENT_TIMESTAMP);
+
+

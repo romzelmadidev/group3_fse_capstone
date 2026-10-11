@@ -3,7 +3,7 @@ FROM adminer:latest
 USER root
 
 # Install dependencies required for Oracle Instant Client and Alpine compatibility
-RUN apk --no-cache add libaio gcompat libnsl libc6-compat curl && \
+RUN apk --no-cache add ca-certificates libaio gcompat libnsl libc6-compat curl && \
     ln -s /usr/lib/libaio.so.1 /lib/libaio.so.1 || true && \
     ln -s /usr/lib/libaio.so.1 /lib64/libaio.so.1 || true
 

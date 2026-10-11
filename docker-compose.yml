@@ -1,0 +1,6 @@
+# ==============================================================================
+# FSE Capstone: Root Docker Compose Configuration
+# Dispatches to canonical infrastructure definitions in infrastructure/docker-compose.yml
+# ==============================================================================
+include:
+  - infrastructure/docker-compose.yml

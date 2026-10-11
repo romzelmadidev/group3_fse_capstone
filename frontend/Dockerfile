@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # ==============================================================================
 # FSE Capstone: Retail Banking SPA Multi-Stage Production Dockerfile
 # Builds React static bundle inside container and serves via Nginx Alpine
@@ -7,9 +8,12 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# Configure npm for corporate / proxied environments with custom TLS inspection
+ENV NODE_TLS_REJECT_UNAUTHORIZED=0
+
 # Install dependencies
 COPY package*.json ./
-RUN npm install
+RUN npm config set strict-ssl false && npm install
 
 # Build static distribution
 COPY . ./

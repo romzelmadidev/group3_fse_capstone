@@ -38,6 +38,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
@@ -507,8 +508,12 @@ class BalanceMutationServiceTest {
         assertEquals(RECEIVER_ACCOUNT, savedReversal.getFromAccountId());
         assertEquals(SENDER_ACCOUNT, savedReversal.getToAccountId());
 
-        // Verify audit record saved
-        verify(auditRepository).save(any(LedgerMutationAudit.class));
+        // Verify both debit and credit audit records saved
+        ArgumentCaptor<LedgerMutationAudit> auditCaptor = ArgumentCaptor.forClass(LedgerMutationAudit.class);
+        verify(auditRepository, times(2)).save(auditCaptor.capture());
+        List<LedgerMutationAudit> savedAudits = auditCaptor.getAllValues();
+        assertTrue(savedAudits.stream().anyMatch(a -> "DEBIT".equals(a.getMutationType())));
+        assertTrue(savedAudits.stream().anyMatch(a -> "CREDIT".equals(a.getMutationType())));
     }
 
     @Test

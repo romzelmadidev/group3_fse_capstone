@@ -13,8 +13,16 @@ ALTER SESSION SET CONTAINER = XEPDB1;
 ALTER SESSION SET CURRENT_SCHEMA = fse_user;
 
 -- Drop existing tables in reverse dependency order
-DROP TABLE reversal_requests CASCADE CONSTRAINTS;
 DROP TABLE transaction_status_history CASCADE CONSTRAINTS;
+DROP TABLE reversal_requests CASCADE CONSTRAINTS;
+DROP TABLE uncollected_fees CASCADE CONSTRAINTS;
+DROP TABLE interest_accruals CASCADE CONSTRAINTS;
+DROP TABLE eod_balance_snapshots CASCADE CONSTRAINTS;
+DROP TABLE cob_batch_log CASCADE CONSTRAINTS;
+DROP TABLE gl_ledger CASCADE CONSTRAINTS;
+DROP TABLE gl_balances CASCADE CONSTRAINTS;
+DROP TABLE gl_accounts CASCADE CONSTRAINTS;
+DROP TABLE system_dates CASCADE CONSTRAINTS;
 DROP TABLE outbox_events CASCADE CONSTRAINTS;
 DROP TABLE notifications CASCADE CONSTRAINTS;
 DROP TABLE auth_sessions CASCADE CONSTRAINTS;
@@ -96,7 +104,7 @@ CREATE TABLE balance_master (
     account_id        VARCHAR2(64) NOT NULL UNIQUE,
     balance_amount    NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
     hold_amount       NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
-    available_balance NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    available_balance NUMBER(18, 4) GENERATED ALWAYS AS (balance_amount - hold_amount) VIRTUAL,
     created_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT fk_bm_account FOREIGN KEY (account_id) REFERENCES accounts(account_id),
@@ -111,16 +119,20 @@ CREATE TABLE balance_master (
 -- ==============================================================================
 CREATE TABLE transactions (
     transaction_id         VARCHAR2(64) PRIMARY KEY,
-    from_account_id        VARCHAR2(64) NOT NULL,
+    from_account_id        VARCHAR2(64),
     to_account_id          VARCHAR2(64),
-    type                   VARCHAR2(30) NOT NULL,
+    type                   VARCHAR2(30),
+    transaction_type       VARCHAR2(30) DEFAULT 'INTRA_BANK',
     currency               VARCHAR2(3) DEFAULT 'PHP' NOT NULL,
     amount                 NUMBER(18, 4) NOT NULL,
-    before_balance         NUMBER(18, 4) NOT NULL,
-    after_balance          NUMBER(18, 4) NOT NULL,
+    before_balance         NUMBER(18, 4) DEFAULT 0.0000,
+    after_balance          NUMBER(18, 4) DEFAULT 0.0000,
     status                 VARCHAR2(30) NOT NULL,
-    requires_2fa_otp       NUMBER(1) DEFAULT 0 NOT NULL,
+    requires_2fa_otp       NUMBER(1) DEFAULT 0,
+    requires_maker_checker NUMBER(1) DEFAULT 0,
     approved_by_user_id    VARCHAR2(64),
+    approved_by            VARCHAR2(64),
+    idempotency_key        VARCHAR2(64) UNIQUE,
     memo                   VARCHAR2(255),
     latitude               NUMBER(10, 6),
     longitude              NUMBER(10, 6),
@@ -137,9 +149,9 @@ CREATE TABLE transactions (
     CONSTRAINT fk_tx_to_account FOREIGN KEY (to_account_id) REFERENCES accounts(account_id),
     CONSTRAINT fk_tx_approved_by FOREIGN KEY (approved_by_user_id) REFERENCES users(user_id),
     CONSTRAINT fk_tx_reversed_by FOREIGN KEY (reversed_by_user_id) REFERENCES users(user_id),
-    CONSTRAINT chk_tx_type CHECK (type IN ('DEPOSIT', 'WITHDRAWAL', 'TRANSFER', 'REVERSAL')),
-    CONSTRAINT chk_tx_status CHECK (status IN ('PENDING_APPROVAL', 'COMMITTED', 'FAILED', 'REJECTED_FRAUD', 'REVERSED', 'CANCELLED', 'POSTED', 'INITIATED', 'PROCESSING')),
-    CONSTRAINT chk_tx_2fa_otp CHECK (requires_2fa_otp IN (0, 1)),
+    CONSTRAINT chk_tx_type CHECK (type IS NULL OR UPPER(type) IN ('DEPOSIT', 'WITHDRAWAL', 'TRANSFER', 'REVERSAL', 'INTRA_BANK', 'INTER_BANK')),
+    CONSTRAINT chk_tx_status CHECK (UPPER(status) IN ('INITIATED', 'AUTHORIZED', 'RESERVED', 'PROCESSING', 'POSTED', 'FAILED', 'CANCELLED', 'PENDINGREVERSAL', 'PENDING_REVERSAL', 'REVERSED', 'PENDING_APPROVAL', 'COMMITTED', 'REJECTED_FRAUD')),
+    CONSTRAINT chk_tx_2fa_otp CHECK (requires_2fa_otp IS NULL OR requires_2fa_otp IN (0, 1)),
     CONSTRAINT chk_tx_amount CHECK (amount > 0)
 );
 
@@ -157,9 +169,6 @@ CREATE TABLE outbox_events (
     retry_count    NUMBER(4) DEFAULT 0 NOT NULL,
     created_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     published_at   TIMESTAMP WITH TIME ZONE,
-    CONSTRAINT fk_oe_aggregate FOREIGN KEY (aggregate_id) REFERENCES transactions(transaction_id),
-    CONSTRAINT chk_oe_aggregate_type CHECK (aggregate_type IN ('TRANSACTION', 'BALANCE_MUTATION', 'CUSTOMER_VERIFICATION', 'MAKER_CHECKER')),
-    CONSTRAINT chk_oe_event_type CHECK (event_type IN ('VERIFICATION_PENDING', 'VERIFICATION_CONFIRMED', 'MAKER_PENDING', 'CHECKER_APPROVED', 'MUTATION_COMMITTED', 'TRANSFER_PENDING_APPROVAL', 'TRANSFER_EXECUTED', 'TRANSFER_REVERSED')),
     CONSTRAINT chk_oe_status CHECK (status IN ('PENDING', 'PUBLISHED', 'FAILED'))
 );
 
@@ -179,7 +188,252 @@ CREATE TABLE notifications (
 );
 
 -- ==============================================================================
--- 7. Table: kyc_submissions (Laya e-KYC results + maker/checker review)
+-- 7. Table: gl_accounts (Chart of Accounts)
+-- ==============================================================================
+CREATE TABLE gl_accounts (
+    gl_code      VARCHAR2(32) PRIMARY KEY,
+    account_name VARCHAR2(100) NOT NULL,
+    account_type VARCHAR2(20) NOT NULL CHECK (account_type IN ('ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE')),
+    currency     VARCHAR2(3) DEFAULT 'PHP' NOT NULL,
+    is_active    NUMBER(1) DEFAULT 1 NOT NULL CHECK (is_active IN (0, 1))
+);
+
+-- ==============================================================================
+-- 8. Table: gl_ledger (Double-Entry Journal Postings)
+-- ==============================================================================
+CREATE TABLE gl_ledger (
+    journal_id     VARCHAR2(64) PRIMARY KEY,
+    transaction_id VARCHAR2(64) NOT NULL,
+    gl_code        VARCHAR2(32) NOT NULL,
+    debit_amount   NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    credit_amount  NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    posting_date   DATE NOT NULL,
+    created_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT fk_gl_account FOREIGN KEY (gl_code) REFERENCES gl_accounts(gl_code),
+    CONSTRAINT chk_gl_amounts CHECK (debit_amount >= 0 AND credit_amount >= 0)
+);
+
+CREATE INDEX idx_gl_ledger_tx ON gl_ledger(transaction_id);
+CREATE INDEX idx_gl_ledger_date ON gl_ledger(posting_date, gl_code);
+
+-- ==============================================================================
+-- 9. Table: gl_balances (Real-Time Debit/Credit Accumulators)
+-- ==============================================================================
+CREATE TABLE gl_balances (
+    gl_code       VARCHAR2(32) NOT NULL,
+    fiscal_period VARCHAR2(20) NOT NULL,
+    total_debit   NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    total_credit  NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    net_balance   NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    updated_at    TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT pk_gl_balances PRIMARY KEY (gl_code, fiscal_period),
+    CONSTRAINT fk_glb_account FOREIGN KEY (gl_code) REFERENCES gl_accounts(gl_code)
+);
+
+-- ==============================================================================
+-- 10. Table: reversal_requests (Maker-Checker Dispute Tickets)
+-- ==============================================================================
+CREATE TABLE reversal_requests (
+    ticket_id                VARCHAR2(64) PRIMARY KEY,
+    original_tx_id           VARCHAR2(64),
+    original_transaction_id  VARCHAR2(64),
+    maker_id                 VARCHAR2(64) NOT NULL,
+    checker_id               VARCHAR2(64),
+    dispute_reason           VARCHAR2(100) NOT NULL,
+    maker_notes              VARCHAR2(500),
+    checker_notes            VARCHAR2(500),
+    status                   VARCHAR2(30) DEFAULT 'PENDING' NOT NULL CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
+    reversal_tx_id           VARCHAR2(64),
+    reversal_transaction_id  VARCHAR2(64),
+    created_at               TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    resolved_at              TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT fk_rev_orig_tx FOREIGN KEY (original_tx_id) REFERENCES transactions(transaction_id)
+);
+
+CREATE INDEX idx_rev_orig_tx ON reversal_requests(original_tx_id);
+CREATE INDEX idx_rev_status ON reversal_requests(status);
+
+-- ==============================================================================
+-- 11. Table: uncollected_fees (Zero-Overdraft Arrears Tracking)
+-- ==============================================================================
+CREATE TABLE uncollected_fees (
+    fee_id           VARCHAR2(64) PRIMARY KEY,
+    account_id       VARCHAR2(64) NOT NULL,
+    fee_type         VARCHAR2(50) NOT NULL,
+    amount_due       NUMBER(18, 4) NOT NULL,
+    amount_collected NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    is_settled       NUMBER(1) DEFAULT 0 NOT NULL CHECK (is_settled IN (0, 1)),
+    created_at       TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT fk_uncol_acc FOREIGN KEY (account_id) REFERENCES accounts(account_id),
+    CONSTRAINT chk_settled_integrity CHECK (
+        (is_settled = 1 AND amount_collected >= amount_due) OR
+        (is_settled = 0 AND amount_collected < amount_due)
+    )
+);
+
+CREATE INDEX idx_uncollected_acc ON uncollected_fees(account_id, is_settled);
+
+-- ==============================================================================
+-- 12. Table: interest_accruals (Daily Accrued Interest & BIR Withholding)
+-- ==============================================================================
+CREATE TABLE interest_accruals (
+    accrual_id     VARCHAR2(64) PRIMARY KEY,
+    account_id     VARCHAR2(64) NOT NULL,
+    accrual_date   DATE NOT NULL,
+    daily_rate     NUMBER(12, 8) NOT NULL,
+    accrued_amount NUMBER(18, 4) NOT NULL,
+    tax_withheld   NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    net_accrual    NUMBER(18, 4) NOT NULL,
+    is_capitalized NUMBER(1) DEFAULT 0 NOT NULL CHECK (is_capitalized IN (0, 1)),
+    created_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT fk_int_acc FOREIGN KEY (account_id) REFERENCES accounts(account_id),
+    CONSTRAINT chk_net_accrual CHECK (net_accrual = accrued_amount - tax_withheld)
+);
+
+CREATE INDEX idx_int_acc_date ON interest_accruals(account_id, accrual_date);
+
+-- ==============================================================================
+-- 13. Table: eod_balance_snapshots (Closing State Freezes)
+-- ==============================================================================
+CREATE TABLE eod_balance_snapshots (
+    snapshot_id     VARCHAR2(64) PRIMARY KEY,
+    account_id      VARCHAR2(64) NOT NULL,
+    business_date   DATE NOT NULL,
+    closing_balance NUMBER(18, 4) NOT NULL,
+    frozen_at       TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT fk_snap_acc FOREIGN KEY (account_id) REFERENCES accounts(account_id)
+);
+
+CREATE INDEX idx_eod_snap_date ON eod_balance_snapshots(business_date, account_id);
+
+-- ==============================================================================
+-- 14. Table: system_dates (Core Business Date & COB State Machine)
+-- ==============================================================================
+CREATE TABLE system_dates (
+    system_date_id        VARCHAR2(64) PRIMARY KEY,
+    business_date         DATE NOT NULL,
+    status                VARCHAR2(30) DEFAULT 'ONLINE' NOT NULL CHECK (status IN ('ONLINE', 'EOD_CUTOFF', 'COB_PROCESSING', 'ROLLOVER', 'ERROR_HALTED')),
+    posting_window_open   NUMBER(1) DEFAULT 1 NOT NULL CHECK (posting_window_open IN (0, 1)),
+    last_cob_completed_at TIMESTAMP WITH TIME ZONE,
+    updated_at            TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+-- ==============================================================================
+-- 15. Table: cob_batch_log (Master COB Operational Audit Log)
+-- ==============================================================================
+CREATE TABLE cob_batch_log (
+    batch_id               VARCHAR2(64) PRIMARY KEY,
+    business_date          DATE NOT NULL,
+    started_at             TIMESTAMP WITH TIME ZONE NOT NULL,
+    completed_at           TIMESTAMP WITH TIME ZONE,
+    status                 VARCHAR2(20) DEFAULT 'RUNNING' NOT NULL CHECK (status IN ('RUNNING', 'COMPLETED', 'FAILED')),
+    current_phase          VARCHAR2(50),
+    accounts_processed     NUMBER(10) DEFAULT 0 NOT NULL,
+    total_fees_collected   NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    total_interest_accrued NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    total_tax_withheld     NUMBER(18, 4) DEFAULT 0.0000 NOT NULL,
+    error_message          VARCHAR2(1000)
+);
+
+CREATE INDEX idx_cob_log_date ON cob_batch_log(business_date);
+
+-- ==============================================================================
+-- 16. Table: transaction_status_history (Master Transition Log)
+-- ==============================================================================
+CREATE TABLE transaction_status_history (
+    history_id     VARCHAR2(64) PRIMARY KEY,
+    transaction_id VARCHAR2(64) NOT NULL,
+    from_status    VARCHAR2(30),
+    to_status      VARCHAR2(30) NOT NULL,
+    change_reason  VARCHAR2(100) NOT NULL,
+    reason_details VARCHAR2(500),
+    actor_id       VARCHAR2(64) NOT NULL,
+    actor_type     VARCHAR2(30) NOT NULL,
+    changed_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    metadata_json  CLOB,
+    CONSTRAINT fk_tsh_tx FOREIGN KEY (transaction_id) REFERENCES transactions(transaction_id)
+);
+
+CREATE INDEX idx_tsh_tx ON transaction_status_history(transaction_id, changed_at ASC);
+
+-- Triggers for backward compatibility and automated column synchronization
+CREATE OR REPLACE TRIGGER trg_tx_sync_cols
+BEFORE INSERT OR UPDATE ON transactions
+FOR EACH ROW
+BEGIN
+    -- Standardize type (Operation category: TRANSFER, REVERSAL, DEPOSIT, WITHDRAWAL)
+    IF :NEW.type IS NULL THEN
+        IF UPPER(:NEW.transaction_type) = 'REVERSAL' THEN
+            :NEW.type := 'REVERSAL';
+        ELSE
+            :NEW.type := 'TRANSFER';
+        END IF;
+    ELSIF UPPER(:NEW.type) IN ('INTRA_BANK', 'INTER_BANK') THEN
+        IF :NEW.transaction_type IS NULL THEN
+            :NEW.transaction_type := :NEW.type;
+        END IF;
+        :NEW.type := 'TRANSFER';
+    END IF;
+
+    -- Standardize transaction_type (Channel/Routing scope: INTRA_BANK, INTER_BANK)
+    IF :NEW.transaction_type IS NULL OR UPPER(:NEW.transaction_type) IN ('TRANSFER', 'REVERSAL') THEN
+        :NEW.transaction_type := 'INTRA_BANK';
+    END IF;
+    IF :NEW.before_balance IS NULL THEN
+        :NEW.before_balance := 0.0000;
+    END IF;
+    IF :NEW.after_balance IS NULL THEN
+        :NEW.after_balance := 0.0000;
+    END IF;
+    IF :NEW.requires_maker_checker IS NULL AND :NEW.requires_2fa_otp IS NOT NULL THEN
+        :NEW.requires_maker_checker := :NEW.requires_2fa_otp;
+    END IF;
+    IF :NEW.requires_2fa_otp IS NULL AND :NEW.requires_maker_checker IS NOT NULL THEN
+        :NEW.requires_2fa_otp := :NEW.requires_maker_checker;
+    END IF;
+    IF :NEW.approved_by_user_id IS NULL AND :NEW.approved_by IS NOT NULL THEN
+        :NEW.approved_by_user_id := :NEW.approved_by;
+    END IF;
+    IF :NEW.approved_by IS NULL AND :NEW.approved_by_user_id IS NOT NULL THEN
+        :NEW.approved_by := :NEW.approved_by_user_id;
+    END IF;
+    IF :NEW.idempotency_key IS NULL THEN
+        :NEW.idempotency_key := :NEW.transaction_id;
+    END IF;
+END;
+/
+
+CREATE OR REPLACE TRIGGER trg_bm_ensure_balance_id
+BEFORE INSERT OR UPDATE ON balance_master
+FOR EACH ROW
+BEGIN
+    IF :NEW.balance_id IS NULL THEN
+        :NEW.balance_id := 'BM-' || :NEW.account_id;
+    END IF;
+END;
+/
+
+CREATE OR REPLACE TRIGGER trg_rev_sync_cols
+BEFORE INSERT OR UPDATE ON reversal_requests
+FOR EACH ROW
+BEGIN
+    IF :NEW.original_tx_id IS NULL AND :NEW.original_transaction_id IS NOT NULL THEN
+        :NEW.original_tx_id := :NEW.original_transaction_id;
+    END IF;
+    IF :NEW.original_transaction_id IS NULL AND :NEW.original_tx_id IS NOT NULL THEN
+        :NEW.original_transaction_id := :NEW.original_tx_id;
+    END IF;
+    IF :NEW.reversal_tx_id IS NULL AND :NEW.reversal_transaction_id IS NOT NULL THEN
+        :NEW.reversal_tx_id := :NEW.reversal_transaction_id;
+    END IF;
+    IF :NEW.reversal_transaction_id IS NULL AND :NEW.reversal_tx_id IS NOT NULL THEN
+        :NEW.reversal_transaction_id := :NEW.reversal_tx_id;
+    END IF;
+END;
+/
+
+-- ==============================================================================
+-- 17. Table: kyc_submissions (Laya e-KYC results + maker/checker review)
 -- Laya only recommends. Every submission waits for a maker recommendation and
 -- a checker decision by a different reviewer before kyc_status changes.
 -- ==============================================================================
@@ -218,7 +472,7 @@ CREATE TABLE kyc_submissions (
 );
 
 -- ==============================================================================
--- 8. Table: device_push_tokens (FCM registration per bound device)
+-- 18. Table: device_push_tokens (FCM registration per bound device)
 -- ==============================================================================
 CREATE TABLE device_push_tokens (
     device_id     VARCHAR2(128) PRIMARY KEY,
@@ -229,41 +483,6 @@ CREATE TABLE device_push_tokens (
     updated_at    TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT chk_push_platform CHECK (platform IN ('ANDROID', 'IOS', 'WEB'))
 );
-
--- ==============================================================================
--- 9. Table: reversal_requests (Dual-Control Maker-Checker Reversals)
--- ==============================================================================
-CREATE TABLE reversal_requests (
-    ticket_id                VARCHAR2(64) PRIMARY KEY,
-    original_transaction_id  VARCHAR2(64) NOT NULL,
-    maker_id                 VARCHAR2(64) NOT NULL,
-    checker_id               VARCHAR2(64),
-    status                   VARCHAR2(30) DEFAULT 'PENDING' NOT NULL,
-    dispute_reason           VARCHAR2(100) NOT NULL,
-    maker_notes              VARCHAR2(255),
-    checker_notes            VARCHAR2(255),
-    reversal_transaction_id  VARCHAR2(64),
-    created_at               TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    resolved_at              TIMESTAMP WITH TIME ZONE,
-    CONSTRAINT chk_rev_status CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED'))
-);
-
--- ==============================================================================
--- 10. Table: transaction_status_history (Audit Trail for Transfer Lifecycle)
--- ==============================================================================
-CREATE TABLE transaction_status_history (
-    history_id      VARCHAR2(64) PRIMARY KEY,
-    transaction_id  VARCHAR2(64) NOT NULL,
-    from_status     VARCHAR2(30),
-    to_status       VARCHAR2(30) NOT NULL,
-    change_reason   VARCHAR2(50) NOT NULL,
-    reason_details  VARCHAR2(255),
-    actor_id        VARCHAR2(64) NOT NULL,
-    actor_type      VARCHAR2(30) NOT NULL,
-    changed_at      TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT fk_tsh_tx FOREIGN KEY (transaction_id) REFERENCES transactions(transaction_id)
-);
-
 -- Note: Authentication session tokens and revocations are persisted in Redis (redis-cache).
 
 -- ==============================================================================
@@ -272,15 +491,16 @@ CREATE TABLE transaction_status_history (
 CREATE INDEX idx_acc_user ON accounts(user_id);
 CREATE INDEX idx_tx_from_acc ON transactions(from_account_id, created_at DESC);
 CREATE INDEX idx_tx_to_acc ON transactions(to_account_id, created_at DESC);
+-- Note: idempotency_key index is automatically generated by its UNIQUE constraint
 CREATE INDEX idx_tx_status ON transactions(status);
 CREATE INDEX idx_outbox_status ON outbox_events(status, created_at);
 CREATE INDEX idx_notif_user ON notifications(user_id, sent_at DESC);
 CREATE INDEX idx_kyc_status ON kyc_submissions(status, created_at);
 CREATE INDEX idx_kyc_user ON kyc_submissions(user_id, created_at DESC);
 CREATE INDEX idx_push_user ON device_push_tokens(user_id);
-CREATE INDEX idx_rev_status ON reversal_requests(status, created_at DESC);
-CREATE INDEX idx_rev_orig_tx ON reversal_requests(original_transaction_id);
-CREATE INDEX idx_tsh_tx ON transaction_status_history(transaction_id, changed_at ASC);
+CREATE INDEX idx_rev_stat_dt ON reversal_requests(status, created_at DESC);
+CREATE INDEX idx_rev_orig_compat ON reversal_requests(original_transaction_id);
+-- Note: idx_tsh_tx already created above for transaction_status_history
 
 -- ==============================================================================
 -- Seed Population: Realistic Banking Dataset
@@ -561,119 +781,167 @@ INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
 VALUES ('1000-8801-0007', 'USR-TM-ANGEL', '1000-8801-0007', 'SAVINGS', 'ACTIVE');
 
 -- 3. Balance Master (Exact 4-decimal precision with Surrogate balance_id PK)
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-2000-3001', '1000-2000-3001', 25000000.0000, 0.0000, 25000000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3001', '1000-2000-3001', 25000000.0000, 0.0000);
 
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-2000-3002', '1000-2000-3002', 5000000.0000, 0.0000, 5000000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3002', '1000-2000-3002', 5000000.0000, 0.0000);
 
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-2000-3004', '1000-2000-3004', 5200000.0000, 0.0000, 5200000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3004', '1000-2000-3004', 5200000.0000, 0.0000);
 
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-2000-3005', '1000-2000-3005', 3750000.0000, 0.0000, 3750000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3005', '1000-2000-3005', 3750000.0000, 0.0000);
 
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-2000-3006', '1000-2000-3006', 4200000.0000, 0.0000, 4200000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3006', '1000-2000-3006', 4200000.0000, 0.0000);
 
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-2000-3007', '1000-2000-3007', 6800000.0000, 0.0000, 6800000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3007', '1000-2000-3007', 6800000.0000, 0.0000);
 
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-2000-3008', '1000-2000-3008', 2950000.0000, 0.0000, 2950000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3008', '1000-2000-3008', 2950000.0000, 0.0000);
 
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-2000-3009', '1000-2000-3009', 9100000.0000, 0.0000, 9100000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3009', '1000-2000-3009', 9100000.0000, 0.0000);
 
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-2000-3010', '1000-2000-3010', 50000.0000, 0.0000, 50000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3010', '1000-2000-3010', 50000.0000, 0.0000);
 
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-4491-0023', '1000-4491-0023', 250000.0000, 0.0000, 250000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-4491-0023', '1000-4491-0023', 250000.0000, 0.0000);
 
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-2000-3011', '1000-2000-3011', 50000.0000, 0.0000, 50000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-2000-3011', '1000-2000-3011', 50000.0000, 0.0000);
 
 -- Team Member Balances (PHP 1,000,000.00 each)
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-8801-0001', '1000-8801-0001', 1000000.0000, 0.0000, 1000000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-8801-0001', '1000-8801-0001', 1000000.0000, 0.0000);
 
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-8801-0002', '1000-8801-0002', 1000000.0000, 0.0000, 1000000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-8801-0002', '1000-8801-0002', 1000000.0000, 0.0000);
 
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-8801-0003', '1000-8801-0003', 1000000.0000, 0.0000, 1000000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-8801-0003', '1000-8801-0003', 1000000.0000, 0.0000);
 
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-8801-0004', '1000-8801-0004', 1000000.0000, 0.0000, 1000000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-8801-0004', '1000-8801-0004', 1000000.0000, 0.0000);
 
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-8801-0005', '1000-8801-0005', 1000000.0000, 0.0000, 1000000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-8801-0005', '1000-8801-0005', 1000000.0000, 0.0000);
 
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-8801-0006', '1000-8801-0006', 1000000.0000, 0.0000, 1000000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-8801-0006', '1000-8801-0006', 1000000.0000, 0.0000);
 
-INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, available_balance)
-VALUES ('bal-1000-8801-0007', '1000-8801-0007', 1000000.0000, 0.0000, 1000000.0000);
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-1000-8801-0007', '1000-8801-0007', 1000000.0000, 0.0000);
 
--- 4. Transactions
--- Tx 1: High-value transfer pending Customer Email Verification (> 50k PHP hold applied)
-INSERT INTO transactions (
-    transaction_id, from_account_id, to_account_id, type, amount,
-    before_balance, after_balance, status, requires_2fa_otp, approved_by_user_id
-) VALUES (
-    'tx-4001-hld-001', '1000-2000-3001', '1000-2000-3002', 'TRANSFER', 5000000.0000,
-    25000000.0000, 20000000.0000, 'PENDING_APPROVAL', 1, NULL
-);
+-- 4. Transactions (Empty: all ledger transactions are created live via the banking system)
 
--- Tx 2: Committed standard transfer
-INSERT INTO transactions (
-    transaction_id, from_account_id, to_account_id, type, amount,
-    before_balance, after_balance, status, requires_2fa_otp, approved_by_user_id
-) VALUES (
-    'tx-4002-cmt-002', '1000-2000-3001', '1000-2000-3002', 'TRANSFER', 150000.0000,
-    25150000.0000, 25000000.0000, 'COMMITTED', 0, 'usr-1003-tel-001'
-);
+-- Baseline Chart of Accounts Seeds
+INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)
+VALUES ('1010-CASH-VAULT', 'Cash and Cash Equivalents Vault', 'ASSET', 'PHP', 1);
 
--- Tx 3: OTC Cash withdrawal
-INSERT INTO transactions (
-    transaction_id, from_account_id, to_account_id, type, amount,
-    before_balance, after_balance, status, requires_2fa_otp, approved_by_user_id
-) VALUES (
-    'tx-4003-otc-003', '1000-2000-3001', NULL, 'WITHDRAWAL', 50000.0000,
-    25050000.0000, 25000000.0000, 'COMMITTED', 0, 'usr-1003-tel-001'
-);
+INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)
+VALUES ('2100-CUST-LIAB', 'Customer Deposit Liabilities (Subledger Control)', 'LIABILITY', 'PHP', 1);
 
--- 5. Outbox Events (Relay to Kafka)
-INSERT INTO outbox_events (
-    event_id, aggregate_type, aggregate_id, event_type, kafka_topic, payload, status, retry_count
-) VALUES (
-    'evt-5001-mk-001', 'CUSTOMER_VERIFICATION', 'tx-4001-hld-001', 'TRANSFER_PENDING_APPROVAL',
-    'banking.customer.otp',
-    '{"transactionId":"tx-4001-hld-001","fromAccount":"1000-2000-3001","toAccount":"1000-2000-3002","amount":5000000.0000,"currency":"PHP","makerId":"usr-1001-cst-001"}',
-    'PENDING', 0
-);
+INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)
+VALUES ('20100', 'Customer Demand Deposits', 'LIABILITY', 'PHP', 1);
 
-INSERT INTO outbox_events (
-    event_id, aggregate_type, aggregate_id, event_type, kafka_topic, payload, status, retry_count, published_at
-) VALUES (
-    'evt-5002-tx-002', 'TRANSACTION', 'tx-4002-cmt-002', 'MUTATION_COMMITTED',
-    'banking.transfers.events',
-    '{"transactionId":"tx-4002-cmt-002","fromAccount":"1000-2000-3001","toAccount":"1000-2000-3002","amount":150000.0000,"status":"COMMITTED"}',
-    'PUBLISHED', 0, CURRENT_TIMESTAMP
-);
+INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)
+VALUES ('4010-FEE-INCOME', 'Fee and Commission Income', 'REVENUE', 'PHP', 1);
 
--- 6. Notifications
-INSERT INTO notifications (notification_id, user_id, type, message)
-VALUES (
-    'notif-6001-001', 'usr-1001-cst-001', 'TRANSACTION_ALERT',
-    'Your transfer of PHP 5,000,000.0000 is awaiting Customer Email Verification OTP.'
-);
+INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)
+VALUES ('5010-INT-EXPENSE', 'Deposit Interest Expense', 'EXPENSE', 'PHP', 1);
 
-INSERT INTO notifications (notification_id, user_id, type, message)
-VALUES (
-    'notif-6002-002', 'usr-1001-cst-001', 'CUSTOMER_VERIFICATION_ALERT',
-    'Verification code 492817 dispatched to your email for transfer tx-4001-hld-001.'
-);
+INSERT INTO gl_accounts (gl_code, account_name, account_type, currency, is_active)
+VALUES ('2150-TAX-WITHHOLD-PAYABLE', 'BIR Final Withholding Tax Payable (20%)', 'LIABILITY', 'PHP', 1);
+
+-- Baseline GL Balances Seeds
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('1010-CASH-VAULT', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('2100-CUST-LIAB', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('20100', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('20100', '2026-M10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('4010-FEE-INCOME', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('5010-INT-EXPENSE', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
+INSERT INTO gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
+VALUES ('2150-TAX-WITHHOLD-PAYABLE', '2026-10', 0.0000, 0.0000, 0.0000, CURRENT_TIMESTAMP);
+
+-- Baseline System Date
+INSERT INTO system_dates (system_date_id, business_date, status, posting_window_open, last_cob_completed_at, updated_at)
+VALUES ('SYS-DATE-1', TRUNC(CURRENT_DATE), 'ONLINE', 1, NULL, CURRENT_TIMESTAMP);
 
 COMMIT;
+
+-- ==============================================================================
+-- 7. Multi-Schema Synonyms for JPA Entities (core, integration, auth_identity)
+-- ==============================================================================
+DECLARE
+    PROCEDURE create_user_if_missing(p_username IN VARCHAR2, p_password IN VARCHAR2) IS
+        v_count NUMBER;
+    BEGIN
+        SELECT COUNT(*) INTO v_count FROM all_users WHERE username = UPPER(p_username);
+        IF v_count = 0 THEN
+            EXECUTE IMMEDIATE 'CREATE USER ' || p_username || ' IDENTIFIED BY "' || p_password || '"';
+            EXECUTE IMMEDIATE 'GRANT CREATE SESSION, CREATE SYNONYM TO ' || p_username;
+        END IF;
+    END;
+BEGIN
+    create_user_if_missing('CORE', 'CorePass123#');
+    create_user_if_missing('INTEGRATION', 'IntegrationPass123#');
+    create_user_if_missing('AUTH_IDENTITY', 'AuthIdentityPass123#');
+END;
+/
+
+DECLARE
+    TYPE t_str_list IS TABLE OF VARCHAR2(64);
+    v_core_tables t_str_list := t_str_list(
+        'ACCOUNTS', 'AMOUNT_HOLDS', 'BALANCE_MASTER', 'COB_BATCH_LOG',
+        'EOD_BALANCE_SNAPSHOTS', 'GL_ACCOUNTS', 'GL_BALANCES', 'GL_LEDGER',
+        'INTEREST_ACCRUALS', 'REVERSAL_REQUESTS', 'SYSTEM_DATES',
+        'TRANSACTIONS', 'TRANSACTION_STATUS_HISTORY', 'UNCOLLECTED_FEES',
+        'USERS'
+    );
+    v_integration_tables t_str_list := t_str_list('OUTBOX_EVENTS');
+    v_auth_tables t_str_list := t_str_list('USERS');
+BEGIN
+    FOR i IN 1..v_core_tables.COUNT LOOP
+        BEGIN
+            EXECUTE IMMEDIATE 'GRANT ALL ON fse_user.' || v_core_tables(i) || ' TO core';
+            EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM core.' || v_core_tables(i) || ' FOR fse_user.' || v_core_tables(i);
+            EXECUTE IMMEDIATE 'GRANT ALL ON core.' || v_core_tables(i) || ' TO fse_user';
+        EXCEPTION WHEN OTHERS THEN NULL; END;
+    END LOOP;
+
+    FOR i IN 1..v_integration_tables.COUNT LOOP
+        BEGIN
+            EXECUTE IMMEDIATE 'GRANT ALL ON fse_user.' || v_integration_tables(i) || ' TO integration';
+            EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM integration.' || v_integration_tables(i) || ' FOR fse_user.' || v_integration_tables(i);
+            EXECUTE IMMEDIATE 'GRANT ALL ON integration.' || v_integration_tables(i) || ' TO fse_user';
+        EXCEPTION WHEN OTHERS THEN NULL; END;
+    END LOOP;
+
+    FOR i IN 1..v_auth_tables.COUNT LOOP
+        BEGIN
+            EXECUTE IMMEDIATE 'GRANT ALL ON fse_user.' || v_auth_tables(i) || ' TO auth_identity';
+            EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM auth_identity.' || v_auth_tables(i) || ' FOR fse_user.' || v_auth_tables(i);
+            EXECUTE IMMEDIATE 'GRANT ALL ON auth_identity.' || v_auth_tables(i) || ' TO fse_user';
+        EXCEPTION WHEN OTHERS THEN NULL; END;
+    END LOOP;
+END;
+/
+
+EXIT;
+

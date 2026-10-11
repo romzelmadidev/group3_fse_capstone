@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cbs-cob-batch-trigger
+  namespace: banking
+  labels:
+    app: cbs-cob-cron
+    tier: batch
+spec:
+  # Real-world banking cutoff: 21:00 (9:00 PM) Philippine Standard Time (Asia/Manila)
+  schedule: "0 21 * * *"
+  timeZone: "Asia/Manila"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: cbs-cob-cron
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: cob-runner
+            image: curlimages/curl:8.6.0
+            command:
+            - "curl"
+            - "-s"
+            - "-f"
+            - "-X"
+            - "POST"
+            - "http://t24-mock-cbs:8085/api/v1/cbs/cob/run"
