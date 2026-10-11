@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../models/notification_model.dart';
 import '../navigation/root_navigator.dart';
-import '../widgets/security_dialog.dart';
 import 'auth_api_service.dart' show AuthApiService, defaultBackendHost;
 import 'bank_service.dart';
 
@@ -106,8 +105,8 @@ class NotificationStreamService extends ChangeNotifier {
   bool _isConnected = false;
   bool _isRevoking = false;
   final Set<String> _seenNotificationIds = {};
+  final Set<String> _bannerShownNotificationIds = {};
   final Set<String> _promptedApprovalAlertIds = {};
-  bool _isApprovalDialogShowing = false;
 
   bool enablePollingFallback = true;
   bool enableAutoReconnect = true;
@@ -118,8 +117,6 @@ class NotificationStreamService extends ChangeNotifier {
 
   http.Client get _effectiveClient => httpClient ?? http.Client();
 
-  DateTime? _sessionConnectedAt;
-
   /// Connects to real-time notification stream for specified user
   void connect(String userId) {
     if (userId.isEmpty) return;
@@ -127,7 +124,6 @@ class NotificationStreamService extends ChangeNotifier {
     disconnect();
     _isRevoking = false;
     _activeUserId = userId;
-    _sessionConnectedAt = DateTime.now();
     _seedExistingHistory(userId);
     _startSseStream(userId);
     if (enablePollingFallback) {
@@ -135,24 +131,10 @@ class NotificationStreamService extends ChangeNotifier {
     }
   }
 
-  /// Mark all historical notifications as already seen so past alerts never pop up on new login
+  /// Preload existing notification history so notifications populate on login
+  /// and recent alerts show banner while older notifications are pre-marked as seen.
   Future<void> _seedExistingHistory(String userId) async {
-    try {
-      final client = _effectiveClient;
-      final url = Uri.parse('$notificationServiceUrl/api/v1/notifications/history?userId=$userId');
-      final res = await client.get(url).timeout(const Duration(seconds: 3));
-      if (res.statusCode == 200) {
-        final items = jsonDecode(res.body) as List<dynamic>;
-        for (final item in items) {
-          if (item is Map<String, dynamic>) {
-            final id = item['notificationId'] as String? ?? item['notification_id'] as String? ?? '';
-            if (id.isNotEmpty) {
-              _seenNotificationIds.add(id);
-            }
-          }
-        }
-      }
-    } catch (_) {}
+    await fetchHistory(userId, isInitialSeed: true);
   }
 
   Future<void> _startSseStream(String userId) async {
@@ -245,7 +227,7 @@ class NotificationStreamService extends ChangeNotifier {
     _pollFallbackTimer?.cancel();
     _pollFallbackTimer = null;
     if (!enablePollingFallback) return;
-    _pollFallbackTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+    _pollFallbackTimer = Timer.periodic(const Duration(seconds: 4), (_) async {
       if (_activeUserId == null || !AuthApiService().isAuthenticated) return;
       try {
         final client = _effectiveClient;
@@ -260,11 +242,12 @@ class NotificationStreamService extends ChangeNotifier {
               final sentAtStr = item['sentAt'] as String? ?? item['createdAt'] as String?;
               final sentAt = sentAtStr != null ? DateTime.tryParse(sentAtStr) : null;
 
-              // Only dispatch if notification occurred after current session connection
-              final isAfterSession = _sessionConnectedAt == null ||
-                  (sentAt != null && sentAt.isAfter(_sessionConnectedAt!.subtract(const Duration(seconds: 2))));
+              if (id.isEmpty) continue;
 
-              if (type == 'SECURITY_ALERT' && id.isNotEmpty && isAfterSession && _seenNotificationIds.add(id)) {
+              final isRecent = sentAt != null &&
+                  DateTime.now().difference(sentAt).inMinutes.abs() < 5;
+
+              if (type == 'SECURITY_ALERT' && !_bannerShownNotificationIds.contains(id)) {
                 final message = item['message'] as String? ?? '';
                 String extractedDevice = 'Secondary Device';
                 final match = RegExp(r'\((.*?)\)').firstMatch(message);
@@ -282,9 +265,7 @@ class NotificationStreamService extends ChangeNotifier {
                 );
                 _onSecurityAlertReceived(alert);
               } else if ((type == 'DEVICE_REVOKED' || type == 'DEVICE_APPROVED') &&
-                  id.isNotEmpty &&
-                  isAfterSession &&
-                  _seenNotificationIds.add(id)) {
+                  !_bannerShownNotificationIds.contains(id)) {
                 final message = item['message'] as String? ?? '';
                 String targetDevId = '';
                 if (item['device_id'] != null && item['device_id'].toString().isNotEmpty) {
@@ -307,21 +288,21 @@ class NotificationStreamService extends ChangeNotifier {
                     'type': type,
                     'user_id': userId,
                     'device_id': targetDevId,
+                    'notification_id': id,
                     'timestamp': sentAtStr ?? DateTime.now().toIso8601String(),
                   });
                 }
               } else if ((type == 'TRANSACTION_ALERT' || type == 'TRANSFER_ALERT' || type == 'TRANSACTION_TOAST') &&
-                  id.isNotEmpty &&
-                  isAfterSession &&
-                  _seenNotificationIds.add(id)) {
-                // The SSE toast for this transfer may already be on screen under a
-                // different id; the persisted record names the transfer in its text.
+                  isRecent &&
+                  !_bannerShownNotificationIds.contains(id)) {
                 final text = item['message']?.toString() ?? '';
                 final alreadyShown = _notifications.any((n) {
                   final t = n.metadata['transferId']?.toString();
                   return t != null && t.isNotEmpty && text.contains(t);
                 });
                 if (!alreadyShown) _onTransactionAlertReceived(item);
+              } else if (!_notifications.any((n) => n.id == id)) {
+                await fetchHistory(userId);
               }
             }
           }
@@ -329,7 +310,6 @@ class NotificationStreamService extends ChangeNotifier {
       } catch (_) {}
     });
   }
-
 
   void postNotification(AppNotification notif, {bool showBanner = true}) {
     final existingIndex = _notifications.indexWhere((n) => n.id == notif.id);
@@ -346,7 +326,7 @@ class NotificationStreamService extends ChangeNotifier {
       }
     }
     _notificationController.add(notif);
-    if (showBanner) {
+    if (showBanner && _bannerShownNotificationIds.add(notif.id)) {
       _bannerController.add(notif);
     }
     notifyListeners();
@@ -369,6 +349,8 @@ class NotificationStreamService extends ChangeNotifier {
 
   void clearAll() {
     _notifications.clear();
+    _bannerShownNotificationIds.clear();
+    _seenNotificationIds.clear();
     notifyListeners();
   }
 
@@ -442,13 +424,14 @@ class NotificationStreamService extends ChangeNotifier {
     postNotification(notif, showBanner: true);
   }
 
-  Future<void> fetchHistory(String userId) async {
+  Future<void> fetchHistory(String userId, {bool isInitialSeed = false}) async {
     try {
       final client = _effectiveClient;
       final url = Uri.parse('$notificationServiceUrl/api/v1/notifications/history?userId=$userId');
       final res = await client.get(url).timeout(const Duration(seconds: 4));
       if (res.statusCode == 200) {
         final items = jsonDecode(res.body) as List<dynamic>;
+        bool hasChanges = false;
         for (final item in items) {
           if (item is Map<String, dynamic>) {
             final id = item['notificationId'] as String? ?? item['notification_id'] as String? ?? '';
@@ -457,7 +440,10 @@ class NotificationStreamService extends ChangeNotifier {
             final sentAtStr = item['sentAt'] as String? ?? item['createdAt'] as String?;
             final sentAt = sentAtStr != null ? DateTime.tryParse(sentAtStr) : null;
 
-            if (id.isNotEmpty && !_notifications.any((n) => n.id == id)) {
+            if (id.isEmpty) continue;
+
+            final existingIndex = _notifications.indexWhere((n) => n.id == id);
+            if (existingIndex < 0) {
               NotificationCategory cat = NotificationCategory.security;
               NotificationSeverity sev = NotificationSeverity.info;
               String title = 'Notification';
@@ -465,8 +451,13 @@ class NotificationStreamService extends ChangeNotifier {
               if (type == 'SECURITY_ALERT') {
                 final isSession = msg.toLowerCase().contains('device') || msg.toLowerCase().contains('login');
                 cat = isSession ? NotificationCategory.session : NotificationCategory.security;
-                sev = NotificationSeverity.warning;
-                title = isSession ? 'Session Alert' : 'Security Alert';
+                sev = msg.toLowerCase().contains('3rd') ? NotificationSeverity.danger : NotificationSeverity.warning;
+                final isCallerPrimary = AuthApiService().isPrimaryDevice;
+                if (!isCallerPrimary && msg.toLowerCase().contains('requesting access')) {
+                  title = 'Security Notice: New Login Attempt';
+                } else {
+                  title = isSession ? 'Session Alert' : 'Security Alert';
+                }
               } else if (type == 'DEVICE_APPROVED') {
                 cat = NotificationCategory.session;
                 sev = NotificationSeverity.success;
@@ -481,22 +472,37 @@ class NotificationStreamService extends ChangeNotifier {
                 title = 'Transfer Alert';
               }
 
-              _notifications.add(
-                AppNotification(
-                  id: id,
-                  title: title,
-                  message: msg,
-                  category: cat,
-                  severity: sev,
-                  timestamp: sentAt ?? DateTime.now(),
-                  isRead: true,
-                  metadata: item,
-                ),
+              final isRecent = sentAt != null &&
+                  DateTime.now().difference(sentAt).inMinutes.abs() < 5;
+
+              final notif = AppNotification(
+                id: id,
+                title: title,
+                message: msg,
+                category: cat,
+                severity: sev,
+                timestamp: sentAt ?? DateTime.now(),
+                isRead: !isRecent,
+                metadata: item,
               );
+
+              _notifications.add(notif);
+              hasChanges = true;
+
+              if (isRecent &&
+                  (type == 'SECURITY_ALERT' || type == 'DEVICE_APPROVED' || type == 'DEVICE_REVOKED') &&
+                  _bannerShownNotificationIds.add(id)) {
+                _bannerController.add(notif);
+              } else {
+                _bannerShownNotificationIds.add(id);
+              }
             }
           }
         }
-        notifyListeners();
+        if (hasChanges) {
+          _notifications.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          notifyListeners();
+        }
       }
     } catch (_) {}
   }
@@ -541,64 +547,48 @@ class NotificationStreamService extends ChangeNotifier {
     }
 
     final notifId = alert.notificationId;
-    if (notifId.isEmpty || _seenNotificationIds.add(notifId)) {
-      _alertController.add(alert);
-      debugPrint('[NotificationStream] Dispatched SECURITY_ALERT: ${alert.deviceName}');
+    _alertController.add(alert);
+    debugPrint('[NotificationStream] Dispatched SECURITY_ALERT: ${alert.deviceName}');
 
-      final isSession = alert.isDesktopSession ||
-          alert.title.toLowerCase().contains('device') ||
-          alert.message.toLowerCase().contains('device') ||
-          alert.title.toLowerCase().contains('login') ||
-          alert.message.toLowerCase().contains('logged');
+    final isSession = alert.isDesktopSession ||
+        alert.title.toLowerCase().contains('device') ||
+        alert.message.toLowerCase().contains('device') ||
+        alert.title.toLowerCase().contains('login') ||
+        alert.message.toLowerCase().contains('logged');
 
-      final notif = AppNotification(
-        id: notifId.isNotEmpty ? notifId : 'SEC-${DateTime.now().millisecondsSinceEpoch}',
-        title: alert.title,
-        message: alert.message,
-        category: isSession ? NotificationCategory.session : NotificationCategory.security,
-        severity: alert.isThirdDevice ? NotificationSeverity.danger : NotificationSeverity.warning,
-        timestamp: DateTime.tryParse(alert.timestamp) ?? DateTime.now(),
-        metadata: {
-          'deviceName': alert.deviceName,
-          'deviceId': alert.deviceId,
-          'deviceType': alert.deviceType,
-          'clientIp': alert.clientIp,
-          'status': alert.status,
-          'isThirdDevice': alert.isThirdDevice,
-        },
-      );
-      postNotification(notif, showBanner: true);
+    // Access granting is strictly limited to the primary mobile device.
+    // If this device is NOT the primary device, present this as an informational warning
+    // so users are aware an authorization request is pending on their primary device.
+    final isCallerPrimary = AuthApiService().isPrimaryDevice;
+    String displayTitle = alert.title;
+    String displayMessage = alert.message;
 
-      // Only prompt the approval modal if:
-      // 1. This device is the primary device
-      // 2. The alert is specifically pending approval for a mobile device (not standard desktop sessions)
-      // 3. We haven't already presented this specific alert in this session
-      // 4. An approval dialog is not currently showing on screen
-      final isPendingApproval = alert.status == 'PENDING_APPROVAL' && !alert.isDesktopSession;
-      if (AuthApiService().isPrimaryDevice && isPendingApproval) {
-        if (notifId.isNotEmpty && _promptedApprovalAlertIds.contains(notifId)) {
-          return;
-        }
-        if (notifId.isNotEmpty) {
-          _promptedApprovalAlertIds.add(notifId);
-        }
-        if (!_isApprovalDialogShowing) {
-          final context = rootNavigatorKey.currentContext;
-          if (context != null) {
-            _isApprovalDialogShowing = true;
-            SecurityApprovalDialog.show(
-              context,
-              alert,
-              onHandled: () {
-                _isApprovalDialogShowing = false;
-              },
-            ).then((_) {
-              _isApprovalDialogShowing = false;
-            });
-          }
-        }
-      }
+    if (!isCallerPrimary && alert.status == 'PENDING_APPROVAL') {
+      displayTitle = 'Security Notice: New Login Attempt';
+      displayMessage = alert.isDesktopSession
+          ? 'A desktop session (${alert.deviceName}) requested access. Review and approval is only permitted from your primary mobile device.'
+          : 'Device ${alert.deviceName} requested access. Access granting is limited to your primary mobile device.';
     }
+
+    final notif = AppNotification(
+      id: notifId.isNotEmpty ? notifId : 'SEC-${DateTime.now().millisecondsSinceEpoch}',
+      title: displayTitle,
+      message: displayMessage,
+      category: isSession ? NotificationCategory.session : NotificationCategory.security,
+      severity: alert.isThirdDevice ? NotificationSeverity.danger : NotificationSeverity.warning,
+      timestamp: DateTime.tryParse(alert.timestamp) ?? DateTime.now(),
+      metadata: {
+        'deviceName': alert.deviceName,
+        'deviceId': alert.deviceId,
+        'deviceType': alert.deviceType,
+        'clientIp': alert.clientIp,
+        'status': alert.status,
+        'isThirdDevice': alert.isThirdDevice,
+        'isCallerPrimary': isCallerPrimary,
+      },
+    );
+    postNotification(notif, showBanner: true);
+    // No intrusive modal popup — user reviews and approves devices directly on the Device & Session Security screen.
   }
 
   void _onDeviceApprovalEventReceived(Map<String, dynamic> data) {
@@ -611,10 +601,15 @@ class NotificationStreamService extends ChangeNotifier {
     final currentDevId = AuthApiService().currentDeviceId.toLowerCase().trim();
     final currentDevName = AuthApiService().currentDeviceName.toLowerCase().trim();
     final isForThisDevice = targetDevId.isNotEmpty &&
-        (targetDevId == currentDevId || targetDevId == currentDevName);
+        (targetDevId == currentDevId ||
+         targetDevId == currentDevName ||
+         (currentDevId.isNotEmpty && (targetDevId.contains(currentDevId) || currentDevId.contains(targetDevId))) ||
+         (currentDevName.isNotEmpty && (targetDevId.contains(currentDevName) || currentDevName.contains(targetDevId))));
+
+    final notifId = data['notification_id'] as String? ?? 'DEV-${DateTime.now().millisecondsSinceEpoch}';
 
     final notif = AppNotification(
-      id: data['notification_id'] as String? ?? 'DEV-${DateTime.now().millisecondsSinceEpoch}',
+      id: notifId,
       title: isApproved ? 'Device Authorized' : 'Device Access Revoked',
       message: isApproved
           ? 'Device ${data['device_id']} was approved by your primary device.'
@@ -624,9 +619,9 @@ class NotificationStreamService extends ChangeNotifier {
       timestamp: DateTime.tryParse(data['timestamp'] as String? ?? '') ?? DateTime.now(),
       metadata: data,
     );
-    // Other devices' approvals/revocations are not this session's business;
-    // listing them is what filled the notification centre on every login.
-    if (isForThisDevice && _seenNotificationIds.add(notif.id)) {
+
+    // Both the targeted device and the primary device should see the device authorization event
+    if (isForThisDevice || AuthApiService().isPrimaryDevice) {
       postNotification(notif, showBanner: true);
     }
 
@@ -700,7 +695,6 @@ class NotificationStreamService extends ChangeNotifier {
     _streamClient?.close();
     _streamClient = null;
     _promptedApprovalAlertIds.clear();
-    _isApprovalDialogShowing = false;
   }
 }
 

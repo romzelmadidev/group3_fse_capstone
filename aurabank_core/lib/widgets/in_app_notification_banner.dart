@@ -14,8 +14,10 @@ class InAppNotificationBanner {
     VoidCallback? onTap,
     Duration duration = const Duration(seconds: 4),
   }) {
-    // Respect user push alert preferences
-    if (!BankService().user.pushAlertsEnabled) {
+    // Respect user push alert preferences, but critical security and session alerts always show
+    if (!BankService().user.pushAlertsEnabled &&
+        notification.category != NotificationCategory.security &&
+        notification.category != NotificationCategory.session) {
       return;
     }
 

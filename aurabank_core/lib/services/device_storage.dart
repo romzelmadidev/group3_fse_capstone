@@ -20,6 +20,8 @@ class DeviceStorage {
   static const String _userBalanceKey = 'auth_user_balance';
   static const String _lastLoginEmailKey = 'auth_last_login_email';
   static const String _lastLoginNameKey = 'auth_last_login_name';
+  static const String _isPrimaryDeviceKey = 'auth_is_primary_device';
+  static const String _primaryDeviceIdKey = 'auth_primary_device_id';
 
   /// Initializes SharedPreferences instance. Called in main() before runApp().
   static Future<void> init() async {
@@ -183,6 +185,30 @@ class DeviceStorage {
     await _prefs?.remove(_lastLoginNameKey);
   }
 
+  static Future<void> savePrimaryDeviceStatus({required bool isPrimary, String? primaryDeviceId}) async {
+    _memoryCache[_isPrimaryDeviceKey] = isPrimary.toString();
+    await _prefs?.setBool(_isPrimaryDeviceKey, isPrimary);
+    if (primaryDeviceId != null && primaryDeviceId.isNotEmpty) {
+      _memoryCache[_primaryDeviceIdKey] = primaryDeviceId;
+      await _prefs?.setString(_primaryDeviceIdKey, primaryDeviceId);
+    }
+  }
+
+  static bool? getIsPrimaryDevice() {
+    if (_prefs != null) {
+      final val = _prefs!.getBool(_isPrimaryDeviceKey);
+      if (val != null) return val;
+    }
+    if (_memoryCache.containsKey(_isPrimaryDeviceKey)) {
+      return _memoryCache[_isPrimaryDeviceKey] == 'true';
+    }
+    return null;
+  }
+
+  static String? getPrimaryDeviceId() {
+    return _prefs?.getString(_primaryDeviceIdKey) ?? _memoryCache[_primaryDeviceIdKey];
+  }
+
   /// Clears active user tokens and session data upon logout while preserving device ID
   static Future<void> clearSession() async {
     _memoryCache.remove(_tokenKey);
@@ -193,6 +219,8 @@ class DeviceStorage {
     _memoryCache.remove(_userAddressKey);
     _memoryCache.remove(_userAccountIdKey);
     _memoryCache.remove(_userBalanceKey);
+    _memoryCache.remove(_isPrimaryDeviceKey);
+    _memoryCache.remove(_primaryDeviceIdKey);
     await _prefs?.remove(_tokenKey);
     await _prefs?.remove(_userIdKey);
     await _prefs?.remove(_userEmailKey);
@@ -201,5 +229,7 @@ class DeviceStorage {
     await _prefs?.remove(_userAddressKey);
     await _prefs?.remove(_userAccountIdKey);
     await _prefs?.remove(_userBalanceKey);
+    await _prefs?.remove(_isPrimaryDeviceKey);
+    await _prefs?.remove(_primaryDeviceIdKey);
   }
 }

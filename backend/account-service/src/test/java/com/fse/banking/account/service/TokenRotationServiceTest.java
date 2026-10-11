@@ -80,7 +80,7 @@ class TokenRotationServiceTest {
     void testRotateSuccess() {
         when(redisSessionStore.getRefreshToken("rt_active_123")).thenReturn(Optional.of(activeToken));
         when(userRepository.findById("USR-100001")).thenReturn(Optional.of(user));
-        when(jwtProvider.generateAccessToken(eq("USR-100001"), eq("juan.delacruz@example.ph"), eq("ROLE_CUSTOMER"), anyString()))
+        when(jwtProvider.generateAccessToken(eq("USR-100001"), eq("juan.delacruz@example.ph"), eq("ROLE_CUSTOMER"), anyString(), any()))
                 .thenReturn("new.access.token");
         when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
 

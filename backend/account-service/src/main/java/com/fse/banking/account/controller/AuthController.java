@@ -226,19 +226,23 @@ public class AuthController {
     public ResponseEntity<Map<String, Object>> approveDevice(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
             @RequestBody Map<String, String> request) {
-        String userId = request.get("user_id");
         String deviceId = request.get("device_id");
-        if ((userId == null || userId.isBlank()) && authHeader != null && authHeader.startsWith("Bearer ")) {
-            String token = authHeader.substring(7);
-            if (jwtProvider.validateToken(token)) {
-                userId = jwtProvider.getUserId(token);
-            }
+        if (authHeader == null || !authHeader.startsWith("Bearer ") || !jwtProvider.validateToken(authHeader.substring(7))) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("status", "ERROR", "error", "A valid access token is required"));
         }
-        if (userId == null || deviceId == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "user_id and device_id are required"));
+        if (deviceId == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "device_id is required"));
         }
-        authService.approveDevice(userId, deviceId);
-        return ResponseEntity.ok(Map.of("status", "SUCCESS", "approved_device_id", deviceId));
+        // Identity comes from the signed token, never from the request body.
+        String token = authHeader.substring(7);
+        String userId = jwtProvider.getUserId(token);
+        String requesterDeviceId = jwtProvider.getDeviceId(token);
+        try {
+            authService.approveDevice(userId, deviceId, requesterDeviceId);
+            return ResponseEntity.ok(Map.of("status", "SUCCESS", "approved_device_id", deviceId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("status", "ERROR", "error", e.getMessage()));
+        }
     }
 
     @PostMapping("/devices/revoke")
@@ -247,17 +251,21 @@ public class AuthController {
             @RequestBody Map<String, String> request) {
         String userId = request.get("user_id");
         String deviceId = request.get("device_id");
-        if ((userId == null || userId.isBlank()) && authHeader != null && authHeader.startsWith("Bearer ")) {
+        String requesterDeviceId = null;
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
             if (jwtProvider.validateToken(token)) {
-                userId = jwtProvider.getUserId(token);
+                if (userId == null || userId.isBlank()) {
+                    userId = jwtProvider.getUserId(token);
+                }
+                requesterDeviceId = jwtProvider.getDeviceId(token);
             }
         }
         if (userId == null || deviceId == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "user_id and device_id are required"));
         }
         try {
-            authService.revokeDevice(userId, deviceId);
+            authService.revokeDevice(userId, deviceId, requesterDeviceId);
             return ResponseEntity.ok(Map.of("status", "SUCCESS", "revoked_device_id", deviceId));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("status", "ERROR", "error", e.getMessage()));

@@ -63,9 +63,13 @@ class _PendingApprovalScreenState extends State<PendingApprovalScreen>
         NotificationStreamService().deviceApprovalStream.listen((event) {
       if (!mounted) return;
       final targetDevId = (event['device_id'] as String? ?? '').toLowerCase().trim();
+      final curId = currentDevId.toLowerCase().trim();
+      final curName = currentDevName.toLowerCase().trim();
       final isForThisDevice = targetDevId.isNotEmpty &&
-          (targetDevId == currentDevId.toLowerCase() ||
-           targetDevId == currentDevName.toLowerCase());
+          (targetDevId == curId ||
+           targetDevId == curName ||
+           (curId.isNotEmpty && (targetDevId.contains(curId) || curId.contains(targetDevId))) ||
+           (curName.isNotEmpty && (targetDevId.contains(curName) || curName.contains(targetDevId))));
 
       if (isForThisDevice) {
         if (event['type'] == 'DEVICE_APPROVED') {
@@ -76,9 +80,9 @@ class _PendingApprovalScreenState extends State<PendingApprovalScreen>
       }
     });
 
-    // 2. Periodic background poll every 3 seconds as resilient fallback
+    // 2. Periodic background poll every 1.5 seconds as resilient fallback
     if (NotificationStreamService().enablePollingFallback) {
-      _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      _pollingTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
         _pollBackendStatus();
       });
     }

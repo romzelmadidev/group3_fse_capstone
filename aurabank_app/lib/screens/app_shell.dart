@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:aurabank_core/models/notification_model.dart';
 import 'package:aurabank_core/widgets/in_app_notification_banner.dart';
 import 'package:aurabank_core/widgets/notification_center_modal.dart';
 import 'home/home_screen.dart';
@@ -44,7 +45,14 @@ class _AppShellState extends State<AppShell>
         InAppNotificationBanner.show(
           context,
           notification,
-          onTap: () => NotificationCenterModal.show(context),
+          onTap: () {
+            if (notification.category == NotificationCategory.security ||
+                notification.category == NotificationCategory.session) {
+              Navigator.of(context).pushNamed('/devices');
+            } else {
+              NotificationCenterModal.show(context);
+            }
+          },
         );
       }
     });
