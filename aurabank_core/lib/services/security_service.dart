@@ -302,6 +302,23 @@ class SecurityService {
     return false;
   }
 
+  /// Evaluates whether the device is currently engaged in an active phone call (voice coercion).
+  static Future<bool> isCallActive() async {
+    if (!kIsWeb) {
+      try {
+        if (Platform.isAndroid) {
+          final dynamic nativeResult = await _channel.invokeMethod('isCallActive');
+          if (nativeResult == true) {
+            return true;
+          }
+        }
+      } catch (e) {
+        debugPrint('[SecurityService] Native isCallActive query error: $e');
+      }
+    }
+    return false;
+  }
+
   /// Displays the screen sharing warning bottom sheet modal.
   /// Returns the action chosen by the user (cancel, pause, or continue).
   static Future<ScreenSharingUserAction?> showScreenSharingWarning(

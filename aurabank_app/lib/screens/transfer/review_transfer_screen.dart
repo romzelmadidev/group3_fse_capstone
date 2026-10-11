@@ -5,7 +5,6 @@ import '../../services/biometric_service.dart';
 import '../../services/security_service.dart';
 import '../../theme/aura_theme.dart';
 import '../../widgets/require_device_approval.dart';
-import '../../widgets/screen_sharing_warning_sheet.dart';
 import 'receipt_screen.dart';
 
 class ReviewTransferScreen extends StatefulWidget {
@@ -17,6 +16,7 @@ class ReviewTransferScreen extends StatefulWidget {
   final double amount;
   final double fee;
   final String? remarks;
+  final bool isPasted;
 
   const ReviewTransferScreen({
     super.key,
@@ -28,6 +28,7 @@ class ReviewTransferScreen extends StatefulWidget {
     required this.amount,
     this.fee = 0.0,
     this.remarks,
+    this.isPasted = false,
   });
 
   @override
@@ -44,6 +45,7 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
   final BankService _bankService = BankService();
   late String _currentRemarks;
   String _riskScenario = 'AUTO'; // 'AUTO', 'SCAM', 'REMOTE', 'CALL', 'BLOCK'
+  bool _scamAdvisoryAcknowledged = false;
 
 
   @override
@@ -788,14 +790,6 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
 
   // Multi-Stage Risk Scan Overlay
   Future<void> _triggerMultiStageScan() async {
-    final bool isThreatScenario = _riskScenario == 'SCAM' ||
-        _riskScenario == 'REMOTE' ||
-        _riskScenario == 'ANYDESK' ||
-        _riskScenario == 'CANARY' ||
-        _riskScenario == 'CALL' ||
-        _riskScenario == 'GEO_ANOMALY';
-    final bool isBlockScenario = _riskScenario == 'BLOCK' || _riskScenario == 'HOOKING';
-
     final List<String> runningPkgs = [];
     final List<String> threats = [];
     bool remoteApp = false;
@@ -830,25 +824,32 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
       threats.add('ROOTED_DEVICE_EMULATOR');
     }
 
-    bool alreadyWarnedScreenShare = false;
-    if ((_riskScenario == 'REMOTE' || _riskScenario == 'ANYDESK') || SecurityService.simulateScreenSharing) {
-      final userAction = await ScreenSharingWarningSheet.show(context);
-      if (userAction == ScreenSharingUserAction.cancelTransaction) {
-        _showTransferCancelledModal();
-        return;
-      } else if (userAction == ScreenSharingUserAction.pauseFor10Minutes) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Transfer paused for 10 minutes to protect your account.'),
-            backgroundColor: Color(0xFFD97706),
-            duration: Duration(seconds: 4),
-          ),
-        );
-        return;
-      }
-      alreadyWarnedScreenShare = true;
+    // -------------------------------------------------------------------------
+    // Physical hardware & OS auto-detection (MediaProjection, AnyDesk, Calls)
+    // -------------------------------------------------------------------------
+    final bool liveScreenSharing = await SecurityService.isScreenSharingActive();
+    if (liveScreenSharing) {
+      remoteApp = true;
+      threats.add('REMOTE_SCREEN_SHARE');
     }
+
+    final bool liveCall = await SecurityService.isCallActive();
+    if (liveCall) {
+      activeCall = true;
+      threats.add('ACTIVE_VOICE_CALL_COERCION');
+    }
+    if (!mounted) return;
+
+    final bool isThreatScenario = _riskScenario == 'SCAM' ||
+        _riskScenario == 'REMOTE' ||
+        _riskScenario == 'ANYDESK' ||
+        _riskScenario == 'CANARY' ||
+        _riskScenario == 'CALL' ||
+        _riskScenario == 'GEO_ANOMALY' ||
+        liveScreenSharing ||
+        liveCall ||
+        widget.isPasted;
+    final bool isBlockScenario = _riskScenario == 'BLOCK' || _riskScenario == 'HOOKING';
 
     // Show the animated scanner dialog
     if (!mounted) return;
@@ -862,7 +863,7 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
         memo: _currentRemarks,
         isScreenSharing: remoteApp,
         callState: activeCall ? 'ACTIVE_CALL' : 'IDLE',
-        inputMode: _riskScenario == 'SCAM' ? 'PASTED' : 'TYPED',
+        inputMode: (_riskScenario == 'SCAM' || widget.isPasted) ? 'PASTED' : 'TYPED',
         isEmulator: isEmulator,
         runningPackages: runningPkgs,
         detectedThreats: threats,
@@ -872,6 +873,8 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
         rooted: rooted,
         forcedThreat: isThreatScenario,
         forcedBlock: isBlockScenario,
+        isOnCall: activeCall,
+        isPasted: _riskScenario == 'SCAM' || widget.isPasted,
       ),
     );
 
@@ -887,12 +890,7 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
     if (isHardBlock) {
       _showBlockModal(scanResult);
     } else if (decision == 'ADVISORY_WARNING') {
-      if (alreadyWarnedScreenShare) {
-        // Already acknowledged screen sharing warning; proceed to biometric approval
-        _showBiometricApprovalModal(scanResult);
-      } else {
-        _showAdvisoryWarningModal(scanResult);
-      }
+      _showAdvisoryWarningModal(scanResult);
     } else if (decision == 'REQUIRE_2FA' || decision == 'STEP_UP') {
       _showStepUpModal();
     } else {
@@ -1087,6 +1085,19 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
       threats.add('ROOTED_DEVICE_EMULATOR');
     }
 
+    // Physical hardware & OS auto-detection (MediaProjection, AnyDesk, Calls)
+    final bool liveScreenSharing = await SecurityService.isScreenSharingActive();
+    if (liveScreenSharing) {
+      remoteApp = true;
+      threats.add('REMOTE_SCREEN_SHARE');
+    }
+
+    final bool liveCall = await SecurityService.isCallActive();
+    if (liveCall) {
+      activeCall = true;
+      threats.add('ACTIVE_VOICE_CALL_COERCION');
+    }
+
     final result = await _bankService.executeTransfer(
       targetAccount: widget.recipientAccount,
       recipientName: widget.recipientName,
@@ -1100,6 +1111,10 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
       hooking: hooking,
       rooted: rooted,
       isEmulator: isEmulator,
+      isOnCall: activeCall,
+      isScreenSharing: remoteApp,
+      isPasted: _riskScenario == 'SCAM' || widget.isPasted,
+      scamAdvisoryAcknowledged: _scamAdvisoryAcknowledged,
     );
 
     if (!mounted) return;
@@ -1284,6 +1299,9 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
           memoAnalysis: risk['memo_analysis'] as Map<String, dynamic>?,
           causeOfSuspicion: causeOfSuspicion?.toString(),
           onProceed: () {
+            setState(() {
+              _scamAdvisoryAcknowledged = true;
+            });
             Navigator.of(ctx).pop();
             _showBiometricApprovalModal(risk);
           },
@@ -1573,6 +1591,8 @@ class _RiskScanDialog extends StatefulWidget {
   final bool? rooted;
   final bool forcedThreat;
   final bool forcedBlock;
+  final bool? isOnCall;
+  final bool? isPasted;
 
   const _RiskScanDialog({
     required this.bankService,
@@ -1591,6 +1611,8 @@ class _RiskScanDialog extends StatefulWidget {
     this.rooted,
     required this.forcedThreat,
     required this.forcedBlock,
+    this.isOnCall,
+    this.isPasted,
   });
 
   @override
@@ -1619,6 +1641,8 @@ class _RiskScanDialogState extends State<_RiskScanDialog> {
       activeCall: widget.activeCall,
       hooking: widget.hooking,
       rooted: widget.rooted,
+      isOnCall: widget.isOnCall,
+      isPasted: widget.isPasted,
     );
 
     final results = await Future.wait([
@@ -1844,7 +1868,7 @@ class _AdvisoryWarningSheetState extends State<_AdvisoryWarningSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bool canProceed = _acknowledged && _secondsRemaining == 0;
+    final bool canProceed = _secondsRemaining == 0;
 
     return Container(
       padding: const EdgeInsets.all(24),

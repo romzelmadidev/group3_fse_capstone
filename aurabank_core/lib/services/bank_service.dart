@@ -922,9 +922,13 @@ class BankService extends ChangeNotifier {
     bool? isVpn,
     String? deviceId,
     bool? isPrimaryDevice,
+    bool? isOnCall,
+    bool? isPasted,
   }) async {
     final effectiveRemote = remoteAppActive ?? isScreenSharing;
-    final effectiveCall = activeCall ?? (callState != null && callState != 'IDLE');
+    final effectiveCall = isOnCall ?? activeCall ?? (callState != null && callState != 'IDLE');
+    final effectivePasted = isPasted ?? (inputMode != null && inputMode.contains('PASTED'));
+
     final payload = {
       'account_id': activeAccountId,
       'target_account_id': targetAccount,
@@ -934,6 +938,9 @@ class BankService extends ChangeNotifier {
       'emulator': isEmulator,
       if (deviceId != null) 'device_id': deviceId,
       if (isPrimaryDevice != null) 'is_primary_device': isPrimaryDevice,
+      'is_on_call': effectiveCall,
+      'is_screen_sharing': effectiveRemote,
+      'is_pasted': effectivePasted,
       if (effectiveRemote) 'remote_app_active': true,
       if (effectiveCall) 'active_call': true,
       if (hooking != null) 'hooking': hooking,
@@ -954,7 +961,7 @@ class BankService extends ChangeNotifier {
           'call_state': effectiveCall ? 'CALL_STATE_OFFHOOK' : (callState ?? 'IDLE'),
         },
         'interaction': {
-          'account_input_mode': inputMode ?? 'TYPED',
+          'account_input_mode': effectivePasted ? 'PASTED' : (inputMode ?? 'TYPED'),
         }
       }
     };
@@ -988,6 +995,55 @@ class BankService extends ChangeNotifier {
       }
     }
 
+    if (effectiveRemote) {
+      return {
+        'decision': 'ADVISORY_WARNING',
+        'fraud_score': 85,
+        'threat_category': 'REMOTE_ACCESS_MALWARE',
+        'primary_flag': 'REMOTE_SCREEN_SHARE',
+        'warning_dialog': {
+          'title': 'Active Screen Sharing or Remote App Detected',
+          'threat_category': 'REMOTE_ACCESS_MALWARE',
+          'body_message': 'An active screen-sharing or remote-assistance application is running on your device. Bank personnel and legitimate organizations will NEVER ask you to share your screen, install remote-support tools, or move your money to "secure" an account.',
+          'checkbox_acknowledgment_text': 'I confirm no one is remotely viewing or controlling my screen.',
+          'recommended_action': 'CLOSE_REMOTE_APP',
+          'mandatory_read_delay_seconds': 3,
+        },
+      };
+    }
+    if (effectiveCall) {
+      return {
+        'decision': 'ADVISORY_WARNING',
+        'fraud_score': 85,
+        'threat_category': 'LIVE_CALL_COERCION',
+        'primary_flag': 'ACTIVE_VOICE_CALL_COERCION',
+        'warning_dialog': {
+          'title': 'Active Phone Call Scam Warning',
+          'threat_category': 'LIVE_CALL_COERCION',
+          'body_message': 'You are currently on an active voice call while transferring funds to a recipient. Impersonators often pose as law enforcement or fraud staff and stay on the line to pressure you into transferring funds immediately.',
+          'checkbox_acknowledgment_text': 'I confirm I am not being instructed by someone on an active phone call.',
+          'recommended_action': 'HANG_UP_CALL',
+          'mandatory_read_delay_seconds': 3,
+        },
+      };
+    }
+    if (effectivePasted) {
+      return {
+        'decision': 'ADVISORY_WARNING',
+        'fraud_score': 70,
+        'threat_category': 'EXTERNAL_CLIPBOARD_PASTE',
+        'primary_flag': 'EXTERNAL_CLIPBOARD_PASTE',
+        'warning_dialog': {
+          'title': 'Account Number Pasted from External App',
+          'threat_category': 'EXTERNAL_CLIPBOARD_PASTE',
+          'body_message': 'This account number was copied directly from an external messaging application. If someone you met on Telegram, WhatsApp, or Facebook instructed you to send this money for an online task deposit or crypto return, this transfer cannot be reversed.',
+          'checkbox_acknowledgment_text': 'I know this recipient personally and am not sending money for an online task.',
+          'recommended_action': 'PROCEED_WITH_CAUTION',
+          'mandatory_read_delay_seconds': 3,
+        },
+      };
+    }
+
     return {
       'decision': 'ALLOW',
       'fraud_score': 0,
@@ -1013,6 +1069,10 @@ class BankService extends ChangeNotifier {
     bool? isVpn,
     String? deviceId,
     bool? isPrimaryDevice,
+    bool? isOnCall,
+    bool? isScreenSharing,
+    bool? isPasted,
+    bool? scamAdvisoryAcknowledged,
   }) async {
     final dateStr = DateTime.now().year.toString().substring(2) +
         DateTime.now().month.toString().padLeft(2, '0') +
@@ -1024,6 +1084,10 @@ class BankService extends ChangeNotifier {
         ((user.email.toLowerCase().contains('juan') || activeAccountId.contains('3001'))
             ? 'usr-1001-cst-001'
             : 'U1001');
+
+    final effectiveRemote = isScreenSharing ?? remoteAppActive ?? false;
+    final effectiveCall = isOnCall ?? activeCall ?? false;
+    final effectivePasted = isPasted ?? false;
 
     final payload = {
       'accountId': activeAccountId,
@@ -1037,6 +1101,10 @@ class BankService extends ChangeNotifier {
       'remarks': remarks ?? 'Mobile Fund Transfer to $recipientName',
       if (deviceId != null) 'deviceId': deviceId,
       if (isPrimaryDevice != null) 'isPrimaryDevice': isPrimaryDevice,
+      'is_on_call': effectiveCall,
+      'is_screen_sharing': effectiveRemote,
+      'is_pasted': effectivePasted,
+      if (scamAdvisoryAcknowledged != null) 'scam_advisory_acknowledged': scamAdvisoryAcknowledged,
       if (remoteAppActive != null) 'remoteAppActive': remoteAppActive,
       if (activeCall != null) 'activeCall': activeCall,
       if (hooking != null) 'hooking': hooking,

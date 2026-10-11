@@ -40,6 +40,8 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
   late final TextEditingController _amountController;
   final TextEditingController _remarksController =
       TextEditingController();
+  bool _isAccountPasted = false;
+  String _prevAccountText = '';
 
   List<Map<String, dynamic>> get _sourceAccounts => [
     {
@@ -124,6 +126,15 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
     _accountController = TextEditingController(
       text: widget.initialAccountNo ?? initialRecipient['accountNo'],
     );
+    _prevAccountText = _accountController.text;
+    _accountController.addListener(() {
+      final current = _accountController.text;
+      // If user inputs more than 2 characters in a single stroke, it indicates clipboard paste
+      if (current.length - _prevAccountText.length > 2) {
+        _isAccountPasted = true;
+      }
+      _prevAccountText = current;
+    });
     _recipientController = TextEditingController(
       text: widget.initialRecipientName ?? initialRecipient['name'],
     );
@@ -229,6 +240,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
           remarks: _remarksController.text.trim().isNotEmpty
               ? _remarksController.text.trim()
               : (_selectedPurpose ?? 'Funds Transfer'),
+          isPasted: _isAccountPasted,
         ),
       ),
     );

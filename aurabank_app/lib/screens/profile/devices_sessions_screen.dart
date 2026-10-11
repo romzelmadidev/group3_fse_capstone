@@ -680,14 +680,6 @@ class _DevicesSessionsScreenState extends State<DevicesSessionsScreen> {
     final currentId = AuthApiService().currentDeviceId.isNotEmpty
         ? AuthApiService().currentDeviceId
         : DeviceIdentity().id;
-    final currentType = AuthApiService().currentDeviceType.isNotEmpty
-        ? AuthApiService().currentDeviceType
-        : DeviceIdentity().type;
-    final isWebPersona = currentType.toUpperCase() == 'WEB';
-    final isRunningOnWeb = kIsWeb && isWebPersona;
-
-    final hasMatchingDeviceId = _trustedDevices.any((d) => d['id'] == currentId);
-    final hasMatchingSessionId = _webSessions.any((w) => w['id'] == currentId);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F7),
