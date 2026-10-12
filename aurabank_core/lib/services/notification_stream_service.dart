@@ -508,6 +508,8 @@ class NotificationStreamService extends ChangeNotifier {
   }
 
   void _onTransactionAlertReceived(Map<String, dynamic> data) {
+    // Any transaction event (incl. reversals) may have changed the balance.
+    BankService().refreshBalance();
     final status = (data['status'] as String? ?? 'SUCCESS').toUpperCase();
     final isFailed = status == 'FAILED' || status == 'REJECTED';
     final amtStr = data['amount']?.toString() ?? '₱0.00';

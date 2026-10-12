@@ -55,6 +55,8 @@ public class AuthService {
     private String notificationServiceUrl;
 
     private static final int MAX_FAILED_ATTEMPTS = 5;
+    /** Both the failure-counting window and the lock length. */
+    private static final Duration LOCKOUT_DURATION = Duration.ofMinutes(15);
     private static final Duration REFRESH_TOKEN_TTL = Duration.ofDays(7);
     private static final Duration OTP_TTL = Duration.ofMinutes(5);
     private static final Duration OTP_RESEND_COOLDOWN = Duration.ofSeconds(60);
@@ -140,18 +142,26 @@ public class AuthService {
             throw new ForbiddenException("User account is suspended. Contact customer support.");
         }
 
+        // Temporary lockout after repeated wrong passwords. It lives in Redis and ends on its own.
+        long lockedSeconds = redisSessionStore.getLoginLockSeconds(user.getUserId());
+        if (lockedSeconds > 0) {
+            long minutes = (lockedSeconds + 59) / 60;
+            throw new LockedUserException("Too many failed sign-in attempts. Try again in " + minutes
+                    + (minutes == 1 ? " minute." : " minutes."));
+        }
+
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            int attempts = user.getFailedLoginAttempts() + 1;
-            user.setFailedLoginAttempts(attempts);
+            long attempts = redisSessionStore.recordFailedLogin(user.getUserId(), LOCKOUT_DURATION);
             if (attempts >= MAX_FAILED_ATTEMPTS) {
-                user.setStatus(UserStatus.LOCKED);
-                log.warn("Account {} locked due to {} consecutive failed login attempts", user.getUserId(), attempts);
+                redisSessionStore.lockLogin(user.getUserId(), LOCKOUT_DURATION);
+                log.warn("Account {} temporarily locked for {} after {} consecutive failed login attempts",
+                        user.getUserId(), LOCKOUT_DURATION, attempts);
             }
-            userRepository.save(user);
             throw new UnauthorizedException("Invalid email or password.");
         }
 
-        // Reset failed login counter on success
+        // Reset failed login counters on success
+        redisSessionStore.clearFailedLogins(user.getUserId());
         if (user.getFailedLoginAttempts() > 0) {
             user.setFailedLoginAttempts(0);
             userRepository.save(user);
@@ -176,7 +186,11 @@ public class AuthService {
         if (isFirstTimeLogin || requiresDeviceBindingMfa) {
             String otp = redisSessionStore.getLoginOtp(user.getUserId());
             if (otp == null || otp.isBlank()) {
-                sendLoginOtp(user);
+                long wait = sendLoginOtp(user);
+                if (wait > 0) {
+                    // No code went out and none is pending: say so instead of showing an OTP screen that can never succeed.
+                    throw new TooManyRequestsException("Please wait " + wait + " seconds before requesting a new code.");
+                }
             }
 
             String fullName = (user.getFirstName() + " " + (user.getLastName() != null ? user.getLastName() : "")).trim();
@@ -228,6 +242,8 @@ public class AuthService {
 
         // Invalidate OTP immediately to prevent replay attacks
         redisSessionStore.clearLoginOtp(user.getUserId());
+        // A verified code must not leave a cooldown that blocks the next device's challenge.
+        redisSessionStore.clearLoginOtpCooldown(user.getUserId());
 
         // Mark first-time login as complete
         user.setLastLoginAt(Instant.now());
@@ -379,10 +395,13 @@ public class AuthService {
         String roleAuthority = user.getRole().getAuthority();
         String accessToken = jwtProvider.generateAccessToken(user.getUserId(), user.getEmail(), roleAuthority, jti, resolvedDeviceId);
 
-        // Enforce max concurrent sessions in Redis
-        redisSessionStore.registerSessionToken(user.getUserId(), jti, user.getMaxConcurrentSessions());
-
         String sessionId = "SESS-" + UUID.randomUUID();
+
+        // Enforce max concurrent sessions in Redis (evicts the oldest live session, never a random one)
+        redisSessionStore.registerSessionToken(user.getUserId(), sessionId, jti,
+                Instant.now().getEpochSecond() + jwtProvider.getAccessTokenExpirationSeconds(),
+                user.getMaxConcurrentSessions());
+
         String refreshTokenId = "rt_" + UUID.randomUUID().toString().replace("-", "");
 
         SessionMetadata sessionMetadata = SessionMetadata.builder()

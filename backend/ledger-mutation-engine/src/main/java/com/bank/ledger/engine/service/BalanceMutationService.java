@@ -1423,15 +1423,16 @@ public class BalanceMutationService {
             return Map.of("user_id", userId, "status", "NOT_FOUND");
         }
 
-        return Map.of(
-                "user_id", user.getUserId(),
-                "first_name", user.getFirstName(),
-                "last_name", user.getLastName(),
-                "location_name", user.getLastKnownLocationName() != null ? user.getLastKnownLocationName() : "Manila, Philippines",
-                "latitude", user.getLastKnownLatitude() != null ? user.getLastKnownLatitude() : 14.5995,
-                "longitude", user.getLastKnownLongitude() != null ? user.getLastKnownLongitude() : 120.9842,
-                "ip_address", user.getLastKnownIp() != null ? user.getLastKnownIp() : "112.198.45.10"
-        );
+        // Map.of rejects nulls; first/last name can be null for some users.
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("user_id", user.getUserId());
+        result.put("first_name", user.getFirstName());
+        result.put("last_name", user.getLastName());
+        result.put("location_name", user.getLastKnownLocationName() != null ? user.getLastKnownLocationName() : "Manila, Philippines");
+        result.put("latitude", user.getLastKnownLatitude() != null ? user.getLastKnownLatitude() : 14.5995);
+        result.put("longitude", user.getLastKnownLongitude() != null ? user.getLastKnownLongitude() : 120.9842);
+        result.put("ip_address", user.getLastKnownIp() != null ? user.getLastKnownIp() : "112.198.45.10");
+        return result;
     }
 
     /**

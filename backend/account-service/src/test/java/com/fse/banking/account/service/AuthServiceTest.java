@@ -283,7 +283,8 @@ class AuthServiceTest {
         assertThat(result.getResponse().getAccessToken()).isEqualTo("mock.jwt.token");
         assertThat(result.getResponse().getRole()).isEqualTo("ROLE_CUSTOMER");
         assertThat(result.getRefreshTokenId()).startsWith("rt_");
-        verify(redisSessionStore).registerSessionToken(eq("USR-100001"), anyString(), eq(3));
+        verify(redisSessionStore).registerSessionToken(eq("USR-100001"), anyString(), anyString(),
+                org.mockito.ArgumentMatchers.anyLong(), eq(3));
     }
 
     @Test
@@ -332,11 +333,12 @@ class AuthServiceTest {
         assertThat(activeUser.getLastLoginAt()).isNotNull();
 
         verify(redisSessionStore).clearLoginOtp("USR-100001");
+        verify(redisSessionStore).clearLoginOtpCooldown("USR-100001");
         verify(userRepository).save(activeUser);
     }
 
     @Test
-    @DisplayName("Should increment failed attempts on invalid credentials and throw UnauthorizedException")
+    @DisplayName("Should count failed attempts in Redis on invalid credentials and throw UnauthorizedException")
     void testLoginBadCredentials() {
         LoginRequest loginRequest = LoginRequest.builder()
                 .email("juan.delacruz@example.ph")
@@ -345,19 +347,19 @@ class AuthServiceTest {
 
         when(userRepository.findByEmail("juan.delacruz@example.ph")).thenReturn(Optional.of(activeUser));
         when(passwordEncoder.matches("WrongPassword", activeUser.getPasswordHash())).thenReturn(false);
+        when(redisSessionStore.recordFailedLogin(eq("USR-100001"), any())).thenReturn(1L);
 
         assertThatThrownBy(() -> authService.login(loginRequest, "127.0.0.1", "Mozilla/5.0"))
                 .isInstanceOf(UnauthorizedException.class)
                 .hasMessageContaining("Invalid email or password.");
 
-        assertThat(activeUser.getFailedLoginAttempts()).isEqualTo(1);
-        verify(userRepository).save(activeUser);
+        verify(redisSessionStore, never()).lockLogin(anyString(), any());
+        assertThat(activeUser.getStatus()).isEqualTo(UserStatus.ACTIVE);
     }
 
     @Test
-    @DisplayName("Should lock account when consecutive failed login attempts reach 5")
+    @DisplayName("The fifth wrong password locks sign-in temporarily without changing the account status")
     void testLoginAccountLockoutAfterFiveAttempts() {
-        activeUser.setFailedLoginAttempts(4);
         LoginRequest loginRequest = LoginRequest.builder()
                 .email("juan.delacruz@example.ph")
                 .password("WrongPassword")
@@ -365,13 +367,48 @@ class AuthServiceTest {
 
         when(userRepository.findByEmail("juan.delacruz@example.ph")).thenReturn(Optional.of(activeUser));
         when(passwordEncoder.matches("WrongPassword", activeUser.getPasswordHash())).thenReturn(false);
+        when(redisSessionStore.recordFailedLogin(eq("USR-100001"), any())).thenReturn(5L);
 
         assertThatThrownBy(() -> authService.login(loginRequest, "127.0.0.1", "Mozilla/5.0"))
                 .isInstanceOf(UnauthorizedException.class);
 
-        assertThat(activeUser.getFailedLoginAttempts()).isEqualTo(5);
-        assertThat(activeUser.getStatus()).isEqualTo(UserStatus.LOCKED);
-        verify(userRepository).save(activeUser);
+        verify(redisSessionStore).lockLogin(eq("USR-100001"), any());
+        assertThat(activeUser.getStatus()).isEqualTo(UserStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("A temporary lock rejects sign-in before the password is checked")
+    void testLoginRejectedWhileTemporarilyLocked() {
+        LoginRequest loginRequest = LoginRequest.builder()
+                .email("juan.delacruz@example.ph")
+                .password("Password123!")
+                .build();
+        when(userRepository.findByEmail("juan.delacruz@example.ph")).thenReturn(Optional.of(activeUser));
+        when(redisSessionStore.getLoginLockSeconds("USR-100001")).thenReturn(600L);
+
+        assertThatThrownBy(() -> authService.login(loginRequest, "127.0.0.1", "Mozilla/5.0"))
+                .isInstanceOf(LockedUserException.class)
+                .hasMessageContaining("10 minutes");
+        verify(passwordEncoder, never()).matches(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("A new mobile login right after another device's code was verified is told to wait when no code can go out")
+    void testMfaLoginReportsCooldownInsteadOfSilentChallenge() {
+        LoginRequest loginRequest = LoginRequest.builder()
+                .email("juan.delacruz@example.ph")
+                .password("Password123!")
+                .deviceId("dev-new-phone")
+                .deviceType("MOBILE")
+                .build();
+        when(userRepository.findByEmail("juan.delacruz@example.ph")).thenReturn(Optional.of(activeUser));
+        when(passwordEncoder.matches("Password123!", activeUser.getPasswordHash())).thenReturn(true);
+        when(redisSessionStore.getLoginOtp("USR-100001")).thenReturn(null);
+        when(redisSessionStore.startLoginOtpCooldown(eq("USR-100001"), any())).thenReturn(42L);
+
+        assertThatThrownBy(() -> authService.login(loginRequest, "127.0.0.1", "Mozilla/5.0"))
+                .isInstanceOf(TooManyRequestsException.class)
+                .hasMessageContaining("42 seconds");
     }
 
     @Test

@@ -130,7 +130,10 @@ class KycVerificationResult {
     this.reasons = const [],
   });
 
-  bool get isApproved => kycStatus.toUpperCase() == 'VERIFIED';
+  bool get isApproved {
+    final s = kycStatus.toUpperCase();
+    return s == 'VERIFIED' || s == 'APPROVED';
+  }
   bool get isPendingReview => kycStatus.toUpperCase() == 'PENDING_REVIEW';
   bool get isRejected => kycStatus.toUpperCase() == 'REJECTED';
 

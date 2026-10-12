@@ -290,11 +290,8 @@ services:
       dockerfile: t24-mock-cbs/Dockerfile
     restart: unless-stopped
     ports:
-      - "8085:8085"
-    volumes:
-      - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
+      - "8087:8085"
     environment:
-      - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
       - DD_AGENT_HOST=dd-agent
       - DD_TRACE_AGENT_PORT=8126
       - DD_SERVICE=t24-mock-cbs
@@ -350,10 +347,7 @@ services:
     restart: unless-stopped
     ports:
       - "8082:8082"
-    volumes:
-      - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
     environment:
-      - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
       - DD_AGENT_HOST=dd-agent
       - DD_TRACE_AGENT_PORT=8126
       - DD_SERVICE=transfer-orchestrator
@@ -372,7 +366,10 @@ services:
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "transfer-orchestrator"}]'
     networks:
-      - banking-net
+      banking-net:
+        aliases:
+          - transfer-orchestrator
+          - ledger-mutation-engine
     depends_on:
       redis-cache:
         condition: service_started
@@ -560,12 +557,12 @@ services:
       - dd-agent
 
   # ============================================================================
-  # 12. Core Retail Banking Single Page Application (React / Vite / Nginx :3000)
-  # Container Name: banking-frontend
-  # Web Portal for Customers and Administrators (Reverse-proxied via Nginx)
+  # 12. Web Admin Console (React / Vite / Nginx :3000)
+  # Container Name: web-admin-console
+  # Staff-facing console (KYC maker/checker, customers), reverse-proxied via Nginx
   # ============================================================================
-  banking-frontend:
-    container_name: banking-frontend
+  web-admin-console:
+    container_name: web-admin-console
     build:
       context: ../frontend
       dockerfile: Dockerfile
@@ -655,14 +652,12 @@ services:
   # Live metrics, APM request traces, waterfall spans, and container logs
   # ============================================================================
   dd-agent:
-    container_name: datadog-agent
-    image: datadog/agent:latest
+    container_name: dd-agent
+    image: registry.datadoghq.com/agent:7
     restart: unless-stopped
     ports:
       - "8126:8126" # APM trace receiver
       - "8125:8125/udp" # DogStatsD metrics
-      - "4318:4318" # OTLP HTTP trace intake
-      - "4317:4317" # OTLP gRPC trace intake
     environment:
       - DD_API_KEY=a65a6c84cbe468582ca3cc16c8b8cf81
       - DD_SITE=datadoghq.com

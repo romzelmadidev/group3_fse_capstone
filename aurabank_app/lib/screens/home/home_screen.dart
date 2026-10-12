@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../models/bank_models.dart';
@@ -20,21 +22,45 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final BankService _bankService = BankService();
   bool _isBalanceVisible = true;
   bool _isAccountNumVisible = false;
+  Timer? _balanceTimer;
 
   @override
   void initState() {
     super.initState();
     _bankService.addListener(_onServiceUpdate);
+    WidgetsBinding.instance.addObserver(this);
+    _bankService.refreshBalance();
+    _startBalancePolling();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _balanceTimer?.cancel();
     _bankService.removeListener(_onServiceUpdate);
     super.dispose();
+  }
+
+  // Safety net for changes made elsewhere (reversals approved in the back office,
+  // incoming transfers) when no push event reaches the device.
+  void _startBalancePolling() {
+    _balanceTimer?.cancel();
+    _balanceTimer = Timer.periodic(
+        const Duration(seconds: 5), (_) => _bankService.refreshBalance());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _bankService.refreshBalance();
+      _startBalancePolling();
+    } else {
+      _balanceTimer?.cancel();
+    }
   }
 
   void _onServiceUpdate() {

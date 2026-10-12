@@ -2,7 +2,7 @@
 // Comprehensive End-to-End Test Suite validating all 7 T24 Core Banking Features + 800 TPS Capability
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
-const CBS_URL = process.env.CBS_URL || 'http://localhost:8085';
+const CBS_URL = process.env.CBS_URL || 'http://localhost:8087';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

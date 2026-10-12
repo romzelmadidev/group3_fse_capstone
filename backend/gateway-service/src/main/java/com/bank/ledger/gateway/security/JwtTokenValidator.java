@@ -25,6 +25,15 @@ public class JwtTokenValidator {
         this.issuer = issuer;
     }
 
+    /** The token's jti claim, or null when it cannot be read. Call only after validate() succeeded. */
+    public String extractJti(String token) {
+        try {
+            return SignedJWT.parse(token).getJWTClaimsSet().getJWTID();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     public boolean validate(String token) {
 
         try {

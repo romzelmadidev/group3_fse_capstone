@@ -170,7 +170,7 @@ Every container attaches to the internal bridge network `banking-net`. Only peri
 
 | Service / Container | Container Name | Host Port | Internal Port | Protocol | Purpose & Architectural Role |
 | :--- | :--- | :---: | :---: | :--- | :--- |
-| **Retail Banking Web SPA** | `banking-frontend` | `3000` | `80` | HTTP | React / Vite SPA with CanvasKit/Wasm portal parity (profile: frontend) |
+| **Retail Banking Web SPA** | `web-admin-console` | `3000` | `80` | HTTP | React / Vite SPA with CanvasKit/Wasm portal parity (profile: frontend) |
 | **API Gateway** | `gateway-service` | `8080` | `8080` | HTTP / REST | Single perimeter entry, token-bucket rate limiter, JWT validation |
 | **Account Service** | `account-service` | `8081` | `8081` | HTTP / REST | KYC onboarding, user profiles, JWT issuance, Refresh Token Rotation |
 | **Transfer Orchestrator** | `transfer-orchestrator`| `8082` | `8082` | HTTP / REST | Stateless perimeter saga orchestrator, OFS serializer & cool-off |
@@ -275,7 +275,7 @@ docker compose --profile frontend up -d --build
 > 1. Builds and starts all backend microservices (`gateway-service`, `account-service`, `transfer-orchestrator`, `t24-mock-cbs`, `notification-service`, `risk-service`, `compliance-service`).
 > 2. Starts the relational databases (`oracle-xe-master` and `postgres-audit-vault`) with automatic schema initialization and initial seed data.
 > 3. Starts infrastructure dependencies (`redis-cache`, `kafka-broker`, `azurite-storage`, `mailhog`, `adminer`, `dd-agent`).
-> 4. Builds and serves the unified web console (`banking-frontend`) on port 3000.
+> 4. Builds and serves the unified web console (`web-admin-console`) on port 3000.
 
 ---
 
@@ -368,7 +368,7 @@ Health check endpoints:
 * **API Gateway:** `http://localhost:8080/actuator/health`
 * **Account Service:** `http://localhost:8081/actuator/health`
 * **Transfer Orchestrator:** `http://localhost:8082/actuator/health`
-* **T24 Mock CBS:** `http://localhost:8085/actuator/health`
+* **T24 Mock CBS:** `http://localhost:8087/actuator/health`
 * **Notification Service:** `http://localhost:8083/actuator/health`
 * **Risk Service (FastAPI):** `http://localhost:8084/health`
 * **Compliance Service:** `http://localhost:8086/actuator/health`
@@ -376,12 +376,12 @@ Health check endpoints:
 #### 2. Triggering Close of Business (COB) EOD Batch Run
 The daily COB batch rolls the business date, accrues interest, deducts below-minimum ADB fees, takes balance snapshots, and uploads regulatory filings (`.xlsx`, `.pdf`) to Azurite:
 ```powershell
-curl.exe -X POST http://localhost:8085/api/v1/cbs/cob/run
+curl.exe -X POST http://localhost:8087/api/v1/cbs/cob/run
 ```
 
 #### 3. Checking CBS System Business Date & Window
 ```powershell
-curl.exe -s http://localhost:8085/api/v1/cbs/system-date
+curl.exe -s http://localhost:8087/api/v1/cbs/system-date
 ```
 
 #### 4. Viewing Real-Time Logs

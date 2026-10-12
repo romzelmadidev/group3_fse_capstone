@@ -1016,13 +1016,16 @@ class _KycWizardScreenState extends State<KycWizardScreen>
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                       onPressed: _submitVerificationFlow,
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text('Confirm & Submit', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
-                          SizedBox(width: 8),
-                          Icon(Icons.check_rounded, size: 18),
-                        ],
+                      child: const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('Confirm & Submit', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+                            SizedBox(width: 8),
+                            Icon(Icons.check_rounded, size: 18),
+                          ],
+                        ),
                       ),
                     ),
                   ),

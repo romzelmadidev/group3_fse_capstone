@@ -15,20 +15,24 @@ spring:
       default-filters:
         - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials Access-Control-Allow-Methods Access-Control-Allow-Headers, RETAIN_FIRST
       globalcors:
+        add-to-simple-url-handler-mapping: true
         cors-configurations:
           '[/**]':
-            allowedOriginPatterns: "*"
-            allowedMethods:
+            allowed-origin-patterns:
+              - "*"
+            allowed-methods:
               - GET
               - POST
               - PUT
               - PATCH
               - DELETE
               - OPTIONS
-            allowedHeaders: "*"
+            allowed-headers:
+              - "*"
+            allow-credentials: false
       routes:
         - id: account-service
-          uri: ${ACCOUNT_SERVICE_URI:http://localhost:8081}
+          uri: ${ACCOUNT_SERVICE_URI:http://account-service:8081}
           predicates:
             - Path=/api/accounts/**, /api/v1/accounts/**, /api/v1/auth/**, /api/v1/kyc/**, /api/v1/users/**
           filters:
@@ -39,7 +43,7 @@ spring:
                 key-resolver: "#{@userKeyResolver}"
 
         - id: transfer-orchestrator
-          uri: ${TRANSFER_ORCHESTRATOR_URI:http://localhost:8082}
+          uri: ${TRANSFER_ORCHESTRATOR_URI:http://transfer-orchestrator:8082}
           predicates:
             - Path=/api/v1/transfers/**, /api/v1/transfers, /api/v1/reversals/**, /api/v1/reversals, /api/v1/ledger/transfers/**, /api/v1/ledger/transfers, /api/v1/holds/**, /api/v1/interbank/**, /api/v1/mock-partner/**
           filters:

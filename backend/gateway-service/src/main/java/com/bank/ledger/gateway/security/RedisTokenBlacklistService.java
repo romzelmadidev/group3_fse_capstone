@@ -10,14 +10,12 @@ public class RedisTokenBlacklistService {
 
     private final StringRedisTemplate redisTemplate;
 
-    public boolean isBlacklisted(String token) {
-        return Boolean.TRUE.equals(
-                redisTemplate.hasKey(token)
-        );
-    }
+    /** Same key scheme account-service writes in RedisSessionStore.blacklistToken. */
+    private static final String BLACKLIST_PREFIX = "blacklist:jti:";
 
-    public void blacklist(String token) {
-        redisTemplate.opsForValue()
-                .set(token, "BLACKLISTED");
+    public boolean isBlacklisted(String jti) {
+        return jti != null && Boolean.TRUE.equals(
+                redisTemplate.hasKey(BLACKLIST_PREFIX + jti)
+        );
     }
 }
