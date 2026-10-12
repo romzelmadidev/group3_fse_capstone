@@ -200,11 +200,17 @@ paths:
     get:
       tags:
         - Participant Directory
-      summary: List Registered Participant Banks
+      summary: List Registered Participant Banks (Enterprise Facade)
       description: >
-        Retrieves the directory of active participant banks registered in the network,
-        including their clearing codes, display names, nostro account references, and active API endpoints.
-        Endpoints can be overridden at runtime via the PARTNER_BANK_URL environment variable.
+        Enterprise facade endpoint exposed by the Transfer Orchestrator service.
+        In compliance with Core Banking System (CBS) security and architectural boundaries,
+        the underlying T24 CBS table (`core.participant_banks`) is strictly restricted to
+        the Temenos Open Financial Services (OFS) protocol (`text/plain`) and NEVER exposed
+        directly to outside channels.
+        The Transfer Orchestrator acts as the canonical enterprise facade: it queries the T24
+        CBS OFS directory, parses the OFS records, merges runtime environment variable overrides
+        (such as `PARTNER_BANK_URL` or `COOBS_API_ENDPOINT_URL`), and renders clean, standard
+        REST/JSON to mobile apps, retail web portals, and API gateways.
       responses:
         '200':
           description: List of registered participant banks.

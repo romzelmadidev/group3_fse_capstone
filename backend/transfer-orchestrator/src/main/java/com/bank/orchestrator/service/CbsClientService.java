@@ -1,6 +1,7 @@
 package com.bank.orchestrator.service;
 
 import com.bank.ledger.contracts.dto.AccountTransactionDto;
+import com.bank.ledger.contracts.dto.ParticipantBankDto;
 import com.bank.ledger.contracts.dto.ReversalTicketDto;
 import com.bank.ledger.contracts.dto.TransactionStatusHistoryDto;
 import com.bank.ledger.contracts.dto.events.TransferFailedToDlqEvent;
@@ -131,6 +132,24 @@ public class CbsClientService {
             return list != null ? list : Collections.emptyList();
         } catch (Exception e) {
             log.error("Failed to query CBS status history for transactionId={}: {}", transactionId, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    public List<ParticipantBankDto> getParticipantBanks() {
+        log.info("Querying CBS participant banks directory via OFS");
+        try {
+            String ofsResp = webClient.get()
+                    .uri("/api/v1/cbs/interbank/banks")
+                    .accept(MediaType.TEXT_PLAIN)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofMillis(3000))
+                    .block();
+            List<ParticipantBankDto> list = OfsMessageUtil.parseParticipantBanksResponse(ofsResp);
+            return list != null ? list : Collections.emptyList();
+        } catch (Exception e) {
+            log.error("Failed to query CBS participant banks via OFS: {}", e.getMessage());
             return Collections.emptyList();
         }
     }

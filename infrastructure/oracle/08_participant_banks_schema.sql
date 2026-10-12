@@ -28,6 +28,16 @@ EXCEPTION
 END;
 /
 
+-- Synonyms and Grants for multi-schema JPA entity resolution
+BEGIN
+    EXECUTE IMMEDIATE 'CREATE OR REPLACE SYNONYM core.participant_banks FOR fse_user.participant_banks';
+    EXECUTE IMMEDIATE 'GRANT ALL ON fse_user.participant_banks TO core';
+EXCEPTION
+    WHEN OTHERS THEN
+        NULL;
+END;
+/
+
 -- Seeds for participant_banks
 MERGE INTO participant_banks target
 USING (

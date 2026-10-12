@@ -1,6 +1,7 @@
 package com.bank.ledger.contracts.ofs;
 
 import com.bank.ledger.contracts.dto.AccountTransactionDto;
+import com.bank.ledger.contracts.dto.ParticipantBankDto;
 import com.bank.ledger.contracts.dto.ReversalTicketDto;
 import com.bank.ledger.contracts.dto.TransactionStatusHistoryDto;
 
@@ -784,6 +785,84 @@ public final class OfsMessageUtil {
                     } catch (Exception ignored) {}
                 }
             }
+            list.add(dto);
+        }
+        return list;
+    }
+
+    /**
+     * Builds an OFS message string representing the participant banks directory query result.
+     * Format:
+     * //1,SUCCESS,OPERATION=PARTICIPANT.BANKS,COUNT=...,DATA=<code1>|<name1>|<bic1>|<clearing1>|<nostro1>|<url1>|<apiKey1>|<isActive1>|<currency1>;;<code2>|...
+     */
+    public static String buildParticipantBanksResponse(List<ParticipantBankDto> banks) {
+        StringBuilder sb = new StringBuilder();
+        int count = banks != null ? banks.size() : 0;
+        sb.append(String.format("//1,SUCCESS,OPERATION=PARTICIPANT.BANKS,COUNT=%d,DATA=", count));
+        if (banks != null && !banks.isEmpty()) {
+            for (int i = 0; i < banks.size(); i++) {
+                ParticipantBankDto b = banks.get(i);
+                if (i > 0) {
+                    sb.append(";;");
+                }
+                String name = b.getBankName() != null ? b.getBankName().replace("|", "-").replace(";", ",") : "";
+                String url = b.getApiEndpointUrl() != null ? b.getApiEndpointUrl().replace("|", "-").replace(";", ",") : "";
+                String key = b.getApiKey() != null ? b.getApiKey().replace("|", "-").replace(";", ",") : "";
+                sb.append(b.getBankCode() != null ? b.getBankCode() : "").append("|")
+                  .append(name).append("|")
+                  .append(b.getBicSwiftCode() != null ? b.getBicSwiftCode() : "").append("|")
+                  .append(b.getClearingNetwork() != null ? b.getClearingNetwork() : "BILATERAL").append("|")
+                  .append(b.getNostroAccountId() != null ? b.getNostroAccountId() : "").append("|")
+                  .append(url).append("|")
+                  .append(key).append("|")
+                  .append(b.getIsActive() != null ? b.getIsActive() : 1).append("|")
+                  .append(b.getSettlementCurrency() != null ? b.getSettlementCurrency() : "PHP");
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Parses an OFS participant banks response string into DTOs.
+     */
+    public static List<ParticipantBankDto> parseParticipantBanksResponse(String ofsResponse) {
+        List<ParticipantBankDto> list = new ArrayList<>();
+        if (ofsResponse == null || ofsResponse.isBlank() || !ofsResponse.startsWith("//1,SUCCESS")) {
+            return list;
+        }
+
+        int dataIdx = ofsResponse.indexOf("DATA=");
+        if (dataIdx < 0) {
+            return list;
+        }
+
+        String data = ofsResponse.substring(dataIdx + 5).trim();
+        if (data.isEmpty()) {
+            return list;
+        }
+
+        String[] records = data.split(";;");
+        for (String record : records) {
+            if (record.isBlank()) continue;
+            String[] cols = record.split("\\|", -1);
+            ParticipantBankDto dto = new ParticipantBankDto();
+            if (cols.length > 0) dto.setBankCode(cols[0]);
+            if (cols.length > 1) dto.setBankName(cols[1]);
+            if (cols.length > 2) dto.setBicSwiftCode(cols[2]);
+            if (cols.length > 3) dto.setClearingNetwork(cols[3]);
+            if (cols.length > 4) dto.setNostroAccountId(cols[4]);
+            if (cols.length > 5) dto.setApiEndpointUrl(cols[5]);
+            if (cols.length > 6) dto.setApiKey(cols[6]);
+            if (cols.length > 7 && !cols[7].isBlank()) {
+                try {
+                    dto.setIsActive(Integer.parseInt(cols[7]));
+                } catch (Exception ignored) {
+                    dto.setIsActive(1);
+                }
+            } else {
+                dto.setIsActive(1);
+            }
+            if (cols.length > 8) dto.setSettlementCurrency(cols[8]);
             list.add(dto);
         }
         return list;
