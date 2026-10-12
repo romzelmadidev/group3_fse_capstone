@@ -39,7 +39,10 @@ public class BankRoutingService {
             Environment environment,
             @Value("${services.partner.url:http://localhost:8082/api/v1/mock-partner/transfers}") String defaultPartnerUrl) {
         this.environment = environment;
-        this.defaultPartnerUrl = defaultPartnerUrl;
+        String fallback = (defaultPartnerUrl != null && !defaultPartnerUrl.isBlank())
+                ? defaultPartnerUrl.trim()
+                : "http://transfer-orchestrator:8082/api/v1/mock-partner/transfers";
+        this.defaultPartnerUrl = fallback;
 
         // Baseline participants
         staticRegistry.put("COOBS", new BankInfo(
@@ -107,7 +110,10 @@ public class BankRoutingService {
         }
 
         // 3. Fallback
-        return defaultPartnerUrl;
+        if (defaultPartnerUrl != null && !defaultPartnerUrl.isBlank()) {
+            return defaultPartnerUrl;
+        }
+        return "http://transfer-orchestrator:8082/api/v1/mock-partner/transfers";
     }
 
     /**

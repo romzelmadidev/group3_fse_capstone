@@ -47,11 +47,20 @@ public class InterbankIngressController {
     @Autowired
     public InterbankIngressController(
             CbsClientService cbsService,
-            @Value("${services.partner.api-key:AURABANK-SECURE-KEY-2026}") String expectedApiKey,
+            @Value("${services.partner.api-key:${INTERBANK_INWARD_API_KEY:${PARTNER_BANK_API_KEY:${INTERBANK_API_KEY:AURABANK-SECURE-KEY-2026}}}}") String expectedApiKey,
             @Autowired(required = false) StringRedisTemplate redisTemplate) {
         this.cbsService = cbsService;
         this.expectedApiKey = expectedApiKey;
         this.redisTemplate = redisTemplate;
+    }
+
+    /**
+     * Backward-compatible helper for unit tests and direct callers.
+     */
+    public ResponseEntity<InterbankWireResponse> handleInwardWire(
+            String apiKey,
+            InterbankWireRequest request) {
+        return handleInwardWire(apiKey, null, null, request);
     }
 
     /**
@@ -60,7 +69,9 @@ public class InterbankIngressController {
      */
     @PostMapping({"/interbank/transfers/inward", "/interbank/transfers"})
     public ResponseEntity<InterbankWireResponse> handleInwardWire(
-            @RequestHeader(value = "X-Interbank-API-Key", required = false) String apiKey,
+            @RequestHeader(value = "X-Interbank-API-Key", required = false) String interbankApiKey,
+            @RequestHeader(value = "X-API-Key", required = false) String xApiKey,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
             @Valid @RequestBody InterbankWireRequest request) {
 
         String msgId = request.getEffectiveMessageId() != null
@@ -78,11 +89,26 @@ public class InterbankIngressController {
         log.info("Received Inward Inter-Bank Wire: messageId={}, fromBank={}, sender={}, toBank={}, beneficiary={}, amount={}",
                 msgId, srcBank, senderAcc, destBank, beneficiaryAcc, amount);
 
-        // 1. Verify Partner API Key if configured
-        if (expectedApiKey != null && !expectedApiKey.isBlank() && apiKey != null && !expectedApiKey.equals(apiKey)) {
-            log.warn("Unauthorized inter-bank wire rejected: invalid API key");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(InterbankWireResponse.rejected(msgId, "UNAUTHORIZED", "Invalid X-Interbank-API-Key"));
+        // 1. Resolve and Verify Inward API Verification Key
+        String keyToVerify = null;
+        if (interbankApiKey != null && !interbankApiKey.isBlank()) {
+            keyToVerify = interbankApiKey.trim();
+        } else if (xApiKey != null && !xApiKey.isBlank()) {
+            keyToVerify = xApiKey.trim();
+        } else if (authHeader != null && authHeader.regionMatches(true, 0, "Bearer ", 0, 7)) {
+            keyToVerify = authHeader.substring(7).trim();
+        } else if (authHeader != null && authHeader.regionMatches(true, 0, "ApiKey ", 0, 7)) {
+            keyToVerify = authHeader.substring(7).trim();
+        }
+
+        if (expectedApiKey != null && !expectedApiKey.isBlank()) {
+            if (keyToVerify == null || !expectedApiKey.equals(keyToVerify)) {
+                log.warn("Unauthorized inter-bank wire rejected: missing or invalid API verification key (provided: {})",
+                        keyToVerify != null ? "[REDACTED]" : "NONE");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(InterbankWireResponse.rejected(msgId, "UNAUTHORIZED",
+                                "Missing or invalid interbank API verification key. Provide 'X-API-Key' or 'X-Interbank-API-Key'."));
+            }
         }
 
         // 2. Validate Beneficiary Account Exists in AuraBank

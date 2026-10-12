@@ -368,7 +368,7 @@ services:
       - RISK_SERVICE_URL=http://risk-service:8084
       - ACCOUNT_SERVICE_URL=http://account-service:8081
       # Interbank Partner routing override (Group B / CooBS URL configuration)
-      - PARTNER_BANK_URL=${PARTNER_BANK_URL:-}
+      - PARTNER_BANK_URL=${PARTNER_BANK_URL:-http://transfer-orchestrator:8082/api/v1/mock-partner/transfers}
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "transfer-orchestrator"}]'
     networks:

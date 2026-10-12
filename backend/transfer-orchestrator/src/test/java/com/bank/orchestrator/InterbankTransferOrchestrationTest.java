@@ -279,4 +279,61 @@ class InterbankTransferOrchestrationTest {
         verify(cbsService, never()).getAccountBalance(anyString());
         verify(cbsService, never()).postToCbs(any(), anyString(), anyBoolean());
     }
+
+    @Test
+    void testInwardInterbankTransfer_MissingApiKey_ReturnsUnauthorized() {
+        InterbankWireRequest wireReq = new InterbankWireRequest(
+                "0b6c2f6e-6d1a-4d5c-9d1f-0f3a5e7b9c21",
+                "COOBS",
+                "AURABANK",
+                new InterbankWireRequest.PartyDetails("B-ACC-998877", "Bob Martinez"),
+                new InterbankWireRequest.PartyDetails("ACC_10000001", "Alice Guo"),
+                "2500.00",
+                "PHP",
+                "Payment for services",
+                "TX-20261009-8F3A21C0",
+                "2026-10-09T04:30:00Z"
+        );
+
+        // Call with no API key provided
+        ResponseEntity<InterbankWireResponse> response = ingressController.handleInwardWire(null, null, null, wireReq);
+
+        assertNotNull(response);
+        assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
+        assertEquals("REJECTED", response.getBody().status());
+        assertEquals("UNAUTHORIZED", response.getBody().reasonCode());
+        assertTrue(response.getBody().reasonMessage().contains("Missing or invalid interbank API verification key"));
+
+        verify(cbsService, never()).getAccountBalance(anyString());
+        verify(cbsService, never()).postToCbs(any(), anyString(), anyBoolean());
+    }
+
+    @Test
+    void testInwardInterbankTransfer_ValidXApiKeyHeader_Accepted() {
+        InterbankWireRequest wireReq = new InterbankWireRequest(
+                "0b6c2f6e-6d1a-4d5c-9d1f-0f3a5e7b9c21",
+                "COOBS",
+                "AURABANK",
+                new InterbankWireRequest.PartyDetails("OTHER_10000001", "John Doe"),
+                new InterbankWireRequest.PartyDetails("ACC_10000001", "Juan Dela Cruz"),
+                "2500.00",
+                "PHP",
+                "Payment for services",
+                "TX-20261009-8F3A21C0",
+                "2026-10-09T04:30:00Z"
+        );
+
+        when(cbsService.getAccountBalance("ACC_10000001"))
+                .thenReturn(Map.of("accountId", "ACC_10000001", "availableBalance", "50000.00", "currency", "PHP"));
+        when(cbsService.postToCbs(any(), anyString(), eq(false)))
+                .thenReturn(new TransferInitiationResponse("TXN-INW-01", TransactionStatus.Posted, new BigDecimal("2500.00"), "PHP", "ACC-NOSTRO-BANK-B", "ACC_10000001", "Inward Wire Posted", false, 0L, false, null, Instant.now()));
+
+        // Call with X-API-Key header instead of X-Interbank-API-Key
+        ResponseEntity<InterbankWireResponse> response = ingressController.handleInwardWire(null, "AURABANK-SECURE-KEY-2026", null, wireReq);
+
+        assertNotNull(response);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("ACCEPTED", response.getBody().status());
+        assertEquals("0b6c2f6e-6d1a-4d5c-9d1f-0f3a5e7b9c21", response.getBody().messageId());
+    }
 }

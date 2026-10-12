@@ -74,6 +74,7 @@ public class InterbankWireClient {
                     .uri(URI.create(fullUrl))
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                     .header("X-Interbank-API-Key", apiKey)
+                    .header("X-API-Key", apiKey)
                     .bodyValue(request)
                     .retrieve()
                     .bodyToMono(InterbankWireResponse.class)

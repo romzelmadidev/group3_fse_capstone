@@ -39,13 +39,28 @@ paths:
         Called by partner banks (such as CooBS) to deposit funds directly into an AuraBank beneficiary account.
         The request must provide valid FATF Travel Rule information (sender and beneficiary full names and account numbers).
         Settlement is posted in the AuraBank T24 Core Banking System (Dr 1020-NOSTRO-CLEARING, Cr Beneficiary Working Balance).
+        
+        API Verification Key Enforcement:
+        Every incoming request MUST supply a valid pre-shared API verification key in either the `X-API-Key`, 
+        `X-Interbank-API-Key`, or `Authorization: Bearer <key>` header. 
+        Requests with a missing or mismatched key are strictly rejected with HTTP 401 Unauthorized before any CBS ledger processing.
       security:
         - ApiKeyAuth: []
+        - InterbankApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: X-API-Key
           in: header
-          required: true
-          description: Pre-shared authentication key for interbank secure communication.
+          required: false
+          description: Primary pre-shared API verification key for interbank secure communication.
+          schema:
+            type: string
+            default: AURABANK-SECURE-KEY-2026
+            example: AURABANK-SECURE-KEY-2026
+        - name: X-Interbank-API-Key
+          in: header
+          required: false
+          description: Alternative header for pre-shared API verification key.
           schema:
             type: string
             default: AURABANK-SECURE-KEY-2026
@@ -254,7 +269,16 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
-      description: Pre-shared key for authentication between participant banking institutions.
+      description: Primary pre-shared key for authentication between participant banking institutions.
+    InterbankApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Interbank-API-Key
+      description: Bilateral partner header for pre-shared API verification key.
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Bearer token format for pre-shared API verification key.
 
   schemas:
     CustomerParty:
