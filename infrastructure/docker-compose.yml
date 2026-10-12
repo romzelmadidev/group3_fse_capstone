@@ -542,12 +542,12 @@ services:
       - dd-agent
 
   # ============================================================================
-  # 12. Core Retail Banking Single Page Application (React / Vite / Nginx :3000)
-  # Container Name: banking-frontend
-  # Web Portal for Customers and Administrators (Reverse-proxied via Nginx)
+  # 12. Web Admin Console (React / Vite / Nginx :3000)
+  # Container Name: web-admin-console
+  # Staff-facing console (KYC maker/checker, customers), reverse-proxied via Nginx
   # ============================================================================
-  banking-frontend:
-    container_name: banking-frontend
+  web-admin-console:
+    container_name: web-admin-console
     build:
       context: ../frontend
       dockerfile: Dockerfile

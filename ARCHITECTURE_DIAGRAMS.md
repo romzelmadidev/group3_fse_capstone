@@ -64,7 +64,7 @@ All containers run inside the dedicated Docker Compose bridge network (`banking-
 ```mermaid
 flowchart TD
     subgraph ClientTier["Presentation Tier"]
-        ClientSPA["banking-frontend<br/>React 18, TypeScript, Vite<br/>Host: :3000 | Container: :80"]
+        ClientSPA["web-admin-console<br/>React 18, TypeScript, Vite<br/>Host: :3000 | Container: :80"]
     end
 
     subgraph PerimeterTier["Perimeter Security & Routing Tier"]
@@ -345,7 +345,7 @@ sequenceDiagram
 
 | Container | Host Port | Internal Port | Protocol | Scope | Role |
 | :--- | :---: | :---: | :--- | :--- | :--- |
-| `banking-frontend` | `3000` | `80` | HTTP / Web | Public | React 18 Single Page Application |
+| `web-admin-console` | `3000` | `80` | HTTP / Web | Public | React 18 Single Page Application |
 | `gateway-service` | `8080` | `8080` | HTTP / REST | Public | Perimeter security, rate limiting, and routing |
 | `account-service` | `8081` | `8081` | HTTP / REST | Internal | Customer onboarding, KYC, account provisioning |
 | `transfer-orchestrator` | `8082` | `8082` | HTTP / REST | Internal | Transfer lifecycle, Risk Engine, Saga compensation |
