@@ -96,7 +96,8 @@ public class TransferOrchestrationService {
                     request.destinationAccountId(),
                     request.amount(),
                     request.currency() != null ? request.currency() : "PHP",
-                    request.deviceId()
+                    request.deviceId(),
+                    request.description()
             );
             RiskScoreResponse riskResp = riskService.evaluateRisk(riskReq);
 

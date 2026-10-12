@@ -142,6 +142,7 @@ class _LoginScreenState extends State<LoginScreen>
       password: password,
       deviceId: DeviceIdentity().id,
       deviceName: DeviceIdentity().name,
+      deviceType: DeviceIdentity().type,
     );
 
     if (!mounted) return;

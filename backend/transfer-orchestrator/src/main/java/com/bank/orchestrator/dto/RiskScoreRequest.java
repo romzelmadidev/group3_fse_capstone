@@ -8,5 +8,10 @@ public record RiskScoreRequest(
         String destinationAccountId,
         BigDecimal amount,
         String currency,
-        String deviceId
-) {}
+        String deviceId,
+        String description
+) {
+    public RiskScoreRequest(String transactionId, String sourceAccountId, String destinationAccountId, BigDecimal amount, String currency, String deviceId) {
+        this(transactionId, sourceAccountId, destinationAccountId, amount, currency, deviceId, null);
+    }
+}

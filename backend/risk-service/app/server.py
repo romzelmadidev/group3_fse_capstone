@@ -303,20 +303,63 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
             desc = payload.get("description") or payload.get("memo") or ""
 
             desc_lower = str(desc).lower()
-            is_scam_memo = any(kw in desc_lower for kw in ["crypto", "broker", "bail", "police", "urgent investment", "forex", "binary"])
+            is_scam_memo = any(kw in desc_lower for kw in [
+                "crypto", "broker", "bail", "police", "urgent investment", "forex", "binary",
+                "guaranteed", "profit", "task", "commission", "prize", "lottery", "telegram",
+                "pampadulas", "customs", "emergency"
+            ])
 
             if is_scam_memo or amount >= 500000.0:
                 score = 75
                 decision = "ADVISORY_WARNING"
                 reason = "Potential high-risk payee or scam memo typology detected"
-            elif amount >= 250000.0:
+            elif amount >= 50000.0:
                 score = 65
                 decision = "REQUIRE_2FA"
-                reason = "High-value threshold step-up required"
+                reason = "High-value threshold step-up required (AMLA elevated monitoring)"
             else:
                 score = 15
                 decision = "ALLOW"
                 reason = "Standard low risk transaction"
+
+            # Automatically draft a SAR if anomalous high value (>= 50,000 PHP) or scam memo is intercepted
+            if is_scam_memo or amount >= 50000.0 or decision in ("BLOCK", "ADVISORY_WARNING"):
+                try:
+                    sar_tx_row = {
+                        "transaction_id": tx_id,
+                        "user_id": payload.get("sourceAccountId", payload.get("userId", "RETAIL_CUSTOMER")),
+                        "amount_php": amount,
+                        "spike_ratio": 2.5 if amount >= 50000.0 else 1.0,
+                        "balance_drain_ratio": 0.85 if amount >= 50000.0 else 0.1,
+                        "memo": desc,
+                        "velocity_kmh": 0.0,
+                        "is_vpn": False,
+                        "rooted": False,
+                        "hooking": False,
+                        "emulator": False,
+                        "tampered": False,
+                        "attestation_verdict": "PASS",
+                        "remote_app_active": False,
+                        "screen_sharing": False,
+                        "active_call": False,
+                        "call_state": "IDLE",
+                        "running_packages": [],
+                        "active_accessibility_services": [],
+                        "detected_threats": ["ELEVATED_AMOUNT_ANOMALY"] if amount >= 250000.0 else ["SCAM_MEMO_DETECTED"],
+                        "threat_category": "MEMO_SCAM_PATTERN" if is_scam_memo else "HIGH_VALUE_ANOMALY",
+                        "cause_of_suspicion": f"Automated intercept: {reason} with transfer amount PHP {amount:,.2f}.",
+                    }
+                    sar_verdict = {
+                        "action": decision,
+                        "primary_reason": reason,
+                        "gate_used": "CORE_RISK_SCORER",
+                        "fraud_score": float(score),
+                        "threat_category": "MEMO_SCAM_PATTERN" if is_scam_memo else "HIGH_VALUE_ANOMALY",
+                        "cause_of_suspicion": f"Automated intercept: {reason} with transfer amount PHP {amount:,.2f}.",
+                    }
+                    trigger_sar_async(sar_tx_row, sar_verdict)
+                except Exception as sar_err:
+                    print(f"[/risk/score SAR TRIGGER ERROR] {sar_err}", flush=True)
 
             self._send_json(200, {
                 "transactionId": tx_id,
@@ -473,24 +516,37 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
             # 1. Gate 0 Hard Rules Check
             gate0_action = None
             gate0_reason = None
-            if geo_signals["is_impossible_travel"] or geo_signals["velocity_kmh"] > 1000.0:
-                gate0_action = "BLOCK"
+            dev_context = req.get("device_context", {}) if isinstance(req.get("device_context"), dict) else {}
+            all_detected = req.get("detected_threats", []) + dev_context.get("detected_threats", [])
+            all_threat_str = " ".join(str(t).lower() for t in all_detected)
+
+            if geo_signals["is_impossible_travel"] or geo_signals["velocity_kmh"] > 1000.0 or any(kw in all_threat_str for kw in ["impossible_travel", "geo_anomaly"]):
+                gate0_action = "ADVISORY_WARNING"
                 gate0_reason = "IMPOSSIBLE_TRAVEL_VELOCITY"
-            elif req.get("emulator", False) and amount >= 50000.0:
+            elif (
+                req.get("emulator", False)
+                or req.get("rooted", False)
+                or dev_context.get("emulator", False)
+                or dev_context.get("rooted", False)
+                or any(kw in all_threat_str for kw in ["rooted", "emulator", "rooted_device_emulator"])
+            ):
                 gate0_action = "BLOCK"
-                gate0_reason = "CRITICAL_DEVICE_TAMPERING_HIGH_VALUE"
+                gate0_reason = "CRITICAL_DEVICE_TAMPERING_ENVIRONMENT"
             elif req.get("rooted", False) and req.get("new_payee", False) and amount >= 10000.0:
                 gate0_action = "REQUIRE_2FA"
                 gate0_reason = "ROOTED_NEW_DEVICE_ELEVATED_AMOUNT"
 
             if gate0_action:
                 decision = gate0_action
-                fraud_score = 100 if decision == "BLOCK" else 75
+                p_fraud = 1.0 if decision == "BLOCK" else 0.85
+                fraud_score = 100 if decision == "BLOCK" else 85
                 is_anomaly = True
-                anomaly_prob = 1.0 if decision == "BLOCK" else 0.75
+                anomaly_prob = p_fraud
                 primary_flag = gate0_reason
                 all_flags = [gate0_reason]
-                status = "BLOCKED" if decision == "BLOCK" else "REQUIRE_2FA"
+                status = "BLOCKED" if decision == "BLOCK" else ("ADVISORY_PENDING" if decision == "ADVISORY_WARNING" else "REQUIRE_2FA")
+                spike_ratio = round(amount / avg_amount, 2) if avg_amount > 0 else 1.0
+                drain_ratio = round(amount / current_balance, 4) if current_balance > 0 else 0.0
                 review_enqueued = False
             else:
                 # 2. S2 Tabular XGBoost Inference
@@ -657,8 +713,23 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
             sar_report_id = None
             is_sar_candidate = (
                 decision == "BLOCK"
-                or threat_cat in ["MEMORY_HOOKING_TAMPER", "PACKET_INSPECTION_MITM", "REMOTE_ACCESS_MALWARE"]
-                or fraud_score >= 80
+                or threat_cat in [
+                    "MEMORY_HOOKING_TAMPER",
+                    "PACKET_INSPECTION_MITM",
+                    "REMOTE_ACCESS_MALWARE",
+                    "LIVE_CALL_COERCION",
+                    "MEMO_SCAM_PATTERN",
+                    "LOCATION_ANOMALY",
+                    "IMPOSSIBLE_TRAVEL",
+                    "ROOTED_DEVICE_EMULATOR",
+                    "CRITICAL_DEVICE_TAMPERING_ENVIRONMENT",
+                    "DEVICE_TAMPERING"
+                ]
+                or fraud_score >= 60
+                or amount >= 50000.0
+                or geo_signals.get("is_impossible_travel", False)
+                or geo_signals.get("velocity_kmh", 0.0) > 800.0
+                or any(t in str(req) for t in ["ROOTED", "EMULATOR", "GEO_ANOMALY", "IMPOSSIBLE_TRAVEL", "ACTIVE_VOICE_CALL", "SCAM"])
             )
             if is_sar_candidate:
                 sar_report_id = f"SAR-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{tx_id}"
