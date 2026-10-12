@@ -760,7 +760,7 @@ public class BalanceMutationService {
         auditRepository.save(LedgerMutationAudit.builder()
                 .transactionId(transactionId + "-APPROVED")
                 .accountId(sourceId)
-                .mutationType("TRANSFER")
+                .mutationType("DEBIT")
                 .mutationAmount(amount)
                 .beforeBalance(senderBefore)
                 .afterBalance(senderAfter)
@@ -915,7 +915,7 @@ public class BalanceMutationService {
         auditRepository.save(LedgerMutationAudit.builder()
                 .transactionId(transactionId + "-REJECTED")
                 .accountId(tx.getFromAccountId())
-                .mutationType("TRANSFER")
+                .mutationType("DEBIT")
                 .mutationAmount(amount)
                 .beforeBalance(sender.getBalanceAmount())
                 .afterBalance(sender.getBalanceAmount())
@@ -1269,10 +1269,27 @@ public class BalanceMutationService {
 
             // Write immutable audit log to PostgreSQL audit vault
             try {
+                // Debit beneficiary leg (reclaiming funds from target account)
                 auditRepository.save(LedgerMutationAudit.builder()
-                        .transactionId(revTxId)
+                        .transactionId(revTxId + "-DR")
+                        .accountId(targetId)
+                        .mutationType("DEBIT")
+                        .mutationAmount(amount)
+                        .beforeBalance(receiver.getBalanceAmount().add(amount))
+                        .afterBalance(receiver.getBalanceAmount())
+                        .initiatorUserId(reversingAdmin)
+                        .approvedByUserId(approverAdmin)
+                        .reversedByUserId(reversingAdmin)
+                        .reversalReason(reason)
+                        .status("COMMITTED")
+                        .createdAt(Instant.now())
+                        .build());
+
+                // Credit sender leg (restoring funds back to source account)
+                auditRepository.save(LedgerMutationAudit.builder()
+                        .transactionId(revTxId + "-CR")
                         .accountId(sourceId)
-                        .mutationType("TRANSFER")
+                        .mutationType("CREDIT")
                         .mutationAmount(amount)
                         .beforeBalance(sender.getBalanceAmount().subtract(amount))
                         .afterBalance(sender.getBalanceAmount())
@@ -1280,7 +1297,7 @@ public class BalanceMutationService {
                         .approvedByUserId(approverAdmin)
                         .reversedByUserId(reversingAdmin)
                         .reversalReason(reason)
-                        .status("ROLLED_BACK")
+                        .status("COMMITTED")
                         .createdAt(Instant.now())
                         .build());
             } catch (Exception ex) {
@@ -1578,10 +1595,10 @@ public class BalanceMutationService {
         transactionRepository.save(reversalTx);
 
         // 4. Immutable PostgreSQL Audit Vault
-        LedgerMutationAudit audit = LedgerMutationAudit.builder()
-                .transactionId(reversalRef)
+        LedgerMutationAudit debitAudit = LedgerMutationAudit.builder()
+                .transactionId(reversalRef + "-DR")
                 .accountId(originalReceiverId)
-                .mutationType("REVERSAL")
+                .mutationType("DEBIT")
                 .mutationAmount(amount)
                 .beforeBalance(receiverBefore)
                 .afterBalance(receiverAfter)
@@ -1590,10 +1607,25 @@ public class BalanceMutationService {
                 .status("COMMITTED")
                 .createdAt(Instant.now())
                 .build();
-        auditRepository.save(audit);
+        auditRepository.save(debitAudit);
+
+        LedgerMutationAudit creditAudit = LedgerMutationAudit.builder()
+                .transactionId(reversalRef + "-CR")
+                .accountId(originalSenderId)
+                .mutationType("CREDIT")
+                .mutationAmount(amount)
+                .beforeBalance(senderBefore)
+                .afterBalance(senderAfter)
+                .initiatorUserId(request.getMakerId() != null ? request.getMakerId() : "T24-OPERATOR")
+                .approvedByUserId(request.getCheckerId())
+                .status("COMMITTED")
+                .createdAt(Instant.now())
+                .build();
+        auditRepository.save(creditAudit);
 
         try {
-            kafkaPublisher.publishAuditEvent(audit);
+            kafkaPublisher.publishAuditEvent(debitAudit);
+            kafkaPublisher.publishAuditEvent(creditAudit);
         } catch (Exception ex) {
             log.warn("[KAFKA AUDIT WARNING] Failed to stream reversal audit: {}", ex.getMessage());
         }
@@ -1605,7 +1637,7 @@ public class BalanceMutationService {
                     .destinationAccountId(originalSenderId)
                     .amount(amount)
                     .currency("PHP")
-                    .mutationType("REVERSAL")
+                    .mutationType("DEBIT")
                     .status("COMMITTED")
                     .initiatorUserId(request.getMakerId() != null ? request.getMakerId() : "T24-OPERATOR")
                     .timestamp(Instant.now())

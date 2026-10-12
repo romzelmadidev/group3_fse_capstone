@@ -35,6 +35,10 @@ public class JwtProvider {
     }
 
     public String generateAccessToken(String userId, String email, String role, String jti) {
+        return generateAccessToken(userId, email, role, jti, null);
+    }
+
+    public String generateAccessToken(String userId, String email, String role, String jti, String deviceId) {
         Instant now = Instant.now();
         Instant expiry = now.plusSeconds(accessTokenExpirationSeconds);
 
@@ -47,6 +51,7 @@ public class JwtProvider {
                 .subject(userId)
                 .claim("email", email)
                 .claim("role", role)
+                .claim("device_id", deviceId)
                 .id(jti)
                 .issuer(issuer)
                 .issuedAt(Date.from(now))
@@ -77,6 +82,10 @@ public class JwtProvider {
 
     public String getUserId(String token) {
         return getClaims(token).getSubject();
+    }
+
+    public String getDeviceId(String token) {
+        return getClaims(token).get("device_id", String.class);
     }
 
     public String getEmail(String token) {

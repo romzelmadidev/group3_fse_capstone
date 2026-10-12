@@ -166,7 +166,7 @@ public class CbsAuditSelfConsumptionService {
 
     private void handleTransferReversed(TransferReversedEvent event) {
         String revTxId = event.getReversalTransactionId();
-        if (revTxId != null && !ledgerMutationAuditRepository.findByTransactionId(revTxId).isEmpty()) {
+        if (revTxId != null && !ledgerMutationAuditRepository.findByTransactionId(revTxId + "-DR").isEmpty()) {
             log.info("Reversal audit for revTxId {} already processed, skipping duplicate event", revTxId);
             return;
         }
@@ -179,13 +179,14 @@ public class CbsAuditSelfConsumptionService {
         // Beneficiary debit leg (reclaiming disbursed funds)
         if (event.getBeneficiaryAccountId() != null && event.getBeneficiaryBalanceAfter() != null) {
             BigDecimal beforeBal = event.getBeneficiaryBalanceAfter().add(event.getAmount());
-            String payload = revTxId + "|" + event.getBeneficiaryAccountId() + "|REVERSAL|" + event.getAmount() + "|" + beforeBal + "|" + event.getBeneficiaryBalanceAfter() + "|" + eventTime;
+            String debitTxId = revTxId + "-DR";
+            String payload = debitTxId + "|" + event.getBeneficiaryAccountId() + "|DEBIT|" + event.getAmount() + "|" + beforeBal + "|" + event.getBeneficiaryBalanceAfter() + "|" + eventTime;
             String leafHash = merkleTreeService.calculateSha256(payload);
 
             LedgerMutationAudit debitLeg = LedgerMutationAudit.builder()
-                    .transactionId(revTxId)
+                    .transactionId(debitTxId)
                     .accountId(event.getBeneficiaryAccountId())
-                    .mutationType("REVERSAL")
+                    .mutationType("DEBIT")
                     .mutationAmount(event.getAmount())
                     .beforeBalance(beforeBal)
                     .afterBalance(event.getBeneficiaryBalanceAfter())
@@ -202,13 +203,14 @@ public class CbsAuditSelfConsumptionService {
         // Original sender credit leg (restoring funds back to original sender)
         if (event.getOriginalSenderAccountId() != null && event.getOriginalSenderBalanceAfter() != null) {
             BigDecimal beforeBal = event.getOriginalSenderBalanceAfter().subtract(event.getAmount());
-            String payload = revTxId + "|" + event.getOriginalSenderAccountId() + "|REVERSAL|" + event.getAmount() + "|" + beforeBal + "|" + event.getOriginalSenderBalanceAfter() + "|" + eventTime;
+            String creditTxId = revTxId + "-CR";
+            String payload = creditTxId + "|" + event.getOriginalSenderAccountId() + "|CREDIT|" + event.getAmount() + "|" + beforeBal + "|" + event.getOriginalSenderBalanceAfter() + "|" + eventTime;
             String leafHash = merkleTreeService.calculateSha256(payload);
 
             LedgerMutationAudit creditLeg = LedgerMutationAudit.builder()
-                    .transactionId(revTxId)
+                    .transactionId(creditTxId)
                     .accountId(event.getOriginalSenderAccountId())
-                    .mutationType("REVERSAL")
+                    .mutationType("CREDIT")
                     .mutationAmount(event.getAmount())
                     .beforeBalance(beforeBal)
                     .afterBalance(event.getOriginalSenderBalanceAfter())

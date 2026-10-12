@@ -64,8 +64,8 @@ public class CbsAuditQueryService {
 
     @Transactional(value = "auditTransactionManager", readOnly = true)
     public List<LedgerMutationAudit> getReversalByOriginalTx(String originalTransactionId) {
-        return ledgerMutationAuditRepository.findAllByTransactionId(originalTransactionId).stream()
-                .filter(a -> "REVERSAL".equals(a.getMutationType()))
+        return ledgerMutationAuditRepository.findAll().stream()
+                .filter(a -> a.getTransactionId() != null && (a.getTransactionId().contains(originalTransactionId) || a.getTransactionId().startsWith("TXN-REV-")))
                 .toList();
     }
 

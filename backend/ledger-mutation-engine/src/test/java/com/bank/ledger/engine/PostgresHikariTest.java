@@ -61,7 +61,7 @@ class PostgresHikariTest {
         LedgerMutationAudit audit = LedgerMutationAudit.builder()
                 .transactionId(txId)
                 .accountId("A2001")
-                .mutationType("TRANSFER")
+                .mutationType("DEBIT")
                 .mutationAmount(new BigDecimal("1500.0000"))
                 .beforeBalance(new BigDecimal("10000.0000"))
                 .afterBalance(new BigDecimal("8500.0000"))

@@ -27,7 +27,7 @@ public class LedgerMutationAudit {
     private String accountId;
 
     @Column(name = "mutation_type", nullable = false, length = 16)
-    private String mutationType; // TRANSFER, DEBIT, CREDIT, HOLD, RELEASE, REVERSAL
+    private String mutationType; // DEBIT, CREDIT, HOLD, RELEASE
 
     @Column(name = "mutation_amount", nullable = false, precision = 18, scale = 4)
     private BigDecimal mutationAmount;

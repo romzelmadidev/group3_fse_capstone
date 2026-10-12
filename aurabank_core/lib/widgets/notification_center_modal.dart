@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/notification_model.dart';
+import '../services/auth_api_service.dart';
 import '../services/notification_stream_service.dart';
 import '../theme/aura_theme.dart';
 
@@ -57,6 +58,15 @@ class NotificationCenterModal extends StatefulWidget {
 class _NotificationCenterModalState extends State<NotificationCenterModal> {
   NotificationCategory? _selectedCategory;
   bool _showTestSection = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final uid = AuthApiService().currentUserId;
+    if (uid != null && uid.isNotEmpty) {
+      NotificationStreamService().fetchHistory(uid);
+    }
+  }
 
   (Color, Color) _getSemanticColors(NotificationCategory cat, NotificationSeverity sev) {
     if (sev == NotificationSeverity.danger) {
