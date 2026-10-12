@@ -14,7 +14,7 @@ Every containerized service in the Docker Compose bridge network (`banking-net`)
 
 | Service ID | Container Name | Host Port | Internal Port | Protocol | Access Scope | Primary Purpose |
 | :--- | :--- | :---: | :---: | :--- | :--- | :--- |
-| `client` | `banking-frontend` | `3000` | `80` / `3000` | HTTP | Public Browser | React 18 SPA: Customer (email 2FA) & Admin telemetry portals |
+| `client` | `web-admin-console` | `3000` | `80` / `3000` | HTTP | Public Browser | React 18 SPA: Customer (email 2FA) & Admin telemetry portals |
 | `gateway` | `gateway-service` | `8080` | `8080` | HTTP / REST | Public API Entry | Perimeter Security, JWT validation, rate limiting |
 | `acc_svc` | `account-service` | `8081` | `8081` | HTTP / REST | Internal Network | Customer KYC, user onboarding, account provisioning |
 | `tx_engine`| `transfer-orchestrator`| `8082` | `8082` | HTTP / REST | Internal Network | Transfer lifecycle orchestrator: Risk Engine evaluation, Saga compensation, T24 dispatch |
@@ -34,7 +34,7 @@ Every containerized service in the Docker Compose bridge network (`banking-net`)
 
 ## 2. Comprehensive Service & Functional Breakdown
 
-### A. Presentation Layer (`banking-frontend` :3000)
+### A. Presentation Layer (`web-admin-console` :3000)
 - **Runtime**: React 18, Vite, Tailwind CSS (Nginx container).
 - **Core Functions**:
   1. `CustomerPortal`: Real-time balance cards, quick preset transfer amounts, funds transfer initiation with 4-decimal validation, transaction history ledger, and email OTP verification modal for transfers > PHP 50,000.00.

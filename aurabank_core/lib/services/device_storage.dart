@@ -11,6 +11,7 @@ class DeviceStorage {
 
   static const String _deviceIdKey = 'bank_device_id';
   static const String _tokenKey = 'auth_access_token';
+static const String _refreshTokenKey = 'auth_refresh_token';
   static const String _userIdKey = 'auth_user_id';
   static const String _userEmailKey = 'auth_user_email';
   static const String _userNameKey = 'auth_user_name';
@@ -22,6 +23,13 @@ class DeviceStorage {
   static const String _lastLoginNameKey = 'auth_last_login_name';
   static const String _isPrimaryDeviceKey = 'auth_is_primary_device';
   static const String _primaryDeviceIdKey = 'auth_primary_device_id';
+  static const String _bioUserIdKey = 'bio_user_id';
+  static const String _bioEmailKey = 'bio_user_email';
+  static const String _bioNameKey = 'bio_user_name';
+  static const String _bioPhoneKey = 'bio_user_phone';
+  static const String _bioAddressKey = 'bio_user_address';
+  static const String _bioAccountIdKey = 'bio_user_account_id';
+  static const String _bioBalanceKey = 'bio_user_balance';
 
   /// Initializes SharedPreferences instance. Called in main() before runApp().
   static Future<void> init() async {
@@ -106,6 +114,16 @@ class DeviceStorage {
     return _prefs?.getString(_tokenKey) ?? _memoryCache[_tokenKey];
   }
 
+  /// Persists the rotating refresh token used to renew the 15 minute access token
+  static Future<void> saveRefreshToken(String token) async {
+    _memoryCache[_refreshTokenKey] = token;
+    await _prefs?.setString(_refreshTokenKey, token);
+  }
+
+  static String? getRefreshToken() {
+    return _prefs?.getString(_refreshTokenKey) ?? _memoryCache[_refreshTokenKey];
+  }
+
   /// Persists user identifier
   static Future<void> saveUserId(String userId) async {
     _memoryCache[_userIdKey] = userId;
@@ -155,6 +173,11 @@ class DeviceStorage {
   static String? getUserPhone() => _prefs?.getString(_userPhoneKey) ?? _memoryCache[_userPhoneKey];
   static String? getUserAddress() => _prefs?.getString(_userAddressKey) ?? _memoryCache[_userAddressKey];
   static String? getUserAccountId() => _prefs?.getString(_userAccountIdKey) ?? _memoryCache[_userAccountIdKey];
+  static Future<void> saveUserBalance(double balance) async {
+    _memoryCache[_userBalanceKey] = balance.toString();
+    await _prefs?.setDouble(_userBalanceKey, balance);
+  }
+
   static double? getUserBalance() {
     final b = _prefs?.getDouble(_userBalanceKey);
     if (b != null) return b;
@@ -185,6 +208,70 @@ class DeviceStorage {
     await _prefs?.remove(_lastLoginNameKey);
   }
 
+  /// Persists full user profile for enrolled biometric login across logouts
+  static Future<void> saveBiometricProfile({
+    required String userId,
+    required String email,
+    required String name,
+    String? phone,
+    String? address,
+    String? accountId,
+    double? balance,
+  }) async {
+    _memoryCache[_bioUserIdKey] = userId;
+    _memoryCache[_bioEmailKey] = email;
+    _memoryCache[_bioNameKey] = name;
+    await _prefs?.setString(_bioUserIdKey, userId);
+    await _prefs?.setString(_bioEmailKey, email);
+    await _prefs?.setString(_bioNameKey, name);
+    if (phone != null && phone.isNotEmpty) {
+      _memoryCache[_bioPhoneKey] = phone;
+      await _prefs?.setString(_bioPhoneKey, phone);
+    }
+    if (address != null && address.isNotEmpty) {
+      _memoryCache[_bioAddressKey] = address;
+      await _prefs?.setString(_bioAddressKey, address);
+    }
+    if (accountId != null && accountId.isNotEmpty) {
+      _memoryCache[_bioAccountIdKey] = accountId;
+      await _prefs?.setString(_bioAccountIdKey, accountId);
+    }
+    if (balance != null) {
+      _memoryCache[_bioBalanceKey] = balance.toString();
+      await _prefs?.setDouble(_bioBalanceKey, balance);
+    }
+  }
+
+  static String? getBiometricUserId() => _prefs?.getString(_bioUserIdKey) ?? _memoryCache[_bioUserIdKey];
+  static String? getBiometricUserEmail() => _prefs?.getString(_bioEmailKey) ?? _memoryCache[_bioEmailKey];
+  static String? getBiometricUserName() => _prefs?.getString(_bioNameKey) ?? _memoryCache[_bioNameKey];
+  static String? getBiometricUserPhone() => _prefs?.getString(_bioPhoneKey) ?? _memoryCache[_bioPhoneKey];
+  static String? getBiometricUserAddress() => _prefs?.getString(_bioAddressKey) ?? _memoryCache[_bioAddressKey];
+  static String? getBiometricUserAccountId() => _prefs?.getString(_bioAccountIdKey) ?? _memoryCache[_bioAccountIdKey];
+  static double? getBiometricUserBalance() {
+    final b = _prefs?.getDouble(_bioBalanceKey);
+    if (b != null) return b;
+    final cached = _memoryCache[_bioBalanceKey];
+    return cached != null ? double.tryParse(cached) : null;
+  }
+
+  static Future<void> clearBiometricProfile() async {
+    _memoryCache.remove(_bioUserIdKey);
+    _memoryCache.remove(_bioEmailKey);
+    _memoryCache.remove(_bioNameKey);
+    _memoryCache.remove(_bioPhoneKey);
+    _memoryCache.remove(_bioAddressKey);
+    _memoryCache.remove(_bioAccountIdKey);
+    _memoryCache.remove(_bioBalanceKey);
+    await _prefs?.remove(_bioUserIdKey);
+    await _prefs?.remove(_bioEmailKey);
+    await _prefs?.remove(_bioNameKey);
+    await _prefs?.remove(_bioPhoneKey);
+    await _prefs?.remove(_bioAddressKey);
+    await _prefs?.remove(_bioAccountIdKey);
+    await _prefs?.remove(_bioBalanceKey);
+  }
+
   static Future<void> savePrimaryDeviceStatus({required bool isPrimary, String? primaryDeviceId}) async {
     _memoryCache[_isPrimaryDeviceKey] = isPrimary.toString();
     await _prefs?.setBool(_isPrimaryDeviceKey, isPrimary);
@@ -212,6 +299,7 @@ class DeviceStorage {
   /// Clears active user tokens and session data upon logout while preserving device ID
   static Future<void> clearSession() async {
     _memoryCache.remove(_tokenKey);
+    _memoryCache.remove(_refreshTokenKey);
     _memoryCache.remove(_userIdKey);
     _memoryCache.remove(_userEmailKey);
     _memoryCache.remove(_userNameKey);
@@ -222,6 +310,7 @@ class DeviceStorage {
     _memoryCache.remove(_isPrimaryDeviceKey);
     _memoryCache.remove(_primaryDeviceIdKey);
     await _prefs?.remove(_tokenKey);
+    await _prefs?.remove(_refreshTokenKey);
     await _prefs?.remove(_userIdKey);
     await _prefs?.remove(_userEmailKey);
     await _prefs?.remove(_userNameKey);

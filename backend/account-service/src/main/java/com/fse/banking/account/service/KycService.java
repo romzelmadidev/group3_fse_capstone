@@ -13,7 +13,6 @@ import com.fse.banking.account.repository.UserRepository;
 import com.fse.banking.account.storage.BlobStorageAdapter;
 import com.fse.banking.common.enums.KycStatus;
 import com.fse.banking.common.enums.UserRole;
-import com.fse.banking.common.enums.UserStatus;
 import com.fse.banking.common.exception.ResourceNotFoundException;
 import com.fse.banking.account.kyc.KycReview;
 import com.fse.banking.account.kyc.KycReviewStore;
@@ -53,6 +52,15 @@ public class KycService {
         log.info("Processing KYC verification submission {} for user {}", request.getSubmissionId(), userId);
         UserEntity user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer profile not found for user: " + userId));
+
+        // Only a first submission or a re-submission after rejection may start a review.
+        KycStatus current = user.getKycStatus();
+        if (current == KycStatus.PENDING_REVIEW) {
+            throw new ConflictException("Your KYC application is already under review.");
+        }
+        if (current == KycStatus.VERIFIED || current == KycStatus.APPROVED) {
+            throw new ConflictException("Your identity is already verified.");
+        }
 
         String basePath = "users/" + userId + "/" + request.getSubmissionId();
         KycEvaluationClientRequest evalRequest = KycEvaluationClientRequest.builder()
@@ -220,7 +228,7 @@ public class KycService {
     }
 
     public List<KycProfileResponse> listPendingKyc() {
-        return userRepository.findByRole(UserRole.CUSTOMER)
+        return userRepository.findByRoleAndKycStatus(UserRole.CUSTOMER, KycStatus.PENDING_REVIEW)
                 .stream()
                 .map(this::toProfileResponse)
                 .toList();
@@ -238,7 +246,7 @@ public class KycService {
         UserEntity user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer profile not found for user: " + userId));
 
-        user.setStatus(UserStatus.ACTIVE);
+        // KYC approval changes only the KYC state; it must not unlock an account that is LOCKED or SUSPENDED for other reasons.
         user.setKycStatus(KycStatus.VERIFIED);
         user.setKycReviewReason("Approved by " + reviewerId);
         UserEntity updated = userRepository.save(user);
@@ -251,7 +259,7 @@ public class KycService {
         UserEntity user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer profile not found for user: " + userId));
 
-        user.setStatus(UserStatus.SUSPENDED);
+        // Rejection must not suspend the account: the customer needs to sign in to see the reason and resubmit.
         user.setKycStatus(KycStatus.REJECTED);
         user.setKycReviewReason(reason);
         UserEntity updated = userRepository.save(user);

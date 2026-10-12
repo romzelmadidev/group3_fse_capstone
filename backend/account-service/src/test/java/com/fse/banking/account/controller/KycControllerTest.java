@@ -165,11 +165,51 @@ class KycControllerTest {
                 .build();
 
         when(kycService.listPendingKyc()).thenReturn(List.of(profile));
+        when(jwtProvider.validateToken("staff")).thenReturn(true);
+        when(jwtProvider.getRole("staff")).thenReturn("ROLE_ADMIN");
+        when(jwtProvider.getUserId("staff")).thenReturn("usr-1005-boo-001");
 
-        mockMvc.perform(get("/api/v1/kyc/pending"))
+        mockMvc.perform(get("/api/v1/kyc/pending").header("Authorization", "Bearer staff"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].user_id").value("USR-100001"))
                 .andExpect(jsonPath("$[0].kyc_status").value("PENDING_REVIEW"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/kyc/pending refuses anonymous and customer callers")
+    void testListPendingKycRequiresStaff() throws Exception {
+        when(jwtProvider.validateToken("cust")).thenReturn(true);
+        when(jwtProvider.getRole("cust")).thenReturn("ROLE_CUSTOMER");
+
+        mockMvc.perform(get("/api/v1/kyc/pending")).andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/kyc/pending").header("Authorization", "Bearer cust"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/kyc/{userId} allows the owner and staff, refuses anonymous and other customers")
+    void testGetKycProfileAccessRules() throws Exception {
+        KycProfileResponse profile = KycProfileResponse.builder()
+                .userId("USR-100001").kycStatus("VERIFIED").createdAt(Instant.now()).build();
+        when(kycService.getKycProfile("USR-100001")).thenReturn(profile);
+        when(jwtProvider.validateToken("owner")).thenReturn(true);
+        when(jwtProvider.getUserId("owner")).thenReturn("USR-100001");
+        when(jwtProvider.getRole("owner")).thenReturn("ROLE_CUSTOMER");
+        when(jwtProvider.validateToken("other")).thenReturn(true);
+        when(jwtProvider.getUserId("other")).thenReturn("USR-200002");
+        when(jwtProvider.getRole("other")).thenReturn("ROLE_CUSTOMER");
+        when(jwtProvider.validateToken("staff")).thenReturn(true);
+        when(jwtProvider.getUserId("staff")).thenReturn("usr-1005-boo-001");
+        when(jwtProvider.getRole("staff")).thenReturn("ROLE_TELLER");
+
+        mockMvc.perform(get("/api/v1/kyc/USR-100001")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/kyc/USR-100001").header("Authorization", "Bearer other"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/kyc/USR-100001").header("Authorization", "Bearer owner"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.kyc_status").value("VERIFIED"));
+        mockMvc.perform(get("/api/v1/kyc/USR-100001").header("Authorization", "Bearer staff"))
+                .andExpect(status().isOk());
     }
 
     @Test

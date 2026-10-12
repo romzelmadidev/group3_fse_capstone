@@ -283,7 +283,8 @@ class AuthServiceTest {
         assertThat(result.getResponse().getAccessToken()).isEqualTo("mock.jwt.token");
         assertThat(result.getResponse().getRole()).isEqualTo("ROLE_CUSTOMER");
         assertThat(result.getRefreshTokenId()).startsWith("rt_");
-        verify(redisSessionStore).registerSessionToken(eq("USR-100001"), anyString(), eq(3));
+        verify(redisSessionStore).registerSessionToken(eq("USR-100001"), anyString(), anyString(),
+                org.mockito.ArgumentMatchers.anyLong(), eq(3));
     }
 
     @Test
@@ -332,11 +333,12 @@ class AuthServiceTest {
         assertThat(activeUser.getLastLoginAt()).isNotNull();
 
         verify(redisSessionStore).clearLoginOtp("USR-100001");
+        verify(redisSessionStore).clearLoginOtpCooldown("USR-100001");
         verify(userRepository).save(activeUser);
     }
 
     @Test
-    @DisplayName("Should increment failed attempts on invalid credentials and throw UnauthorizedException")
+    @DisplayName("Should count failed attempts in Redis on invalid credentials and throw UnauthorizedException")
     void testLoginBadCredentials() {
         LoginRequest loginRequest = LoginRequest.builder()
                 .email("juan.delacruz@example.ph")
@@ -345,19 +347,19 @@ class AuthServiceTest {
 
         when(userRepository.findByEmail("juan.delacruz@example.ph")).thenReturn(Optional.of(activeUser));
         when(passwordEncoder.matches("WrongPassword", activeUser.getPasswordHash())).thenReturn(false);
+        when(redisSessionStore.recordFailedLogin(eq("USR-100001"), any())).thenReturn(1L);
 
         assertThatThrownBy(() -> authService.login(loginRequest, "127.0.0.1", "Mozilla/5.0"))
                 .isInstanceOf(UnauthorizedException.class)
                 .hasMessageContaining("Invalid email or password.");
 
-        assertThat(activeUser.getFailedLoginAttempts()).isEqualTo(1);
-        verify(userRepository).save(activeUser);
+        verify(redisSessionStore, never()).lockLogin(anyString(), any());
+        assertThat(activeUser.getStatus()).isEqualTo(UserStatus.ACTIVE);
     }
 
     @Test
-    @DisplayName("Should lock account when consecutive failed login attempts reach 5")
+    @DisplayName("The fifth wrong password locks sign-in temporarily without changing the account status")
     void testLoginAccountLockoutAfterFiveAttempts() {
-        activeUser.setFailedLoginAttempts(4);
         LoginRequest loginRequest = LoginRequest.builder()
                 .email("juan.delacruz@example.ph")
                 .password("WrongPassword")
@@ -365,13 +367,48 @@ class AuthServiceTest {
 
         when(userRepository.findByEmail("juan.delacruz@example.ph")).thenReturn(Optional.of(activeUser));
         when(passwordEncoder.matches("WrongPassword", activeUser.getPasswordHash())).thenReturn(false);
+        when(redisSessionStore.recordFailedLogin(eq("USR-100001"), any())).thenReturn(5L);
 
         assertThatThrownBy(() -> authService.login(loginRequest, "127.0.0.1", "Mozilla/5.0"))
                 .isInstanceOf(UnauthorizedException.class);
 
-        assertThat(activeUser.getFailedLoginAttempts()).isEqualTo(5);
-        assertThat(activeUser.getStatus()).isEqualTo(UserStatus.LOCKED);
-        verify(userRepository).save(activeUser);
+        verify(redisSessionStore).lockLogin(eq("USR-100001"), any());
+        assertThat(activeUser.getStatus()).isEqualTo(UserStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("A temporary lock rejects sign-in before the password is checked")
+    void testLoginRejectedWhileTemporarilyLocked() {
+        LoginRequest loginRequest = LoginRequest.builder()
+                .email("juan.delacruz@example.ph")
+                .password("Password123!")
+                .build();
+        when(userRepository.findByEmail("juan.delacruz@example.ph")).thenReturn(Optional.of(activeUser));
+        when(redisSessionStore.getLoginLockSeconds("USR-100001")).thenReturn(600L);
+
+        assertThatThrownBy(() -> authService.login(loginRequest, "127.0.0.1", "Mozilla/5.0"))
+                .isInstanceOf(LockedUserException.class)
+                .hasMessageContaining("10 minutes");
+        verify(passwordEncoder, never()).matches(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("A new mobile login right after another device's code was verified is told to wait when no code can go out")
+    void testMfaLoginReportsCooldownInsteadOfSilentChallenge() {
+        LoginRequest loginRequest = LoginRequest.builder()
+                .email("juan.delacruz@example.ph")
+                .password("Password123!")
+                .deviceId("dev-new-phone")
+                .deviceType("MOBILE")
+                .build();
+        when(userRepository.findByEmail("juan.delacruz@example.ph")).thenReturn(Optional.of(activeUser));
+        when(passwordEncoder.matches("Password123!", activeUser.getPasswordHash())).thenReturn(true);
+        when(redisSessionStore.getLoginOtp("USR-100001")).thenReturn(null);
+        when(redisSessionStore.startLoginOtpCooldown(eq("USR-100001"), any())).thenReturn(42L);
+
+        assertThatThrownBy(() -> authService.login(loginRequest, "127.0.0.1", "Mozilla/5.0"))
+                .isInstanceOf(TooManyRequestsException.class)
+                .hasMessageContaining("42 seconds");
     }
 
     @Test
@@ -503,10 +540,19 @@ class AuthServiceTest {
         when(userRepository.findByEmail("juan.delacruz@example.ph")).thenReturn(Optional.of(activeUser));
         when(passwordEncoder.matches("Password123!", activeUser.getPasswordHash())).thenReturn(true);
         when(redisSessionStore.getPrimaryDeviceId("USR-100001")).thenReturn("device-iphone-1");
+        when(redisSessionStore.getLoginOtp("USR-100001")).thenReturn("123456");
+        when(userRepository.findById("USR-100001")).thenReturn(Optional.of(activeUser));
         when(jwtProvider.generateAccessToken(any(), any(), any(), any(), any())).thenReturn("mock.jwt.token");
         when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
 
-        AuthService.LoginResult result = authService.login(loginRequest, "192.168.1.25", "Mozilla/5.0 (iPad)");
+        // An unapproved (new or revoked) mobile device must pass an OTP challenge first, even when a primary exists
+        AuthService.LoginResult challenge = authService.login(loginRequest, "192.168.1.25", "Mozilla/5.0 (iPad)");
+        assertThat(challenge.getResponse().getStatus()).isEqualTo("MFA_REQUIRED");
+        verify(redisSessionStore, never()).saveUserDevice(any(), any());
+
+        AuthService.LoginResult result = authService.verifyLoginOtp(VerifyLoginOtpRequest.builder()
+                .userId("USR-100001").otp("123456").deviceId("device-ipad-2").deviceName("Juan's iPad").build(),
+                "192.168.1.25", "Mozilla/5.0 (iPad)");
 
         assertThat(result.getResponse().getDeviceId()).isEqualTo("device-ipad-2");
         assertThat(result.getResponse().getDeviceName()).isEqualTo("Juan's iPad");
@@ -611,10 +657,18 @@ class AuthServiceTest {
                 .build();
 
         when(redisSessionStore.getUserDevices("USR-100001")).thenReturn(List.of(primaryMobile, oldSecondary));
+        when(redisSessionStore.getLoginOtp("USR-100001")).thenReturn("123456");
+        when(userRepository.findById("USR-100001")).thenReturn(Optional.of(activeUser));
         when(jwtProvider.generateAccessToken(any(), any(), any(), any(), any())).thenReturn("mock.jwt.token");
         when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
 
-        AuthService.LoginResult result = authService.login(loginRequest, "192.168.1.120", "Samsung Tablet");
+        AuthService.LoginResult challenge = authService.login(loginRequest, "192.168.1.120", "Samsung Tablet");
+        assertThat(challenge.getResponse().getStatus()).isEqualTo("MFA_REQUIRED");
+
+        AuthService.LoginResult result = authService.verifyLoginOtp(VerifyLoginOtpRequest.builder()
+                .userId("USR-100001").otp("123456").deviceId("dev-third-galaxy")
+                .deviceName("Samsung Galaxy Tab").deviceType("MOBILE").build(),
+                "192.168.1.120", "Samsung Tablet");
 
         assertThat(result.getResponse().getDeviceId()).isEqualTo("dev-third-galaxy");
         assertThat(result.getResponse().getStatus()).isEqualTo("PENDING_CONFIRMATION");
@@ -794,5 +848,117 @@ class AuthServiceTest {
         verify(redisSessionStore).deleteSessionsForDevice("USR-100001", "dev-web-chrome");
         verify(redisSessionStore, never()).deleteUserDevice("USR-100001", "dev-secondary-ipad");
         verify(redisSessionStore).blacklistToken("jti-web", 300L);
+    }
+
+    @Test
+    @DisplayName("Should allow administrative (ADMIN) and teller (TELLER) accounts like jm@bank.com to log in from mobile devices")
+    void testAdministrativeAndTellerAccountsCanLoginFromMobile() {
+        UserEntity tellerUser = UserEntity.builder()
+                .userId("USR-TM-JM")
+                .email("jm@bank.com")
+                .passwordHash("$2a$10$hashedpassword")
+                .role(UserRole.TELLER)
+                .status(UserStatus.ACTIVE)
+                .maxConcurrentSessions(5)
+                .failedLoginAttempts(0)
+                .lastLoginAt(Instant.now())
+                .build();
+
+        UserEntity adminUser = UserEntity.builder()
+                .userId("USR-ADMIN-01")
+                .email("diana.admin@bank.com")
+                .passwordHash("$2a$10$hashedpassword")
+                .role(UserRole.ADMIN)
+                .status(UserStatus.ACTIVE)
+                .maxConcurrentSessions(5)
+                .failedLoginAttempts(0)
+                .lastLoginAt(Instant.now())
+                .build();
+
+        DeviceInfoDto approvedPrimary = DeviceInfoDto.builder()
+                .deviceId("device-mobile-test")
+                .deviceName("Pixel 8")
+                .deviceType("MOBILE")
+                .isPrimary(true)
+                .isApproved(true)
+                .build();
+
+        // 1. Test Teller (jm@bank.com) on mobile
+        LoginRequest jmLogin = LoginRequest.builder()
+                .email("jm@bank.com")
+                .password("Password123!")
+                .deviceId("device-mobile-test")
+                .deviceName("Pixel 8")
+                .deviceType("MOBILE")
+                .build();
+
+        when(userRepository.findByEmail("jm@bank.com")).thenReturn(Optional.of(tellerUser));
+        when(passwordEncoder.matches("Password123!", tellerUser.getPasswordHash())).thenReturn(true);
+        when(redisSessionStore.getPrimaryDeviceId("USR-TM-JM")).thenReturn("device-mobile-test");
+        when(redisSessionStore.getDevice("USR-TM-JM", "device-mobile-test")).thenReturn(Optional.of(approvedPrimary));
+        when(jwtProvider.generateAccessToken(eq("USR-TM-JM"), eq("jm@bank.com"), eq("ROLE_TELLER"), anyString(), eq("device-mobile-test")))
+                .thenReturn("mock.teller.jwt");
+        when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
+
+        AuthService.LoginResult tellerResult = authService.login(jmLogin, "192.168.1.10", "AuraBank Mobile (Android)");
+        assertThat(tellerResult).isNotNull();
+        assertThat(tellerResult.getResponse().getStatus()).isEqualTo("AUTHENTICATED");
+        assertThat(tellerResult.getResponse().getRole()).isEqualTo("ROLE_TELLER");
+
+        // 2. Test Admin on mobile
+        LoginRequest adminLogin = LoginRequest.builder()
+                .email("diana.admin@bank.com")
+                .password("Password123!")
+                .deviceId("device-mobile-test")
+                .deviceName("Pixel 8")
+                .deviceType("MOBILE")
+                .build();
+
+        when(userRepository.findByEmail("diana.admin@bank.com")).thenReturn(Optional.of(adminUser));
+        when(passwordEncoder.matches("Password123!", adminUser.getPasswordHash())).thenReturn(true);
+        when(redisSessionStore.getPrimaryDeviceId("USR-ADMIN-01")).thenReturn("device-mobile-test");
+        when(redisSessionStore.getDevice("USR-ADMIN-01", "device-mobile-test")).thenReturn(Optional.of(approvedPrimary));
+        when(jwtProvider.generateAccessToken(eq("USR-ADMIN-01"), eq("diana.admin@bank.com"), eq("ROLE_ADMIN"), anyString(), eq("device-mobile-test")))
+                .thenReturn("mock.admin.jwt");
+
+        AuthService.LoginResult adminResult = authService.login(adminLogin, "192.168.1.10", "AuraBank Mobile (Android)");
+        assertThat(adminResult).isNotNull();
+        assertThat(adminResult.getResponse().getStatus()).isEqualTo("AUTHENTICATED");
+        assertThat(adminResult.getResponse().getRole()).isEqualTo("ROLE_ADMIN");
+    }
+
+    @Test
+    @DisplayName("Should allow administrative and teller accounts to verify login OTP from mobile devices")
+    void testAdministrativeAndTellerAccountsCanVerifyLoginOtpFromMobile() {
+        UserEntity tellerUser = UserEntity.builder()
+                .userId("USR-TM-JM")
+                .email("jm@bank.com")
+                .passwordHash("$2a$10$hashedpassword")
+                .role(UserRole.TELLER)
+                .status(UserStatus.ACTIVE)
+                .maxConcurrentSessions(5)
+                .failedLoginAttempts(0)
+                .build();
+
+        VerifyLoginOtpRequest verifyRequest = VerifyLoginOtpRequest.builder()
+                .userId("USR-TM-JM")
+                .otp("123456")
+                .deviceId("device-mobile-test")
+                .deviceName("Pixel 8")
+                .deviceType("MOBILE")
+                .build();
+
+        when(userRepository.findById("USR-TM-JM")).thenReturn(Optional.of(tellerUser));
+        when(redisSessionStore.getLoginOtp("USR-TM-JM")).thenReturn("123456");
+        when(jwtProvider.generateAccessToken(eq("USR-TM-JM"), eq("jm@bank.com"), eq("ROLE_TELLER"), anyString(), any()))
+                .thenReturn("mock.teller.otp.jwt");
+        when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
+
+        AuthService.LoginResult result = authService.verifyLoginOtp(verifyRequest, "192.168.1.10", "AuraBank Mobile (Android)");
+
+        assertThat(result).isNotNull();
+        assertThat(result.getResponse().getStatus()).isEqualTo("AUTHENTICATED");
+        assertThat(result.getResponse().getRole()).isEqualTo("ROLE_TELLER");
+        verify(redisSessionStore).clearLoginOtp("USR-TM-JM");
     }
 }

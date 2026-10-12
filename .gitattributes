@@ -1,1 +1,2 @@
+# Shell scripts run inside Linux containers and must keep LF line endings, even with core.autocrlf=true
 *.sh text eol=lf

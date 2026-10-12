@@ -19,13 +19,18 @@ import java.time.Instant;
 @AllArgsConstructor
 public class TransactionNotificationEvent {
 
+    // The aliases accept the core banking system's own events (TransferExecutedEvent,
+    // TransactionStatusChangedEvent), which use camelCase names on the same topic.
     @JsonProperty("transfer_id")
+    @com.fasterxml.jackson.annotation.JsonAlias({"transactionId"})
     private String transferId;
 
     @JsonProperty("source_account")
+    @com.fasterxml.jackson.annotation.JsonAlias({"sourceAccountId"})
     private String sourceAccount;
 
     @JsonProperty("destination_account")
+    @com.fasterxml.jackson.annotation.JsonAlias({"destinationAccountId"})
     private String destinationAccount;
 
     @JsonProperty("user_id")
@@ -44,12 +49,14 @@ public class TransactionNotificationEvent {
     private BigDecimal beforeBalance;
 
     @JsonProperty("after_balance")
+    @com.fasterxml.jackson.annotation.JsonAlias({"sourceBalanceAfter"})
     private BigDecimal afterBalance;
 
     @JsonProperty("status")
     private String status; // COMMITTED, PENDING_APPROVAL, REJECTED, FAILED
 
     @JsonProperty("event_type")
+    @com.fasterxml.jackson.annotation.JsonAlias({"eventType"})
     private String eventType; // TRANSFER_EXECUTED, TRANSFER_PENDING_APPROVAL, TRANSFER_REJECTED
 
     @JsonProperty("requires_2fa_otp")
@@ -65,6 +72,7 @@ public class TransactionNotificationEvent {
     private String initiatorUserId;
 
     @JsonProperty("timestamp")
+    @com.fasterxml.jackson.annotation.JsonAlias({"executedAtUtc", "changedAt"})
     private Instant timestamp;
 
     @JsonProperty("description")

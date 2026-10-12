@@ -40,7 +40,7 @@ public class BalanceMasterEntity {
     @Builder.Default
     private BigDecimal holdAmount = BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP);
 
-    @Column(name = "available_balance", precision = 18, scale = 4, insertable = false, updatable = false)
+    @Column(name = "available_balance", precision = 18, scale = 4)
     @Builder.Default
     private BigDecimal availableBalance = BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP);
 

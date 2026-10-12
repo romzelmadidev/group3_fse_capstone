@@ -375,7 +375,7 @@ function History({ account, owners, onOpen }) {
                   </td>
                   <td className="whitespace-nowrap px-4 py-3.5 font-mono text-xs text-ink-500">{t.transaction_id}</td>
                   <td className={cn('whitespace-nowrap px-4 py-3.5 text-right font-semibold tabular-nums', !out && 'text-ok')}>{out ? '−' : '+'}{money(t.amount)}</td>
-                  <td className="px-4 py-3.5"><Badge tone={TX_TONE[t.status] || 'neutral'}>{titleCase(t.status)}</Badge></td>
+                  <td className="px-4 py-3.5"><Badge tone={TX_TONE[t.status?.toUpperCase()] || 'neutral'}>{titleCase(t.status)}</Badge></td>
                 </tr>
               );
             })}
@@ -413,7 +413,7 @@ function TransferDrawer({ tx, account, owners, onClose }) {
     }
   }
 
-  const footer = !REVERSIBLE.includes(tx.status) ? (
+  const footer = !REVERSIBLE.includes(tx.status?.toUpperCase()) ? (
     <p className="text-sm text-ink-500">Only settled transfers can be reversed. This one is {titleCase(tx.status).toLowerCase()}.</p>
   ) : open.data ? (
     <p className="text-sm text-ink-500">

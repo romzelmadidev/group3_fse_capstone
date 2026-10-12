@@ -89,7 +89,7 @@ class _AppShellState extends State<AppShell>
     final screens = [
       HomeScreen(onNavigateTab: _onNavigateTab),
       const CardsScreen(),
-      ScanScreen(onBack: () => _onNavigateTab(0)),
+      ScanScreen(active: _currentIndex == 2, onBack: () => _onNavigateTab(0)),
       const AnalyticsScreen(),
       const ProfileScreen(),
     ];

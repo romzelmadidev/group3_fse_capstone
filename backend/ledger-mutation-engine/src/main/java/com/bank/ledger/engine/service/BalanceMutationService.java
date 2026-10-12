@@ -198,6 +198,7 @@ public class BalanceMutationService {
             sender.setAvailableBalance(sender.getAvailableBalance().subtract(amount));
             sender.setUpdatedAt(Instant.now());
             balanceRepository.save(sender);
+            evictBalanceCache(sourceId);
 
             transactionRepository.save(TransactionMaster.builder()
                     .transactionId(request.getTransactionId())
@@ -306,6 +307,7 @@ public class BalanceMutationService {
             sender.setAvailableBalance(sender.getAvailableBalance().subtract(amount));
             sender.setUpdatedAt(Instant.now());
             balanceRepository.save(sender);
+            evictBalanceCache(sourceId);
 
             TransactionMaster pendingTx = TransactionMaster.builder()
                     .transactionId(request.getTransactionId())
@@ -429,6 +431,7 @@ public class BalanceMutationService {
 
         balanceRepository.save(sender);
         balanceRepository.save(receiver);
+        evictBalanceCache(sourceId, targetId);
 
         TransactionMaster committedTx = TransactionMaster.builder()
                 .transactionId(request.getTransactionId())
@@ -748,6 +751,7 @@ public class BalanceMutationService {
 
         balanceRepository.save(sender);
         balanceRepository.save(receiver);
+        evictBalanceCache(sourceId, targetId);
 
         // Update Transaction Record
         tx.setStatus("COMMITTED");
@@ -904,6 +908,7 @@ public class BalanceMutationService {
         sender.setAvailableBalance(sender.getAvailableBalance().add(release));
         sender.setUpdatedAt(Instant.now());
         balanceRepository.save(sender);
+        evictBalanceCache(tx.getFromAccountId());
 
         // Update Transaction Record
         tx.setStatus("FAILED");
@@ -1050,6 +1055,7 @@ public class BalanceMutationService {
 
                 balanceRepository.save(sender);
                 balanceRepository.save(receiver);
+                evictBalanceCache(sourceId, targetId);
 
                 tx.setStatus("COMMITTED");
                 tx.setAfterBalance(senderAfter);
@@ -1237,6 +1243,7 @@ public class BalanceMutationService {
 
             balanceRepository.save(sender);
             balanceRepository.save(receiver);
+            evictBalanceCache(sourceId, targetId);
 
             // Mark original transaction as REVERSED with audit attribution
             tx.setStatus("REVERSED");
@@ -1325,6 +1332,7 @@ public class BalanceMutationService {
             sender.setAvailableBalance(sender.getAvailableBalance().add(amount));
             sender.setUpdatedAt(Instant.now());
             balanceRepository.save(sender);
+            evictBalanceCache(sourceId);
 
             tx.setStatus("CANCELLED");
             tx.setUpdatedAt(Instant.now());
@@ -1415,15 +1423,16 @@ public class BalanceMutationService {
             return Map.of("user_id", userId, "status", "NOT_FOUND");
         }
 
-        return Map.of(
-                "user_id", user.getUserId(),
-                "first_name", user.getFirstName(),
-                "last_name", user.getLastName(),
-                "location_name", user.getLastKnownLocationName() != null ? user.getLastKnownLocationName() : "Manila, Philippines",
-                "latitude", user.getLastKnownLatitude() != null ? user.getLastKnownLatitude() : 14.5995,
-                "longitude", user.getLastKnownLongitude() != null ? user.getLastKnownLongitude() : 120.9842,
-                "ip_address", user.getLastKnownIp() != null ? user.getLastKnownIp() : "112.198.45.10"
-        );
+        // Map.of rejects nulls; first/last name can be null for some users.
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("user_id", user.getUserId());
+        result.put("first_name", user.getFirstName());
+        result.put("last_name", user.getLastName());
+        result.put("location_name", user.getLastKnownLocationName() != null ? user.getLastKnownLocationName() : "Manila, Philippines");
+        result.put("latitude", user.getLastKnownLatitude() != null ? user.getLastKnownLatitude() : 14.5995);
+        result.put("longitude", user.getLastKnownLongitude() != null ? user.getLastKnownLongitude() : 120.9842);
+        result.put("ip_address", user.getLastKnownIp() != null ? user.getLastKnownIp() : "112.198.45.10");
+        return result;
     }
 
     /**
@@ -1558,6 +1567,7 @@ public class BalanceMutationService {
 
         balanceRepository.save(originalReceiver);
         balanceRepository.save(originalSender);
+        evictBalanceCache(originalReceiver.getAccountId(), originalSender.getAccountId());
 
         // Update original transaction status
         originalTx.setStatus("REVERSED");
@@ -1832,5 +1842,24 @@ public class BalanceMutationService {
         String datePart = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyMMdd"));
         String suffix = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
         return "FT" + datePart + suffix;
+    }
+
+    /**
+     * Evicts cached balance in Redis so subsequent balance inquiries return fresh ledger figures.
+     */
+    private void evictBalanceCache(String... accountIds) {
+        if (redisTemplate == null || accountIds == null) {
+            return;
+        }
+        for (String accountId : accountIds) {
+            if (accountId != null && !accountId.isBlank()) {
+                try {
+                    redisTemplate.delete("account:balance:" + accountId);
+                    log.info("[CACHE EVICTION] Evicted balance cache for account: {}", accountId);
+                } catch (Exception e) {
+                    log.warn("[CACHE EVICTION WARNING] Failed to evict balance cache for account {}: {}", accountId, e.getMessage());
+                }
+            }
+        }
     }
 }

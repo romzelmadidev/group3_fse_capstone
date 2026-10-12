@@ -69,8 +69,8 @@ Static production bundles compile into the `dist/` directory.
 The frontend is containerized using multi-stage Nginx Alpine builds:
 
 ```bash
-docker build -t banking-frontend .
-docker run -d -p 3000:80 --name banking-frontend --network banking-net banking-frontend
+docker build -t web-admin-console .
+docker run -d -p 3000:80 --name web-admin-console --network banking-net web-admin-console
 ```
 
 Nginx serves compiled static assets and proxies `/api/` traffic directly to `gateway-service:8080`.

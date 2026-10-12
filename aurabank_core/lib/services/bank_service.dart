@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/bank_models.dart';
+import '../models/user_persona.dart';
 import 'auth_api_service.dart';
 import 'device_storage.dart';
 import 'notification_stream_service.dart';
@@ -108,7 +109,7 @@ class BankService extends ChangeNotifier {
     address: 'Alegria, Bukidnon',
     dob: 'July 10, 1999',
     gender: 'Male',
-    civilStatus: 'Married',
+    civilStatus: 'Single',
     faceIdEnabled: false,
     fingerprintEnabled: false,
     pushAlertsEnabled: true,
@@ -712,22 +713,90 @@ class BankService extends ChangeNotifier {
     } catch (_) {}
   }
 
-  void restoreUserProfileFromStorage() {
-    final savedName = DeviceStorage.getUserName();
-    final savedEmail = DeviceStorage.getUserEmail();
-    if (savedName != null && savedName.isNotEmpty && savedEmail != null && savedEmail.isNotEmpty) {
-      user.name = savedName;
-      user.email = savedEmail;
-      final savedPhone = DeviceStorage.getUserPhone();
-      if (savedPhone != null && savedPhone.isNotEmpty) user.phoneNumber = savedPhone;
-      final savedAddress = DeviceStorage.getUserAddress();
-      if (savedAddress != null && savedAddress.isNotEmpty) user.address = savedAddress;
-      final savedAcc = DeviceStorage.getUserAccountId();
-      if (savedAcc != null && savedAcc.isNotEmpty) activeAccountId = savedAcc;
-      final savedBal = DeviceStorage.getUserBalance();
-      if (savedBal != null) availableBalance = savedBal;
+  void restoreUserProfileFromStorage({String? preferredEmail}) {
+    String? email = preferredEmail?.trim();
+    if (email == null || email.isEmpty) {
+      email = DeviceStorage.getUserEmail() ??
+          DeviceStorage.getBiometricUserEmail() ??
+          DeviceStorage.getLastLoginEmail();
+    }
+
+    String? name;
+    String? phone;
+    String? address;
+    String? accId;
+    double? bal;
+    String? uid;
+
+    if (email != null && email.isNotEmpty) {
+      if (DeviceStorage.getUserEmail()?.toLowerCase() == email.toLowerCase()) {
+        name = DeviceStorage.getUserName();
+        phone = DeviceStorage.getUserPhone();
+        address = DeviceStorage.getUserAddress();
+        accId = DeviceStorage.getUserAccountId();
+        bal = DeviceStorage.getUserBalance();
+        uid = DeviceStorage.getUserId();
+      }
+      if (DeviceStorage.getBiometricUserEmail()?.toLowerCase() == email.toLowerCase()) {
+        name ??= DeviceStorage.getBiometricUserName();
+        phone ??= DeviceStorage.getBiometricUserPhone();
+        address ??= DeviceStorage.getBiometricUserAddress();
+        accId ??= DeviceStorage.getBiometricUserAccountId();
+        bal ??= DeviceStorage.getBiometricUserBalance();
+        uid ??= DeviceStorage.getBiometricUserId();
+      }
+      if (DeviceStorage.getLastLoginEmail()?.toLowerCase() == email.toLowerCase()) {
+        name ??= DeviceStorage.getLastLoginName();
+      }
+
+      final personaMatches = UserPersona.demoPersonas.where(
+        (p) => p.email.toLowerCase() == email!.toLowerCase(),
+      );
+      if (personaMatches.isNotEmpty) {
+        final persona = personaMatches.first;
+        name ??= persona.name;
+        accId ??= persona.accountId;
+        bal ??= persona.balance;
+      }
+
+      name ??= DeviceStorage.getLastLoginName();
+      if (name == null || name.isEmpty) {
+        final prefix = email.split('@').first.replaceAll('.', ' ');
+        name = prefix.isNotEmpty
+            ? prefix.split(' ').map((w) => w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : '').join(' ')
+            : 'Aura User';
+      }
+    } else {
+      name = DeviceStorage.getUserName() ??
+          DeviceStorage.getBiometricUserName() ??
+          DeviceStorage.getLastLoginName();
+      email = DeviceStorage.getUserEmail() ??
+          DeviceStorage.getBiometricUserEmail() ??
+          DeviceStorage.getLastLoginEmail() ??
+          '';
+      phone = DeviceStorage.getUserPhone() ?? DeviceStorage.getBiometricUserPhone();
+      address = DeviceStorage.getUserAddress() ?? DeviceStorage.getBiometricUserAddress();
+      accId = DeviceStorage.getUserAccountId() ?? DeviceStorage.getBiometricUserAccountId();
+      bal = DeviceStorage.getUserBalance() ?? DeviceStorage.getBiometricUserBalance();
+      uid = DeviceStorage.getUserId() ?? DeviceStorage.getBiometricUserId();
+    }
+
+    if (name != null && name.isNotEmpty) {
+      user.name = name;
+      if (email.isNotEmpty) user.email = email;
+      if (phone != null && phone.isNotEmpty) user.phoneNumber = phone;
+      if (address != null && address.isNotEmpty) user.address = address;
+      if (accId != null && accId.isNotEmpty) activeAccountId = accId;
+      if (bal != null) availableBalance = bal;
       for (final c in cards) {
-        c.holderName = savedName;
+        c.holderName = name;
+      }
+      if (uid != null && uid.isNotEmpty) {
+        AuthApiService().currentUserId = uid;
+      } else if (email.isNotEmpty) {
+        AuthApiService().currentUserId = ((email.toLowerCase().contains('juan') || activeAccountId.contains('3001'))
+            ? 'usr-1001-cst-001'
+            : 'USR-${email.hashCode.abs() % 900000 + 100000}');
       }
       notifyListeners();
     }
@@ -760,8 +829,9 @@ class BankService extends ChangeNotifier {
     for (final c in cards) {
       c.holderName = name;
     }
+    final uid = AuthApiService().currentUserId ?? 'U1001';
     DeviceStorage.saveUserSessionProfile(
-      userId: AuthApiService().currentUserId ?? 'U1001',
+      userId: uid,
       email: email,
       name: name,
       phone: phoneNumber,
@@ -769,6 +839,19 @@ class BankService extends ChangeNotifier {
       accountId: accountId,
       balance: balance,
     );
+    DeviceStorage.saveLastLoginEmail(email);
+    DeviceStorage.saveLastLoginName(name);
+    if (user.faceIdEnabled || user.fingerprintEnabled) {
+      DeviceStorage.saveBiometricProfile(
+        userId: uid,
+        email: email,
+        name: name,
+        phone: phoneNumber,
+        address: address,
+        accountId: accountId,
+        balance: balance,
+      );
+    }
     notifyListeners();
   }
 
@@ -778,6 +861,19 @@ class BankService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('face_id_enabled', enabled);
+      if (enabled) {
+        DeviceStorage.saveBiometricProfile(
+          userId: AuthApiService().currentUserId ?? 'U1001',
+          email: user.email,
+          name: user.name,
+          phone: user.phoneNumber,
+          address: user.address,
+          accountId: activeAccountId,
+          balance: availableBalance,
+        );
+      } else if (!user.fingerprintEnabled) {
+        DeviceStorage.clearBiometricProfile();
+      }
     } catch (_) {}
   }
 
@@ -787,6 +883,19 @@ class BankService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('fingerprint_enabled', enabled);
+      if (enabled) {
+        DeviceStorage.saveBiometricProfile(
+          userId: AuthApiService().currentUserId ?? 'U1001',
+          email: user.email,
+          name: user.name,
+          phone: user.phoneNumber,
+          address: user.address,
+          accountId: activeAccountId,
+          balance: availableBalance,
+        );
+      } else if (!user.faceIdEnabled) {
+        DeviceStorage.clearBiometricProfile();
+      }
     } catch (_) {}
   }
 
@@ -829,9 +938,31 @@ class BankService extends ChangeNotifier {
       // 1. Fetch Accounts for active user from Oracle / Account Service
       final effectiveUserId = AuthApiService().currentUserId ??
           DeviceStorage.getUserId() ??
-          ((user.email.toLowerCase().contains('juan') || activeAccountId.contains('3001'))
-              ? 'usr-1001-cst-001'
-              : 'U1001');
+          (activeAccountId.contains('3001') ? 'U1001' : 'usr-1001-cst-001');
+
+      await syncKycStatus(effectiveUserId);
+
+      // Fetch fresh balance for active account directly if set
+      if (activeAccountId.isNotEmpty) {
+        try {
+          final balRes = await http
+              .get(Uri.parse('$baseUrl/api/v1/accounts/$activeAccountId/balance'))
+              .timeout(const Duration(seconds: 2));
+          if (balRes.statusCode == 200) {
+            final balData = jsonDecode(balRes.body);
+            final dynamic rawBal = balData['available_balance'] ??
+                balData['availableBalance'] ??
+                balData['current_balance'] ??
+                balData['currentBalance'];
+            if (rawBal != null) {
+              availableBalance = (rawBal as num).toDouble();
+              DeviceStorage.saveUserBalance(availableBalance);
+              notifyListeners();
+            }
+          }
+        } catch (_) {}
+      }
+
       final accRes = await http
           .get(Uri.parse('$baseUrl/api/v1/accounts?userId=$effectiveUserId'))
           .timeout(const Duration(seconds: 2));
@@ -839,27 +970,29 @@ class BankService extends ChangeNotifier {
       if (accRes.statusCode == 200) {
         final List<dynamic> accList = jsonDecode(accRes.body);
         if (accList.isNotEmpty) {
-          final firstAcc = accList.first;
-          final accId = firstAcc['account_id'] ?? firstAcc['accountId'];
-          if (accId != null) {
-            activeAccountId = accId.toString();
-          }
-          if (firstAcc['availableBalance'] != null) {
-            availableBalance = (firstAcc['availableBalance'] as num).toDouble();
-          } else if (firstAcc['available_balance'] != null) {
-            availableBalance = (firstAcc['available_balance'] as num).toDouble();
-          } else if (accId != null) {
-            try {
-              final balRes = await http
-                  .get(Uri.parse('$baseUrl/api/v1/accounts/$accId/balance'))
-                  .timeout(const Duration(seconds: 2));
-              if (balRes.statusCode == 200) {
-                final balData = jsonDecode(balRes.body);
-                if (balData['available_balance'] != null) {
-                  availableBalance = (balData['available_balance'] as num).toDouble();
-                }
-              }
-            } catch (_) {}
+          final matchedAcc = accList.firstWhere(
+            (a) => (a['account_id'] ?? a['accountId'])?.toString() == activeAccountId,
+            orElse: () => null,
+          );
+          if (matchedAcc != null) {
+            final accId = matchedAcc['account_id'] ?? matchedAcc['accountId'];
+            if (accId != null) activeAccountId = accId.toString();
+            final dynamic accBal = matchedAcc['availableBalance'] ?? matchedAcc['available_balance'];
+            if (accBal != null) {
+              availableBalance = (accBal as num).toDouble();
+              DeviceStorage.saveUserBalance(availableBalance);
+              notifyListeners();
+            }
+          } else if (activeAccountId.isEmpty) {
+            final firstAcc = accList.first;
+            final accId = firstAcc['account_id'] ?? firstAcc['accountId'];
+            if (accId != null) activeAccountId = accId.toString();
+            final dynamic accBal = firstAcc['availableBalance'] ?? firstAcc['available_balance'];
+            if (accBal != null) {
+              availableBalance = (accBal as num).toDouble();
+              DeviceStorage.saveUserBalance(availableBalance);
+              notifyListeners();
+            }
           }
         }
       }
@@ -1089,7 +1222,16 @@ class BankService extends ChangeNotifier {
     final effectiveCall = isOnCall ?? activeCall ?? false;
     final effectivePasted = isPasted ?? false;
 
+    final idempotencyKey = 'TX-${DateTime.now().millisecondsSinceEpoch}-${DateTime.now().microsecondsSinceEpoch}';
+
     final payload = {
+      // Transfer orchestrator (/api/v1/transfers) contract
+      'sourceAccountId': activeAccountId,
+      'destinationAccountId': targetAccount,
+      'description': remarks ?? 'Mobile Fund Transfer to $recipientName',
+      'idempotencyKey': idempotencyKey,
+      'scamAdvisoryAcknowledged': scamAdvisoryAcknowledged ?? false,
+      // Legacy ledger-engine field names, still accepted by direct ledger endpoints
       'accountId': activeAccountId,
       'targetAccountId': targetAccount,
       'amount': amount,
@@ -1118,7 +1260,7 @@ class BankService extends ChangeNotifier {
     final token = DeviceStorage.getAccessToken() ?? 'active_token';
     final headers = {
       'Content-Type': 'application/json',
-      'X-Idempotency-Key': 'TX-${DateTime.now().millisecondsSinceEpoch}-${DateTime.now().microsecondsSinceEpoch}',
+      'X-Idempotency-Key': idempotencyKey,
       'Authorization': 'Bearer $token',
     };
 
@@ -1132,26 +1274,97 @@ class BankService extends ChangeNotifier {
       if (environment == AppEnvironment.prod && autoFallbackToLocal) '$localUrl/api/v1/ledger/transfer',
     ];
 
+    var sessionExpired = false;
+    var triedRefresh = false;
     for (final endpoint in candidateEndpoints) {
       try {
-        final response = await http.post(
+        var response = await http.post(
           Uri.parse(endpoint),
           headers: headers,
           body: jsonEncode(payload),
         ).timeout(const Duration(seconds: 4));
 
+        // Access tokens last 15 minutes. Renew once and retry instead of treating
+        // an expired token as a network problem.
+        if (response.statusCode == 401 && !triedRefresh) {
+          triedRefresh = true;
+          if (await AuthApiService().refreshAccessToken()) {
+            headers['Authorization'] = 'Bearer ${AuthApiService().currentAccessToken}';
+            response = await http.post(
+              Uri.parse(endpoint),
+              headers: headers,
+              body: jsonEncode(payload),
+            ).timeout(const Duration(seconds: 4));
+          }
+        }
+        if (response.statusCode == 401) {
+          sessionExpired = true;
+          continue;
+        }
+
+        // The orchestrator replies with a biometric challenge for high-value transfers.
+        // The user has already approved on-device, so answer the challenge and let the
+        // orchestrator release the cached transfer. Without this the transfer stays
+        // unsigned and is reported as failed.
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          try {
+            final first = jsonDecode(response.body);
+            if (first is Map &&
+                first['biometricRequired'] == true &&
+                first['biometricChallenge'] != null) {
+              final verifyUri = Uri.parse(
+                  endpoint.replaceFirst(RegExp(r'/transfers?$'), '/transfers/verify-biometric'));
+              response = await http.post(
+                verifyUri,
+                headers: headers,
+                body: jsonEncode({
+                  'transactionId': first['transactionId'],
+                  'deviceId': deviceId ?? 'MOBILE-APP',
+                  'challengeToken': first['biometricChallenge'],
+                  'assertionSignature': 'DEVICE_BIOMETRIC_ASSERTION',
+                  'destinationAccountId': targetAccount,
+                  'amount': amount,
+                }),
+              ).timeout(const Duration(seconds: 4));
+            }
+          } catch (_) {
+            // Fall through with the original response; it is reported as unverified below.
+          }
+        }
+
         if (response.statusCode >= 200 && response.statusCode < 300) {
           final data = jsonDecode(response.body);
-          final t24Ref = data['t24_reference'] ?? data['t24Reference'] ?? data['transaction_id'] ?? fallbackRef;
-          final newBal = (data['balance_after'] ?? data['available_balance'] as num?)?.toDouble();
+          final t24Ref = data['t24_reference'] ?? data['t24Reference'] ?? data['transaction_id'] ?? data['transactionId'] ?? fallbackRef;
+          final dynamic rawBal = data['balance_after'] ??
+              data['balanceAfter'] ??
+              data['available_balance'] ??
+              data['availableBalance'];
+          final double? newBal = (rawBal as num?)?.toDouble();
           final status = (data['status'] ?? 'COMMITTED').toString().toUpperCase();
+
+          // The orchestrator answers 200 for steps that have NOT moved money yet
+          // (scam advisory, biometric challenge). Never report those as a sent transfer.
+          final isOrchestratorReply = data is Map && data.containsKey('biometricRequired');
+          if (isOrchestratorReply &&
+              (data['biometricRequired'] == true || status == 'PROCESSING' || status == 'AUTHORIZED')) {
+            final msg = (data['message'] ?? 'Additional verification is required for this transfer.').toString();
+            return {
+              'success': false,
+              'reference': fallbackRef,
+              'failureReason': msg.replaceFirst(RegExp(r'^[A-Z_]+:\s*'), ''),
+            };
+          }
+          final coolingOff = data['coolingOffRequired'] == true;
+
           final isHeld = status == 'PENDING_APPROVAL' ||
               status == 'PENDING_REVIEW' ||
+              coolingOff ||
               (data['risk_decision'] ?? data['riskDecision']) == 'REVIEW';
           // A held transfer has only reserved the funds. It is not settled, so it must not
           // show up as a completed debit or fire a "Fund Transfer Settled" notification.
           if (isHeld) {
-            availableBalance = newBal ?? availableBalance - amount;
+            availableBalance = newBal ?? (availableBalance - amount);
+            DeviceStorage.saveUserBalance(availableBalance);
             notifyListeners();
           } else {
             // _applyLocalTransfer takes the amount off itself, so apply it first and
@@ -1159,6 +1372,7 @@ class BankService extends ChangeNotifier {
             _applyLocalTransfer(amount, recipientName, t24Ref, remarks);
             if (newBal != null) {
               availableBalance = newBal;
+              DeviceStorage.saveUserBalance(availableBalance);
               notifyListeners();
             }
           }
@@ -1167,10 +1381,10 @@ class BankService extends ChangeNotifier {
             'reference': t24Ref,
             't24_reference': t24Ref,
             'amount': amount,
-            'status': data['status'] ?? 'COMMITTED',
+            'status': coolingOff ? 'PENDING_REVIEW' : (data['status'] ?? 'COMMITTED'),
             'threat_category': data['threat_category'] ?? data['threatCategory'],
             'cause_of_suspicion': data['cause_of_suspicion'] ?? data['causeOfSuspicion'],
-            'warning_message': data['warning_message'] ?? data['warningMessage'],
+            'warning_message': data['warning_message'] ?? data['warningMessage'] ?? (coolingOff ? data['message'] : null),
             'warning_title': data['warning_title'] ?? data['warningTitle'],
             'risk_decision': data['risk_decision'] ?? data['riskDecision'],
             'sar_draft_created': data['sar_draft_created'] ?? data['sarDraftCreated'] ?? false,
@@ -1201,13 +1415,23 @@ class BankService extends ChangeNotifier {
       }
     }
 
-    // 3. Perform in-memory mutation fallback
+    // The bank rejected our credentials. Never pretend the transfer went through.
+    if (sessionExpired) {
+      return {
+        'success': false,
+        'reference': fallbackRef,
+        'failureReason': 'Your session has expired. Please sign in again to send money.',
+      };
+    }
+
+    // 3. Perform in-memory mutation fallback (backend unreachable)
     _applyLocalTransfer(amount, recipientName, fallbackRef, remarks);
     return {'success': true, 'reference': fallbackRef, 't24_reference': fallbackRef, 'amount': amount};
   }
 
   void _applyLocalTransfer(double amount, String recipientName, String ref, String? remarks) {
     availableBalance -= amount;
+    DeviceStorage.saveUserBalance(availableBalance);
 
     // Add to October statement
     final octStatement = statements['2026-10'];
@@ -1235,6 +1459,27 @@ class BankService extends ChangeNotifier {
       status: 'COMMITTED',
     );
     notifyListeners();
+  }
+
+  /// Loads the customer's KYC status from the backend so every channel shows
+  /// the same state, including decisions made by staff after submission.
+  Future<void> syncKycStatus(String userId) async {
+    final token = AuthApiService().currentAccessToken;
+    if (token == null || token.isEmpty) return;
+    try {
+      final res = await http
+          .get(
+            Uri.parse('$baseUrl/api/v1/kyc/$userId'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 3));
+      if (res.statusCode != 200) return;
+      final data = jsonDecode(res.body);
+      final status = data['kyc_status'] as String?;
+      if (status != null && status.isNotEmpty) {
+        setKycStatus(status, reason: data['kyc_review_reason'] as String?);
+      }
+    } catch (_) {}
   }
 
   void setKycStatus(String status, {String? reason}) {

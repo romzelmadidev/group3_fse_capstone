@@ -9,7 +9,7 @@ import { Badge, Button, Drawer, Empty, ErrorNote, PageHeader, SearchBar, Skeleto
 export function holdReason(t) {
   const r = t.riskReason || '';
   if (r.startsWith('IMPOSSIBLE_TRAVEL')) return { tone: 'danger', label: 'Impossible travel', detail: r.replace('IMPOSSIBLE_TRAVEL: ', '') };
-  if (t.requires2FaOtp === 1) return { tone: 'sky', label: 'Waiting for customer OTP', detail: 'Above PHP 50,000. The customer confirms with an emailed code.' };
+  if (t.requires2FaOtp === 1) return { tone: 'sky', label: 'Awaiting admin approval', detail: 'Above PHP 50,000. A checker approves or rejects it here.' };
   if (r) return { tone: 'ember', label: titleCase(r), detail: 'Flagged by Laya.' };
   return { tone: 'ember', label: 'Needs approval', detail: 'Held for a checker.' };
 }
@@ -63,7 +63,7 @@ export default function Transfers() {
         ) : error ? (
           <div className="p-5"><ErrorNote message={errorMessage(error)} onRetry={reload} /></div>
         ) : sorted.length === 0 ? (
-          <Empty icon={ArrowLeftRight} title="No transfers on hold" body="Transfers flagged by Laya, above the OTP threshold, or from an impossible location appear here." />
+          <Empty icon={ArrowLeftRight} title="No transfers on hold" body="Transfers flagged by Laya, above the approval threshold, or from an impossible location appear here." />
         ) : rows.length === 0 ? (
           <Empty icon={ArrowLeftRight} title="No matching transfers" body={`No transfers on hold match "${q}". Clear the search to view all pending transfers.`} />
         ) : (
