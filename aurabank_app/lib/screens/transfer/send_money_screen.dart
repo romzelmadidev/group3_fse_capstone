@@ -209,7 +209,9 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
             children: [
               Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
               SizedBox(width: 10),
-              Text('Amount exceeds available account balance', style: TextStyle(fontWeight: FontWeight.w700)),
+              Expanded(
+                child: Text('Amount exceeds available account balance', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
             ],
           ),
         ),

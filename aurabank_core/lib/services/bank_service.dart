@@ -932,6 +932,39 @@ class BankService extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _refreshingBalance = false;
+
+  /// Lightweight balance-only refresh used for real-time updates (reversals,
+  /// incoming transfers, settled holds). Only notifies listeners when it changed.
+  Future<void> refreshBalance() async {
+    if (_refreshingBalance || activeAccountId.isEmpty) return;
+    _refreshingBalance = true;
+    try {
+      final token = DeviceStorage.getAccessToken();
+      final res = await http.get(
+        Uri.parse('$baseUrl/api/v1/accounts/$activeAccountId/balance'),
+        headers: {if (token != null) 'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 3));
+      if (res.statusCode != 200) return;
+      final d = jsonDecode(res.body);
+      final dynamic raw = d['available_balance'] ??
+          d['availableBalance'] ??
+          d['current_balance'] ??
+          d['currentBalance'];
+      if (raw is! num) return;
+      final value = raw.toDouble();
+      if (value != availableBalance) {
+        availableBalance = value;
+        DeviceStorage.saveUserBalance(value);
+        notifyListeners();
+      }
+    } catch (_) {
+      // Offline or backend down: keep the last known balance.
+    } finally {
+      _refreshingBalance = false;
+    }
+  }
+
   // Fetch live accounts & transactions from backend database if running
   Future<void> syncWithBackend() async {
     try {
