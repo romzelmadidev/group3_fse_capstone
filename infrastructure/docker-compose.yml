@@ -224,11 +224,16 @@ services:
     networks:
       - banking-net
     depends_on:
-      - oracle-xe-master
-      - redis-cache
-      - azurite
-      - risk-service
-      - dd-agent
+      oracle-xe-master:
+        condition: service_healthy
+      redis-cache:
+        condition: service_started
+      azurite:
+        condition: service_started
+      risk-service:
+        condition: service_healthy
+      dd-agent:
+        condition: service_started
 
   # ============================================================================
   # ============================================================================
@@ -320,11 +325,16 @@ services:
     networks:
       - banking-net
     depends_on:
-      - oracle-xe-master
-      - postgres-audit-vault
-      - redis-cache
-      - kafka-broker
-      - dd-agent
+      oracle-xe-master:
+        condition: service_healthy
+      postgres-audit-vault:
+        condition: service_healthy
+      redis-cache:
+        condition: service_started
+      kafka-broker:
+        condition: service_started
+      dd-agent:
+        condition: service_started
 
   # ============================================================================
   # 9b. Stateless Transfer Orchestrator (Spring Boot :8082)
@@ -491,11 +501,16 @@ services:
     networks:
       - banking-net
     depends_on:
-      - oracle-xe-master
-      - redis-cache
-      - mailhog
-      - kafka-broker
-      - dd-agent
+      oracle-xe-master:
+        condition: service_healthy
+      redis-cache:
+        condition: service_started
+      mailhog:
+        condition: service_started
+      kafka-broker:
+        condition: service_started
+      dd-agent:
+        condition: service_started
 
   # ============================================================================
   # 11. API Gateway Service (Spring Cloud Gateway :8080)

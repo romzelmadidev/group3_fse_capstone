@@ -45,16 +45,22 @@ public class PrimaryDataSourceConfig {
     @Bean(name = "masterEntityManagerFactory")
     public LocalContainerEntityManagerFactoryBean masterEntityManagerFactory(
             EntityManagerFactoryBuilder builder,
-            @Qualifier("masterDataSource") DataSource dataSource) {
-        Map<String, Object> properties = new HashMap<>();
-        properties.put("hibernate.hbm2ddl.auto", "none");
-        properties.put("hibernate.format_sql", "false");
+            @Qualifier("masterDataSource") DataSource dataSource,
+            @Qualifier("masterDataSourceProperties") DataSourceProperties properties) {
+        Map<String, Object> jpaProperties = new HashMap<>();
+        jpaProperties.put("hibernate.hbm2ddl.auto", "none");
+        jpaProperties.put("hibernate.format_sql", "false");
+
+        String dialect = resolveDialect(properties.getUrl());
+        if (dialect != null) {
+            jpaProperties.put("hibernate.dialect", dialect);
+        }
 
         return builder
                 .dataSource(dataSource)
                 .packages("com.bank.cbs.entity.master")
                 .persistenceUnit("masterPU")
-                .properties(properties)
+                .properties(jpaProperties)
                 .build();
     }
 
@@ -63,5 +69,14 @@ public class PrimaryDataSourceConfig {
     public PlatformTransactionManager masterTransactionManager(
             @Qualifier("masterEntityManagerFactory") EntityManagerFactory entityManagerFactory) {
         return new JpaTransactionManager(entityManagerFactory);
+    }
+
+    private String resolveDialect(String url) {
+        if (url == null) return null;
+        if (url.contains(":oracle:")) return "org.hibernate.dialect.OracleDialect";
+        if (url.contains(":postgresql:")) return "org.hibernate.dialect.PostgreSQLDialect";
+        if (url.contains(":sqlserver:")) return "org.hibernate.dialect.SQLServerDialect";
+        if (url.contains(":h2:")) return "org.hibernate.dialect.H2Dialect";
+        return null;
     }
 }
