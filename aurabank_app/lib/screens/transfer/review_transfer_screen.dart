@@ -1787,12 +1787,15 @@ class _RiskScanDialogState extends State<_RiskScanDialog> {
                   children: [
                     Icon(Icons.lock_rounded, color: AuraColors.primary, size: 14),
                     SizedBox(width: 6),
-                    Text(
-                      'Protected by 256-Bit Bank Encryption',
-                      style: TextStyle(
-                        color: AuraColors.primary,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+                    Flexible(
+                      child: Text(
+                        'Protected by 256-Bit Bank Encryption',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: AuraColors.primary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ],

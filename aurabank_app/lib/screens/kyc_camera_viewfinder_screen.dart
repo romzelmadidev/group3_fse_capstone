@@ -638,16 +638,19 @@ class _KycCameraViewfinderScreenState extends State<KycCameraViewfinderScreen>
                     size: 16,
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    _isLivenessActive
-                        ? _livenessStatusText
-                        : (isCard
-                            ? 'Fit card edges within the green corners'
-                            : 'Look directly at camera. Tap button to start 3D scan'),
-                    style: TextStyle(
-                      color: _isLivenessActive ? _livenessColor : Colors.white,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: Text(
+                      _isLivenessActive
+                          ? _livenessStatusText
+                          : (isCard
+                              ? 'Fit card edges within the green corners'
+                              : 'Look directly at camera. Tap button to start 3D scan'),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: _isLivenessActive ? _livenessColor : Colors.white,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],

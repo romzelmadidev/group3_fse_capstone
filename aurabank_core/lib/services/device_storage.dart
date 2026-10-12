@@ -11,6 +11,7 @@ class DeviceStorage {
 
   static const String _deviceIdKey = 'bank_device_id';
   static const String _tokenKey = 'auth_access_token';
+static const String _refreshTokenKey = 'auth_refresh_token';
   static const String _userIdKey = 'auth_user_id';
   static const String _userEmailKey = 'auth_user_email';
   static const String _userNameKey = 'auth_user_name';
@@ -111,6 +112,16 @@ class DeviceStorage {
   /// Retrieves persisted authentication JWT token
   static String? getAccessToken() {
     return _prefs?.getString(_tokenKey) ?? _memoryCache[_tokenKey];
+  }
+
+  /// Persists the rotating refresh token used to renew the 15 minute access token
+  static Future<void> saveRefreshToken(String token) async {
+    _memoryCache[_refreshTokenKey] = token;
+    await _prefs?.setString(_refreshTokenKey, token);
+  }
+
+  static String? getRefreshToken() {
+    return _prefs?.getString(_refreshTokenKey) ?? _memoryCache[_refreshTokenKey];
   }
 
   /// Persists user identifier
@@ -288,6 +299,7 @@ class DeviceStorage {
   /// Clears active user tokens and session data upon logout while preserving device ID
   static Future<void> clearSession() async {
     _memoryCache.remove(_tokenKey);
+    _memoryCache.remove(_refreshTokenKey);
     _memoryCache.remove(_userIdKey);
     _memoryCache.remove(_userEmailKey);
     _memoryCache.remove(_userNameKey);
@@ -298,6 +310,7 @@ class DeviceStorage {
     _memoryCache.remove(_isPrimaryDeviceKey);
     _memoryCache.remove(_primaryDeviceIdKey);
     await _prefs?.remove(_tokenKey);
+    await _prefs?.remove(_refreshTokenKey);
     await _prefs?.remove(_userIdKey);
     await _prefs?.remove(_userEmailKey);
     await _prefs?.remove(_userNameKey);

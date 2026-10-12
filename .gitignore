@@ -82,4 +82,5 @@ package-lock.json
 *.delivery.json
 *.finalize-summary.json
 *.finalize.json
+.kiro/
 

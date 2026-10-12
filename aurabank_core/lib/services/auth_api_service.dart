@@ -306,6 +306,7 @@ class AuthApiService {
               ? false
               : (data['is_approved'] as bool? ?? (currentIsPrimaryDevice == true));
           currentAccessToken = data['access_token'] as String?;
+          _captureRefreshCookie(response);
           currentUserId = data['user_id'] as String?;
           final resolvedType = data['device_type'] as String? ?? currentDeviceType;
 
@@ -492,6 +493,7 @@ class AuthApiService {
               ? false
               : (data['is_approved'] as bool? ?? (currentIsPrimaryDevice == true));
           currentAccessToken = data['access_token'] as String?;
+          _captureRefreshCookie(response);
           final resolvedType = data['device_type'] as String? ?? currentDeviceType;
           if (currentAccessToken != null) {
             DeviceStorage.saveAccessToken(currentAccessToken!);
@@ -737,6 +739,47 @@ class AuthApiService {
         if (response.statusCode == 200) {
           return true;
         }
+      } catch (_) {}
+    }
+    return false;
+  }
+
+  /// The server sends the rotating refresh token as an httpOnly cookie. Keep it so the
+  /// 15 minute access token can be renewed without asking the customer to sign in again.
+  void _captureRefreshCookie(http.Response response) {
+    final setCookie = response.headers['set-cookie'];
+    if (setCookie == null) return;
+    final match = RegExp(r'refresh_token=([^;,\s]+)').firstMatch(setCookie);
+    final value = match?.group(1);
+    if (value != null && value.isNotEmpty) {
+      DeviceStorage.saveRefreshToken(value);
+    }
+  }
+
+  Future<bool>? _refreshInFlight;
+
+  /// Renews the access token. Returns false when the session cannot be renewed (sign in again).
+  Future<bool> refreshAccessToken() =>
+      _refreshInFlight ??= _doRefresh().whenComplete(() => _refreshInFlight = null);
+
+  Future<bool> _doRefresh() async {
+    final refreshToken = DeviceStorage.getRefreshToken();
+    if (kIsWeb || refreshToken == null || refreshToken.isEmpty) return false;
+    for (final baseUrl in [gatewayUrl, accountServiceUrl]) {
+      try {
+        final res = await http
+            .post(Uri.parse('$baseUrl/api/v1/auth/refresh'), headers: {'Cookie': 'refresh_token=$refreshToken'})
+            .timeout(const Duration(seconds: 5));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body) as Map<String, dynamic>;
+          final token = data['access_token'] as String?;
+          if (token == null || token.isEmpty) return false;
+          currentAccessToken = token;
+          await DeviceStorage.saveAccessToken(token);
+          _captureRefreshCookie(res); // the old refresh token is now revoked, keep the new one
+          return true;
+        }
+        if (res.statusCode == 401) return false;
       } catch (_) {}
     }
     return false;
