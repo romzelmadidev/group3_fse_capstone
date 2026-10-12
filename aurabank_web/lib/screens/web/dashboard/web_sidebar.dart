@@ -28,7 +28,7 @@ class WebSidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     final bank = BankService();
     final name = bank.user.name.isNotEmpty ? bank.user.name : 'Aura User';
-    final acct = bank.savingsAccountNumber;
+    final acct = bank.resolveDisplayAccountNumber();
 
     return Container(
       width: 248,
