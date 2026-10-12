@@ -5,7 +5,7 @@ WORKDIR /build
 COPY . .
 
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn clean package -DskipTests -pl transfer-orchestrator -am \
+    mvn clean package -DskipTests -Dmaven.test.skip=true -pl transfer-orchestrator -am \
     && cp transfer-orchestrator/target/transfer-orchestrator-*.jar /app.jar
 
 FROM eclipse-temurin:21-jre-alpine
