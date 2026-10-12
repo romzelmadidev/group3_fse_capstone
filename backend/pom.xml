@@ -27,6 +27,7 @@
         <module>gateway-service</module>
         <module>t24-mock-cbs</module>
         <module>transfer-orchestrator</module>
+        <module>ledger-mutation-engine</module>
         <module>compliance-service</module>
     </modules>
 

@@ -297,6 +297,12 @@ class _LoginScreenState extends State<LoginScreen>
     required Widget icon,
     required String authType,
   }) {
+    final candidateEmail = _usernameController.text.trim().isNotEmpty
+        ? _usernameController.text.trim()
+        : (DeviceStorage.getLastLoginEmail() ??
+            DeviceStorage.getBiometricUserEmail() ??
+            DeviceStorage.getUserEmail());
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -307,19 +313,33 @@ class _LoginScreenState extends State<LoginScreen>
         icon: icon,
         authType: authType,
         onSuccess: () {
+          final targetEmail = _usernameController.text.trim().isNotEmpty
+              ? _usernameController.text.trim()
+              : candidateEmail;
+
           if (AuthApiService().currentAccessToken == null ||
               AuthApiService().currentAccessToken!.isEmpty) {
             AuthApiService().currentAccessToken =
                 DeviceStorage.getAccessToken() ??
                     'bio-session-${DateTime.now().millisecondsSinceEpoch}';
           }
+
+          _bankService.restoreUserProfileFromStorage(preferredEmail: targetEmail);
+
           if (AuthApiService().currentUserId == null ||
               AuthApiService().currentUserId!.isEmpty) {
             AuthApiService().currentUserId =
-                DeviceStorage.getUserId() ?? 'USR-100001';
+                DeviceStorage.getUserId() ??
+                DeviceStorage.getBiometricUserId() ??
+                ((_bankService.user.email.toLowerCase().contains('juan') || _bankService.activeAccountId.contains('3001'))
+                    ? 'usr-1001-cst-001'
+                    : 'USR-${_bankService.user.email.hashCode.abs() % 900000 + 100000}');
           }
           AuthApiService().currentIsApproved = true;
-          _bankService.restoreUserProfileFromStorage();
+          if (targetEmail != null && targetEmail.isNotEmpty) {
+            DeviceStorage.saveLastLoginEmail(targetEmail);
+            DeviceStorage.saveLastLoginName(_bankService.user.name);
+          }
           _bankService.syncWithBackend();
           Navigator.of(context).pop();
           Navigator.of(context).pushReplacementNamed('/dashboard');
@@ -615,6 +635,7 @@ class _LoginScreenState extends State<LoginScreen>
                             _passwordController.text = persona.password;
                           });
                           DeviceStorage.saveLastLoginEmail(persona.email);
+                          DeviceStorage.saveLastLoginName(persona.name);
                         },
                       );
                     },

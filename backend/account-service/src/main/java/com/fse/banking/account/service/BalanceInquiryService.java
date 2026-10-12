@@ -49,13 +49,19 @@ public class BalanceInquiryService {
         BalanceMasterEntity balance = balanceMasterRepository.findByAccountId(accountId)
                 .orElseThrow(() -> new ResourceNotFoundException("Balance record not found for account: " + accountId));
 
+        java.math.BigDecimal hold = balance.getHoldAmount() != null ? balance.getHoldAmount() : java.math.BigDecimal.ZERO;
+        java.math.BigDecimal spendable = balance.getBalanceAmount().subtract(hold).max(java.math.BigDecimal.ZERO);
+        java.math.BigDecimal effectiveAvailable = balance.getAvailableBalance() != null
+                ? balance.getAvailableBalance().min(spendable)
+                : spendable;
+
         BalanceResponse response = BalanceResponse.builder()
                 .accountId(account.getAccountId())
                 .accountType(account.getAccountType().name())
                 .currency("PHP")
                 .currentBalance(balance.getBalanceAmount())
                 .heldBalance(balance.getHoldAmount())
-                .availableBalance(balance.getAvailableBalance())
+                .availableBalance(effectiveAvailable)
                 .status(account.getStatus().name())
                 .cached(false)
                 .lastUpdated(balance.getUpdatedAt())

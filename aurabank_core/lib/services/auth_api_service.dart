@@ -433,29 +433,11 @@ class AuthApiService {
       }
     }
 
-    // Dev/Offline Fallback: If backend microservices are not reachable (e.g., local development on Web)
-    // allow the user to authenticate with demo credentials to test the UI.
-    currentAccessToken = 'mock-dev-jwt-token';
-    currentUserId = 'USR-0001';
-    currentIsPrimaryDevice = (!kIsWeb && currentDeviceType.toUpperCase() != 'WEB' && currentDeviceId == 'dev-iphone-primary');
-    currentIsApproved = true;
-
+    // STRICT: Return explicit connection error. NO demo fallback.
+    // A silent mock login skipped OTP/device approval and showed seed balances.
     return AuthLoginResult(
-      status: AuthStatus.authenticated,
-      accessToken: currentAccessToken,
-      role: 'Customer',
-      userId: currentUserId,
-      persona: currentPersona,
-      deviceId: currentDeviceId,
-      deviceName: currentDeviceName,
-      deviceType: currentDeviceType,
-      isPrimaryDevice: currentIsPrimaryDevice,
-      isApproved: true,
-      primaryDeviceId: currentIsPrimaryDevice == true ? currentDeviceId : 'dev-iphone-primary',
-      fullName: currentPersona?.name,
-      email: currentPersona?.email ?? email,
-      primaryAccountId: currentPersona?.accountId,
-      availableBalance: currentPersona?.balance,
+      status: AuthStatus.failed,
+      errorMessage: 'Cannot reach Aura Bank right now. Check your connection and try again.',
     );
   }
 
