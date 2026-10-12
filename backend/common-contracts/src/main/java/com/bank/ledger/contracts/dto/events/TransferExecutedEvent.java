@@ -27,4 +27,10 @@ public class TransferExecutedEvent {
     private BigDecimal sourceBalanceAfter;
     private BigDecimal destinationBalanceAfter;
     private Instant executedAtUtc;
+    private String transactionType;
+    private String memo;
+    private String senderName;
+    private String beneficiaryName;
+    private String counterpartyBank;
+    private String endToEndId;
 }

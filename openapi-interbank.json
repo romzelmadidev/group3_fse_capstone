@@ -1,0 +1,635 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "AuraBank Interbank Settlement & Wire Protocol API",
+    "version": "1.0.0",
+    "description": "Official OpenAPI 3.0 Specification for Interbank Wire Transfers between \nAuraBank (Group 3 CBS) and Partner Banks (e.g., CooBS / Group B).\n\nThis specification defines:\n  1. Inward Wire Ingestion: Partner banks transmitting funds to AuraBank customer accounts.\n  2. Outward Wire Initiation: AuraBank customers transmitting funds to Partner Bank accounts.\n  3. Partner Mock Endpoint: Reference implementation of partner bank wire receiver.\n  4. Participant Directory: Discovery service for partner bank routing codes and endpoints.\n\nAdheres to FATF Travel Rule (complete sender & beneficiary identification) and ISO 20022 PACS.008 remittance standards.\n"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "AuraBank API Gateway (Production / Standard Cluster Port)"
+    },
+    {
+      "url": "http://localhost:8082",
+      "description": "AuraBank Transfer Orchestrator (Direct Microservice Port)"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Inward Wire Ingestion",
+      "description": "Partner banks pushing incoming credit transfers to AuraBank accounts."
+    },
+    {
+      "name": "Outward Wire Dispatch",
+      "description": "AuraBank initiating credit transfers to Partner Banks."
+    },
+    {
+      "name": "Participant Directory",
+      "description": "Routing directory and partner bank endpoint discovery."
+    },
+    {
+      "name": "Partner Mock Harness",
+      "description": "Sandbox receiver simulating partner bank responses (CooBS)."
+    }
+  ],
+  "paths": {
+    "/api/v1/interbank/transfers/inward": {
+      "post": {
+        "tags": [
+          "Inward Wire Ingestion"
+        ],
+        "summary": "Ingest Inward Wire from Partner Bank",
+        "description": "Called by partner banks (such as CooBS) to deposit funds directly into an AuraBank beneficiary account.\nThe request must provide valid FATF Travel Rule information (sender and beneficiary full names and account numbers).\nSettlement is posted in the AuraBank T24 Core Banking System (Dr 1020-NOSTRO-CLEARING, Cr Beneficiary Working Balance).\n\nAPI Verification Key Enforcement:\nEvery incoming request MUST supply a valid pre-shared API verification key in either the `X-API-Key`, \n`X-Interbank-API-Key`, or `Authorization: Bearer <key>` header. \nRequests with a missing or mismatched key are strictly rejected with HTTP 401 Unauthorized before any CBS ledger processing.\n",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "InterbankApiKeyAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "description": "Primary pre-shared API verification key for interbank secure communication.",
+            "schema": {
+              "type": "string",
+              "default": "AURABANK-SECURE-KEY-2026",
+              "example": "AURABANK-SECURE-KEY-2026"
+            }
+          },
+          {
+            "name": "X-Interbank-API-Key",
+            "in": "header",
+            "required": false,
+            "description": "Alternative header for pre-shared API verification key.",
+            "schema": {
+              "type": "string",
+              "default": "AURABANK-SECURE-KEY-2026",
+              "example": "AURABANK-SECURE-KEY-2026"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Standard interbank wire transfer payload.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterbankWireRequest"
+              },
+              "example": {
+                "messageId": "0b6c2f6e-6d1a-4d5c-9d1f-0f3a5e7b9c21",
+                "sourceBankCode": "COOBS",
+                "destinationBankCode": "AURABANK",
+                "sender": {
+                  "accountNumber": "B-ACC-998877",
+                  "name": "Bob Martinez"
+                },
+                "beneficiary": {
+                  "accountNumber": "1000-2000-3001",
+                  "name": "Alice Guo"
+                },
+                "amount": 1000.0,
+                "currency": "PHP",
+                "purpose": "Consulting fees settlement",
+                "senderReference": "TX-20261012-8F3A21C0"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Wire successfully ingested, validated, and credited to beneficiary account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterbankWireResponse"
+                },
+                "example": {
+                  "status": "COMPLETED",
+                  "referenceNumber": "INW-0b6c2f6e-6d1a-4d5c-9d1f-0f3a5e7b9c21",
+                  "timestamp": "2026-10-12T17:30:00.000Z",
+                  "settlementAmount": 1000.0,
+                  "currency": "PHP"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request payload, invalid amount, or destination bank code mismatch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "status": 400,
+                  "error": "Bad Request",
+                  "message": "destinationBankCode must be AURABANK"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid or missing X-API-Key header.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "status": 401,
+                  "error": "Unauthorized",
+                  "message": "Missing or invalid interbank API key"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Beneficiary account number does not exist in AuraBank Core Banking System.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "status": 404,
+                  "error": "Not Found",
+                  "message": "Beneficiary account 1000-2000-9999 not found"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Business rejection - Account frozen, inactive, or currency mismatch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "status": 422,
+                  "error": "Unprocessable Entity",
+                  "message": "Beneficiary account is frozen / suspended"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal processing or Core Banking System communication failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transfers": {
+      "post": {
+        "tags": [
+          "Outward Wire Dispatch"
+        ],
+        "summary": "Initiate Outward Interbank Transfer",
+        "description": "Initiated by AuraBank channels (Web, Mobile, CBS Console) to debit an AuraBank customer\nand dispatch an outward ISO wire to a partner bank (e.g. CooBS).\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutwardTransferRequest"
+              },
+              "example": {
+                "sourceAccountId": "1000-2000-3001",
+                "destinationAccountId": "B-ACC-998877",
+                "amount": 1000.0,
+                "currency": "PHP",
+                "description": "Supplier payment",
+                "destinationBank": "COOBS",
+                "senderName": "Alice Guo",
+                "beneficiaryName": "Bob Martinez",
+                "simulationMode": ""
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Outward transfer accepted, funds debited from sender, and wire successfully delivered to partner bank.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutwardTransferResponse"
+                },
+                "example": {
+                  "transactionId": "TXN-9a1b2c3d-4e5f",
+                  "status": "SETTLED",
+                  "sourceAccountId": "1000-2000-3001",
+                  "destinationAccountId": "B-ACC-998877",
+                  "amount": 1000.0,
+                  "currency": "PHP",
+                  "partnerReference": "COOBS-REC-889911"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Partner bank rejected wire. Orchestrator automatically triggered compensating reversal on AuraBank CBS.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "status": 422,
+                  "error": "Partner Bank Wire Rejected",
+                  "message": "Beneficiary account not found at CooBS. Sender funds automatically refunded."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/interbank/banks": {
+      "get": {
+        "tags": [
+          "Participant Directory"
+        ],
+        "summary": "List Registered Participant Banks (Enterprise Facade)",
+        "description": "Enterprise facade endpoint exposed by the Transfer Orchestrator service.\nIn compliance with Core Banking System (CBS) security and architectural boundaries,\nthe underlying T24 CBS table (`core.participant_banks`) is strictly restricted to\nthe Temenos Open Financial Services (OFS) protocol (`text/plain`) and NEVER exposed\ndirectly to outside channels.\nThe Transfer Orchestrator acts as the canonical enterprise facade: it queries the T24\nCBS OFS directory, parses the OFS records, merges runtime environment variable overrides\n(such as `PARTNER_BANK_URL` or `COOBS_API_ENDPOINT_URL`), and renders clean, standard\nREST/JSON to mobile apps, retail web portals, and API gateways.\n",
+        "responses": {
+          "200": {
+            "description": "List of registered participant banks.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BankInfo"
+                  }
+                },
+                "example": [
+                  {
+                    "bankCode": "COOBS",
+                    "bankName": "CooBS (Partner Bank Group B)",
+                    "apiEndpointUrl": "http://transfer-orchestrator:8082/api/v1/mock-partner/transfers",
+                    "nostroAccountId": "1020-NOSTRO-CLEARING",
+                    "status": "ACTIVE"
+                  },
+                  {
+                    "bankCode": "AURABANK",
+                    "bankName": "AuraBank (Group 3 Core CBS)",
+                    "apiEndpointUrl": "http://gateway-service:8080/api/v1/interbank/transfers/inward",
+                    "nostroAccountId": "1020-NOSTRO-CLEARING",
+                    "status": "ACTIVE"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mock-partner/transfers": {
+      "post": {
+        "tags": [
+          "Partner Mock Harness"
+        ],
+        "summary": "CooBS Partner Mock Receiver",
+        "description": "Reference mock receiver used for integration testing. Simulates partner bank acceptance,\ntimeouts (for 'TIMEOUT' mode), rejections ('REJECT' / 404), and frozen accounts ('BLOCKED' / 422).\n",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": "AURABANK-SECURE-KEY-2026"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterbankWireRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "CooBS simulated credit transfer success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterbankWireResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Account not found simulation."
+          },
+          "422": {
+            "description": "Account blocked simulation."
+          },
+          "504": {
+            "description": "Timeout simulation."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "Primary pre-shared key for authentication between participant banking institutions."
+      },
+      "InterbankApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Interbank-API-Key",
+        "description": "Bilateral partner header for pre-shared API verification key."
+      },
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Bearer token format for pre-shared API verification key."
+      }
+    },
+    "schemas": {
+      "CustomerParty": {
+        "type": "object",
+        "required": [
+          "accountNumber",
+          "name"
+        ],
+        "properties": {
+          "accountNumber": {
+            "type": "string",
+            "description": "Full account or IBAN identifier.",
+            "example": "B-ACC-998877"
+          },
+          "name": {
+            "type": "string",
+            "description": "Full legal entity or customer individual name.",
+            "example": "Bob Martinez"
+          }
+        }
+      },
+      "InterbankWireRequest": {
+        "type": "object",
+        "required": [
+          "messageId",
+          "sourceBankCode",
+          "destinationBankCode",
+          "sender",
+          "beneficiary",
+          "amount",
+          "currency"
+        ],
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Globally unique transaction message identifier (Idempotency key).",
+            "example": "0b6c2f6e-6d1a-4d5c-9d1f-0f3a5e7b9c21"
+          },
+          "sourceBankCode": {
+            "type": "string",
+            "description": "SWIFT / BIC or registered network participant code of originating bank.",
+            "example": "COOBS"
+          },
+          "destinationBankCode": {
+            "type": "string",
+            "description": "SWIFT / BIC or registered network participant code of receiving bank.",
+            "example": "AURABANK"
+          },
+          "sender": {
+            "$ref": "#/components/schemas/CustomerParty"
+          },
+          "beneficiary": {
+            "$ref": "#/components/schemas/CustomerParty"
+          },
+          "amount": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0.01,
+            "description": "Transfer settlement amount.",
+            "example": 1000.0
+          },
+          "currency": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 3,
+            "description": "ISO 4217 three-letter currency code.",
+            "example": "PHP"
+          },
+          "purpose": {
+            "type": "string",
+            "description": "Payment purpose or narrative description.",
+            "example": "Consulting fees settlement"
+          },
+          "senderReference": {
+            "type": "string",
+            "description": "Originating bank end-to-end audit reference.",
+            "example": "TX-20261012-8F3A21C0"
+          }
+        }
+      },
+      "InterbankWireResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "COMPLETED",
+              "REJECTED",
+              "PENDING"
+            ],
+            "example": "COMPLETED"
+          },
+          "referenceNumber": {
+            "type": "string",
+            "description": "AuraBank CBS transaction reference identifier.",
+            "example": "INW-0b6c2f6e-6d1a-4d5c-9d1f-0f3a5e7b9c21"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-10-12T17:30:00.000Z"
+          },
+          "settlementAmount": {
+            "type": "number",
+            "format": "double",
+            "example": 1000.0
+          },
+          "currency": {
+            "type": "string",
+            "example": "PHP"
+          }
+        }
+      },
+      "OutwardTransferRequest": {
+        "type": "object",
+        "required": [
+          "sourceAccountId",
+          "destinationAccountId",
+          "amount"
+        ],
+        "properties": {
+          "sourceAccountId": {
+            "type": "string",
+            "description": "AuraBank customer debit account.",
+            "example": "1000-2000-3001"
+          },
+          "destinationAccountId": {
+            "type": "string",
+            "description": "Partner bank beneficiary credit account.",
+            "example": "B-ACC-998877"
+          },
+          "amount": {
+            "type": "number",
+            "format": "double",
+            "example": 1000.0
+          },
+          "currency": {
+            "type": "string",
+            "default": "PHP",
+            "example": "PHP"
+          },
+          "description": {
+            "type": "string",
+            "example": "Supplier invoice #4421"
+          },
+          "destinationBank": {
+            "type": "string",
+            "description": "Target participant bank code.",
+            "example": "COOBS"
+          },
+          "senderName": {
+            "type": "string",
+            "example": "Alice Guo"
+          },
+          "beneficiaryName": {
+            "type": "string",
+            "example": "Bob Martinez"
+          },
+          "simulationMode": {
+            "type": "string",
+            "enum": [
+              "",
+              "TIMEOUT",
+              "REJECT",
+              "BLOCKED"
+            ],
+            "description": "Optional harness flag for end-to-end chaos/negative test simulation.",
+            "example": ""
+          }
+        }
+      },
+      "OutwardTransferResponse": {
+        "type": "object",
+        "properties": {
+          "transactionId": {
+            "type": "string",
+            "example": "TXN-9a1b2c3d-4e5f"
+          },
+          "status": {
+            "type": "string",
+            "example": "SETTLED"
+          },
+          "sourceAccountId": {
+            "type": "string",
+            "example": "1000-2000-3001"
+          },
+          "destinationAccountId": {
+            "type": "string",
+            "example": "B-ACC-998877"
+          },
+          "amount": {
+            "type": "number",
+            "format": "double",
+            "example": 1000.0
+          },
+          "currency": {
+            "type": "string",
+            "example": "PHP"
+          },
+          "partnerReference": {
+            "type": "string",
+            "example": "COOBS-REC-889911"
+          }
+        }
+      },
+      "BankInfo": {
+        "type": "object",
+        "properties": {
+          "bankCode": {
+            "type": "string",
+            "example": "COOBS"
+          },
+          "bankName": {
+            "type": "string",
+            "example": "CooBS (Partner Bank Group B)"
+          },
+          "apiEndpointUrl": {
+            "type": "string",
+            "example": "http://transfer-orchestrator:8082/api/v1/mock-partner/transfers"
+          },
+          "nostroAccountId": {
+            "type": "string",
+            "example": "1020-NOSTRO-CLEARING"
+          },
+          "status": {
+            "type": "string",
+            "example": "ACTIVE"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "integer",
+            "example": 400
+          },
+          "error": {
+            "type": "string",
+            "example": "Bad Request"
+          },
+          "message": {
+            "type": "string",
+            "example": "Invalid transfer request parameters"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-10-12T17:30:00.000Z"
+          }
+        }
+      }
+    }
+  }
+}

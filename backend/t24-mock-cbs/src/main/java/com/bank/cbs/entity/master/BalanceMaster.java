@@ -29,6 +29,7 @@ public class BalanceMaster {
     private BigDecimal holdAmount;
 
     // Oracle virtual column (balance_amount - hold_amount): the database computes it, so it must never be in INSERT/UPDATE (ORA-54017).
+
     @Column(name = "available_balance", precision = 18, scale = 4, insertable = false, updatable = false)
     private BigDecimal availableBalance;
 

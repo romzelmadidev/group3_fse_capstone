@@ -93,7 +93,13 @@ public class AccountController {
     }
 
     @GetMapping("/{accountId}/balance")
-    public ResponseEntity<BalanceResponse> getBalance(@PathVariable("accountId") String accountId) {
+    public ResponseEntity<BalanceResponse> getBalance(
+            @PathVariable("accountId") String accountId,
+            @RequestHeader(value = "Cache-Control", required = false) String cacheControl,
+            @RequestParam(value = "fresh", required = false) Boolean fresh) {
+        if ("no-cache".equalsIgnoreCase(cacheControl) || Boolean.TRUE.equals(fresh)) {
+            balanceInquiryService.evictBalance(accountId);
+        }
         BalanceResponse balance = balanceInquiryService.getBalance(accountId);
         return ResponseEntity.ok(balance);
     }

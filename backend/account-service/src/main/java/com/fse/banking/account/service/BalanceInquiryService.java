@@ -77,4 +77,12 @@ public class BalanceInquiryService {
 
         return response;
     }
+
+    public void evictBalance(String accountId) {
+        try {
+            redisSessionStore.evictCachedBalance(accountId);
+        } catch (Exception e) {
+            log.warn("Failed to evict cached balance for account {}: {}", accountId, e.getMessage());
+        }
+    }
 }

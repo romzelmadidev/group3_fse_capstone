@@ -368,7 +368,7 @@ Health check endpoints:
 * **API Gateway:** `http://localhost:8080/actuator/health`
 * **Account Service:** `http://localhost:8081/actuator/health`
 * **Transfer Orchestrator:** `http://localhost:8082/actuator/health`
-* **T24 Mock CBS:** `http://localhost:8085/actuator/health`
+* **T24 Mock CBS:** `http://localhost:8087/actuator/health`
 * **Notification Service:** `http://localhost:8083/actuator/health`
 * **Risk Service (FastAPI):** `http://localhost:8084/health`
 * **Compliance Service:** `http://localhost:8086/actuator/health`
@@ -376,12 +376,12 @@ Health check endpoints:
 #### 2. Triggering Close of Business (COB) EOD Batch Run
 The daily COB batch rolls the business date, accrues interest, deducts below-minimum ADB fees, takes balance snapshots, and uploads regulatory filings (`.xlsx`, `.pdf`) to Azurite:
 ```powershell
-curl.exe -X POST http://localhost:8085/api/v1/cbs/cob/run
+curl.exe -X POST http://localhost:8087/api/v1/cbs/cob/run
 ```
 
 #### 3. Checking CBS System Business Date & Window
 ```powershell
-curl.exe -s http://localhost:8085/api/v1/cbs/system-date
+curl.exe -s http://localhost:8087/api/v1/cbs/system-date
 ```
 
 #### 4. Viewing Real-Time Logs

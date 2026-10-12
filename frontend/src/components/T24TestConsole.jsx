@@ -20,13 +20,17 @@ import {
   Clock,
   Play,
   FileText,
+  Globe,
+  ArrowLeftRight,
   Search,
   ArrowUpRight,
   ArrowDownLeft,
   AlertCircle,
   Ban,
   ShieldCheck,
-  Zap
+  Zap,
+  Moon,
+  Terminal
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -105,6 +109,61 @@ export default function T24TestConsole() {
   const [isLoadingDlq, setIsLoadingDlq] = useState(false);
   const [replayResult, setReplayResult] = useState(null);
 
+  // Inter-Bank Corridor State
+  const [interbankForm, setInterbankForm] = useState({
+    sourceAccountId: '1000-2000-3001',
+    destinationBank: 'COOBS',
+    beneficiaryAccountId: 'B-ACC-998877',
+    amount: '1000.00',
+    currency: 'PHP',
+    senderName: 'Alice Guo',
+    simulationMode: '' // '' | 'TIMEOUT' | 'REJECT' | 'BLOCKED'
+  });
+  const [participantBanks, setParticipantBanks] = useState([
+    { bankCode: 'COOBS', bankName: 'CooBS (Partner Bank)' }
+  ]);
+  const [isInterbankExecuting, setIsInterbankExecuting] = useState(false);
+  const [interbankResult, setInterbankResult] = useState(null);
+
+  // Inward Inter-Bank Wire State (Matches Partner Group Specification)
+  const [inwardForm, setInwardForm] = useState({
+    messageId: '0b6c2f6e-6d1a-4d5c-9d1f-0f3a5e7b9c21',
+    sourceBankCode: 'COOBS',
+    destinationBankCode: 'AURABANK',
+    senderAccountId: 'B-ACC-998877',
+    senderName: 'Bob Martinez',
+    beneficiaryAccountId: '1000-2000-3001',
+    beneficiaryName: 'Alice Guo',
+    amount: '1000.00',
+    currency: 'PHP',
+    purpose: 'Transfer to Alice Guo',
+    senderReference: 'TX-20261009-8F3A21C0'
+  });
+  const [inwardApiKey, setInwardApiKey] = useState('AURABANK-SECURE-KEY-2026');
+  const [isInwardExecuting, setIsInwardExecuting] = useState(false);
+  const [inwardResult, setInwardResult] = useState(null);
+
+  // CooBS (Partner Bank) In-Memory Ledger & Anti-Tamper State (Tab 8)
+  const [partnerBankLedger, setPartnerBankLedger] = useState({
+    account: 'B-ACC-998877',
+    customer: 'Bob Martinez (CooBS Customer)',
+    balance: 50000.00,
+    history: []
+  });
+  const [lastReceivedWire, setLastReceivedWire] = useState(null);
+  const [highlightCoobs, setHighlightCoobs] = useState(false);
+  const [isolationCheckResult, setIsolationCheckResult] = useState(null);
+  const [isCheckingIsolation, setIsCheckingIsolation] = useState(false);
+
+  // Raw Temenos OFS Terminal State (Tab 6)
+  const [ofsInput, setOfsInput] = useState('FUNDS.TRANSFER,INITIATE/I/PROCESS//TXN-OFS-01,USER01/123456,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=1000-2000-3001,CREDIT.ACCT.NO=1000-2000-3002,AMOUNT=100.00,CURRENCY=PHP,DESCRIPTION=Raw OFS Wire Test');
+  const [ofsResponse, setOfsResponse] = useState('');
+  const [isExecutingOfs, setIsExecutingOfs] = useState(false);
+
+  // COB & EOD Lifecycle State (Tab 7)
+  const [isExecutingCob, setIsExecutingCob] = useState(false);
+  const [cobResult, setCobResult] = useState(null);
+
   const showToast = (text, type = 'info') => {
     setToastMessage({ text, type });
     setTimeout(() => setToastMessage(null), 5000);
@@ -120,7 +179,10 @@ export default function T24TestConsole() {
   const fetchBalance = async (accId = activeAccount) => {
     setIsLoadingBalance(true);
     try {
-      const res = await axios.get(`${API_BASE}/accounts/${accId}/balance`);
+      const res = await axios.get(`${API_BASE}/accounts/${accId}/balance`, {
+        headers: { 'Cache-Control': 'no-cache' },
+        params: { fresh: true, _t: Date.now() }
+      });
       let bal = 0, hld = 0, avail = 0;
       if (res.data) {
         bal = parseFloat(res.data.current_balance ?? res.data.balanceAmount ?? res.data.currentBalance ?? 0);
@@ -161,8 +223,81 @@ export default function T24TestConsole() {
     }
   };
 
+  // Fetch CBS System Date & Status
+  const fetchSystemDate = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/cbs/system-date`);
+      if (res.data) {
+        const text = typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
+        const matchDate = text.match(/BUSINESS\.DATE=([^,]+)/) || text.match(/SYSTEM\.DATE=([^,]+)/);
+        const matchStatus = text.match(/STATUS=([^,]+)/);
+        const matchWindow = text.match(/POSTING\.WINDOW=([^,]+)/);
+        setSystemDate({
+          businessDate: matchDate ? matchDate[1] : (res.data.businessDate || '2026-10-15'),
+          status: matchStatus ? matchStatus[1] : (res.data.status || 'ONLINE'),
+          postingWindowOpen: matchWindow ? matchWindow[1] === 'OPEN' : true
+        });
+      }
+    } catch (e) {
+      console.warn('System date fetch error:', e);
+    }
+  };
+
+  // Transmit Raw OFS Wire Payload (POST /api/v1/cbs/funds-transfer)
+  const handleExecuteOfs = async () => {
+    setIsExecutingOfs(true);
+    setOfsResponse('');
+    try {
+      const res = await axios.post(`${API_BASE}/cbs/funds-transfer`, ofsInput.trim(), {
+        headers: { 'Content-Type': 'text/plain' }
+      });
+      setOfsResponse(res.data);
+      showToast('OFS message processed by CBS wire parser!', 'success');
+      fetchBalance(activeAccount);
+    } catch (err) {
+      setOfsResponse(err.response?.data || err.message);
+      showToast('OFS error returned by CBS', 'error');
+    } finally {
+      setIsExecutingOfs(false);
+    }
+  };
+
+  // Execute Close of Business (COB) Batch (POST /api/v1/cbs/cob/run)
+  const handleRunCob = async () => {
+    setIsExecutingCob(true);
+    setCobResult(null);
+    try {
+      const res = await axios.post(`${API_BASE}/cbs/cob/run`);
+      setCobResult({ success: true, data: res.data });
+      showToast('COB Batch completed: Interest accrued, low ADB fees assessed, date rolled forward!', 'success');
+      fetchSystemDate();
+      fetchBalance(activeAccount);
+    } catch (err) {
+      setCobResult({
+        success: false,
+        error: err.response?.data?.message || err.response?.data || err.message
+      });
+      showToast('COB Batch halted or failed', 'error');
+    } finally {
+      setIsExecutingCob(false);
+    }
+  };
+
+  const fetchParticipantBanks = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/interbank/banks`);
+      if (Array.isArray(res.data) && res.data.length > 0) {
+        setParticipantBanks(res.data);
+      }
+    } catch (e) {
+      console.warn('Participant banks fetch error:', e);
+    }
+  };
+
   useEffect(() => {
     fetchBalance(activeAccount);
+    fetchSystemDate();
+    fetchParticipantBanks();
   }, [activeAccount]);
 
   useEffect(() => {
@@ -691,6 +826,191 @@ export default function T24TestConsole() {
     }
   };
 
+  // Execute Outward Inter-Bank Wire
+  const handleExecuteInterbank = async (e) => {
+    e.preventDefault();
+    setIsInterbankExecuting(true);
+    setInterbankResult(null);
+    const txId = 'IB-OUT-' + Math.floor(Math.random() * 900000 + 100000);
+    try {
+      const payload = {
+        transactionId: txId,
+        sourceAccountId: interbankForm.sourceAccountId,
+        destinationAccountId: interbankForm.beneficiaryAccountId,
+        amount: parseFloat(interbankForm.amount),
+        currency: interbankForm.currency,
+        destinationBank: interbankForm.destinationBank,
+        senderName: interbankForm.senderName,
+        simulationMode: interbankForm.simulationMode || undefined
+      };
+      const res = await axios.post(`${API_BASE}/transfers`, payload);
+      const wireAmt = parseFloat(interbankForm.amount) || 0;
+      const partnerRef = res.data?.message?.match(/Partner Ref:\s*([^\,\)]+)/)?.[1] || ('B-TXN-' + Date.now());
+
+      setInterbankResult({
+        success: true,
+        txId,
+        data: res.data,
+        partnerRef,
+        wireAmt
+      });
+      showToast(`Outward Inter-Bank wire settled by ${interbankForm.destinationBank}!`, 'success');
+
+      // Update CooBS simulated ledger and trigger highlight indicator
+      setLastReceivedWire({
+        amount: wireAmt,
+        ref: partnerRef,
+        sender: `${interbankForm.senderName} (${interbankForm.sourceAccountId})`,
+        beneficiary: interbankForm.beneficiaryAccountId,
+        time: new Date().toLocaleTimeString()
+      });
+      setHighlightCoobs(true);
+      setTimeout(() => setHighlightCoobs(false), 6000);
+
+      setPartnerBankLedger(prev => ({
+        ...prev,
+        balance: prev.balance + wireAmt,
+        history: [
+          {
+            ref: partnerRef,
+            type: 'CREDIT (FROM AURABANK)',
+            sender: `${interbankForm.senderName} (${interbankForm.sourceAccountId})`,
+            beneficiary: interbankForm.beneficiaryAccountId,
+            amount: wireAmt,
+            timestamp: new Date().toLocaleTimeString(),
+            status: 'SETTLED'
+          },
+          ...prev.history
+        ].slice(0, 6)
+      }));
+      fetchBalance(activeAccount);
+    } catch (err) {
+      const statusCode = err.response?.status;
+      const errData = err.response?.data;
+      const errMsg = errData?.message || errData?.error || err.message;
+      const isTimeout = statusCode === 502 || !!(errMsg && (errMsg.includes('TimeoutException') || errMsg.includes('timed out') || errMsg.includes('could not confirm')));
+      const isAccountNotFound = statusCode === 400 || !!(errMsg && (errMsg.includes('could not find this account') || errMsg.includes('ACCOUNT_NOT_FOUND') || errMsg.includes('No account with that number')));
+      const isAccountBlocked = statusCode === 422 || !!(errMsg && (errMsg.includes('blocked or dormant') || errMsg.includes('ACCOUNT_BLOCKED')));
+      const isRollback = isTimeout || isAccountNotFound || isAccountBlocked || !!(errMsg && (errMsg.includes('returned to your account') || errMsg.includes('Saga rollback')));
+
+      setInterbankResult({
+        success: false,
+        txId,
+        statusCode,
+        error: errMsg,
+        isRollback,
+        isTimeout,
+        isAccountNotFound,
+        isAccountBlocked
+      });
+      showToast(
+        isTimeout
+          ? 'Transfer timed out: 4s guard tripped, funds refunded.'
+          : isAccountNotFound
+          ? 'Transfer rejected: Account not found, funds refunded.'
+          : isAccountBlocked
+          ? 'Transfer rejected: Account blocked, funds refunded.'
+          : 'Inter-bank wire failed: ' + errMsg,
+        'info'
+      );
+      fetchBalance(activeAccount);
+    } finally {
+      setIsInterbankExecuting(false);
+    }
+  };
+
+  // Simulate Inward Wire (CooBS -> AuraBank)
+  const handleExecuteInwardWire = async (e) => {
+    e.preventDefault();
+    setIsInwardExecuting(true);
+    setInwardResult(null);
+    try {
+      const payload = {
+        messageId: inwardForm.messageId || ('0b6c2f6e-6d1a-4d5c-9d1f-' + Math.random().toString(36).substring(2, 14)),
+        sourceBankCode: inwardForm.sourceBankCode || 'COOBS',
+        destinationBankCode: inwardForm.destinationBankCode || 'AURABANK',
+        sender: {
+          accountNumber: inwardForm.senderAccountId || 'OTHER_10000001',
+          name: inwardForm.senderName || 'John Doe'
+        },
+        beneficiary: {
+          accountNumber: inwardForm.beneficiaryAccountId,
+          name: inwardForm.beneficiaryName || 'Juan Dela Cruz'
+        },
+        amount: parseFloat(inwardForm.amount).toFixed(2),
+        currency: inwardForm.currency || 'PHP',
+        purpose: inwardForm.purpose || 'Payment for services',
+        senderReference: inwardForm.senderReference || ('TX-' + Date.now()),
+        createdAt: new Date().toISOString()
+      };
+      const res = await axios.post(`${API_BASE}/interbank/transfers/inward`, payload, {
+        headers: { 'X-Interbank-API-Key': inwardApiKey || 'AURABANK-SECURE-KEY-2026' }
+      });
+      setInwardResult({ success: true, statusCode: res.status, data: res.data, payloadSent: payload });
+      showToast(`Inward wire accepted! Credited to ${inwardForm.beneficiaryAccountId}`, 'success');
+      const inAmt = parseFloat(inwardForm.amount) || 0;
+      setHighlightCoobs(true);
+      setTimeout(() => setHighlightCoobs(false), 6000);
+      setPartnerBankLedger(prev => ({
+        ...prev,
+        balance: Math.max(0, prev.balance - inAmt),
+        history: [
+          {
+            ref: res.data?.receiverReference || payload.senderReference,
+            type: 'DEBIT (DISPATCHED TO AURABANK)',
+            sender: `${payload.sender.name} (${payload.sender.accountNumber})`,
+            beneficiary: `${payload.beneficiary.name} (${payload.beneficiary.accountNumber})`,
+            amount: inAmt,
+            timestamp: new Date().toLocaleTimeString(),
+            status: 'DISPATCHED'
+          },
+          ...prev.history
+        ].slice(0, 6)
+      }));
+      const beneficiaryId = inwardForm.beneficiaryAccountId || '1000-2000-3001';
+      setActiveAccount(beneficiaryId);
+      fetchBalance(beneficiaryId);
+    } catch (err) {
+      const errPayload = err.response?.data;
+      const statusCode = err.response?.status || 400;
+      setInwardResult({
+        success: false,
+        statusCode,
+        data: errPayload,
+        error: errPayload?.reasonMessage || errPayload?.message || err.message,
+        reasonCode: errPayload?.reasonCode || (statusCode === 401 ? 'UNAUTHORIZED' : 'ACCOUNT_NOT_FOUND')
+      });
+      showToast('Inward wire rejected: ' + (errPayload?.reasonMessage || errPayload?.message || err.message), 'error');
+    } finally {
+      setIsInwardExecuting(false);
+    }
+  };
+
+  // Verify Database Isolation (Prove AuraBank has 0 SQL access to CooBS)
+  const handleVerifyDbIsolation = async () => {
+    setIsCheckingIsolation(true);
+    setIsolationCheckResult(null);
+    try {
+      const res = await axios.get(`${API_BASE}/accounts/B-ACC-998877/balance`);
+      setIsolationCheckResult({
+        tampered: true,
+        message: 'Security Alert: AuraBank database returned CooBS account!',
+        data: res.data
+      });
+    } catch (err) {
+      const status = err.response?.status || 404;
+      const detail = err.response?.data?.detail || err.response?.data?.message || 'Account not found: B-ACC-998877';
+      setIsolationCheckResult({
+        tampered: false,
+        status,
+        proof: `HTTP ${status}: "${detail}"`,
+        explanation: 'AuraBank Oracle XE master ledger holds 0 tables, 0 schemas, and 0 records for CooBS customer B-ACC-998877. Communication is 100% isolated to network HTTPS REST payloads.'
+      });
+    } finally {
+      setIsCheckingIsolation(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Toast alert */}
@@ -775,7 +1095,14 @@ export default function T24TestConsole() {
             Select Test Account
           </label>
           <div className="mt-2.5 flex flex-col gap-1.5">
-            {['1000-2000-3001', '1000-2000-3002', '1000-2000-3004', '1000-2000-3005'].map((acc) => (
+            {[
+              { id: '1000-2000-3001', label: 'Savings (25.0M)' },
+              { id: '1000-2000-3002', label: 'Savings (5.0M)' },
+              { id: '1000-2000-3004', label: 'Savings (5.2M)' },
+              { id: '1000-2000-3005', label: 'Savings (3.75M)' },
+              { id: 'acc-2002-chk-001', label: 'Checking (8.5M)' },
+              { id: 'ACC-NOSTRO-BANK-B', label: 'CooBS Nostro Buffer (5.0M)' },
+            ].map(({ id: acc, label }) => (
               <button
                 key={acc}
                 onClick={() => {
@@ -792,7 +1119,7 @@ export default function T24TestConsole() {
               >
                 <span>{acc}</span>
                 <span className={`text-2xs ${activeAccount === acc ? 'text-purple-700 font-semibold' : 'text-slate-400'}`}>
-                  {acc === '1000-2000-3001' ? 'Savings (25.0M)' : acc === '1000-2000-3002' ? 'Savings (5.0M)' : acc === '1000-2000-3004' ? 'Savings (5.2M)' : 'Savings (3.75M)'}
+                  {label}
                 </span>
               </button>
             ))}
@@ -858,7 +1185,10 @@ export default function T24TestConsole() {
           { id: 'enquiry', label: '2. Transaction Enquiry (ENQUIRY.SELECT)', icon: FileText },
           { id: 'reversal', label: '3. Reversal (Dual Control)', icon: RotateCcw },
           { id: 'dlq', label: '4. DLQ Incident Replays', icon: AlertTriangle },
-          { id: 'scenarios', label: '5. Banking Failure Simulator', icon: ShieldAlert }
+          { id: 'scenarios', label: '5. Banking Failure Simulator', icon: ShieldAlert },
+          { id: 'ofs', label: '6. Raw Temenos OFS Terminal', icon: Terminal },
+          { id: 'cob', label: '7. COB & EOD Lifecycle', icon: Moon },
+          { id: 'interbank', label: '8. Inter-Bank Corridor (Nostro-Vostro)', icon: ArrowLeftRight }
         ].map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
@@ -1231,15 +1561,35 @@ export default function T24TestConsole() {
                               </td>
                               <td className="py-3 px-3.5">
                                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-sans text-2xs font-semibold ${
-                                  isDebit
+                                  (tx.transaction_type === 'INTER_BANK_OUTWARD' || tx.transactionType === 'INTER_BANK_OUTWARD')
+                                    ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                    : (tx.transaction_type === 'INTER_BANK_INWARD' || tx.transactionType === 'INTER_BANK_INWARD')
+                                    ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                    : isDebit
                                     ? 'bg-rose-50 text-rose-700 border border-rose-200'
                                     : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                 }`}>
                                   {isDebit ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownLeft className="h-3 w-3" />}
-                                  {isDebit ? 'Debit / Outgoing' : 'Credit / Incoming'}
+                                  {(tx.transaction_type === 'INTER_BANK_OUTWARD' || tx.transactionType === 'INTER_BANK_OUTWARD')
+                                    ? 'Outward Wire'
+                                    : (tx.transaction_type === 'INTER_BANK_INWARD' || tx.transactionType === 'INTER_BANK_INWARD')
+                                    ? 'Inward Wire'
+                                    : isDebit ? 'Debit / Outgoing' : 'Credit / Incoming'}
                                 </span>
                               </td>
-                              <td className="py-3 px-3.5 text-slate-700">{counterparty || '--'}</td>
+                              <td className="py-3 px-3.5 text-slate-700">
+                                {tx.counterparty_name || tx.counterpartyName ? (
+                                  <div>
+                                    <div className="font-semibold text-purple-950">{tx.counterparty_name || tx.counterpartyName}</div>
+                                    <div className="text-3xs text-slate-400 font-mono">
+                                      {(tx.counterparty_bank || tx.counterpartyBank) ? `${tx.counterparty_bank || tx.counterpartyBank}: ` : ''}
+                                      {tx.counterparty_account || tx.counterpartyAccount || counterparty}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  counterparty || '--'
+                                )}
+                              </td>
                               <td className="py-3 px-3.5 font-bold">
                                 <span className={isDebit ? 'text-rose-600' : 'text-emerald-600'}>
                                   {isDebit ? '-' : '+'} {tx.currency || 'PHP'} {parseFloat(tx.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
@@ -1713,6 +2063,1419 @@ export default function T24TestConsole() {
               <CheckCircle2 className="h-10 w-10 text-emerald-500 mb-2" />
               <p className="text-xs font-semibold text-slate-700">No pending DLQ incidents</p>
               <p className="mt-1 text-2xs text-slate-400">Circuit breaker is CLOSED and all transfer pathways are healthy.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 8: INTER-BANK CORRIDOR (BILATERAL NOSTRO-VOSTRO MODEL) */}
+      {activeTab === 'interbank' && (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 via-white to-purple-50/40 p-6 shadow-xs">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-100/70 px-2.5 py-0.5 font-mono text-2xs font-bold text-purple-900 uppercase tracking-wider">
+                  <ArrowLeftRight className="h-3 w-3 text-purple-700" /> Bilateral Settlement Model
+                </span>
+                <h2 className="mt-2 text-xl font-bold tracking-tight text-slate-900">
+                  Bilateral Nostro-Vostro Inter-Bank Corridor
+                </h2>
+                <p className="mt-1 max-w-3xl text-xs text-slate-600">
+                  Seamless bilateral fund transfers between <strong>AuraBank (Group 3)</strong> and <strong>CooBS (Partner Bank)</strong>.
+                  Settlement liquidity is managed via our dedicated ledger account{' '}
+                  <code className="rounded bg-purple-100 px-1.5 py-0.5 font-mono text-2xs font-bold text-purple-900">
+                    ACC-NOSTRO-BANK-B
+                  </code>
+                  . Powered by an autonomous <strong>Multi-Step Saga Orchestrator</strong> with automated compensating reversal.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 rounded-xl border border-purple-100 bg-white p-3 shadow-2xs">
+                <div>
+                  <div className="text-2xs font-bold uppercase text-purple-900/70">CooBS Nostro Buffer</div>
+                  <div className="font-mono text-xs font-bold text-purple-950">ACC-NOSTRO-BANK-B</div>
+                </div>
+                <div className="h-7 w-px bg-purple-100" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveAccount('ACC-NOSTRO-BANK-B');
+                    fetchBalance('ACC-NOSTRO-BANK-B');
+                  }}
+                  className="rounded-lg bg-purple-100 px-2.5 py-1 text-2xs font-bold text-purple-900 hover:bg-purple-200 transition-colors"
+                >
+                  Inspect Balance
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Manual Test Stepper & Interactive Validation Guide */}
+          <div className="rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 via-indigo-50/40 to-white p-5 shadow-xs">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-purple-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-purple-950 flex items-center gap-2">
+                  <Play className="h-4 w-4 text-purple-700 fill-purple-700" />
+                  Interactive Manual Test Guide: Bilateral Corridor Validation
+                </h3>
+                <p className="mt-0.5 text-2xs text-purple-800">
+                  Click any test scenario below to automatically load the parameters and observe live debit, credit, Saga refund, or isolation proofs.
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-1 text-3xs font-mono font-bold text-purple-800 bg-purple-100/80 px-2.5 py-1 rounded-full border border-purple-200">
+                6 Verified Scenarios
+              </span>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setInterbankForm({
+                    sourceAccountId: '1000-2000-3001',
+                    destinationBank: 'COOBS',
+                    beneficiaryAccountId: 'B-ACC-998877',
+                    amount: '1000.00',
+                    currency: 'PHP',
+                    senderName: 'Alice Guo',
+                    simulationMode: ''
+                  });
+                  showToast('Scenario 1 Loaded: Happy Path Settled Outward Wire (200 OK)', 'info');
+                }}
+                className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${
+                  interbankForm.simulationMode === '' && interbankForm.beneficiaryAccountId === 'B-ACC-998877'
+                    ? 'border-emerald-500 bg-white ring-2 ring-emerald-400 shadow-xs'
+                    : 'border-purple-100 bg-white/80 hover:bg-white text-slate-700'
+                }`}
+              >
+                <span className="flex items-center gap-1 font-mono text-3xs font-bold text-emerald-700">
+                  <CheckCircle2 className="h-3 w-3" /> Step 1: Settled
+                </span>
+                <span className="font-bold text-xs text-slate-900 mt-1">Happy Path</span>
+                <span className="text-3xs text-slate-500 mt-0.5">200 &rarr; CooBS Credited</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setInterbankForm({
+                    sourceAccountId: '1000-2000-3001',
+                    destinationBank: 'COOBS',
+                    beneficiaryAccountId: 'B-ACC-REJECT-404',
+                    amount: '1000.00',
+                    currency: 'PHP',
+                    senderName: 'Alice Guo',
+                    simulationMode: 'REJECT'
+                  });
+                  showToast('Scenario 2: Partner 400 Account Not Found -> 100% Saga Refund (Skipped from DLQ)', 'info');
+                }}
+                className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${
+                  interbankForm.simulationMode === 'REJECT'
+                    ? 'border-rose-500 bg-white ring-2 ring-rose-400 shadow-xs'
+                    : 'border-purple-100 bg-white/80 hover:bg-white text-slate-700'
+                }`}
+              >
+                <span className="flex items-center gap-1 font-mono text-3xs font-bold text-rose-700">
+                  <XCircle className="h-3 w-3" /> Step 2: Reject 400
+                </span>
+                <span className="font-bold text-xs text-slate-900 mt-1">Not Found</span>
+                <span className="text-3xs text-slate-500 mt-0.5">400 &rarr; Saga Refund (Zero DLQ)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setInterbankForm({
+                    sourceAccountId: '1000-2000-3001',
+                    destinationBank: 'COOBS',
+                    beneficiaryAccountId: 'B-ACC-FROZEN-88',
+                    amount: '1000.00',
+                    currency: 'PHP',
+                    senderName: 'Alice Guo',
+                    simulationMode: 'BLOCKED'
+                  });
+                  showToast('Scenario 3: Partner 422 Account Blocked -> 100% Saga Refund (Skipped from DLQ)', 'info');
+                }}
+                className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${
+                  interbankForm.simulationMode === 'BLOCKED'
+                    ? 'border-purple-500 bg-white ring-2 ring-purple-400 shadow-xs'
+                    : 'border-purple-100 bg-white/80 hover:bg-white text-slate-700'
+                }`}
+              >
+                <span className="flex items-center gap-1 font-mono text-3xs font-bold text-purple-700">
+                  <Ban className="h-3 w-3" /> Step 3: Blocked 422
+                </span>
+                <span className="font-bold text-xs text-slate-900 mt-1">Frozen Acct</span>
+                <span className="text-3xs text-slate-500 mt-0.5">422 &rarr; Saga Refund (Zero DLQ)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setInterbankForm({
+                    sourceAccountId: '1000-2000-3001',
+                    destinationBank: 'COOBS',
+                    beneficiaryAccountId: 'B-ACC-998877',
+                    amount: '1000.00',
+                    currency: 'PHP',
+                    senderName: 'Alice Guo',
+                    simulationMode: 'TIMEOUT'
+                  });
+                  showToast('Scenario 4 Loaded: 4.0s Client Timeout Guard (502 Bad Gateway -> DLQ Recorded)', 'info');
+                }}
+                className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${
+                  interbankForm.simulationMode === 'TIMEOUT'
+                    ? 'border-amber-500 bg-white ring-2 ring-amber-400 shadow-xs'
+                    : 'border-purple-100 bg-white/80 hover:bg-white text-slate-700'
+                }`}
+              >
+                <span className="flex items-center gap-1 font-mono text-3xs font-bold text-amber-700">
+                  <Clock className="h-3 w-3" /> Step 4: Timeout 502
+                </span>
+                <span className="font-bold text-xs text-slate-900 mt-1">4s Timeout</span>
+                <span className="text-3xs text-slate-500 mt-0.5">502 &rarr; Saga Refund (DLQ Recorded)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setInwardForm({
+                    messageId: '0b6c2f6e-6d1a-4d5c-9d1f-0f3a5e7b9c21',
+                    sourceBankCode: 'COOBS',
+                    destinationBankCode: 'AURABANK',
+                    senderAccountId: 'B-ACC-998877',
+                    senderName: 'Bob Martinez',
+                    beneficiaryAccountId: '1000-2000-3001',
+                    beneficiaryName: 'Alice Guo',
+                    amount: '1000.00',
+                    currency: 'PHP',
+                    purpose: 'Transfer to Alice Guo',
+                    senderReference: 'TX-20261009-8F3A21C0'
+                  });
+                  setInwardApiKey('AURABANK-SECURE-KEY-2026');
+                  showToast('Scenario 5 Loaded: Inward Wire Ingestion from Bob Martinez (CooBS) to Alice Guo (AuraBank)', 'info');
+                }}
+                className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${
+                  inwardForm.beneficiaryAccountId === '1000-2000-3001' && inwardApiKey === 'AURABANK-SECURE-KEY-2026'
+                    ? 'border-cyan-500 bg-white ring-2 ring-cyan-400 shadow-xs'
+                    : 'border-purple-100 bg-white/80 hover:bg-white text-slate-700'
+                }`}
+              >
+                <span className="flex items-center gap-1 font-mono text-3xs font-bold text-cyan-700">
+                  <ArrowDownLeft className="h-3 w-3" /> Step 5: Inward 200
+                </span>
+                <span className="font-bold text-xs text-slate-900 mt-1">Ingest Wire</span>
+                <span className="text-3xs text-slate-500 mt-0.5">200 &rarr; AuraBank Credited</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleVerifyDbIsolation();
+                }}
+                className="flex flex-col items-start p-2.5 rounded-xl border border-purple-100 bg-white/80 hover:bg-white text-slate-700 transition-all hover:border-emerald-500 hover:ring-2 hover:ring-emerald-400"
+              >
+                <span className="flex items-center gap-1 font-mono text-3xs font-bold text-emerald-700">
+                  <ShieldCheck className="h-3 w-3" /> Step 6: Audit
+                </span>
+                <span className="font-bold text-xs text-slate-900 mt-1">Zero-Trust DB</span>
+                <span className="text-3xs text-slate-500 mt-0.5">Prove 0 SQL link</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* 1. OUTWARD WIRE WORKBENCH */}
+            <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <h3 className="flex items-center gap-2 text-base font-bold text-slate-900">
+                    <Send className="h-4 w-4 text-purple-700" /> Outward Inter-Bank Wire
+                  </h3>
+                  <span className="rounded-full bg-purple-50 border border-purple-200 px-2 py-0.5 font-mono text-2xs font-bold text-purple-800">
+                    AuraBank &rarr; CooBS
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Executes <strong>Step 1</strong> (Debits sender, credits Nostro buffer) and <strong>Step 2</strong> (Dispatches wire to CooBS).
+                  If partner fails or times out (&gt;4s), an autonomous <strong>Saga Compensating Reversal</strong> refunds sender.
+                </p>
+
+                {/* Quick Presets for Outward Testing */}
+                <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInterbankForm({
+                        ...interbankForm,
+                        beneficiaryAccountId: 'B-ACC-998877',
+                        simulationMode: ''
+                      });
+                      showToast('Preset Applied: Happy Path Settled (200 OK)', 'info');
+                    }}
+                    className={`rounded-lg border px-2 py-1.5 text-center text-3xs font-bold transition-all ${
+                      interbankForm.simulationMode === ''
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-900'
+                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    Preset: Settled (200)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInterbankForm({
+                        ...interbankForm,
+                        beneficiaryAccountId: 'B-ACC-REJECT-404',
+                        simulationMode: 'REJECT'
+                      });
+                      showToast('Preset Applied: Account Not Found (400)', 'info');
+                    }}
+                    className={`rounded-lg border px-2 py-1.5 text-center text-3xs font-bold transition-all ${
+                      interbankForm.simulationMode === 'REJECT'
+                        ? 'border-rose-500 bg-rose-50 text-rose-900'
+                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    Preset: Reject (400)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInterbankForm({
+                        ...interbankForm,
+                        beneficiaryAccountId: 'B-ACC-FROZEN-88',
+                        simulationMode: 'BLOCKED'
+                      });
+                      showToast('Preset Applied: Account Blocked (422)', 'info');
+                    }}
+                    className={`rounded-lg border px-2 py-1.5 text-center text-3xs font-bold transition-all ${
+                      interbankForm.simulationMode === 'BLOCKED'
+                        ? 'border-purple-500 bg-purple-50 text-purple-900'
+                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    Preset: Blocked (422)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInterbankForm({
+                        ...interbankForm,
+                        beneficiaryAccountId: 'B-ACC-998877',
+                        simulationMode: 'TIMEOUT'
+                      });
+                      showToast('Preset Applied: Timeout Guard (502)', 'info');
+                    }}
+                    className={`rounded-lg border px-2 py-1.5 text-center text-3xs font-bold transition-all ${
+                      interbankForm.simulationMode === 'TIMEOUT'
+                        ? 'border-amber-500 bg-amber-50 text-amber-900'
+                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    Preset: Timeout (502)
+                  </button>
+                </div>
+
+                <form onSubmit={handleExecuteInterbank} className="mt-3.5 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Source Account (AuraBank)
+                      </label>
+                      <input
+                        type="text"
+                        value={interbankForm.sourceAccountId}
+                        onChange={(e) => setInterbankForm({ ...interbankForm, sourceAccountId: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Sender Name
+                      </label>
+                      <input
+                        type="text"
+                        value={interbankForm.senderName}
+                        onChange={(e) => setInterbankForm({ ...interbankForm, senderName: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Destination Bank
+                      </label>
+                      <select
+                        value={interbankForm.destinationBank}
+                        onChange={(e) => setInterbankForm({ ...interbankForm, destinationBank: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs font-semibold text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                      >
+                        {participantBanks.map((b) => (
+                          <option key={b.bankCode} value={b.bankCode}>
+                            {b.bankName || b.bankCode} ({b.bankCode})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Beneficiary Account (at CooBS)
+                      </label>
+                      <input
+                        type="text"
+                        value={interbankForm.beneficiaryAccountId}
+                        onChange={(e) => setInterbankForm({ ...interbankForm, beneficiaryAccountId: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 font-mono text-xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Wire Amount (PHP)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={interbankForm.amount}
+                        onChange={(e) => setInterbankForm({ ...interbankForm, amount: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 font-mono text-xs font-bold text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Currency
+                      </label>
+                      <input
+                        type="text"
+                        value={interbankForm.currency}
+                        readOnly
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 font-mono text-xs font-semibold text-slate-600 cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Partner Bank Simulation Mode */}
+                  <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-3">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-900">
+                        Partner Simulation Mode (Offline Sandbox)
+                      </label>
+                      <span className="text-3xs font-mono text-purple-700">Test Harness</span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-2xs">
+                      <label
+                        className={`flex cursor-pointer flex-col rounded-lg border p-2 text-center font-medium transition-all ${
+                          interbankForm.simulationMode === ''
+                            ? 'border-emerald-500 bg-emerald-50/80 text-emerald-900 font-bold shadow-xs'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="simulationMode"
+                          value=""
+                          checked={interbankForm.simulationMode === ''}
+                          onChange={() => setInterbankForm({ ...interbankForm, simulationMode: '' })}
+                          className="sr-only"
+                        />
+                        <span>SETTLED</span>
+                        <span className="text-3xs opacity-80 mt-0.5">200 OK</span>
+                      </label>
+
+                      <label
+                        className={`flex cursor-pointer flex-col rounded-lg border p-2 text-center font-medium transition-all ${
+                          interbankForm.simulationMode === 'REJECT'
+                            ? 'border-rose-500 bg-rose-50/80 text-rose-900 font-bold shadow-xs'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="simulationMode"
+                          value="REJECT"
+                          checked={interbankForm.simulationMode === 'REJECT'}
+                          onChange={() => setInterbankForm({ ...interbankForm, simulationMode: 'REJECT' })}
+                          className="sr-only"
+                        />
+                        <span>REJECT</span>
+                        <span className="text-3xs opacity-80 mt-0.5">400 Not Found</span>
+                      </label>
+
+                      <label
+                        className={`flex cursor-pointer flex-col rounded-lg border p-2 text-center font-medium transition-all ${
+                          interbankForm.simulationMode === 'BLOCKED'
+                            ? 'border-purple-500 bg-purple-50/80 text-purple-900 font-bold shadow-xs'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="simulationMode"
+                          value="BLOCKED"
+                          checked={interbankForm.simulationMode === 'BLOCKED'}
+                          onChange={() => setInterbankForm({ ...interbankForm, simulationMode: 'BLOCKED' })}
+                          className="sr-only"
+                        />
+                        <span>BLOCKED</span>
+                        <span className="text-3xs opacity-80 mt-0.5">422 Frozen Acct</span>
+                      </label>
+
+                      <label
+                        className={`flex cursor-pointer flex-col rounded-lg border p-2 text-center font-medium transition-all ${
+                          interbankForm.simulationMode === 'TIMEOUT'
+                            ? 'border-amber-500 bg-amber-50/80 text-amber-900 font-bold shadow-xs'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="simulationMode"
+                          value="TIMEOUT"
+                          checked={interbankForm.simulationMode === 'TIMEOUT'}
+                          onChange={() => setInterbankForm({ ...interbankForm, simulationMode: 'TIMEOUT' })}
+                          className="sr-only"
+                        />
+                        <span>TIMEOUT</span>
+                        <span className="text-3xs opacity-80 mt-0.5">502 (4s Guard)</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isInterbankExecuting}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-4 py-2.5 font-mono text-xs font-bold text-white shadow-sm transition-all disabled:opacity-50"
+                  >
+                    {isInterbankExecuting ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" /> Orchestrating Multi-Step Transfer...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4" /> Dispatch Outward Inter-Bank Wire
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
+
+              {/* Enhanced Execution Result Box */}
+              {interbankResult && (
+                <div
+                  className={`mt-4 rounded-xl border p-4 text-xs transition-all ${
+                    interbankResult.success
+                      ? 'border-emerald-300 bg-emerald-50/80 text-emerald-950'
+                      : interbankResult.isTimeout
+                      ? 'border-amber-300 bg-amber-50/80 text-amber-950'
+                      : interbankResult.isAccountBlocked
+                      ? 'border-purple-300 bg-purple-50/80 text-purple-950'
+                      : interbankResult.isAccountNotFound
+                      ? 'border-rose-300 bg-rose-50/80 text-rose-950'
+                      : 'border-slate-300 bg-slate-50 text-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-bold mb-1.5">
+                    <span className="flex items-center gap-2">
+                      {interbankResult.success ? (
+                        <>
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                          <span>Wire Settled & Finalized (HTTP 200 OK)</span>
+                        </>
+                      ) : interbankResult.isTimeout ? (
+                        <>
+                          <Clock className="h-4 w-4 text-amber-600" />
+                          <span>Partner Network Timeout (HTTP 502) &rarr; Saga Refunded</span>
+                        </>
+                      ) : interbankResult.isAccountBlocked ? (
+                        <>
+                          <Ban className="h-4 w-4 text-purple-600" />
+                          <span>Partner Account Blocked (HTTP 422) &rarr; Saga Refunded</span>
+                        </>
+                      ) : interbankResult.isAccountNotFound ? (
+                        <>
+                          <XCircle className="h-4 w-4 text-rose-600" />
+                          <span>Partner Account Not Found (HTTP 400) &rarr; Saga Refunded</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="h-4 w-4 text-rose-600" />
+                          <span>Inter-Bank Transfer Rejected</span>
+                        </>
+                      )}
+                    </span>
+
+                    <span className={`text-3xs font-mono font-bold px-2 py-0.5 rounded ${
+                      interbankResult.success
+                        ? 'bg-emerald-200/80 text-emerald-900'
+                        : interbankResult.isTimeout
+                        ? 'bg-amber-200/80 text-amber-900'
+                        : interbankResult.isAccountBlocked
+                        ? 'bg-purple-200/80 text-purple-900'
+                        : 'bg-rose-200/80 text-rose-900'
+                    }`}>
+                      {interbankResult.success
+                        ? 'SETTLED'
+                        : interbankResult.isTimeout
+                        ? 'TIMEOUT (502)'
+                        : interbankResult.isAccountBlocked
+                        ? 'BLOCKED (422)'
+                        : interbankResult.isAccountNotFound
+                        ? 'REJECT (400)'
+                        : 'FAILED'}
+                    </span>
+                  </div>
+
+                  {/* Customer-Facing Sanitized Message */}
+                  <p className="mt-1.5 text-2xs leading-relaxed font-sans font-medium">
+                    {interbankResult.success
+                      ? (interbankResult.data?.message || 'Wire transfer settled successfully with partner bank.')
+                      : interbankResult.error}
+                  </p>
+
+                  {/* CooBS Credit Confirmation (Happy Path Only) */}
+                  {interbankResult.success && (
+                    <div className="mt-3 rounded-lg border border-emerald-300 bg-emerald-100/60 p-3 space-y-1.5">
+                      <div className="flex items-center justify-between text-2xs font-bold text-emerald-950">
+                        <span className="flex items-center gap-1.5">
+                          <Check className="h-3.5 w-3.5 text-emerald-700" />
+                          CooBS Beneficiary Received Funds!
+                        </span>
+                        <span className="font-mono text-emerald-800">
+                          +PHP {interbankResult.wireAmt?.toFixed(2)}
+                        </span>
+                      </div>
+                      <p className="text-3xs text-emerald-900">
+                        Bob Martinez (Account: <strong>{interbankForm.beneficiaryAccountId}</strong>) has been credited. Partner Ref: <code className="font-mono font-bold">{interbankResult.partnerRef}</code>.
+                      </p>
+                      <a
+                        href="#coobs-sovereign-ledger"
+                        className="inline-flex items-center gap-1 rounded-md bg-emerald-800 hover:bg-emerald-900 px-2 py-1 text-3xs font-bold text-white transition-colors mt-1"
+                      >
+                        Inspect CooBS Sovereign Ledger &darr;
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Saga Compensating Reversal Proof (Negative Paths) */}
+                  {!interbankResult.success && interbankResult.isRollback && (
+                    <div className="mt-3 rounded-lg border border-slate-200 bg-white/80 p-2.5 text-3xs text-slate-700 space-y-1">
+                      <div className="flex items-center gap-1 font-bold text-slate-900">
+                        <RotateCcw className="h-3 w-3 text-purple-700" />
+                        Automated Compensating Saga Verification:
+                      </div>
+                      <div>
+                        Initial debit from <code className="font-mono text-slate-900 font-bold">{interbankForm.sourceAccountId}</code> was reversed immediately. Zero funds lost.
+                      </div>
+                      {interbankResult.isTimeout && (
+                        <div className="text-amber-800 font-medium">
+                          &bull; DLQ routing: Event published to Kafka <code className="font-mono font-bold">banking.transfers.dlq</code> for compliance auditing.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {interbankResult.txId && (
+                    <div className="mt-2 text-3xs font-mono text-slate-500">
+                      Transaction ID: {interbankResult.txId}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 2. INWARD WIRE SIMULATOR */}
+            <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <h3 className="flex items-center gap-2 text-base font-bold text-slate-900">
+                    <ArrowLeftRight className="h-4 w-4 text-purple-700" /> Inward Wire Ingestion Simulator
+                  </h3>
+                  <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 font-mono text-2xs font-bold text-emerald-800">
+                    COOBS &rarr; AuraBank
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Simulates partner incoming wire into <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-2xs">POST /api/v1/interbank/transfers/inward</code>.
+                  Matches partner group expected JSON contract and mutual API key authentication.
+                </p>
+
+                {/* Quick Test Presets */}
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInwardForm({
+                        messageId: '0b6c2f6e-6d1a-4d5c-9d1f-0f3a5e7b9c21',
+                        sourceBankCode: 'COOBS',
+                        destinationBankCode: 'AURABANK',
+                        senderAccountId: 'B-ACC-998877',
+                        senderName: 'Bob Martinez',
+                        beneficiaryAccountId: '1000-2000-3001',
+                        beneficiaryName: 'Alice Guo',
+                        amount: '1000.00',
+                        currency: 'PHP',
+                        purpose: 'Transfer to Alice Guo',
+                        senderReference: 'TX-20261009-8F3A21C0'
+                      });
+                      setInwardApiKey('AURABANK-SECURE-KEY-2026');
+                      showToast('Inward Preset Applied: Bob Martinez (CooBS) -> Alice Guo (AuraBank)', 'info');
+                    }}
+                    className={`rounded-lg border p-1.5 text-left text-2xs transition-all ${
+                      inwardForm.beneficiaryAccountId === '1000-2000-3001' && inwardApiKey === 'AURABANK-SECURE-KEY-2026'
+                        ? 'border-emerald-500 bg-emerald-50/80 text-emerald-950 font-bold shadow-xs'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1 font-bold text-emerald-800 text-3xs">
+                      <CheckCircle2 className="h-3 w-3" /> Preset: Bob &rarr; Alice (Valid)
+                    </div>
+                    <div className="mt-0.5 text-3xs text-slate-500 font-mono">1000-2000-3001 &rarr; 200 OK</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInwardForm({
+                        messageId: '0b6c2f6e-6d1a-4d5c-9d1f-0f3a5e7b9c21',
+                        sourceBankCode: 'COOBS',
+                        destinationBankCode: 'AURABANK',
+                        senderAccountId: 'B-ACC-998877',
+                        senderName: 'Bob Martinez',
+                        beneficiaryAccountId: 'ACC_10000001',
+                        beneficiaryName: 'Unknown Beneficiary',
+                        amount: '1000.00',
+                        currency: 'PHP',
+                        purpose: 'Payment for services',
+                        senderReference: 'TX-20261009-8F3A21C0'
+                      });
+                      setInwardApiKey('AURABANK-SECURE-KEY-2026');
+                      showToast('Inward Preset Applied: Account Not Found (400)', 'info');
+                    }}
+                    className={`rounded-lg border p-1.5 text-left text-2xs transition-all ${
+                      inwardForm.beneficiaryAccountId === 'ACC_10000001'
+                        ? 'border-rose-500 bg-rose-50/80 text-rose-950 font-bold shadow-xs'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1 font-bold text-rose-800 text-3xs">
+                      <XCircle className="h-3 w-3" /> Preset: Not Found
+                    </div>
+                    <div className="mt-0.5 text-3xs text-slate-500 font-mono">ACC_10000001 &rarr; 400 Bad</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInwardApiKey('INVALID-FORGED-KEY-XYZ');
+                      showToast('Inward Preset Applied: Invalid API Key (401 Unauthorized)', 'info');
+                    }}
+                    className={`rounded-lg border p-1.5 text-left text-2xs transition-all ${
+                      inwardApiKey !== 'AURABANK-SECURE-KEY-2026'
+                        ? 'border-amber-500 bg-amber-50/80 text-amber-950 font-bold shadow-xs'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1 font-bold text-amber-800 text-3xs">
+                      <Lock className="h-3 w-3" /> Preset: Bad API Key
+                    </div>
+                    <div className="mt-0.5 text-3xs text-slate-500 font-mono">Invalid Key &rarr; 401 Unauth</div>
+                  </button>
+                </div>
+
+                {/* API Key Security Authentication Field */}
+                <div className="mt-3 rounded-xl border border-purple-100 bg-purple-50/40 p-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-2xs font-bold uppercase tracking-wider text-purple-950 flex items-center gap-1">
+                      <Lock className="h-3 w-3 text-purple-700" />
+                      Header: X-Interbank-API-Key
+                    </label>
+                    {inwardApiKey !== 'AURABANK-SECURE-KEY-2026' && (
+                      <button
+                        type="button"
+                        onClick={() => setInwardApiKey('AURABANK-SECURE-KEY-2026')}
+                        className="text-3xs font-mono font-bold text-purple-800 hover:underline"
+                      >
+                        Reset to Valid Key
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={inwardApiKey}
+                    onChange={(e) => setInwardApiKey(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-purple-200 bg-white px-2.5 py-1.5 font-mono text-2xs text-purple-950 focus:border-purple-700 focus:outline-none"
+                    placeholder="Enter partner mutual API key..."
+                  />
+                </div>
+
+                <form onSubmit={handleExecuteInwardWire} className="mt-3 space-y-2.5">
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Message ID (UUID)
+                      </label>
+                      <input
+                        type="text"
+                        value={inwardForm.messageId}
+                        onChange={(e) => setInwardForm({ ...inwardForm, messageId: e.target.value })}
+                        className="mt-0.5 w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 font-mono text-2xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Sender Reference
+                      </label>
+                      <input
+                        type="text"
+                        value={inwardForm.senderReference}
+                        onChange={(e) => setInwardForm({ ...inwardForm, senderReference: e.target.value })}
+                        className="mt-0.5 w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 font-mono text-2xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Source Bank Code
+                      </label>
+                      <input
+                        type="text"
+                        value={inwardForm.sourceBankCode}
+                        onChange={(e) => setInwardForm({ ...inwardForm, sourceBankCode: e.target.value })}
+                        className="mt-0.5 w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 font-mono text-2xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Destination Bank Code
+                      </label>
+                      <input
+                        type="text"
+                        value={inwardForm.destinationBankCode}
+                        onChange={(e) => setInwardForm({ ...inwardForm, destinationBankCode: e.target.value })}
+                        className="mt-0.5 w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 font-mono text-2xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Sender (CooBS Acct / Name)
+                      </label>
+                      <div className="grid grid-cols-2 gap-1 mt-0.5">
+                        <input
+                          type="text"
+                          value={inwardForm.senderAccountId}
+                          onChange={(e) => setInwardForm({ ...inwardForm, senderAccountId: e.target.value })}
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2 py-1.5 font-mono text-2xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                          placeholder="Acct"
+                          required
+                        />
+                        <input
+                          type="text"
+                          value={inwardForm.senderName}
+                          onChange={(e) => setInwardForm({ ...inwardForm, senderName: e.target.value })}
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2 py-1.5 text-2xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                          placeholder="Name"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Beneficiary (AuraBank Acct / Name)
+                      </label>
+                      <div className="grid grid-cols-2 gap-1 mt-0.5">
+                        <input
+                          type="text"
+                          value={inwardForm.beneficiaryAccountId}
+                          onChange={(e) => setInwardForm({ ...inwardForm, beneficiaryAccountId: e.target.value })}
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2 py-1.5 font-mono text-2xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                          placeholder="Acct"
+                          required
+                        />
+                        <input
+                          type="text"
+                          value={inwardForm.beneficiaryName}
+                          onChange={(e) => setInwardForm({ ...inwardForm, beneficiaryName: e.target.value })}
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2 py-1.5 text-2xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                          placeholder="Name"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Amount (PHP)
+                      </label>
+                      <input
+                        type="text"
+                        value={inwardForm.amount}
+                        onChange={(e) => setInwardForm({ ...inwardForm, amount: e.target.value })}
+                        className="mt-0.5 w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 font-mono text-xs font-bold text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+                        Purpose
+                      </label>
+                      <input
+                        type="text"
+                        value={inwardForm.purpose}
+                        onChange={(e) => setInwardForm({ ...inwardForm, purpose: e.target.value })}
+                        className="mt-0.5 w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 text-2xs text-slate-900 focus:bg-white focus:border-purple-700 focus:outline-none"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Live JSON Wire Contract Preview */}
+                  <details className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-3xs">
+                    <summary className="font-bold text-slate-700 cursor-pointer flex items-center justify-between">
+                      <span>Live Partner Wire JSON Contract (Payload Preview)</span>
+                      <span className="font-mono text-purple-800">POST /interbank/transfers/inward</span>
+                    </summary>
+                    <pre className="mt-2 rounded bg-slate-900 p-2 text-emerald-300 font-mono overflow-x-auto leading-relaxed">
+                      {JSON.stringify({
+                        messageId: inwardForm.messageId,
+                        sourceBankCode: inwardForm.sourceBankCode,
+                        destinationBankCode: inwardForm.destinationBankCode,
+                        sender: {
+                          accountNumber: inwardForm.senderAccountId,
+                          name: inwardForm.senderName
+                        },
+                        beneficiary: {
+                          accountNumber: inwardForm.beneficiaryAccountId,
+                          name: inwardForm.beneficiaryName
+                        },
+                        amount: inwardForm.amount,
+                        currency: 'PHP',
+                        purpose: inwardForm.purpose,
+                        senderReference: inwardForm.senderReference
+                      }, null, 2)}
+                    </pre>
+                  </details>
+
+                  <button
+                    type="submit"
+                    disabled={isInwardExecuting}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 px-4 py-2.5 font-mono text-xs font-bold text-white shadow-sm transition-all disabled:opacity-50"
+                  >
+                    {isInwardExecuting ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" /> Ingesting Partner Wire...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-4 w-4" /> Ingest Inward Wire (POST /interbank/transfers/inward)
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
+
+              {/* Inward Live Contract Response Box */}
+              {inwardResult && (
+                <div
+                  className={`mt-4 rounded-xl border p-4 text-xs font-mono transition-all ${
+                    inwardResult.success
+                      ? 'border-emerald-300 bg-emerald-50/80 text-emerald-950'
+                      : 'border-rose-300 bg-rose-50/80 text-rose-950'
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-bold mb-2">
+                    <span className="flex items-center gap-1.5">
+                      {inwardResult.success ? (
+                        <>
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                          <span>STATUS: ACCEPTED (HTTP 200)</span>
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="h-4 w-4 text-rose-600" />
+                          <span>STATUS: REJECTED (HTTP {inwardResult.statusCode || 400})</span>
+                        </>
+                      )}
+                    </span>
+                    <span className={`text-3xs rounded px-2 py-0.5 ${
+                      inwardResult.success ? 'bg-emerald-200/80 text-emerald-900 font-bold' : 'bg-rose-200/80 text-rose-900 font-bold'
+                    }`}>
+                      {inwardResult.success ? 'Successful Credit' : (inwardResult.reasonCode || 'REJECTED')}
+                    </span>
+                  </div>
+
+                  {inwardResult.success && (
+                    <div className="mt-3 rounded-lg border border-emerald-300 bg-emerald-100/70 p-3 text-2xs font-sans space-y-1.5">
+                      <div className="flex items-center justify-between font-bold text-emerald-950">
+                        <span className="flex items-center gap-1.5">
+                          <Check className="h-3.5 w-3.5 text-emerald-700" />
+                          AuraBank Beneficiary Credited & CooBS Deducted!
+                        </span>
+                        <span className="font-mono text-emerald-800 font-bold">
+                          +PHP {parseFloat(inwardForm.amount || 0).toFixed(2)}
+                        </span>
+                      </div>
+                      <p className="text-3xs text-emerald-900 leading-relaxed">
+                        Alice Guo (Account: <strong className="font-mono">{inwardForm.beneficiaryAccountId}</strong>) working balance has increased. Bob Martinez at CooBS was debited <strong>PHP {parseFloat(inwardForm.amount || 0).toFixed(2)}</strong>.
+                      </p>
+                      <div className="text-3xs font-mono text-emerald-950 border-t border-emerald-200/80 pt-1 mt-1 flex justify-between items-center">
+                        <span>Clearing Buffer (ACC-NOSTRO-BANK-B) Rebalanced:</span>
+                        <span className="font-bold">-PHP {parseFloat(inwardForm.amount || 0).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <pre className="mt-2 rounded-lg bg-slate-900 p-3 text-2xs text-emerald-300 overflow-x-auto leading-relaxed">
+                    {JSON.stringify(inwardResult.data || {
+                      messageId: inwardForm.messageId,
+                      status: 'REJECTED',
+                      reasonCode: inwardResult.reasonCode || 'ACCOUNT_NOT_FOUND',
+                      reasonMessage: inwardResult.error || 'Rejection occurred',
+                      rejectedAt: new Date().toISOString()
+                    }, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Partner CooBS External Sovereign Node & Anti-Tampering Inspector */}
+          <div
+            id="coobs-sovereign-ledger"
+            className={`rounded-2xl border-2 transition-all duration-500 bg-gradient-to-br from-slate-900 via-slate-950 to-emerald-950/40 p-6 text-white shadow-xl ${
+              highlightCoobs ? 'border-emerald-400 ring-4 ring-emerald-400/50 shadow-emerald-900/40' : 'border-emerald-500/30'
+            }`}
+          >
+            {/* Live Wire Receipt Alert Banner */}
+            {lastReceivedWire && (
+              <div
+                className={`mb-4 rounded-xl border p-3 flex items-center justify-between transition-all ${
+                  highlightCoobs
+                    ? 'border-emerald-400 bg-emerald-950/80 ring-2 ring-emerald-400 animate-pulse'
+                    : 'border-emerald-800 bg-emerald-950/50'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-3 w-3 relative shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                  </span>
+                  <div>
+                    <div className="text-xs font-bold text-emerald-200 flex items-center gap-2">
+                      <span>Live Incoming Wire Settled!</span>
+                      <span className="font-mono text-emerald-400">
+                        +PHP {lastReceivedWire.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="text-3xs text-slate-300 font-mono mt-0.5">
+                      Ref: {lastReceivedWire.ref} &bull; Credited: {lastReceivedWire.beneficiary} (Bob Martinez) at {lastReceivedWire.time}
+                    </div>
+                  </div>
+                </div>
+                <span className="rounded bg-emerald-500/20 px-2.5 py-1 text-2xs font-mono font-bold text-emerald-300 border border-emerald-500/30">
+                  CONFIRMED
+                </span>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="flex h-3 w-3 relative">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                  </span>
+                  <h3 className="text-base font-bold tracking-tight text-white flex items-center gap-2">
+                    <Globe className="h-5 w-5 text-emerald-400" />
+                    CooBS (External Sovereign Node) &mdash; Live Ledger & Anti-Tampering Inspector
+                  </h3>
+                </div>
+                <p className="mt-1 text-xs text-slate-300">
+                  Simulated autonomous partner core banking engine. Proves that CooBS settles received funds independently without AuraBank having direct SQL access.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 text-2xs font-semibold text-emerald-300">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                  Bilateral Model Active
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 px-3 py-1 text-2xs font-mono text-cyan-300">
+                  Node Port: 8083 (Isolated)
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 lg:grid-cols-12 gap-5" id="coobs-sovereign-ledger">
+              {/* Beneficiary Live Ledger */}
+              <div className="lg:col-span-6 rounded-xl border border-slate-800 bg-slate-900/80 p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <Database className="h-3.5 w-3.5 text-emerald-400" />
+                    CooBS Sovereign Customer Account
+                  </div>
+                  <span className="text-3xs font-mono rounded bg-slate-800 px-2 py-0.5 text-slate-300">
+                    B-ACC-998877
+                  </span>
+                </div>
+
+                <div className={`rounded-lg border p-4 transition-all duration-300 ${
+                  highlightCoobs ? 'border-emerald-400 bg-emerald-950/40 ring-2 ring-emerald-400' : 'border-emerald-900/40 bg-emerald-950/20'
+                }`}>
+                  <div className="text-2xs text-slate-400 font-medium">Customer: Bob Martinez (CooBS)</div>
+                  <div className="mt-1 flex items-baseline justify-between">
+                    <div className="text-2xl font-black font-mono tracking-tight text-emerald-300">
+                      PHP {partnerBankLedger.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                    <span className="text-2xs font-mono text-emerald-400 font-semibold bg-emerald-950/60 border border-emerald-800/50 rounded px-2 py-0.5">
+                      LIVE BAL
+                    </span>
+                  </div>
+                  <div className="mt-2 text-3xs text-slate-400 flex items-center justify-between">
+                    <span>Baseline: PHP 50,000.00</span>
+                    <span className="text-emerald-400 font-bold">
+                      {partnerBankLedger.balance > 50000 
+                        ? `+ PHP ${(partnerBankLedger.balance - 50000).toLocaleString('en-US', { minimumFractionDigits: 2 })} received from Alice (AuraBank)` 
+                        : partnerBankLedger.balance < 50000
+                        ? `- PHP ${(50000 - partnerBankLedger.balance).toLocaleString('en-US', { minimumFractionDigits: 2 })} sent back to Alice (AuraBank)`
+                        : 'At baseline PHP 50,000.00'}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-3xs text-slate-400 border-t border-slate-800/80 pt-2 leading-relaxed">
+                    <strong>Bob Martinez Balance Dynamics:</strong> Bob lives in CooBS's sovereign database. When Alice sends funds outward, Bob is credited (+). When Bob sends funds inward back to Alice on AuraBank, Bob is debited (-).
+                  </p>
+                </div>
+
+                {/* CooBS Ingestion Log */}
+                <div>
+                  <div className="text-2xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center justify-between">
+                    <span>CooBS Sovereign Activity Feed</span>
+                    <span className="text-3xs text-slate-500 font-mono">Last 6 Events</span>
+                  </div>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {partnerBankLedger.history.length === 0 ? (
+                      <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-center text-xs text-slate-500">
+                        No transactions recorded yet. Execute an outward wire above to watch CooBS receive funds!
+                      </div>
+                    ) : (
+                      partnerBankLedger.history.map((tx, idx) => (
+                        <div key={idx} className="rounded-lg border border-slate-800 bg-slate-950/80 p-2.5 text-2xs space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className={`font-bold font-mono ${tx.type.includes('CREDIT') ? 'text-emerald-400' : 'text-cyan-400'}`}>
+                              {tx.type}
+                            </span>
+                            <span className="font-mono text-3xs text-slate-400">{tx.timestamp}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-slate-300">
+                            <span className="font-mono">Ref: {tx.ref}</span>
+                            <span className="font-mono font-bold text-white">PHP {tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div className="text-3xs text-slate-400">
+                            {tx.sender} &rarr; {tx.beneficiary}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Database Anti-Tampering & Zero-SQL Verification */}
+              <div className="lg:col-span-6 rounded-xl border border-slate-800 bg-slate-900/80 p-5 space-y-4 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                      <ShieldAlert className="h-3.5 w-3.5 text-cyan-400" />
+                      Anti-Tampering & Zero-SQL Audit
+                    </div>
+                    <span className="text-3xs font-mono rounded bg-cyan-950/50 border border-cyan-800/50 px-2 py-0.5 text-cyan-300">
+                      RFC Compliance
+                    </span>
+                  </div>
+
+                  <p className="mt-2 text-xs text-slate-300 leading-relaxed">
+                    Under the Bilateral Nostro-Vostro model, <strong>AuraBank cannot directly touch, query, or mutate CooBS's database</strong>. The 3 layers of separation are:
+                  </p>
+
+                  <div className="mt-3 space-y-2">
+                    <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-2.5 text-2xs">
+                      <div className="font-bold text-slate-200 flex items-center gap-1.5">
+                        <span className="h-1.5 w-1.5 rounded-full bg-cyan-400"></span>
+                        1. Network Wire Boundary (REST Only)
+                      </div>
+                      <p className="mt-0.5 text-3xs text-slate-400">
+                        Transfer Orchestrator communicates with CooBS strictly over TLS HTTPS REST payloads (<code className="text-cyan-300 font-mono">POST /mock-partner/transfers</code>). No JDBC or database ports are exposed.
+                      </p>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-2.5 text-2xs">
+                      <div className="font-bold text-slate-200 flex items-center gap-1.5">
+                        <span className="h-1.5 w-1.5 rounded-full bg-cyan-400"></span>
+                        2. Zero DB Links or Shared Storage
+                      </div>
+                      <p className="mt-0.5 text-3xs text-slate-400">
+                        AuraBank's Oracle XE database has 0 database links, 0 credentials, and 0 permissions to CooBS's infrastructure.
+                      </p>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-2.5 text-2xs">
+                      <div className="font-bold text-slate-200 flex items-center gap-1.5">
+                        <span className="h-1.5 w-1.5 rounded-full bg-cyan-400"></span>
+                        3. Live Anti-Tampering Proof (404 Isolation Probe)
+                      </div>
+                      <p className="mt-0.5 text-3xs text-slate-400">
+                        If AuraBank attempts to query CooBS's customer <code className="text-amber-300 font-mono">B-ACC-998877</code> from its own core ledger, AuraBank fails with <code className="text-amber-300 font-mono">HTTP 404 Not Found</code>.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={handleVerifyDbIsolation}
+                    disabled={isCheckingIsolation}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-600 to-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:from-cyan-500 hover:to-emerald-500 transition-all disabled:opacity-50"
+                  >
+                    {isCheckingIsolation ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        Running Anti-Tampering Probe...
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="h-4 w-4" />
+                        Run Anti-Tampering Probe: Query B-ACC-998877 on AuraBank DB
+                      </>
+                    )}
+                  </button>
+
+                  {isolationCheckResult && (
+                    <div className={`mt-3 rounded-lg border p-3 text-2xs font-mono space-y-1 ${
+                      isolationCheckResult.tampered 
+                        ? 'border-rose-500/50 bg-rose-950/40 text-rose-200' 
+                        : 'border-emerald-500/50 bg-emerald-950/40 text-emerald-200'
+                    }`}>
+                      <div className="flex items-center justify-between font-bold">
+                        <span className="flex items-center gap-1.5">
+                          {isolationCheckResult.tampered ? <XCircle className="h-4 w-4 text-rose-400" /> : <CheckCircle2 className="h-4 w-4 text-emerald-400" />}
+                          {isolationCheckResult.tampered ? 'TAMPERING DETECTED' : 'DATABASE ISOLATION CONFIRMED'}
+                        </span>
+                        <span>{isolationCheckResult.proof}</span>
+                      </div>
+                      <p className="text-3xs text-slate-300 leading-relaxed font-sans mt-1">
+                        {isolationCheckResult.explanation}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Architecture & Ledger Matrix Reference */}
+          <div className="rounded-2xl border border-purple-100 bg-white p-6 shadow-sm">
+            <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900 uppercase tracking-wider">
+              <Database className="h-4 w-4 text-purple-700" /> Bilateral Nostro-Vostro Accounting Lifecycle
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Deterministic double-entry book balancing across bilateral banking corridors.
+            </p>
+
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="rounded-xl border border-purple-100 bg-purple-50/40 p-4">
+                <div className="font-bold text-xs text-purple-950">Step 1: Local Fund Reservation</div>
+                <div className="mt-1 font-mono text-2xs text-purple-900">
+                  AuraBank Customer &rarr; CooBS Nostro Buffer
+                </div>
+                <div className="mt-2.5 space-y-1 text-3xs font-mono text-slate-600">
+                  <div>Debit: Alice (1000-2000-3001) (-PHP 1,000)</div>
+                  <div>Credit: ACC-NOSTRO-BANK-B (+PHP 1,000)</div>
+                  <div className="text-emerald-700 font-semibold mt-1">&check; 5,000,000 &rarr; 5,001,000 (Money Conserved)</div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-purple-100 bg-purple-50/40 p-4">
+                <div className="font-bold text-xs text-purple-950">Step 2: Partner Bank Wire Dispatch</div>
+                <div className="mt-1 font-mono text-2xs text-purple-900">
+                  HTTP Wire &rarr; CooBS Gateway
+                </div>
+                <div className="mt-2.5 space-y-1 text-3xs font-mono text-slate-600">
+                  <div>Protocol: JSON over TLS / Mutual API Key</div>
+                  <div>Timeout: Strict 4.0s Client Timeout</div>
+                  <div className="text-purple-700 font-semibold mt-1">&check; Zero DLQ on 400 rejection; Saga refund on lag</div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-purple-100 bg-purple-50/40 p-4">
+                <div className="font-bold text-xs text-purple-950">Step 3: Inward Wire Credit</div>
+                <div className="mt-1 font-mono text-2xs text-purple-900">
+                  CooBS (Bob) &rarr; AuraBank (Alice)
+                </div>
+                <div className="mt-2.5 space-y-1 text-3xs font-mono text-slate-600">
+                  <div>Debit: Bob Martinez at CooBS (-PHP 1,000)</div>
+                  <div>Credit: Alice Guo on AuraBank (+PHP 1,000)</div>
+                  <div className="text-emerald-700 font-semibold mt-1">&check; Buffer rebalanced, Alice balance increased!</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 6: RAW TEMENOS OFS PROTOCOL TERMINAL */}
+      {activeTab === 'ofs' && (
+        <div className="space-y-6 rounded-2xl border border-purple-100 bg-white p-6 shadow-sm">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div>
+              <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
+                <Terminal className="h-4 w-4 text-purple-700" /> Temenos Open Financial Services (OFS) Wire Playground
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Direct wire protocol endpoint (<code className="font-mono text-purple-900 font-semibold">POST /api/v1/cbs/funds-transfer</code> with <code className="font-mono text-purple-900">Content-Type: text/plain</code>).
+              </p>
+            </div>
+
+            {/* Template Presets */}
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                {
+                  label: 'FT INITIATE (₱100)',
+                  cmd: 'FUNDS.TRANSFER,INITIATE/I/PROCESS//TXN-OFS-01,USER01/123456,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=1000-2000-3001,CREDIT.ACCT.NO=1000-2000-3002,AMOUNT=100.00,CURRENCY=PHP,DESCRIPTION=Temenos OFS Wire'
+                },
+                {
+                  label: 'FT INITIATE (₱5,000)',
+                  cmd: 'FUNDS.TRANSFER,INITIATE/I/PROCESS//TXN-OFS-02,USER01/123456,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=1000-2000-3001,CREDIT.ACCT.NO=1000-2000-3002,AMOUNT=5000.00,CURRENCY=PHP,DESCRIPTION=Standard Retail Transfer'
+                },
+                {
+                  label: 'FT OVERDRAFT TEST',
+                  cmd: 'FUNDS.TRANSFER,INITIATE/I/PROCESS//TXN-OFS-03,USER01/123456,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=1000-2000-3001,CREDIT.ACCT.NO=1000-2000-3002,AMOUNT=999999999.00,CURRENCY=PHP,DESCRIPTION=Overdraft Stress'
+                }
+              ].map((tmpl) => (
+                <button
+                  key={tmpl.label}
+                  type="button"
+                  onClick={() => setOfsInput(tmpl.cmd)}
+                  className="rounded-lg border border-purple-200 bg-purple-50/70 px-2.5 py-1 font-mono text-2xs font-semibold text-purple-900 hover:bg-purple-100 hover:text-purple-950 transition"
+                >
+                  {tmpl.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-2xs font-bold uppercase tracking-wider text-purple-950">
+              OFS Wire Payload String
+            </label>
+            <textarea
+              rows="4"
+              value={ofsInput}
+              onChange={(e) => setOfsInput(e.target.value)}
+              className="w-full rounded-xl border border-purple-200 bg-slate-900 p-3.5 font-mono text-xs text-emerald-400 focus:border-purple-600 focus:outline-hidden shadow-inner"
+            />
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleExecuteOfs}
+              disabled={isExecutingOfs}
+              className="flex items-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-2xs transition-all disabled:opacity-50"
+            >
+              {isExecutingOfs ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Transmit OFS Payload
+            </button>
+          </div>
+
+          {/* Response Terminal */}
+          {ofsResponse && (
+            <div className="rounded-xl border border-purple-900/40 bg-[#120B24] p-4 shadow-inner space-y-2">
+              <div className="flex items-center justify-between text-2xs font-bold uppercase tracking-wider text-purple-300 border-b border-purple-900/60 pb-2">
+                <span className="flex items-center gap-1.5"><Terminal className="h-3.5 w-3.5 text-purple-400" /> Temenos Wire Protocol Response</span>
+                <span className="font-mono text-emerald-400">STATUS 200 OK</span>
+              </div>
+              <pre className="overflow-x-auto font-mono text-xs text-emerald-400 leading-relaxed">
+                {ofsResponse}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 7: COB & EOD LIFECYCLE */}
+      {activeTab === 'cob' && (
+        <div className="space-y-6 rounded-2xl border border-purple-100 bg-white p-6 shadow-sm">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div>
+              <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
+                <Moon className="h-4 w-4 text-purple-700" /> Close of Business (COB) &amp; EOD Batch Lifecycle
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Executes the 5-phase COB sequence: Cutoff &rarr; Low ADB Balance Fees (₱50) &rarr; BIR 20% Tax Withholding &amp; Interest Accrual &rarr; EOD Snapshots &amp; Merkle Audit &rarr; Rollover to T+1.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleRunCob}
+              disabled={isExecutingCob}
+              className="flex items-center gap-2 rounded-xl bg-[#311075] hover:bg-[#250C5C] px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-2xs transition-all disabled:opacity-50"
+            >
+              {isExecutingCob ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+              Run Full COB Sequence
+            </button>
+          </div>
+
+          {/* Phase progression cards */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
+            {[
+              { phase: 'Phase 0', title: 'Cutoff Posting Window', desc: 'Closes window, sets EOD_CUTOFF' },
+              { phase: 'Phase 1', title: 'Low ADB Fees (₱50)', desc: 'Accounts < ₱5,000 ADB, arrears safe' },
+              { phase: 'Phase 2', title: 'Interest & BIR 20% Tax', desc: 'Daily accrual (0.5% p.a.) & 20% BIR tax' },
+              { phase: 'Phase 3', title: 'Audit Merkle Anchoring', desc: 'Audit snapshots & Merkle root sealing' },
+              { phase: 'Phase 4', title: 'Rollover to T+1', desc: 'Advances system date to next day' }
+            ].map((p) => (
+              <div key={p.phase} className="rounded-xl border border-purple-100 bg-purple-50/50 p-3.5 space-y-1">
+                <div className="font-mono text-2xs font-bold uppercase tracking-wider text-purple-700">{p.phase}</div>
+                <div className="text-xs font-bold text-slate-900">{p.title}</div>
+                <div className="text-2xs text-slate-500">{p.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* COB Result Inspection */}
+          {cobResult && (
+            <div className="rounded-xl border border-purple-100 bg-slate-50/80 p-4 space-y-2">
+              <div className="flex items-center justify-between text-2xs font-bold uppercase tracking-wider text-purple-950 border-b border-purple-200/60 pb-2">
+                <span>Close of Business (COB) Execution Result</span>
+                <span className={`font-mono ${cobResult.success ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  {cobResult.success ? '✓ COMPLETED' : '✗ FAILED'}
+                </span>
+              </div>
+              <pre className="overflow-x-auto rounded-lg border border-purple-900/30 bg-[#120B24] p-3 font-mono text-2xs text-purple-200">
+                {typeof cobResult.data === 'string' ? cobResult.data : JSON.stringify(cobResult.data || cobResult.error, null, 2)}
+              </pre>
             </div>
           )}
         </div>

@@ -40,5 +40,29 @@ public record TransferInitiationRequest(
         String biometricSignature,
 
         @JsonAlias({"scamAdvisoryAcknowledged", "scam_advisory_acknowledged"})
-        boolean scamAdvisoryAcknowledged
-) {}
+        boolean scamAdvisoryAcknowledged,
+
+        @JsonAlias({"destinationBank", "destination_bank"})
+        String destinationBank,
+
+        @JsonAlias({"senderName", "sender_name"})
+        String senderName,
+
+        @JsonAlias({"simulationMode", "simulation_mode"})
+        String simulationMode
+) {
+    public TransferInitiationRequest(
+            String transactionId,
+            String sourceAccountId,
+            String destinationAccountId,
+            BigDecimal amount,
+            String currency,
+            String description,
+            String deviceId,
+            String idempotencyKey,
+            String biometricSignature,
+            boolean scamAdvisoryAcknowledged) {
+        this(transactionId, sourceAccountId, destinationAccountId, amount, currency, description,
+                deviceId, idempotencyKey, biometricSignature, scamAdvisoryAcknowledged, "AURABANK", null, null);
+    }
+}

@@ -47,7 +47,7 @@ This testing runbook provides rigorous, step-by-step instructions to test, valid
 | **Adminer Database GUI** | Web DB Client | `8088` | Public Browser | Web interface for querying Oracle XE (`:1521`) and PostgreSQL (`:5432`) (`http://localhost:8088`) |
 
 > **Perimeter Security Invariant**: 
-> In accordance with zero-trust banking architecture, `t24-mock-cbs` (`:8085`) is **never directly exposed to public callers or frontends** through the Gateway. External clients communicate strictly via `transfer-orchestrator` (`:8082`), which transforms requests into Temenos OFS wire messages and communicates internally with `t24-mock-cbs`. Direct calls to `http://localhost:8085` are reserved for internal batch jobs (such as COB) or local development diagnosis.
+> In accordance with zero-trust banking architecture, `t24-mock-cbs` (container port `:8085`, host port `:8087`) is **never directly exposed to public callers or frontends** through the Gateway. External clients communicate strictly via `transfer-orchestrator` (`:8082`), which transforms requests into Temenos OFS wire messages and communicates internally with `t24-mock-cbs`. Direct calls to `http://localhost:8087` are reserved for internal batch jobs (such as COB) or local development diagnosis.
 
 ---
 
@@ -399,7 +399,7 @@ Implemented in `CbsCobBatchService.java` and `CobController.java` inside `t24-mo
 #### Step 1: Check System Business Date and Window Status
 Run in terminal (PowerShell or Bash):
 ```powershell
-curl.exe -s http://localhost:8085/api/v1/cbs/system-date
+curl.exe -s http://localhost:8087/api/v1/cbs/system-date
 ```
 *Expected Output*:
 ```text
@@ -408,7 +408,7 @@ SYSTEM.DATE/I/PROCESS//SYS-DATE-1,BUSINESS.DATE:2026-10-09,STATUS:ONLINE,POSTING
 
 #### Step 2: Trigger Close of Business (COB) Batch Run
 ```powershell
-curl.exe -X POST http://localhost:8085/api/v1/cbs/cob/run
+curl.exe -X POST http://localhost:8087/api/v1/cbs/cob/run
 ```
 *Expected Output*:
 ```text
@@ -573,7 +573,7 @@ Open **`http://localhost:8089`** in your browser.
 | **Circular Transfer Block** | Staff Console `/cbs` (Tab 5 Scenario 2) | Same source and destination rejected with HTTP 400. |
 | **Cooling-Off Interception** | Staff Console `/cbs` (Tab 5) / `POST /transfers` | ₱300k transfer held in Redis (`tx:cooloff:*`) with 600s timer; zero writes to CBS. |
 | **Biometric Challenge & Auth**| Staff Console `/cbs` (Tab 5) / API | ₱75k transfer paused with challenge token; settles upon signature verification. |
-| **COB/EOD Batch Processing** | `POST http://localhost:8085/api/v1/cbs/cob/run` | ADB fee deducted, interest accrued, GL reconciled, date advances $T+1$, 3 EOD files uploaded to Azurite. |
+| **COB/EOD Batch Processing** | `POST http://localhost:8087/api/v1/cbs/cob/run` | ADB fee deducted, interest accrued, GL reconciled, date advances $T+1$, 3 EOD files uploaded to Azurite. |
 | **Cooling-Off Cancellation** | `POST /transfers/cancel` | Transfer cancelled; Redis key evicted immediately; funds never touched. |
 | **Account Locking / Freezing** | Staff Console `/customers` | Status toggled to `LOCKED`; subsequent transfer attempts blocked at perimeter. |
 | **KYC Verification** | Staff Console `/kyc` | Pending identity application reviewed and approved by staff. |

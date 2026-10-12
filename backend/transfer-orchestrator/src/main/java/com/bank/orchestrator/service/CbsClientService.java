@@ -1,6 +1,7 @@
 package com.bank.orchestrator.service;
 
 import com.bank.ledger.contracts.dto.AccountTransactionDto;
+import com.bank.ledger.contracts.dto.ParticipantBankDto;
 import com.bank.ledger.contracts.dto.ReversalTicketDto;
 import com.bank.ledger.contracts.dto.TransactionStatusHistoryDto;
 import com.bank.ledger.contracts.dto.events.TransferFailedToDlqEvent;
@@ -135,6 +136,24 @@ public class CbsClientService {
         }
     }
 
+    public List<ParticipantBankDto> getParticipantBanks() {
+        log.info("Querying CBS participant banks directory via OFS");
+        try {
+            String ofsResp = webClient.get()
+                    .uri("/api/v1/cbs/interbank/banks")
+                    .accept(MediaType.TEXT_PLAIN)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofMillis(3000))
+                    .block();
+            List<ParticipantBankDto> list = OfsMessageUtil.parseParticipantBanksResponse(ofsResp);
+            return list != null ? list : Collections.emptyList();
+        } catch (Exception e) {
+            log.error("Failed to query CBS participant banks via OFS: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
     public TransferInitiationResponse postToCbs(TransferInitiationRequest request, String txId) {
         return postToCbs(request, txId, false);
     }
@@ -145,9 +164,27 @@ public class CbsClientService {
         log.info("Sending funds transfer request to CBS via OFS: txId={}, amount={}, fundsHeld={}", txId, request.amount(), fundsHeld);
 
         String idempKey = request.idempotencyKey() != null ? request.idempotencyKey() : txId;
+        String txType = "AC";
+        String orderingCust = request.senderName();
+        String benCust = null;
+        String benAcct = null;
+        String cpBank = request.destinationBank() != null ? request.destinationBank() : "COOBS";
+
+        if ("ACC-NOSTRO-BANK-B".equalsIgnoreCase(request.destinationAccountId())) {
+            txType = "OT";
+            benCust = "Bob Martinez";
+            benAcct = "B-ACC-998877";
+        } else if ("ACC-NOSTRO-BANK-B".equalsIgnoreCase(request.sourceAccountId())) {
+            txType = "IT";
+            orderingCust = request.senderName() != null ? request.senderName() : "Bob Martinez";
+            benCust = "Alice Guo";
+            benAcct = request.destinationAccountId();
+        }
+
         String ofsPostingReq = OfsMessageUtil.buildFundsTransferInitiate(
                 txId, request.sourceAccountId(), request.destinationAccountId(),
-                request.amount(), request.currency() != null ? request.currency() : "PHP", null, idempKey
+                request.amount(), request.currency() != null ? request.currency() : "PHP", null, idempKey,
+                txType, request.description(), orderingCust, benCust, benAcct, cpBank, "SHA"
         );
 
         String ofsResponse;
@@ -240,6 +277,40 @@ public class CbsClientService {
         );
     }
 
+    /**
+     * Emits a standardized TransferFailedToDlqEvent to Kafka topic banking.transfers.dlq
+     * for auditing, incident tracking, and ops alerting.
+     */
+    public void publishDlqEvent(String txId, TransferInitiationRequest request, String errorType, String errorCode, String details, Throwable t) {
+        String incidentId = UUID.randomUUID().toString();
+        TransferFailedToDlqEvent dlqEvent = TransferFailedToDlqEvent.builder()
+                .incidentId(incidentId)
+                .correlationId(txId)
+                .transactionId(txId)
+                .errorType(errorType != null ? errorType : "INTERBANK_WIRE_FAILURE")
+                .errorCode(errorCode != null ? errorCode : "PARTNER_FAILURE")
+                .circuitBreakerState("CLOSED")
+                .sourceAccountId(request != null ? request.sourceAccountId() : "UNKNOWN")
+                .destinationAccountId(request != null ? request.destinationAccountId() : "UNKNOWN")
+                .amount(request != null ? request.amount() : BigDecimal.ZERO)
+                .currency(request != null && request.currency() != null ? request.currency() : "PHP")
+                .failureTimestampUtc(Instant.now())
+                .stackTrace(details != null ? details : (t != null ? t.getMessage() : "Unknown"))
+                .originalPayload(request != null ? Map.of(
+                        "sourceAccountId", request.sourceAccountId(),
+                        "destinationAccountId", request.destinationAccountId(),
+                        "amount", request.amount()
+                ) : Map.of())
+                .build();
+
+        try {
+            kafkaTemplate.send(DLQ_TOPIC, txId, dlqEvent);
+            log.info("Published failed interbank transfer event to DLQ: incidentId={}, txId={}, errorType={}", incidentId, txId, errorType);
+        } catch (Exception e) {
+            log.error("Failed to publish interbank DLQ event to Kafka: {}", e.getMessage(), e);
+        }
+    }
+
     private ResponseStatusException extractClientException(Throwable t) {
         Throwable curr = t;
         while (curr != null) {
@@ -255,5 +326,39 @@ public class CbsClientService {
             curr = curr.getCause();
         }
         return null;
+    }
+
+    public Map<String, String> getAccountBalance(String accountId) {
+        log.info("Querying CBS balance for accountId={}", accountId);
+        try {
+            String ofsResponse = webClient.get()
+                    .uri("/api/v1/cbs/accounts/{accountId}/balance", accountId)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofMillis(3000))
+                    .block();
+            return OfsMessageUtil.parseBalanceEnquiryResponse(ofsResponse);
+        } catch (Exception e) {
+            log.error("Failed to query CBS balance for accountId={}: {}", accountId, e.getMessage());
+            return Collections.emptyMap();
+        }
+    }
+
+    public void executeCompensatingReversal(String originalTxId, String reason) {
+        log.warn("Executing automated Saga compensating reversal for originalTxId={}: reason={}", originalTxId, reason);
+        try {
+            String ofsPayload = OfsMessageUtil.buildFundsTransferReversal(originalTxId, "SAGA-REV-" + System.currentTimeMillis(), "SAGA_ORCHESTRATOR");
+            String ofsResponse = webClient.post()
+                    .uri("/api/v1/cbs/reversal")
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
+                    .bodyValue(ofsPayload)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofMillis(4000))
+                    .block();
+            log.info("CBS Saga reversal completed for {}: {}", originalTxId, ofsResponse);
+        } catch (Exception e) {
+            log.error("CRITICAL: Failed to execute automated Saga reversal on CBS for {}: {}", originalTxId, e.getMessage(), e);
+        }
     }
 }
