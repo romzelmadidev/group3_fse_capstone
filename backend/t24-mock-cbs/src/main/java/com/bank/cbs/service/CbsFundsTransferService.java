@@ -44,6 +44,7 @@ public class CbsFundsTransferService {
     private final OutboxEventMasterRepository outboxRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final ObjectMapper objectMapper;
+    private final AccountMasterRepository accountRepository;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private org.springframework.data.redis.core.StringRedisTemplate redisTemplate;
 
@@ -57,6 +58,24 @@ public class CbsFundsTransferService {
             OutboxEventMasterRepository outboxRepository,
             KafkaTemplate<String, Object> kafkaTemplate,
             ObjectMapper objectMapper) {
+        this(balanceRepository, transactionRepository, glLedgerRepository, glBalanceRepository,
+             systemDateRepository, statusHistoryRepository, outboxRepository,
+             kafkaTemplate, objectMapper, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public CbsFundsTransferService(
+            BalanceMasterRepository balanceRepository,
+            TransactionMasterRepository transactionRepository,
+            GlLedgerMasterRepository glLedgerRepository,
+            GlBalanceMasterRepository glBalanceRepository,
+            SystemDateMasterRepository systemDateRepository,
+            TransactionStatusHistoryMasterRepository statusHistoryRepository,
+            OutboxEventMasterRepository outboxRepository,
+            KafkaTemplate<String, Object> kafkaTemplate,
+            ObjectMapper objectMapper,
+            @org.springframework.beans.factory.annotation.Autowired(required = false)
+            AccountMasterRepository accountRepository) {
         this.balanceRepository = balanceRepository;
         this.transactionRepository = transactionRepository;
         this.glLedgerRepository = glLedgerRepository;
@@ -66,6 +85,22 @@ public class CbsFundsTransferService {
         this.outboxRepository = outboxRepository;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
+        this.accountRepository = accountRepository;
+    }
+
+    private String resolveToAccountId(String identifier) {
+        if (identifier == null || identifier.isBlank()) {
+            return identifier;
+        }
+        if (balanceRepository.existsById(identifier)) {
+            return identifier;
+        }
+        if (accountRepository != null) {
+            return accountRepository.findByAccountNumber(identifier)
+                    .map(AccountMaster::getAccountId)
+                    .orElse(identifier);
+        }
+        return identifier;
     }
 
     @Transactional("masterTransactionManager")
@@ -113,8 +148,8 @@ public class CbsFundsTransferService {
             throw new IllegalStateException("CBS Posting window is closed. Business status: " + systemDate.getStatus());
         }
 
-        String sourceId = request.sourceAccountId();
-        String destId = request.destinationAccountId();
+        String sourceId = resolveToAccountId(request.sourceAccountId());
+        String destId = resolveToAccountId(request.destinationAccountId());
         if (sourceId == null || sourceId.isBlank() || destId == null || destId.isBlank()) {
             throw new IllegalArgumentException("Source and destination accounts must not be null or blank.");
         }
