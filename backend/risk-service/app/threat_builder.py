@@ -57,13 +57,15 @@ def has_threat_context(request: RiskAnalysisRequest) -> bool:
         or request.is_on_call
         or request.is_screen_sharing
         or request.is_pasted
+        or getattr(request, "emulator", False)
+        or getattr(request, "rooted", False)
     ):
         return True
 
     # 1. Check Device Context
     dev = request.device_context
     if dev:
-        if dev.hooking or dev.remote_app_active or dev.active_call:
+        if dev.hooking or dev.remote_app_active or dev.active_call or getattr(dev, "emulator", False) or getattr(dev, "rooted", False):
             return True
 
         # Check all package lists and threat signatures
@@ -82,6 +84,8 @@ def has_threat_context(request: RiskAnalysisRequest) -> bool:
             if any(kw in item_lower for kw in MITM_INSPECTION_KEYWORDS):
                 return True
             if any(kw in item_lower for kw in HOOKING_KEYWORDS):
+                return True
+            if any(kw in item_lower for kw in ["rooted", "emulator", "magisk", "supersu", "genymotion", "vbox", "qemu", "impossible_travel", "geo_anomaly", "location"]):
                 return True
 
         # Screen sharing / mirroring
@@ -177,7 +181,20 @@ def detect_threat_category(request: RiskAnalysisRequest) -> str:
     ):
         return "LIVE_CALL_COERCION"
 
-    # Priority 5: Purpose / Account Mismatch
+    # Priority 5: Host Endpoint Tampering / Rooted Device / Android Emulator
+    if (
+        getattr(request, "emulator", False)
+        or getattr(request, "rooted", False)
+        or (dev and (getattr(dev, "emulator", False) or getattr(dev, "rooted", False)))
+        or any(kw in packages_str for kw in ["rooted", "emulator", "genymotion", "vbox", "qemu", "nox", "bluestacks", "magisk", "supersu"])
+    ):
+        return "ROOTED_DEVICE_EMULATOR"
+
+    # Priority 6: Impossible Travel / Location Anomaly
+    if any(kw in packages_str for kw in ["geo_anomaly", "impossible_travel", "unrecognized_overseas_location", "overseas"]):
+        return "LOCATION_ANOMALY"
+
+    # Priority 7: Purpose / Account Mismatch
     if cp:
         purpose = (cp.transfer_purpose or "").upper()
         acct_type = (cp.payee_account_type or "").upper()
@@ -187,15 +204,19 @@ def detect_threat_category(request: RiskAnalysisRequest) -> str:
     if "meralco" in memo or "electricity bill" in memo:
         return "PURPOSE_ACCOUNT_MISMATCH"
 
-    # Priority 6: External Clipboard Paste
+    # Priority 8: External Clipboard Paste
     if (
         request.is_pasted
         or (dev and dev.interaction and dev.interaction.account_input_mode in ["PASTED_FROM_EXTERNAL_APP", "PASTED_FROM_CLIPBOARD", "PASTED"])
     ):
         return "EXTERNAL_CLIPBOARD_PASTE"
 
-    # Priority 7: Memo Typology Patterns
-    if any(kw in memo for kw in ["crypto", "bitcoin", "guaranteed", "profit", "investment", "task", "commission", "prize", "lottery"]):
+    # Priority 9: Memo Typology Patterns
+    if any(kw in memo for kw in [
+        "crypto", "bitcoin", "guaranteed", "profit", "investment", "task", "commission",
+        "prize", "lottery", "bail", "police", "forex", "binary", "refund", "urgent", "telegram",
+        "pampadulas", "customs", "emergency"
+    ]):
         return "MEMO_SCAM_PATTERN"
 
     return "GENERAL_ADVISORY"

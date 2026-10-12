@@ -43,6 +43,7 @@
         <openpdf.version>3.0.5</openpdf.version>
         <poi.version>5.5.1</poi.version>
         <resilience4j.version>2.2.0</resilience4j.version>
+        <skipTests>false</skipTests>
     </properties>
 
     <dependencyManagement>
@@ -138,6 +139,14 @@
                         <source>${java.version}</source>
                         <target>${java.version}</target>
                         <parameters>true</parameters>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.2.5</version>
+                    <configuration>
+                        <skipTests>${skipTests}</skipTests>
                     </configuration>
                 </plugin>
             </plugins>

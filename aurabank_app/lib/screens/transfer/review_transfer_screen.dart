@@ -861,6 +861,8 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
         targetAccount: widget.recipientAccount,
         amount: widget.amount,
         memo: _currentRemarks,
+        latitude: (_riskScenario == 'GEO_ANOMALY') ? 51.5074 : null,
+        longitude: (_riskScenario == 'GEO_ANOMALY') ? -0.1278 : null,
         isScreenSharing: remoteApp,
         callState: activeCall ? 'ACTIVE_CALL' : 'IDLE',
         inputMode: (_riskScenario == 'SCAM' || widget.isPasted) ? 'PASTED' : 'TYPED',
@@ -1579,6 +1581,8 @@ class _RiskScanDialog extends StatefulWidget {
   final String targetAccount;
   final double amount;
   final String memo;
+  final double? latitude;
+  final double? longitude;
   final bool isScreenSharing;
   final String callState;
   final String inputMode;
@@ -1599,6 +1603,8 @@ class _RiskScanDialog extends StatefulWidget {
     required this.targetAccount,
     required this.amount,
     required this.memo,
+    this.latitude,
+    this.longitude,
     required this.isScreenSharing,
     required this.callState,
     required this.inputMode,
@@ -1631,6 +1637,8 @@ class _RiskScanDialogState extends State<_RiskScanDialog> {
       targetAccount: widget.targetAccount,
       amount: widget.amount,
       memo: widget.memo,
+      latitude: widget.latitude,
+      longitude: widget.longitude,
       isScreenSharing: widget.isScreenSharing,
       callState: widget.callState,
       inputMode: widget.inputMode,
@@ -1657,10 +1665,10 @@ class _RiskScanDialogState extends State<_RiskScanDialog> {
       Navigator.of(context).pop({
         ...apiRes,
         'decision': 'BLOCK',
-        'fraud_score': 100,
-        'primary_flag': 'HIGH_RISK_SUSPICIOUS_ENVIRONMENT',
-        'threat_category': 'SUSPICIOUS_ACTIVITY',
-        'cause_of_suspicion': 'Suspicious device environment detected',
+        'fraud_score': apiRes['fraud_score'] ?? 100,
+        'primary_flag': apiRes['primary_flag'] ?? 'HIGH_RISK_SUSPICIOUS_ENVIRONMENT',
+        'threat_category': apiRes['threat_category'] ?? 'SUSPICIOUS_ACTIVITY',
+        'cause_of_suspicion': apiRes['cause_of_suspicion'] ?? 'Suspicious device environment detected',
       });
       return;
     }
@@ -1669,11 +1677,11 @@ class _RiskScanDialogState extends State<_RiskScanDialog> {
       Navigator.of(context).pop({
         ...apiRes,
         'decision': 'ADVISORY_WARNING',
-        'fraud_score': 85,
-        'primary_flag': 'GEO_VELOCITY_IMPOSSIBLE_TRAVEL',
-        'threat_category': 'LOCATION_ANOMALY',
-        'cause_of_suspicion': 'Impossible travel velocity detected: Location changed instantaneously to London, United Kingdom while registered baseline is Manila, Philippines.',
-        'warning_dialog': {
+        'fraud_score': apiRes['fraud_score'] ?? 85,
+        'primary_flag': apiRes['primary_flag'] ?? 'GEO_VELOCITY_IMPOSSIBLE_TRAVEL',
+        'threat_category': apiRes['threat_category'] ?? 'LOCATION_ANOMALY',
+        'cause_of_suspicion': apiRes['cause_of_suspicion'] ?? 'Impossible travel velocity detected: Location changed instantaneously to London, United Kingdom while registered baseline is Manila, Philippines.',
+        'warning_dialog': apiRes['warning_dialog'] ?? {
           'title': 'Location Anomaly Detected',
           'threat_category': 'IMPOSSIBLE_TRAVEL',
           'body_message': 'Our security risk engine detected an impossible travel anomaly. Your session is currently reporting from London, United Kingdom, which deviates significantly from your baseline profile in Manila, Philippines.',

@@ -5,7 +5,7 @@ WORKDIR /build
 COPY . .
 
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn clean package -DskipTests -pl account-service -am \
+    mvn clean package -DskipTests -Dmaven.test.skip=true -pl account-service -am \
     && cp account-service/target/account-service-*.jar /app.jar
 
 FROM eclipse-temurin:21-jre-alpine

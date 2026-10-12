@@ -253,12 +253,23 @@ class DeviceIdentity {
   }
 
   static String _defaultType() {
-    if (kIsWeb) return 'WEB';
+    if (kIsWeb) {
+      // Default to WEB unless overridden for mobile app simulation
+      return _forceMobileMode ? 'MOBILE' : 'WEB';
+    }
     return 'MOBILE';
   }
 
+  static bool _forceMobileMode = false;
+  static void enableMobileSimulation({String deviceName = 'iPhone 15 Pro (Simulated)'}) {
+    _forceMobileMode = true;
+    _instance._type = 'MOBILE';
+    _instance._id = DeviceStorage.getOrCreateDeviceId('mobile-sim');
+    _instance._name = deviceName;
+  }
+
   static String _defaultId() {
-    if (kIsWeb) {
+    if (kIsWeb && !_forceMobileMode) {
       if (defaultTargetPlatform == TargetPlatform.android) {
         return DeviceStorage.getOrCreateDeviceId('android-phone');
       }

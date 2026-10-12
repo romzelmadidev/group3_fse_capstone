@@ -62,6 +62,7 @@ class BankService extends ChangeNotifier {
       baseUrl,
       'http://127.0.0.1:8080',
       'http://localhost:8080',
+      'http://10.91.102.224:8080',
       'http://192.168.18.110:8080',
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
         'http://10.0.2.2:8080',
@@ -1236,6 +1237,8 @@ class BankService extends ChangeNotifier {
     bool? isPrimaryDevice,
     bool? isOnCall,
     bool? isPasted,
+    double? latitude,
+    double? longitude,
   }) async {
     final effectiveRemote = remoteAppActive ?? isScreenSharing;
     final effectiveCall = isOnCall ?? activeCall ?? (callState != null && callState != 'IDLE');
@@ -1248,6 +1251,8 @@ class BankService extends ChangeNotifier {
       'memo': memo ?? '',
       'user_id': AuthApiService().currentUserId ?? DeviceStorage.getUserId() ?? 'U1001',
       'emulator': isEmulator,
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
       if (deviceId != null) 'device_id': deviceId,
       if (isPrimaryDevice != null) 'is_primary_device': isPrimaryDevice,
       'is_on_call': effectiveCall,

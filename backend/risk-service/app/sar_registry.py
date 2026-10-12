@@ -55,11 +55,17 @@ def _parse(text: str) -> Dict[str, str]:
 
 def _summary(tx_id: str, text: str, mtime: float) -> Dict:
     fields = _parse(text)
+    parsed_tx = fields.get("transaction_id")
+    effective_tx = tx_id if (not parsed_tx or parsed_tx == "UNKNOWN_TX") else parsed_tx
+    report_num = fields.get("report_number")
+    if report_num and "UNKNOWN_TX" in report_num:
+        report_num = report_num.replace("UNKNOWN_TX", effective_tx)
+        fields["report_number"] = report_num
     return {
         **{k: v for k, v in fields.items() if k not in ("narrative", "red_flags")},
-        "transaction_id": fields.get("transaction_id", tx_id),
+        "transaction_id": effective_tx,
         "created_at": datetime.fromtimestamp(mtime, timezone.utc).isoformat(),
-        "review": review_state(tx_id),
+        "review": review_state(effective_tx),
     }
 
 
@@ -81,12 +87,31 @@ def list_reports() -> List[Dict]:
 def get_report(tx_id: str) -> Optional[Dict]:
     p = _path(tx_id, ".txt")
     if not os.path.exists(p):
-        return None
+        if os.path.isdir(SAR_DRAFTS_DIR):
+            for name in os.listdir(SAR_DRAFTS_DIR):
+                if name.endswith("_SAR.txt"):
+                    file_tx = name[: -len("_SAR.txt")]
+                    if file_tx == tx_id or tx_id in file_tx:
+                        p = os.path.join(SAR_DRAFTS_DIR, name)
+                        tx_id = file_tx
+                        break
+            if not os.path.exists(p) and tx_id == "UNKNOWN_TX":
+                for name in os.listdir(SAR_DRAFTS_DIR):
+                    if name.endswith("_SAR.txt"):
+                        p = os.path.join(SAR_DRAFTS_DIR, name)
+                        tx_id = name[: -len("_SAR.txt")]
+                        break
+        if not os.path.exists(p):
+            return None
     with open(p, encoding="utf-8") as f:
         text = f.read()
+    fields = _parse(text)
+    parsed_tx = fields.get("transaction_id")
+    effective_tx = tx_id if (not parsed_tx or parsed_tx == "UNKNOWN_TX") else parsed_tx
     return {
         **_summary(tx_id, text, os.path.getmtime(p)),
-        **{k: v for k, v in _parse(text).items() if k in ("narrative", "red_flags")},
+        **{k: v for k, v in fields.items() if k in ("narrative", "red_flags")},
+        "transaction_id": effective_tx,
         "document": text,
     }
 

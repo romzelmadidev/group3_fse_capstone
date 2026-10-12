@@ -4,7 +4,7 @@ WORKDIR /build
 COPY . .
 
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn clean package -DskipTests -pl compliance-service -am \
+    mvn clean package -DskipTests -Dmaven.test.skip=true -pl compliance-service -am \
     && cp compliance-service/target/compliance-service-*.jar /app.jar
 
 FROM eclipse-temurin:21-jre-alpine
