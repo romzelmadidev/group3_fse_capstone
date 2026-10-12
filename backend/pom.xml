@@ -69,6 +69,23 @@
                 <version>${oracle.jdbc.version}</version>
             </dependency>
 
+            <!-- Flyway Migration Engine & Database Modules -->
+            <dependency>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-core</artifactId>
+                <version>10.15.0</version>
+            </dependency>
+            <dependency>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-database-oracle</artifactId>
+                <version>10.15.0</version>
+            </dependency>
+            <dependency>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-database-postgresql</artifactId>
+                <version>10.15.0</version>
+            </dependency>
+
             <!-- PostgreSQL JDBC Driver (Azure Database for PostgreSQL) -->
             <dependency>
                 <groupId>org.postgresql</groupId>

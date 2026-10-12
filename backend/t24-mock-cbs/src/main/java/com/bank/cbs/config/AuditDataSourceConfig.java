@@ -1,5 +1,7 @@
 package com.bank.cbs.config;
 
+import org.flywaydb.core.Flyway;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -40,7 +42,8 @@ public class AuditDataSourceConfig {
     public LocalContainerEntityManagerFactoryBean auditEntityManagerFactory(
             EntityManagerFactoryBuilder builder,
             @Qualifier("auditDataSource") DataSource dataSource,
-            @Qualifier("auditDataSourceProperties") DataSourceProperties properties) {
+            @Qualifier("auditDataSourceProperties") DataSourceProperties properties,
+            @Autowired(required = false) @Qualifier("auditFlyway") Flyway auditFlyway) {
         Map<String, Object> jpaProperties = new HashMap<>();
         jpaProperties.put("hibernate.hbm2ddl.auto", "none");
         jpaProperties.put("hibernate.format_sql", "false");
