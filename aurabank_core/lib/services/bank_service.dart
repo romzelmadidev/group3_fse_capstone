@@ -62,6 +62,7 @@ class BankService extends ChangeNotifier {
       baseUrl,
       'http://127.0.0.1:8080',
       'http://localhost:8080',
+      'http://10.91.102.224:8080',
       'http://192.168.18.110:8080',
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
         'http://10.0.2.2:8080',
