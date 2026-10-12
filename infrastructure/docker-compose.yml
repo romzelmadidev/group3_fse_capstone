@@ -49,7 +49,6 @@ services:
       - POSTGRES_USER=audit_user
       - POSTGRES_PASSWORD=audit_password
     volumes:
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - postgres_data:/var/lib/postgresql/data
     networks:
       - banking-net
@@ -220,12 +219,15 @@ services:
       - AZURE_STORAGE_CONTAINER_NAME=kyc-vault
       - AZURE_STORAGE_PUBLIC_ENDPOINT=http://localhost:10000/devstoreaccount1
       - APP_SERVICES_RISK_SERVICE_URL=http://risk-service:8084
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger-tracing:4318/v1/traces
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "account-service"}]'
     networks:
       - banking-net
     depends_on:
       oracle-xe-master:
+        condition: service_healthy
+      t24-mock-cbs:
         condition: service_healthy
       redis-cache:
         condition: service_started
@@ -234,6 +236,8 @@ services:
       risk-service:
         condition: service_healthy
       dd-agent:
+        condition: service_started
+      jaeger-tracing:
         condition: service_started
 
   # ============================================================================
