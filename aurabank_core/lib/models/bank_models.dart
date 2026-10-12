@@ -202,9 +202,13 @@ class UserProfile {
     this.faceIdEnabled = true,
     this.fingerprintEnabled = true,
     this.pushAlertsEnabled = true,
-    this.kycStatus = 'UNVERIFIED',
+    this.kycStatus = 'PENDING',
     this.kycReviewReason,
   });
 
-  bool get isKycVerified => kycStatus.toUpperCase() == 'VERIFIED' || kycStatus.toUpperCase() == 'ACTIVE';
+  /// Backend vocabulary: PENDING, PENDING_REVIEW, VERIFIED, REJECTED (APPROVED is a legacy alias of VERIFIED).
+  bool get isKycVerified {
+    final s = kycStatus.toUpperCase();
+    return s == 'VERIFIED' || s == 'APPROVED' || s == 'ACTIVE';
+  }
 }

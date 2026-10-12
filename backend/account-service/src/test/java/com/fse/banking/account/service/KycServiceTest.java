@@ -78,9 +78,9 @@ class KycServiceTest {
     }
 
     @Test
-    @DisplayName("Should list all customer profiles for KYC review")
+    @DisplayName("Should list only customers whose KYC is awaiting review")
     void testListPendingKyc() {
-        when(userRepository.findByRole(UserRole.CUSTOMER)).thenReturn(List.of(user));
+        when(userRepository.findByRoleAndKycStatus(UserRole.CUSTOMER, KycStatus.PENDING_REVIEW)).thenReturn(List.of(user));
 
         List<KycProfileResponse> results = kycService.listPendingKyc();
 
@@ -112,27 +112,58 @@ class KycServiceTest {
     }
 
     @Test
-    @DisplayName("Should approve customer KYC profile and set status to ACTIVE")
+    @DisplayName("Approving KYC marks it VERIFIED without changing the account status")
     void testApproveKyc() {
         when(userRepository.findById("USR-100001")).thenReturn(Optional.of(user));
         when(userRepository.save(any(UserEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 
         KycProfileResponse response = kycService.approveKyc("USR-100001", "ADMIN-01");
 
+        assertThat(response.getKycStatus()).isEqualTo("VERIFIED");
         assertThat(response.getStatus()).isEqualTo("ACTIVE");
         verify(userRepository).save(user);
     }
 
     @Test
-    @DisplayName("Should reject customer KYC profile and set status to SUSPENDED")
+    @DisplayName("Approving KYC does not unlock a LOCKED or SUSPENDED account")
+    void testApproveKycKeepsLockedStatus() {
+        user.setStatus(UserStatus.LOCKED);
+        when(userRepository.findById("USR-100001")).thenReturn(Optional.of(user));
+        when(userRepository.save(any(UserEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        KycProfileResponse response = kycService.approveKyc("USR-100001", "ADMIN-01");
+
+        assertThat(response.getKycStatus()).isEqualTo("VERIFIED");
+        assertThat(response.getStatus()).isEqualTo("LOCKED");
+    }
+
+    @Test
+    @DisplayName("Rejecting KYC marks it REJECTED without suspending the account")
     void testRejectKyc() {
         when(userRepository.findById("USR-100001")).thenReturn(Optional.of(user));
         when(userRepository.save(any(UserEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 
         KycProfileResponse response = kycService.rejectKyc("USR-100001", "ADMIN-01", "Invalid ID photo");
 
-        assertThat(response.getStatus()).isEqualTo("SUSPENDED");
+        assertThat(response.getKycStatus()).isEqualTo("REJECTED");
+        assertThat(response.getStatus()).isEqualTo("ACTIVE");
         verify(userRepository).save(user);
+    }
+
+    @Test
+    @DisplayName("Submitting while a review is pending or already verified is a conflict and changes nothing")
+    void testSubmitWhileInReviewOrVerifiedIsConflict() {
+        com.fse.banking.account.dto.KycVerifyRequest req = com.fse.banking.account.dto.KycVerifyRequest.builder()
+                .submissionId("KYC-1").idType("PHILID").build();
+        when(userRepository.findById("USR-100001")).thenReturn(Optional.of(user));
+
+        for (KycStatus s : new KycStatus[]{KycStatus.PENDING_REVIEW, KycStatus.VERIFIED, KycStatus.APPROVED}) {
+            user.setKycStatus(s);
+            assertThatThrownBy(() -> kycService.verifyKycSubmission("USR-100001", req))
+                    .isInstanceOf(com.fse.banking.common.exception.ConflictException.class);
+            assertThat(user.getKycStatus()).isEqualTo(s);
+        }
+        verify(userRepository, org.mockito.Mockito.never()).save(any());
     }
 
     @Test

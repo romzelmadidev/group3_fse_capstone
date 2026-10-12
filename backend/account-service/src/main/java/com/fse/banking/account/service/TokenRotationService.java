@@ -77,6 +77,10 @@ public class TokenRotationService {
         String jti = UUID.randomUUID().toString();
         String newAccessToken = jwtProvider.generateAccessToken(metadata.getUserId(), email, metadata.getRole(), jti, metadata.getDeviceId());
 
+        // Keep the session's slot in the concurrency set pointing at the live token.
+        redisSessionStore.rotateSessionToken(metadata.getUserId(), metadata.getSessionId(), jti,
+                Instant.now().getEpochSecond() + jwtProvider.getAccessTokenExpirationSeconds());
+
         log.info("Refresh token rotated successfully for user {} in session {}", metadata.getUserId(), metadata.getSessionId());
 
         TokenRefreshResponse response = TokenRefreshResponse.builder()

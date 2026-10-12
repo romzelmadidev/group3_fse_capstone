@@ -49,6 +49,8 @@ public class TransactionEventConsumer {
             return;
         }
 
+        normalizeCoreBankingEvent(event);
+
         BigDecimal amount = event.getAmount() != null ? event.getAmount() : BigDecimal.ZERO;
         boolean exceedsTellerLimit = amount.compareTo(BSP_TIER_1_MAX) > 0;
         boolean isAmlaCovered = amount.compareTo(BSP_TIER_3_MIN) >= 0;
@@ -86,8 +88,14 @@ public class TransactionEventConsumer {
                 "TRANSFER_EXECUTED".equalsIgnoreCase(event.getEventType()) ||
                 "SUCCESS".equalsIgnoreCase(event.getStatus())) {
 
-            // Dispatch HTML Email Receipt with Redis deduplication
-            boolean sent = emailService.sendTransactionReceipt(event);
+            // Dispatch HTML Email Receipt with Redis deduplication. A failed email must not stop the in-app alerts below.
+            try {
+                if (event.getRecipientEmail() != null && !event.getRecipientEmail().isBlank()) {
+                    emailService.sendTransactionReceipt(event);
+                }
+            } catch (Exception e) {
+                log.warn("Receipt email failed for transferId={}: {}", event.getTransferId(), e.getMessage());
+            }
 
             // Push real-time toast to customer browser via SSE
             Map<String, Object> toast = new LinkedHashMap<>();
@@ -108,6 +116,22 @@ public class TransactionEventConsumer {
             toast.put("status", "FAILED");
             toast.put("message", "Transaction failed or was rejected. No funds were debited.");
             streamController.pushToast(event.getUserId(), toast);
+        }
+    }
+
+    /**
+     * The core banking system publishes a TransferExecutedEvent that has no status and no user id.
+     * Treat it as a committed transfer and look up the sender from the source account.
+     */
+    private void normalizeCoreBankingEvent(TransactionNotificationEvent event) {
+        if (!"TransferExecutedEvent".equalsIgnoreCase(event.getEventType())) {
+            return;
+        }
+        if (event.getStatus() == null) {
+            event.setStatus("COMMITTED");
+        }
+        if (event.getUserId() == null) {
+            event.setUserId(resolveAccountOwner(event.getSourceAccount()));
         }
     }
 

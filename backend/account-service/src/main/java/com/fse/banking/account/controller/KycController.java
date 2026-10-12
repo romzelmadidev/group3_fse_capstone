@@ -61,14 +61,25 @@ public class KycController {
         return ResponseEntity.ok(response);
     }
 
+    /** Submissions awaiting review. Staff only. */
     @GetMapping("/pending")
-    public ResponseEntity<List<KycProfileResponse>> listPendingKyc() {
+    public ResponseEntity<List<KycProfileResponse>> listPendingKyc(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
+        if (staffId(authHeader) == null) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         List<KycProfileResponse> pending = kycService.listPendingKyc();
         return ResponseEntity.ok(pending);
     }
 
+    /** A profile is readable by staff or by the customer it belongs to. */
     @GetMapping("/{userId}")
-    public ResponseEntity<KycProfileResponse> getKycProfile(@PathVariable("userId") String userId) {
+    public ResponseEntity<KycProfileResponse> getKycProfile(
+            @PathVariable("userId") String userId,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
+        String callerId = extractCallerId(authHeader, null);
+        if (callerId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        if (!callerId.equals(userId) && staffId(authHeader) == null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         KycProfileResponse profile = kycService.getKycProfile(userId);
         return ResponseEntity.ok(profile);
     }

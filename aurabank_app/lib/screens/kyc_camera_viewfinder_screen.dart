@@ -87,9 +87,10 @@ class KycCameraViewfinderScreen extends StatefulWidget {
 }
 
 class _KycCameraViewfinderScreenState extends State<KycCameraViewfinderScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   List<CameraDescription> _cameras = [];
   CameraController? _controller;
+  bool _appPaused = false;
   bool _isInitializing = true;
   bool _isCapturing = false;
   bool _isTorchOn = false;
@@ -111,6 +112,7 @@ class _KycCameraViewfinderScreenState extends State<KycCameraViewfinderScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1600),
@@ -121,9 +123,32 @@ class _KycCameraViewfinderScreenState extends State<KycCameraViewfinderScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _animController.dispose();
     _controller?.dispose();
     super.dispose();
+  }
+
+  /// Releases the camera while the app is in the background and reopens it on return.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _appPaused = true;
+      final old = _controller;
+      if (old != null) {
+        setState(() {
+          _controller = null;
+          _isInitializing = true;
+          _isTorchOn = false;
+        });
+        old.dispose();
+      }
+    } else if (state == AppLifecycleState.resumed && _appPaused) {
+      _appPaused = false;
+      if (_controller == null && _cameras.isNotEmpty && _previewBytes == null) {
+        _startController(_cameras[_selectedCameraIndex]);
+      }
+    }
   }
 
   Future<void> _initCamera() async {
@@ -179,7 +204,11 @@ class _KycCameraViewfinderScreenState extends State<KycCameraViewfinderScreen>
 
     try {
       await newController.initialize();
-      if (!mounted) return;
+      if (!mounted || _appPaused) {
+        // Screen was popped or app backgrounded mid-initialize: release the hardware.
+        await newController.dispose();
+        return;
+      }
       setState(() {
         _controller = newController;
         _isInitializing = false;
@@ -187,6 +216,7 @@ class _KycCameraViewfinderScreenState extends State<KycCameraViewfinderScreen>
         _isTorchOn = false;
       });
     } catch (e) {
+      await newController.dispose();
       if (!mounted) return;
       setState(() {
         _isInitializing = false;
@@ -608,16 +638,19 @@ class _KycCameraViewfinderScreenState extends State<KycCameraViewfinderScreen>
                     size: 16,
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    _isLivenessActive
-                        ? _livenessStatusText
-                        : (isCard
-                            ? 'Fit card edges within the green corners'
-                            : 'Look directly at camera. Tap button to start 3D scan'),
-                    style: TextStyle(
-                      color: _isLivenessActive ? _livenessColor : Colors.white,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: Text(
+                      _isLivenessActive
+                          ? _livenessStatusText
+                          : (isCard
+                              ? 'Fit card edges within the green corners'
+                              : 'Look directly at camera. Tap button to start 3D scan'),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: _isLivenessActive ? _livenessColor : Colors.white,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
