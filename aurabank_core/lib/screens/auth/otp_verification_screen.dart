@@ -135,6 +135,21 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     setState(() {});
   }
 
+  /// Backspace on an already-empty box fires no onChanged, so without this
+  /// it does nothing. Clear the previous digit and move back instead.
+  KeyEventResult _onKeyEvent(int index, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.backspace &&
+        _controllers[index].text.isEmpty &&
+        index > 0) {
+      _controllers[index - 1].clear();
+      _focusNodes[index - 1].requestFocus();
+      setState(() {});
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   void _showIncompleteCodeDialog() {
     showDialog(
       context: context,
@@ -418,24 +433,27 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                           : null,
                     ),
                     child: Center(
-                      child: TextField(
-                        controller: _controllers[index],
-                        focusNode: _focusNodes[index],
-                        keyboardType: TextInputType.number,
-                        textAlign: TextAlign.center,
-                        maxLength: 1,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: AuraColors.primary,
+                      child: Focus(
+                        onKeyEvent: (_, event) => _onKeyEvent(index, event),
+                        child: TextField(
+                          controller: _controllers[index],
+                          focusNode: _focusNodes[index],
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          maxLength: 1,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: AuraColors.primary,
+                          ),
+                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          decoration: const InputDecoration(
+                            counterText: '',
+                            border: InputBorder.none,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          onChanged: (val) => _onDigitChanged(index, val),
                         ),
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        decoration: const InputDecoration(
-                          counterText: '',
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        onChanged: (val) => _onDigitChanged(index, val),
                       ),
                     ),
                   );

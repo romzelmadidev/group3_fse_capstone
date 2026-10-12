@@ -1,4 +1,5 @@
 **/target
+!account-service/target/*.jar
 **/*.log
 .git
 .idea

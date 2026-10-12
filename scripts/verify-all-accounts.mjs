@@ -1,5 +1,4 @@
-// scripts/verify-all-accounts.mjs
-// Automated verification for all demo and team accounts across the Aura Console stack
+import { execSync } from 'child_process';
 
 const GATEWAY = process.env.GATEWAY_URL || 'http://localhost:8080';
 
@@ -169,11 +168,33 @@ async function testCustomerAccount() {
     throw new Error(`Customer login failed: HTTP ${loginRes.status} -> ${JSON.stringify(loginRes.body)}`);
   }
 
-  const { access_token, user_id, role } = loginRes.body;
-  const jwtClaims = decodeJwtPayload(access_token);
-  console.log(`  [PASS] Customer Login 200 OK | UserID: ${user_id} | Role: ${jwtClaims.role}`);
+  let accessToken = loginRes.body.access_token;
+  let userId = loginRes.body.user_id;
 
-  const authHeaders = { Authorization: `Bearer ${access_token}` };
+  if (loginRes.body.status === 'MFA_REQUIRED') {
+    console.log(`  [INFO] MFA challenge triggered for customer mobile device binding. Fetching OTP from Redis...`);
+    const otp = execSync(`docker exec redis-cache redis-cli get otp:login:${loginRes.body.user_id}`).toString().trim();
+    const otpRes = await request('/api/v1/auth/verify-login-otp', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: loginRes.body.user_id,
+        otp: otp,
+        device_id: 'pixel-8-pro-test',
+        device_type: 'MOBILE',
+        device_name: 'Pixel 8 Pro',
+      }),
+    });
+    if (otpRes.status !== 200) {
+      throw new Error(`Customer OTP verification failed: HTTP ${otpRes.status} -> ${JSON.stringify(otpRes.body)}`);
+    }
+    accessToken = otpRes.body.access_token;
+    userId = otpRes.body.user_id;
+  }
+
+  const jwtClaims = decodeJwtPayload(accessToken);
+  console.log(`  [PASS] Customer Authenticated | UserID: ${userId} | Role: ${jwtClaims.role}`);
+
+  const authHeaders = { Authorization: `Bearer ${accessToken}` };
 
   // Customer should retrieve own accounts
   const accountsRes = await request('/api/v1/accounts', { headers: authHeaders });

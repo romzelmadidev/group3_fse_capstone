@@ -21,7 +21,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "users", schema = "auth_identity")
+@Table(name = "users")
 @Getter
 @Setter
 @Builder

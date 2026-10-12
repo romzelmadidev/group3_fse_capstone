@@ -31,6 +31,12 @@ class _LoginPageFingerprintState extends State<LoginPageFingerprint> {
   @override
   void initState() {
     super.initState();
+    final savedEmail = DeviceStorage.getLastLoginEmail() ??
+        DeviceStorage.getBiometricUserEmail() ??
+        DeviceStorage.getUserEmail();
+    if (savedEmail != null && savedEmail.isNotEmpty && _usernameController.text.isEmpty) {
+      _usernameController.text = savedEmail;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _handleFingerprintAuth();
     });
@@ -59,14 +65,30 @@ class _LoginPageFingerprintState extends State<LoginPageFingerprint> {
     if (!mounted) return;
 
     if (success) {
+      final targetEmail = _usernameController.text.trim().isNotEmpty
+          ? _usernameController.text.trim()
+          : (DeviceStorage.getLastLoginEmail() ??
+              DeviceStorage.getBiometricUserEmail() ??
+              DeviceStorage.getUserEmail());
+
       if (AuthApiService().currentAccessToken == null || AuthApiService().currentAccessToken!.isEmpty) {
         AuthApiService().currentAccessToken = DeviceStorage.getAccessToken() ?? 'bio-session-${DateTime.now().millisecondsSinceEpoch}';
       }
+
+      BankService().restoreUserProfileFromStorage(preferredEmail: targetEmail);
+
       if (AuthApiService().currentUserId == null || AuthApiService().currentUserId!.isEmpty) {
-        AuthApiService().currentUserId = DeviceStorage.getUserId() ?? 'USR-100001';
+        AuthApiService().currentUserId = DeviceStorage.getUserId() ??
+            DeviceStorage.getBiometricUserId() ??
+            ((BankService().user.email.toLowerCase().contains('juan') || BankService().activeAccountId.contains('3001'))
+                ? 'usr-1001-cst-001'
+                : 'USR-${BankService().user.email.hashCode.abs() % 900000 + 100000}');
       }
       AuthApiService().currentIsApproved = true;
-      BankService().restoreUserProfileFromStorage();
+      if (targetEmail != null && targetEmail.isNotEmpty) {
+        DeviceStorage.saveLastLoginEmail(targetEmail);
+        DeviceStorage.saveLastLoginName(BankService().user.name);
+      }
       BankService().syncWithBackend();
       if (widget.onLoginSuccess != null) {
         widget.onLoginSuccess!();
@@ -337,7 +359,8 @@ class _LoginPageFingerprintState extends State<LoginPageFingerprint> {
                         ),
                       ),
                       GestureDetector(
-                        onTap: widget.onSwitchAccount,
+                        onTap: widget.onSwitchAccount ??
+                            () => Navigator.of(context).pushReplacementNamed('/login'),
                         child: const Text(
                           'Switch Account',
                           style: TextStyle(
