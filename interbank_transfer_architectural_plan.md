@@ -26,6 +26,44 @@ External systems (partner banks, clearing switches, mobile clients, and web brow
 
 ---
 
+### 3. Bilateral API Verification Keys for Inward & Outward Wires
+
+**Yes, the Partner Bank MUST have a dedicated API verification key when calling AuraBank's Inward Endpoint.** In modern banking corridors, authentication is strictly **bilateral (mutual)**:
+
+```mermaid
+flowchart LR
+    subgraph AuraBank_Domain ["AuraBank Perimeter"]
+        OrchOut["InterbankWireClient<br/>(Outward Egress)"]
+        OrchIn["InterbankIngressController<br/>(Inward Ingress)"]
+    end
+
+    subgraph Partner_Domain ["Partner Bank B Perimeter"]
+        PartnerIn["Bank B Inbound Gateway"]
+        PartnerOut["Bank B Wire Dispatcher"]
+    end
+
+    OrchOut -->|"Outward Wire: presents Bank B Key<br/>(X-Interbank-API-Key: BANK-B-ISSUED-KEY)"| PartnerIn
+    PartnerOut -->|"Inward Wire: presents AuraBank Key<br/>(X-Interbank-API-Key: AURABANK-ISSUED-KEY)"| OrchIn
+```
+
+#### Dual-Key Bilateral Model:
+1. **Inward Verification Key (`services.partner.inward-api-key`)**:
+   - Issued by **AuraBank $\to$ Partner Bank B**.
+   - When Bank B dispatches an inward wire to AuraBank (`POST /api/v1/interbank/transfers/inward`), they **must** present this key in `X-Interbank-API-Key`.
+   - **Strict Enforcement Rule**: If the header is missing, blank, or does not match `inward-api-key`, the request is immediately rejected with **`HTTP 401 Unauthorized`** before parsing the body or touching the ledger.
+2. **Outward Authorization Key (`services.partner.outward-api-key`)**:
+   - Issued by **Partner Bank B $\to$ AuraBank**.
+   - When AuraBank dispatches an outward wire to Bank B, `InterbankWireClient` attaches this key.
+   - Separation of inward and outward keys ensures that rotating or revoking one key does not interrupt traffic in the opposite direction.
+3. **Partner Registry Validation**:
+   - Inward requests declare `originatingBank: "BANK_B"`.
+   - The orchestrator validates that the provided API key matches the registered credentials for `BANK_B`. If Bank C attempts to use Bank B's credentials, it is rejected.
+4. **Replay & Timestamp Protection**:
+   - Inward payloads include a creation timestamp.
+   - The ingress controller rejects payloads older than 300 seconds (5 minutes) to protect against replay attacks.
+
+---
+
 ## Comprehensive Failure Modes & Resilience Engineering Matrix
 
 Below is the complete taxonomy of how an interbank transfer can fail, with special emphasis on **Partner Bank Side Failures**, and how our architecture guarantees ledger consistency:
@@ -48,7 +86,7 @@ Below is the complete taxonomy of how an interbank transfer can fail, with speci
 
 | Failure Scenario | Root Cause | Signal | Architectural Handling |
 | :--- | :--- | :--- | :--- |
-| **8. Forged / Missing API Key** | External caller does not supply valid `X-Interbank-API-Key` | Perimeter check fails | `InterbankIngressController` returns `HTTP 401 Unauthorized`. Zero database touches. |
+| **8. Missing or Invalid Partner API Key** | External caller omits or sends invalid `X-Interbank-API-Key` | Perimeter auth check fails | `InterbankIngressController` returns `HTTP 401 Unauthorized`. Zero database touches. |
 | **9. Beneficiary Account Not Found in AuraBank** | Partner Bank specifies non-existent AuraBank account | Pre-flight CBS enquiry `GET /api/v1/cbs/accounts/{id}/balance` fails | Ingress controller rejects wire with `HTTP 404 NOT_FOUND`. Zero ledger mutations. Nostro buffer intact. |
 | **10. Beneficiary Account Blocked in AuraBank** | Recipient account is frozen or closed | Pre-flight check detects `status != 'ACTIVE'` | Rejects wire with `HTTP 422 Unprocessable`. |
 | **11. AuraBank CBS Unavailable during Inward Credit** | T24 CBS down or unreachable | Circuit breaker trips | Inward payload routed to Kafka DLQ (`banking.transfers.dlq`) for automated replay upon recovery. Returns `503` to Partner Bank for retry. |
@@ -66,108 +104,102 @@ Below is the complete taxonomy of how an interbank transfer can fail, with speci
 
 ---
 
-## Sequence Flow: Partner Bank Failure & Automated Saga Rollback
+## Enhanced Code Implementation Details
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Alice as Customer Alice
-    participant Front as React UI (:3000)
-    participant GW as API Gateway (:8080)
-    participant Orch as Transfer Orchestrator (:8082)
-    participant CBS as T24 Mock CBS (:8085)
-    participant Partner as Partner Bank B Gateway
-    participant Kafka as Kafka DLQ
-
-    Alice->>Front: Send ₱1,000 to Bob at Bank B
-    Front->>GW: POST /api/v1/transfers
-    GW->>Orch: Forward to TransferOrchestratorController
-    
-    rect rgb(240, 255, 240)
-    Note over Orch,CBS: LEG 1: LOCAL FUND RESERVATION
-    Orch->>CBS: POST /api/v1/cbs/funds-transfer (Debit Alice ₱1,000 / Credit Nostro ₱1,000)
-    CBS-->>Orch: Leg 1 Settled (Funds Locked in Nostro Buffer)
-    end
-
-    rect rgb(255, 240, 240)
-    Note over Orch,Partner: LEG 2: WIRE DISPATCH & FAILURE (Timeout >4s OR 400 Bad Request)
-    Orch->>Partner: POST /mock-partner/transfers (Ref: IB-OUT-9901)
-    alt Partner Bank Times Out (>4.0s)
-        Note over Orch: Timeout Guard trips at 4.0s!
-    else Partner Bank Returns 400 Rejection
-        Partner-->>Orch: HTTP 400 Bad Request ("BENEFICIARY_ACCOUNT_NOT_FOUND")
-    else Partner Bank Returns 500 Crash
-        Partner-->>Orch: HTTP 500 Internal Server Error
-    end
-    end
-
-    rect rgb(255, 245, 230)
-    Note over Orch,CBS: SAGA COMPENSATING ROLLBACK (Zero Stranded Funds)
-    Orch->>CBS: POST /api/v1/cbs/reversal (Original TxId: IB-OUT-9901)
-    CBS->>CBS: Credit Alice +₱1,000 / Debit Nostro Buffer -₱1,000
-    CBS-->>Orch: Reversal Approved & Committed
-    Orch->>Kafka: Publish TransferFailedToDlqEvent (Audit & Incident Trail)
-    end
-
-    Orch-->>GW: HTTP 502 / 400 with Reversal Explanation
-    GW-->>Front: JSON Response with Reversal Details
-    Front-->>Alice: Amber Alert: "Transfer failed at Bank B. ₱1,000 fully refunded to your account!"
-```
-
----
-
-## Enhanced Code Details for Detailed Failure Handling
-
-### `TransferOrchestrationService.java` (Enhanced Catch Block)
-To ensure the customer and caller receive precise failure reasons rather than opaque 500 errors, the catch block is refined:
-
+### Strict Inward Partner API Key Verification (`InterbankIngressController.java`)
 ```java
-try {
-    InterbankWireResponse wireResp = wireClient.dispatchWire(wireReq, request.simulationMode());
-    if (wireResp != null && "SETTLED".equalsIgnoreCase(wireResp.status())) {
-        return buildSuccessResponse(txId, request, wireResp);
-    } else {
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
-            wireResp != null ? wireResp.message() : "Partner bank rejected wire settlement");
+@PostMapping("/interbank/transfers/inward")
+public ResponseEntity<InterbankWireResponse> handleInwardWire(
+        @RequestHeader(value = "X-Interbank-API-Key", required = false) String apiKey,
+        @Valid @RequestBody InterbankWireRequest request) {
+
+    // 1. Mandatory API Key Check - Missing or Invalid results in immediate 401
+    if (apiKey == null || apiKey.isBlank() || !inwardApiKey.equals(apiKey.trim())) {
+        log.warn("Unauthorized inter-bank wire rejected: missing or invalid API key from originatingBank={}", 
+                request.originatingBank());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new InterbankWireResponse("FAILED", null, Instant.now().toString(), 
+                        "UNAUTHORIZED: Valid X-Interbank-API-Key required"));
     }
-} catch (Exception e) {
-    String failureReason = extractFailureReason(e);
-    log.warn("Interbank Leg 2 wire failed: {}. Triggering automated Saga Compensating Reversal...", failureReason);
-    
-    // 1. Automated Saga Reversal on CBS
-    cbsService.executeCompensatingReversal(txId, "INTERBANK_WIRE_FAILURE: " + failureReason);
-    
-    // 2. Publish failure event to Kafka DLQ
-    publishDlqEvent(txId, request, failureReason, e);
-    
-    // 3. Return informative HTTP response
-    if (isTimeout(e)) {
-        throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, 
-            "Partner bank timed out (>4.0s); funds restored via automated Saga rollback.");
-    } else if (e instanceof ResponseStatusException rse) {
-        throw new ResponseStatusException(rse.getStatusCode(), 
-            "Transfer rejected by partner bank: " + failureReason + "; funds fully refunded.");
-    } else {
-        throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, 
-            "Inter-bank transfer failed: " + failureReason + "; funds refunded via automated Saga rollback.");
+
+    // 2. Originating Bank Registry Verification
+    if (!partnerRegistry.isRegistered(request.originatingBank())) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new InterbankWireResponse("FAILED", null, Instant.now().toString(), 
+                        "FORBIDDEN: Unregistered partner bank corridor"));
     }
+
+    // 3. Pre-flight Beneficiary Check on T24 CBS (Existing endpoint)
+    Map<String, String> balance = cbsService.getAccountBalance(request.beneficiaryAccountId());
+    if (balance == null || balance.isEmpty() || !balance.containsKey("accountNumber")) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new InterbankWireResponse("FAILED", null, Instant.now().toString(), 
+                        "BENEFICIARY_ACCOUNT_NOT_FOUND"));
+    }
+
+    // 4. Leg 3 Core Mutation (Existing /funds-transfer endpoint)
+    // Debits ACC-NOSTRO-BANK-B, Credits Beneficiary
+    ...
 }
 ```
 
 ---
 
+## Proposed Changes
+
+### Component: `backend/transfer-orchestrator`
+
+#### [MODIFY] `application.properties`
+Define separate inward and outward API keys:
+```properties
+services.partner.inward-api-key=${PARTNER_INWARD_API_KEY:AURABANK-INWARD-KEY-2026}
+services.partner.outward-api-key=${PARTNER_OUTWARD_API_KEY:BANK-B-OUTWARD-KEY-2026}
+services.partner.url=${PARTNER_BANK_URL:http://localhost:8082/api/v1/mock-partner/transfers}
+```
+
+#### [MODIFY] `InterbankIngressController.java`
+- Enforce strict mandatory verification of `X-Interbank-API-Key` using `inward-api-key`.
+- Reject null, blank, or mismatching keys with `401 Unauthorized`.
+
+#### [MODIFY] `InterbankWireClient.java`
+- Dispatches outward requests with `outward-api-key` in `X-Interbank-API-Key`.
+
+#### [MODIFY] `TransferOrchestratorController.java`
+- Existing `POST /api/v1/transfers` supports interbank transfer routing seamlessly.
+
+---
+
+### Component: `backend/gateway-service`
+
+#### [MODIFY] `application.yml`
+- Ensures `/api/v1/interbank/**` routes to `transfer-orchestrator` (:8082).
+- Ensures `/api/v1/cbs/**` is protected from external callers.
+
+---
+
+### Component: `backend/t24-mock-cbs`
+
+#### [NO CODE CHANGES]
+No code changes or new endpoints added to `t24-mock-cbs`.
+Existing endpoints utilized:
+- `POST /api/v1/cbs/funds-transfer`
+- `POST /api/v1/cbs/reversal`
+- `GET /api/v1/cbs/accounts/{accountId}/balance`
+
+---
+
 ## Verification Plan
 
-### Automated Negative Tests
-Execute the automated negative scenarios:
+### Automated Tests
+Run the comprehensive interbank test suite:
 ```powershell
 .\mvnw.cmd test -pl backend/transfer-orchestrator -Dtest=InterbankTransferOrchestrationTest
 ```
-- **`testOutwardInterbankTransfer_FailureTriggersSagaCompensatingReversal`**: Proves that when partner throws an exception, CBS `/reversal` is invoked and sender is refunded.
-- **`testInwardInterbankTransfer_UnauthorizedRejected`**: Proves bad API key rejects at perimeter.
-- **`testInwardInterbankTransfer_BadBeneficiaryNotFound`**: Proves missing recipient rejects cleanly without touching Nostro ledger.
+- Verify: Missing API key $\to$ `401 Unauthorized`.
+- Verify: Bad API key $\to$ `401 Unauthorized`.
+- Verify: Valid API key $\to$ `200 OK SETTLED`.
 
-### Manual Verification of Negative Scenarios
-1. **Partner Bank Timeout**: Send outward transfer with `simulationMode=TIMEOUT` $\to$ verify 4s client timeout, HTTP 502 returned, sender balance restored.
-2. **Partner Bank Business Rejection**: Send outward transfer with `simulationMode=REJECT` $\to$ verify HTTP 400 returned, sender balance restored.
-3. **Inward Bad Beneficiary**: Post inward wire for `NON-EXISTENT-ACCOUNT-999` $\to$ verify HTTP 404 returned, zero balance mutations on Nostro account.
+### Manual Verification
+1. Send inward wire without `X-Interbank-API-Key` $\to$ verify `HTTP 401 Unauthorized`.
+2. Send inward wire with invalid `X-Interbank-API-Key: WRONG` $\to$ verify `HTTP 401 Unauthorized`.
+3. Send inward wire with valid `X-Interbank-API-Key` $\to$ verify `HTTP 200 OK SETTLED`.
