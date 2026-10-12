@@ -60,6 +60,9 @@ flutter:
   assets:
     - assets/brand/
   fonts:
+    - family: MaterialIcons
+      fonts:
+        - asset: assets/fonts/MaterialIcons-Regular.otf
     - family: Onest
       fonts:
         - asset: assets/fonts/Onest-Regular.ttf

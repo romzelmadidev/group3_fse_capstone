@@ -73,6 +73,9 @@ flutter:
     - assets/brand/
 
   fonts:
+    - family: MaterialIcons
+      fonts:
+        - asset: assets/fonts/MaterialIcons-Regular.otf
     # Onest, SIL Open Font License 1.1 (assets/fonts/OFL.txt).
     - family: Onest
       fonts:

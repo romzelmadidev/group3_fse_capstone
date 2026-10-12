@@ -157,16 +157,10 @@ public class AuthService {
             userRepository.save(user);
         }
 
-        // Restrict mobile app access to CUSTOMER role only; Administrative & staff must use Web Admin Portal (team accounts permitted)
         String resolvedDeviceId = resolveDeviceId(request.getDeviceId(), clientIp, userAgent);
         String resolvedDeviceName = resolveDeviceName(request.getDeviceName(), userAgent);
         String resolvedDeviceType = resolveDeviceType(request.getDeviceType(), resolvedDeviceId, resolvedDeviceName, userAgent);
         boolean isWeb = "WEB".equalsIgnoreCase(resolvedDeviceType);
-        if (!isWeb && user.getRole() != UserRole.CUSTOMER && !user.getUserId().startsWith("USR-TM-")) {
-            log.warn("Blocked mobile login attempt for non-customer user {} (role={}, deviceType={})",
-                    user.getUserId(), user.getRole(), resolvedDeviceType);
-            throw new ForbiddenException("Administrative accounts are restricted from mobile access. Please use the Web Admin Portal.");
-        }
 
         // Check device trust status for this user
         String primaryDeviceId = redisSessionStore.getPrimaryDeviceId(user.getUserId());
@@ -175,9 +169,9 @@ public class AuthService {
 
         // Enforce MFA for:
         // 1. First-time login onboarding (user.getLastLoginAt() == null)
-        // 2. Initial primary mobile device binding for a user (no primary mobile registered yet, and device not pre-approved)
+        // 2. Initial primary mobile device binding or any unapproved/revoked mobile device
         boolean isFirstTimeLogin = user.getLastLoginAt() == null;
-        boolean requiresDeviceBindingMfa = !isWeb && !isKnownApprovedDevice && (primaryDeviceId == null || primaryDeviceId.isBlank());
+        boolean requiresDeviceBindingMfa = !isWeb && !isKnownApprovedDevice;
 
         if (isFirstTimeLogin || requiresDeviceBindingMfa) {
             String otp = redisSessionStore.getLoginOtp(user.getUserId());
@@ -217,14 +211,6 @@ public class AuthService {
             throw new UnauthorizedException("Account is inactive.");
         }
 
-        // Restrict mobile app access to CUSTOMER role only
-        String resolvedDeviceType = resolveDeviceType(request.getDeviceType(), request.getDeviceId(), request.getDeviceName(), userAgent);
-        boolean isWeb = "WEB".equalsIgnoreCase(resolvedDeviceType);
-        if (!isWeb && user.getRole() != UserRole.CUSTOMER) {
-            log.warn("Blocked mobile OTP verification for non-customer user {} (role={}, deviceType={})",
-                    user.getUserId(), user.getRole(), resolvedDeviceType);
-            throw new ForbiddenException("Administrative accounts are restricted from mobile access. Please use the Web Admin Portal.");
-        }
 
         String cachedOtp = redisSessionStore.getLoginOtp(user.getUserId());
         if (cachedOtp == null) {
@@ -547,8 +533,13 @@ public class AuthService {
     public void revokeDevice(String userId, String deviceId, String requesterDeviceId) {
         String primaryDeviceId = redisSessionStore.getPrimaryDeviceId(userId);
         if (deviceId != null && deviceId.equals(primaryDeviceId)) {
-            log.warn("Attempt to revoke primary device {} for user {} by requester {} rejected", deviceId, userId, requesterDeviceId);
-            throw new IllegalArgumentException("Cannot revoke the primary device's access.");
+            if (requesterDeviceId != null && requesterDeviceId.equals(primaryDeviceId)) {
+                log.info("Primary device {} unlinked itself for user {}", deviceId, userId);
+                redisSessionStore.setPrimaryDeviceId(userId, "");
+            } else {
+                log.warn("Attempt to revoke primary device {} for user {} by requester {} rejected", deviceId, userId, requesterDeviceId);
+                throw new IllegalArgumentException("Cannot revoke the primary device's access.");
+            }
         }
         redisSessionStore.deleteUserDevice(userId, deviceId);
         redisSessionStore.deleteSessionsForDevice(userId, deviceId);
