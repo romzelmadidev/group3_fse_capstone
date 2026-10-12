@@ -39,10 +39,40 @@ CREATE TABLE users (
     updated_at              TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
-COMMENT ON TABLE users IS 'Master table for all system users (Customers, Tellers, Admins)';
+COMMENT ON TABLE users IS 'Master table for retail customers';
 COMMENT ON COLUMN users.user_id IS 'Unique identifier (UUID or business key like U1001)';
 COMMENT ON COLUMN users.government_id IS 'Valid government issued ID (Passport, UMID, Drivers License)';
 COMMENT ON COLUMN users.failed_login_attempts IS 'Failed login counter. Account is locked when reaching 5';
+
+
+-- ------------------------------------------------------------------------------
+-- 1B. ADMIN USERS TABLE
+-- Dedicated profile for Admins, Tellers, Managers, and Compliance Officers.
+-- ------------------------------------------------------------------------------
+CREATE TABLE admin_users (
+    admin_id                 VARCHAR2(64) PRIMARY KEY,
+    first_name              VARCHAR2(100) NOT NULL,
+    middle_name             VARCHAR2(100),
+    last_name               VARCHAR2(100) NOT NULL,
+    email                   VARCHAR2(255) NOT NULL UNIQUE,
+    phone_number            VARCHAR2(30),
+    dob                     DATE,
+    government_id           VARCHAR2(100),
+    role                    VARCHAR2(20) NOT NULL CHECK (role IN ('ADMIN', 'TELLER', 'MANAGER', 'COMPLIANCE')),
+    department              VARCHAR2(100) DEFAULT 'Branch Operations',
+    password_hash           VARCHAR2(255) NOT NULL,
+    max_concurrent_sessions NUMBER(3) DEFAULT 5 NOT NULL,
+    failed_login_attempts   NUMBER(3) DEFAULT 0 NOT NULL,
+    status                  VARCHAR2(20) DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'LOCKED', 'SUSPENDED')),
+    last_login_at           TIMESTAMP WITH TIME ZONE,
+    created_at              TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at              TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+COMMENT ON TABLE admin_users IS 'Dedicated table for bank administrative, branch operations, and compliance personnel';
+COMMENT ON COLUMN admin_users.admin_id IS 'Unique identifier for staff / admin user';
+COMMENT ON COLUMN admin_users.role IS 'Authorized operational role: ADMIN, TELLER, MANAGER, or COMPLIANCE';
+
 
 
 -- ------------------------------------------------------------------------------

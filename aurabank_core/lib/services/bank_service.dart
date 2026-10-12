@@ -1040,6 +1040,12 @@ class BankService extends ChangeNotifier {
   // Fetch live accounts & transactions from backend database if running
   Future<void> syncWithBackend() async {
     try {
+      final token = AuthApiService().currentAccessToken ?? DeviceStorage.getAccessToken();
+      final headers = <String, String>{
+        'Accept': 'application/json',
+        if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+      };
+
       // 1. Fetch Accounts for active user from Oracle / Account Service
       final effectiveUserId = AuthApiService().currentUserId ??
           DeviceStorage.getUserId() ??
@@ -1051,7 +1057,7 @@ class BankService extends ChangeNotifier {
       if (activeAccountId.isNotEmpty) {
         try {
           final balRes = await http
-              .get(Uri.parse('$baseUrl/api/v1/accounts/$activeAccountId/balance'))
+              .get(Uri.parse('$baseUrl/api/v1/accounts/$activeAccountId/balance'), headers: headers)
               .timeout(const Duration(seconds: 2));
           if (balRes.statusCode == 200) {
             final balData = jsonDecode(balRes.body);
@@ -1069,7 +1075,7 @@ class BankService extends ChangeNotifier {
       }
 
       final accRes = await http
-          .get(Uri.parse('$baseUrl/api/v1/accounts?userId=$effectiveUserId'))
+          .get(Uri.parse('$baseUrl/api/v1/accounts?userId=$effectiveUserId'), headers: headers)
           .timeout(const Duration(seconds: 2));
 
       if (accRes.statusCode == 200) {
@@ -1105,12 +1111,6 @@ class BankService extends ChangeNotifier {
       // 2. Fetch Live CBS Past Transactions for Active Account
       final effAcc = resolveEffectiveAccountId();
       savingsAccountNumber = resolveDisplayAccountNumber();
-
-      final token = AuthApiService().currentAccessToken ?? DeviceStorage.getAccessToken();
-      final headers = <String, String>{
-        'Accept': 'application/json',
-        if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
-      };
 
       final candidateBases = [
         baseUrl,
