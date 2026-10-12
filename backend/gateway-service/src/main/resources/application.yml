@@ -30,7 +30,7 @@ spring:
         - id: account-service
           uri: ${ACCOUNT_SERVICE_URI:http://localhost:8081}
           predicates:
-            - Path=/api/accounts/**, /api/v1/accounts/**, /api/v1/auth/**, /api/v1/kyc/**
+            - Path=/api/accounts/**, /api/v1/accounts/**, /api/v1/auth/**, /api/v1/kyc/**, /api/v1/users/**
           filters:
             - name: RequestRateLimiter
               args:
@@ -38,58 +38,29 @@ spring:
                 redis-rate-limiter.burstCapacity: 20
                 key-resolver: "#{@userKeyResolver}"
 
-        - id: ledger-mutation-engine
-          uri: ${LEDGER_ENGINE_URI:http://localhost:8082}
+        - id: transfer-orchestrator
+          uri: ${TRANSFER_ORCHESTRATOR_URI:http://localhost:8082}
           predicates:
-            - Path=/api/transactions/**, /api/v1/transactions/**, /api/v1/ledger/**, /api/v1/t24/**, /api/t24/**
+            - Path=/api/v1/transfers/**, /api/v1/transfers, /api/v1/reversals/**, /api/v1/reversals, /api/v1/ledger/transfers/**, /api/v1/ledger/transfers
           filters:
+            - RewritePath=/api/v1/ledger/transfers(?<segment>/?.*), /api/v1/transfers$1
             - name: RequestRateLimiter
               args:
-                redis-rate-limiter.replenishRate: 10
-                redis-rate-limiter.burstCapacity: 20
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
                 key-resolver: "#{@userKeyResolver}"
 
-        # Console maker-checker queue lives on the ledger controller, not the transfer orchestrator.
-        - id: ledger-transfer-reviews
-          uri: ${LEDGER_ENGINE_URI:http://localhost:8082}
+        - id: compliance-service
+          uri: ${COMPLIANCE_SERVICE_URI:http://localhost:8086}
           predicates:
-            - Path=/api/v1/transfers/pending, /api/v1/transfers/*/approve, /api/v1/transfers/*/reject
+            - Path=/api/v1/compliance/**, /api/v1/ledger/audit/**, /api/v1/ledger/audit
           filters:
-            - RewritePath=/api/v1/transfers(?<segment>/?.*), /api/v1/ledger/transfers$1
+            - RewritePath=/api/v1/ledger/audit(?<segment>/?.*), /api/v1/compliance/audit$1
             - name: RequestRateLimiter
               args:
-                redis-rate-limiter.replenishRate: 10
-                redis-rate-limiter.burstCapacity: 20
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
                 key-resolver: "#{@userKeyResolver}"
-
-        - id: ledger-transfers
-          uri: ${LEDGER_ENGINE_URI:http://localhost:8082}
-          predicates:
-            - Path=/api/v1/transfers, /api/v1/transfers/**
-          filters:
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 10
-                redis-rate-limiter.burstCapacity: 20
-                key-resolver: "#{@userKeyResolver}"
-
-        - id: ledger-reversals
-          uri: ${LEDGER_ENGINE_URI:http://localhost:8082}
-          predicates:
-            - Path=/api/v1/reversals, /api/v1/reversals/**
-          filters:
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 10
-                redis-rate-limiter.burstCapacity: 20
-                key-resolver: "#{@userKeyResolver}"
-
-        - id: ledger-users
-          uri: ${LEDGER_ENGINE_URI:http://localhost:8082}
-          predicates:
-            - Path=/api/v1/users/**
-          filters:
-            - RewritePath=/api/v1/users(?<segment>/?.*), /api/v1/ledger/users$1
 
         - id: notification-service
           uri: ${NOTIFICATION_SERVICE_URI:http://localhost:8083}

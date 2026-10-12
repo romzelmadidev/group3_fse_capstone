@@ -21,11 +21,13 @@ services:
       - APP_USER_PASSWORD=fse_password
     volumes:
       - ./oracle/init.sql:/container-entrypoint-initdb.d/init.sql:ro
+      - ./oracle/startup_verify.sh:/container-entrypoint-startdb.d/startup_verify.sh:ro
+      - ./oracle:/opt/oracle/scripts:ro
       - oracle_data:/opt/oracle/oradata
     networks:
       - banking-net
     healthcheck:
-      test: [ "CMD-SHELL", "/opt/oracle/checkDBStatus.sh || exit 0" ]
+      test: [ "CMD-SHELL", "/opt/oracle/healthcheck.sh" ]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -123,7 +125,7 @@ services:
     image: provectuslabs/kafka-ui:latest
     restart: unless-stopped
     ports:
-      - "8085:8080"
+      - "8089:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: 'banking-kafka-cluster'
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: 'kafka-broker:29092'
@@ -182,22 +184,6 @@ services:
       - redisinsight_data:/data
     networks:
       - banking-net
-  # ============================================================================
-  # 7c. Local Azure Blob Storage Emulator (Azurite)
-  # Container Name: azurite-storage
-  # Emulates Azure Blob Storage for e-KYC documents and biometric vaults
-  # ============================================================================
-  azurite-storage:
-    container_name: azurite-storage
-    image: mcr.microsoft.com/azure-storage/azurite:latest
-    restart: unless-stopped
-    ports:
-      - "10000:10000" # Blob Service
-    command: ["azurite-blob", "--blobHost", "0.0.0.0", "--blobPort", "10000", "-l", "/data", "--skipApiVersionCheck"]
-    volumes:
-      - azurite_data:/data
-    networks:
-      - banking-net
 
   # ============================================================================
   # 8. Account & Identity Service (Spring Boot :8081)
@@ -207,14 +193,13 @@ services:
   account-service:
     container_name: account-service
     build:
-      context: ../backend/account-service
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: account-service/Dockerfile
     restart: unless-stopped
     ports:
       - "8081:8081"
     volumes:
       - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
-      - ../backend/account-service/target/account-service-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
     environment:
       - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
       - DD_AGENT_HOST=dd-agent
@@ -241,20 +226,116 @@ services:
     depends_on:
       - oracle-xe-master
       - redis-cache
-      - azurite-storage
+      - azurite
       - risk-service
       - dd-agent
 
   # ============================================================================
-  # 9. Core Ledger & Balance Mutation Engine (Spring Boot :8082)
-  # Container Name: ledger-mutation-engine
-  # High-throughput balance mutations, pessimistic row locking & outbox events
   # ============================================================================
-  ledger-mutation-engine:
-    container_name: ledger-mutation-engine
+  # Microsoft Azure Storage Emulator (Azurite Blob Storage)
+  # Container Name: azurite-storage
+  # Local emulation of Azure Blob Storage for compliance reports, statements & filings
+  # ============================================================================
+  azurite:
+    container_name: azurite-storage
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    restart: unless-stopped
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
+    command: ["azurite-blob", "--blobHost", "0.0.0.0", "--blobPort", "10000", "-l", "/data", "--skipApiVersionCheck"]
+    volumes:
+      - azurite_data:/data
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "azure-storage", "service": "azurite-storage"}]'
+    networks:
+      banking-net:
+        aliases:
+          - azurite-storage
+
+  # ============================================================================
+  # Azurite Drive Web GUI (Google Drive UI for Azurite Blob Storage)
+  # Container Name: azurite-drive
+  # Development UI for browsing, previewing, and downloading generated reports
+  # ============================================================================
+  azurite-drive:
+    container_name: azurite-drive
     build:
-      context: ../backend/ledger-mutation-engine
+      context: ./azurite-drive
       dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "10005:80"
+    networks:
+      - banking-net
+    depends_on:
+      - azurite
+
+  # ============================================================================
+  # 9. T24 Mock Core Banking System (Spring Boot :8085)
+  # Container Name: t24-mock-cbs
+  # Sole custodian of Master DB & Postgres Audit Vault, row locking & EOD batch
+  # ============================================================================
+  t24-mock-cbs:
+    container_name: t24-mock-cbs
+    build:
+      context: ../backend
+      dockerfile: t24-mock-cbs/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+    volumes:
+      - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
+    environment:
+      - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
+      - DD_AGENT_HOST=dd-agent
+      - DD_TRACE_AGENT_PORT=8126
+      - DD_SERVICE=t24-mock-cbs
+      - DD_ENV=local
+      - DD_VERSION=1.0.0
+      - DD_LOGS_INJECTION=true
+      - DD_TRACE_SAMPLE_RATE=1.0
+      - MASTER_DB_URL=jdbc:oracle:thin:@oracle-xe-master:1521/XEPDB1
+      - MASTER_DB_USER=fse_user
+      - MASTER_DB_PASSWORD=fse_password
+      - MASTER_DB_DRIVER=oracle.jdbc.OracleDriver
+      - AUDIT_DB_URL=jdbc:postgresql://postgres-audit-vault:5432/banking_audit
+      - AUDIT_DB_USER=audit_user
+      - AUDIT_DB_PASSWORD=audit_password
+      - SPRING_DATA_REDIS_HOST=redis-cache
+      - SPRING_DATA_REDIS_PORT=6379
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:29092
+      - CBS_COB_SCHEDULER_ENABLED=${CBS_COB_SCHEDULER_ENABLED:-true}
+      - CBS_COB_SCHEDULER_CRON=${CBS_COB_SCHEDULER_CRON:-0 0 21 * * *}
+      - CBS_COB_SCHEDULER_ZONE=${CBS_COB_SCHEDULER_ZONE:-Asia/Manila}
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "java", "service": "t24-mock-cbs"}]'
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:8085/actuator/health" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 25s
+    networks:
+      - banking-net
+    depends_on:
+      - oracle-xe-master
+      - postgres-audit-vault
+      - redis-cache
+      - kafka-broker
+      - dd-agent
+
+  # ============================================================================
+  # 9b. Stateless Transfer Orchestrator (Spring Boot :8082)
+  # Container Name: transfer-orchestrator
+  # Perimeter validation, risk scoring, biometric step-up, cool-off & Temenos OFS
+  # ============================================================================
+  transfer-orchestrator:
+    container_name: transfer-orchestrator
+    build:
+      context: ../backend
+      dockerfile: transfer-orchestrator/Dockerfile
     restart: unless-stopped
     ports:
       - "8082:8082"
@@ -264,35 +345,69 @@ services:
       - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
       - DD_AGENT_HOST=dd-agent
       - DD_TRACE_AGENT_PORT=8126
-      - DD_SERVICE=ledger-mutation-engine
+      - DD_SERVICE=transfer-orchestrator
       - DD_ENV=dev
       - DD_VERSION=1.0.0
       - DD_LOGS_INJECTION=true
       - DD_TRACE_SAMPLE_RATE=1.0
-      - SPRING_DATASOURCE_ORACLE_URL=jdbc:oracle:thin:@oracle-xe-master:1521/XEPDB1
-      - SPRING_DATASOURCE_ORACLE_JDBC_URL=jdbc:oracle:thin:@oracle-xe-master:1521/XEPDB1
-      - SPRING_DATASOURCE_ORACLE_USERNAME=fse_user
-      - SPRING_DATASOURCE_ORACLE_PASSWORD=fse_password
-      - SPRING_DATASOURCE_POSTGRES_URL=jdbc:postgresql://postgres-audit-vault:5432/banking_audit
-      - SPRING_DATASOURCE_POSTGRES_JDBC_URL=jdbc:postgresql://postgres-audit-vault:5432/banking_audit
-      - SPRING_DATASOURCE_POSTGRES_USERNAME=audit_user
-      - SPRING_DATASOURCE_POSTGRES_PASSWORD=audit_password
-      - POSTGRES_HOST=postgres-audit-vault
-      - POSTGRES_PORT=5432
-      - SPRING_DATA_REDIS_HOST=redis-cache
-      - SPRING_DATA_REDIS_PORT=6379
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka-broker:29092
-      - APP_RISK_SERVICE_URL=http://risk-service:8084
+      - REDIS_HOST=redis-cache
+      - REDIS_PORT=6379
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:29092
+      - CBS_SERVICE_URL=http://t24-mock-cbs:8085
+      - RISK_SERVICE_URL=http://risk-service:8084
+      - ACCOUNT_SERVICE_URL=http://account-service:8081
     labels:
-      com.datadoghq.ad.logs: '[{"source": "java", "service": "ledger-mutation-engine"}]'
+      com.datadoghq.ad.logs: '[{"source": "java", "service": "transfer-orchestrator"}]'
     networks:
       - banking-net
     depends_on:
-      - oracle-xe-master
-      - postgres-audit-vault
-      - redis-cache
+      redis-cache:
+        condition: service_started
+      kafka-broker:
+        condition: service_started
+      risk-service:
+        condition: service_started
+      t24-mock-cbs:
+        condition: service_healthy
+      dd-agent:
+        condition: service_started
+
+  # ============================================================================
+  # 9c. Compliance & Reporting Service (Spring Boot :8086)
+  # Container Name: compliance-service
+  # Zero-DB reporting engine, PDF/Excel generation, Azurite blob storage & DLQ replay
+  # ============================================================================
+  compliance-service:
+    container_name: compliance-service
+    build:
+      context: ../backend
+      dockerfile: compliance-service/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    volumes:
+      - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
+    environment:
+      - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
+      - DD_AGENT_HOST=dd-agent
+      - DD_TRACE_AGENT_PORT=8126
+      - DD_SERVICE=compliance-service
+      - DD_ENV=local
+      - DD_VERSION=1.0.0
+      - DD_LOGS_INJECTION=true
+      - DD_TRACE_SAMPLE_RATE=1.0
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:29092
+      - CBS_SERVICE_URL=http://t24-mock-cbs:8085
+      - ORCHESTRATOR_SERVICE_URL=http://transfer-orchestrator:8082
+      - AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "java", "service": "compliance-service"}]'
+    networks:
+      - banking-net
+    depends_on:
       - kafka-broker
-      - risk-service
+      - azurite
+      - t24-mock-cbs
       - dd-agent
 
   # ============================================================================
@@ -354,7 +469,6 @@ services:
       - "8083:8083"
     volumes:
       - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
-      - ../backend/notification-service/target/notification-service-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
     environment:
       - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
       - DD_AGENT_HOST=dd-agent
@@ -391,8 +505,8 @@ services:
   gateway-service:
     container_name: gateway-service
     build:
-      context: ../backend/gateway-service
-      dockerfile: Dockerfile
+      context: ../backend
+      dockerfile: gateway-service/Dockerfile
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -410,7 +524,9 @@ services:
       - REDIS_HOST=redis-cache
       - REDIS_PORT=6379
       - ACCOUNT_SERVICE_URI=http://account-service:8081
-      - LEDGER_ENGINE_URI=http://ledger-mutation-engine:8082
+      - TRANSFER_ORCHESTRATOR_URI=http://transfer-orchestrator:8082
+      - CBS_SERVICE_URI=http://t24-mock-cbs:8085
+      - COMPLIANCE_SERVICE_URI=http://compliance-service:8086
       - NOTIFICATION_SERVICE_URI=http://notification-service:8083
       - RISK_SERVICE_URI=http://risk-service:8084
     labels:
@@ -420,7 +536,7 @@ services:
     depends_on:
       - redis-cache
       - account-service
-      - ledger-mutation-engine
+      - transfer-orchestrator
       - notification-service
       - risk-service
       - dd-agent
@@ -432,7 +548,6 @@ services:
   # ============================================================================
   banking-frontend:
     container_name: banking-frontend
-    profiles: ["frontend"]
     build:
       context: ../frontend
       dockerfile: Dockerfile
@@ -455,8 +570,8 @@ services:
     restart: unless-stopped
     ports:
       - "16686:16686" # Web UI
-      - "4317:4317" # OTLP gRPC receiver
-      - "4318:4318" # OTLP HTTP receiver
+      - "14317:4317" # OTLP gRPC receiver (offset to avoid host conflict with dd-agent)
+      - "14318:4318" # OTLP HTTP receiver (offset to avoid host conflict with dd-agent)
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     networks:
@@ -564,6 +679,7 @@ services:
   # ============================================================================
   datadog-synthetics-worker:
     container_name: datadog-synthetics-worker
+    profiles: ["synthetics"]
     image: registry.datadoghq.com/synthetics-private-location-worker:latest
     restart: unless-stopped
     environment:

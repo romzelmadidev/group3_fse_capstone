@@ -59,6 +59,7 @@ public class TokenRotationService {
                 .tokenId(newRefreshTokenId)
                 .userId(metadata.getUserId())
                 .sessionId(metadata.getSessionId())
+                .deviceId(metadata.getDeviceId())
                 .role(metadata.getRole())
                 .status("ACTIVE")
                 .parentTokenId(presentedToken)
@@ -74,7 +75,7 @@ public class TokenRotationService {
                 .orElse("user@banking.ph");
 
         String jti = UUID.randomUUID().toString();
-        String newAccessToken = jwtProvider.generateAccessToken(metadata.getUserId(), email, metadata.getRole(), jti);
+        String newAccessToken = jwtProvider.generateAccessToken(metadata.getUserId(), email, metadata.getRole(), jti, metadata.getDeviceId());
 
         log.info("Refresh token rotated successfully for user {} in session {}", metadata.getUserId(), metadata.getSessionId());
 

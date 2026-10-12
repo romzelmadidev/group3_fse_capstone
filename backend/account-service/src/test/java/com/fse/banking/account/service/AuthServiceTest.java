@@ -144,7 +144,7 @@ class AuthServiceTest {
         assertThat(result.getResponse().getStatus()).isEqualTo("MFA_REQUIRED");
         assertThat(result.getResponse().getAccessToken()).isNull();
         assertThat(result.getRefreshTokenId()).isNull();
-        verify(jwtProvider, never()).generateAccessToken(any(), any(), any(), any());
+        verify(jwtProvider, never()).generateAccessToken(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -269,7 +269,10 @@ class AuthServiceTest {
 
         when(userRepository.findByEmail("juan.delacruz@example.ph")).thenReturn(Optional.of(activeUser));
         when(passwordEncoder.matches("Password123!", activeUser.getPasswordHash())).thenReturn(true);
-        when(jwtProvider.generateAccessToken(eq("USR-100001"), eq("juan.delacruz@example.ph"), eq("ROLE_CUSTOMER"), anyString()))
+        DeviceInfoDto approvedDevice = DeviceInfoDto.builder().deviceId("dev-approved").isApproved(true).isPrimary(true).build();
+        when(redisSessionStore.getDevice(eq("USR-100001"), any())).thenReturn(Optional.of(approvedDevice));
+        when(redisSessionStore.getPrimaryDeviceId("USR-100001")).thenReturn("dev-approved");
+        when(jwtProvider.generateAccessToken(eq("USR-100001"), eq("juan.delacruz@example.ph"), eq("ROLE_CUSTOMER"), anyString(), any()))
                 .thenReturn("mock.jwt.token");
         when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
 
@@ -317,7 +320,7 @@ class AuthServiceTest {
 
         when(userRepository.findById("USR-100001")).thenReturn(Optional.of(activeUser));
         when(redisSessionStore.getLoginOtp("USR-100001")).thenReturn("123456");
-        when(jwtProvider.generateAccessToken(eq("USR-100001"), eq("juan.delacruz@example.ph"), eq("ROLE_CUSTOMER"), anyString()))
+        when(jwtProvider.generateAccessToken(eq("USR-100001"), eq("juan.delacruz@example.ph"), eq("ROLE_CUSTOMER"), anyString(), any()))
                 .thenReturn("mock.verified.jwt");
         when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
 
@@ -402,8 +405,8 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("Should register first device as primary device on login")
-    void testFirstLoginRegistersPrimaryDevice() {
+    @DisplayName("Should challenge initial mobile login with MFA_REQUIRED when no primary device exists")
+    void testFirstLoginChallengesPrimaryDeviceWithMfa() {
         activeUser.setLastLoginAt(Instant.now());
         LoginRequest loginRequest = LoginRequest.builder()
                 .email("juan.delacruz@example.ph")
@@ -415,18 +418,75 @@ class AuthServiceTest {
         when(userRepository.findByEmail("juan.delacruz@example.ph")).thenReturn(Optional.of(activeUser));
         when(passwordEncoder.matches("Password123!", activeUser.getPasswordHash())).thenReturn(true);
         when(redisSessionStore.getPrimaryDeviceId("USR-100001")).thenReturn(null);
-        when(jwtProvider.generateAccessToken(any(), any(), any(), any())).thenReturn("mock.jwt.token");
-        when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
+        when(redisSessionStore.getDevice("USR-100001", "device-iphone-1")).thenReturn(Optional.empty());
 
         AuthService.LoginResult result = authService.login(loginRequest, "192.168.1.10", "Mozilla/5.0 (iPhone)");
 
+        assertThat(result.getResponse().getStatus()).isEqualTo("MFA_REQUIRED");
+        assertThat(result.getResponse().getAccessToken()).isNull();
+        verify(redisSessionStore).storeLoginOtp(eq("USR-100001"), anyString(), any());
+    }
+
+    @Test
+    @DisplayName("Should register primary device and issue tokens upon successful OTP verification")
+    void testVerifyLoginOtpRegistersPrimaryDevice() {
+        VerifyLoginOtpRequest verifyRequest = VerifyLoginOtpRequest.builder()
+                .userId("USR-100001")
+                .otp("123456")
+                .deviceId("device-iphone-1")
+                .deviceName("Juan's iPhone")
+                .deviceType("MOBILE")
+                .build();
+
+        when(userRepository.findById("USR-100001")).thenReturn(Optional.of(activeUser));
+        when(redisSessionStore.getLoginOtp("USR-100001")).thenReturn("123456");
+        when(redisSessionStore.getPrimaryDeviceId("USR-100001")).thenReturn(null);
+        when(jwtProvider.generateAccessToken(any(), any(), any(), any(), any())).thenReturn("mock.jwt.token");
+        when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
+
+        AuthService.LoginResult result = authService.verifyLoginOtp(verifyRequest, "192.168.1.10", "Mozilla/5.0 (iPhone)");
+
+        assertThat(result.getResponse().getStatus()).isEqualTo("AUTHENTICATED");
         assertThat(result.getResponse().getDeviceId()).isEqualTo("device-iphone-1");
-        assertThat(result.getResponse().getDeviceName()).isEqualTo("Juan's iPhone");
         assertThat(result.getResponse().getIsPrimaryDevice()).isTrue();
         assertThat(result.getResponse().getPrimaryDeviceId()).isEqualTo("device-iphone-1");
 
         verify(redisSessionStore).setPrimaryDeviceId("USR-100001", "device-iphone-1");
         verify(redisSessionStore).saveUserDevice(eq("USR-100001"), any(DeviceInfoDto.class));
+    }
+
+    @Test
+    @DisplayName("Should authenticate directly without MFA when device is already an approved primary device")
+    void testLoginWithAlreadyApprovedPrimaryDeviceSucceedsDirectly() {
+        activeUser.setLastLoginAt(Instant.now());
+        LoginRequest loginRequest = LoginRequest.builder()
+                .email("juan.delacruz@example.ph")
+                .password("Password123!")
+                .deviceId("device-iphone-1")
+                .deviceName("Juan's iPhone")
+                .build();
+
+        DeviceInfoDto approvedPrimary = DeviceInfoDto.builder()
+                .deviceId("device-iphone-1")
+                .deviceName("Juan's iPhone")
+                .deviceType("MOBILE")
+                .isPrimary(true)
+                .isApproved(true)
+                .build();
+
+        when(userRepository.findByEmail("juan.delacruz@example.ph")).thenReturn(Optional.of(activeUser));
+        when(passwordEncoder.matches("Password123!", activeUser.getPasswordHash())).thenReturn(true);
+        when(redisSessionStore.getPrimaryDeviceId("USR-100001")).thenReturn("device-iphone-1");
+        when(redisSessionStore.getDevice("USR-100001", "device-iphone-1")).thenReturn(Optional.of(approvedPrimary));
+        when(jwtProvider.generateAccessToken(any(), any(), any(), any(), any())).thenReturn("mock.jwt.token");
+        when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
+
+        AuthService.LoginResult result = authService.login(loginRequest, "192.168.1.10", "Mozilla/5.0 (iPhone)");
+
+        assertThat(result.getResponse().getStatus()).isEqualTo("AUTHENTICATED");
+        assertThat(result.getResponse().getDeviceId()).isEqualTo("device-iphone-1");
+        assertThat(result.getResponse().getIsPrimaryDevice()).isTrue();
+        assertThat(result.getResponse().getIsApproved()).isTrue();
     }
 
     @Test
@@ -443,7 +503,7 @@ class AuthServiceTest {
         when(userRepository.findByEmail("juan.delacruz@example.ph")).thenReturn(Optional.of(activeUser));
         when(passwordEncoder.matches("Password123!", activeUser.getPasswordHash())).thenReturn(true);
         when(redisSessionStore.getPrimaryDeviceId("USR-100001")).thenReturn("device-iphone-1");
-        when(jwtProvider.generateAccessToken(any(), any(), any(), any())).thenReturn("mock.jwt.token");
+        when(jwtProvider.generateAccessToken(any(), any(), any(), any(), any())).thenReturn("mock.jwt.token");
         when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
 
         AuthService.LoginResult result = authService.login(loginRequest, "192.168.1.25", "Mozilla/5.0 (iPad)");
@@ -498,11 +558,25 @@ class AuthServiceTest {
         when(redisSessionStore.getUserDevices("USR-100001")).thenReturn(List.of(devPrimary, devSecOld, devSecNew));
         when(redisSessionStore.getDevice("USR-100001", "dev-sec-new")).thenReturn(Optional.of(devSecNew));
 
-        authService.approveDevice("USR-100001", "dev-sec-new");
+        authService.approveDevice("USR-100001", "dev-sec-new", "dev-primary");
 
         verify(redisSessionStore).deleteUserDevice("USR-100001", "dev-sec-old");
         verify(redisSessionStore).deleteSessionsForDevice("USR-100001", "dev-sec-old");
         verify(redisSessionStore).saveUserDevice(eq("USR-100001"), argThat(DeviceInfoDto::isApproved));
+    }
+
+    @Test
+    @DisplayName("Secondary or web devices cannot approve access requests")
+    void testApproveRejectedWhenRequesterIsNotPrimary() {
+        when(redisSessionStore.getPrimaryDeviceId("USR-100001")).thenReturn("dev-primary");
+
+        assertThatThrownBy(() -> authService.approveDevice("USR-100001", "dev-web", "dev-secondary"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> authService.approveDevice("USR-100001", "dev-web", null))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verify(redisSessionStore, never()).saveUserDevice(any(), any());
+        verify(redisSessionStore, never()).deleteUserDevice(any(), any());
     }
 
     @Test
@@ -537,7 +611,7 @@ class AuthServiceTest {
                 .build();
 
         when(redisSessionStore.getUserDevices("USR-100001")).thenReturn(List.of(primaryMobile, oldSecondary));
-        when(jwtProvider.generateAccessToken(any(), any(), any(), any())).thenReturn("mock.jwt.token");
+        when(jwtProvider.generateAccessToken(any(), any(), any(), any(), any())).thenReturn("mock.jwt.token");
         when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
 
         AuthService.LoginResult result = authService.login(loginRequest, "192.168.1.120", "Samsung Tablet");
@@ -562,8 +636,8 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("Should allow desktop session login, deregister existing web session (1-web limit), and keep mobile primary")
-    void testDesktopSessionLoginEnforcesOneWebPolicyAndDispatchesAlertToPrimary() {
+    @DisplayName("Should hold a desktop session login as PENDING_APPROVAL until the primary device approves it, keeping the existing web session until then")
+    void testDesktopSessionLoginRequiresPrimaryDeviceApproval() {
         activeUser.setLastLoginAt(Instant.now());
         LoginRequest loginRequest = LoginRequest.builder()
                 .email("juan.delacruz@example.ph")
@@ -576,22 +650,8 @@ class AuthServiceTest {
         when(userRepository.findByEmail("juan.delacruz@example.ph")).thenReturn(Optional.of(activeUser));
         when(passwordEncoder.matches("Password123!", activeUser.getPasswordHash())).thenReturn(true);
         when(redisSessionStore.getPrimaryDeviceId("USR-100001")).thenReturn("dev-primary-mobile");
-
-        DeviceInfoDto oldWeb = DeviceInfoDto.builder()
-                .deviceId("dev-old-laptop")
-                .deviceName("Old MacBook")
-                .deviceType("WEB")
-                .isPrimary(false)
-                .build();
-        DeviceInfoDto primaryMobile = DeviceInfoDto.builder()
-                .deviceId("dev-primary-mobile")
-                .deviceName("iPhone 15")
-                .deviceType("MOBILE")
-                .isPrimary(true)
-                .build();
-
-        when(redisSessionStore.getUserDevices("USR-100001")).thenReturn(List.of(primaryMobile, oldWeb));
-        when(jwtProvider.generateAccessToken(any(), any(), any(), any())).thenReturn("mock.jwt.token");
+        when(redisSessionStore.getDevice("USR-100001", "dev-new-laptop")).thenReturn(Optional.empty());
+        when(jwtProvider.generateAccessToken(any(), any(), any(), any(), any())).thenReturn("mock.jwt.token");
         when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
 
         AuthService.LoginResult result = authService.login(loginRequest, "203.177.100.5", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
@@ -599,16 +659,82 @@ class AuthServiceTest {
         assertThat(result.getResponse().getDeviceId()).isEqualTo("dev-new-laptop");
         assertThat(result.getResponse().getDeviceType()).isEqualTo("WEB");
         assertThat(result.getResponse().getIsPrimaryDevice()).isFalse();
-        assertThat(result.getResponse().getIsApproved()).isTrue();
+        assertThat(result.getResponse().getStatus()).isEqualTo("PENDING_APPROVAL");
+        assertThat(result.getResponse().getIsApproved()).isFalse();
         assertThat(result.getResponse().getPrimaryDeviceId()).isEqualTo("dev-primary-mobile");
 
-        // Verify old web session was deregistered (1-web limit)
+        // The older web session is only replaced once the primary device approves (see approveDevice)
+        verify(redisSessionStore, never()).deleteUserDevice(any(), any());
+
+        verify(redisSessionStore).saveUserDevice(eq("USR-100001"), argThat(d ->
+                "dev-new-laptop".equals(d.getDeviceId()) && "WEB".equals(d.getDeviceType())
+                        && !d.isApproved() && "PENDING_APPROVAL".equals(d.getStatus())));
+    }
+
+    @Test
+    @DisplayName("Should let an already-approved desktop session straight in and deregister the older web session (1-web limit)")
+    void testApprovedDesktopSessionLogsInWithoutNewApproval() {
+        activeUser.setLastLoginAt(Instant.now());
+        LoginRequest loginRequest = LoginRequest.builder()
+                .email("juan.delacruz@example.ph")
+                .password("Password123!")
+                .deviceId("dev-approved-laptop")
+                .deviceName("Chrome on Windows")
+                .deviceType("WEB")
+                .build();
+
+        DeviceInfoDto approvedWeb = DeviceInfoDto.builder()
+                .deviceId("dev-approved-laptop")
+                .deviceName("Chrome on Windows")
+                .deviceType("WEB")
+                .isApproved(true)
+                .build();
+        DeviceInfoDto oldWeb = DeviceInfoDto.builder()
+                .deviceId("dev-old-laptop")
+                .deviceName("Old MacBook")
+                .deviceType("WEB")
+                .build();
+
+        when(userRepository.findByEmail("juan.delacruz@example.ph")).thenReturn(Optional.of(activeUser));
+        when(passwordEncoder.matches("Password123!", activeUser.getPasswordHash())).thenReturn(true);
+        when(redisSessionStore.getPrimaryDeviceId("USR-100001")).thenReturn("dev-primary-mobile");
+        when(redisSessionStore.getDevice("USR-100001", "dev-approved-laptop")).thenReturn(Optional.of(approvedWeb));
+        when(redisSessionStore.getUserDevices("USR-100001")).thenReturn(List.of(oldWeb, approvedWeb));
+        when(jwtProvider.generateAccessToken(any(), any(), any(), any(), any())).thenReturn("mock.jwt.token");
+        when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
+
+        AuthService.LoginResult result = authService.login(loginRequest, "203.177.100.5", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+
+        assertThat(result.getResponse().getStatus()).isEqualTo("AUTHENTICATED");
+        assertThat(result.getResponse().getIsApproved()).isTrue();
+
         verify(redisSessionStore).deleteUserDevice("USR-100001", "dev-old-laptop");
         verify(redisSessionStore).deleteSessionsForDevice("USR-100001", "dev-old-laptop");
+    }
 
-        // Verify new web device was saved
-        verify(redisSessionStore).saveUserDevice(eq("USR-100001"), argThat(d ->
-                "dev-new-laptop".equals(d.getDeviceId()) && "WEB".equals(d.getDeviceType()) && d.isApproved()));
+    @Test
+    @DisplayName("Should not hold a desktop session when no primary mobile exists to approve it (admin and teller web portal)")
+    void testDesktopSessionLoginWithoutPrimaryDeviceIsApproved() {
+        activeUser.setLastLoginAt(Instant.now());
+        LoginRequest loginRequest = LoginRequest.builder()
+                .email("juan.delacruz@example.ph")
+                .password("Password123!")
+                .deviceId("dev-admin-laptop")
+                .deviceName("Chrome on Windows")
+                .deviceType("WEB")
+                .build();
+
+        when(userRepository.findByEmail("juan.delacruz@example.ph")).thenReturn(Optional.of(activeUser));
+        when(passwordEncoder.matches("Password123!", activeUser.getPasswordHash())).thenReturn(true);
+        when(redisSessionStore.getPrimaryDeviceId("USR-100001")).thenReturn(null);
+        when(redisSessionStore.getUserDevices("USR-100001")).thenReturn(List.of());
+        when(jwtProvider.generateAccessToken(any(), any(), any(), any(), any())).thenReturn("mock.jwt.token");
+        when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
+
+        AuthService.LoginResult result = authService.login(loginRequest, "203.177.100.5", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+
+        assertThat(result.getResponse().getStatus()).isEqualTo("AUTHENTICATED");
+        assertThat(result.getResponse().getIsApproved()).isTrue();
     }
 
     @Test

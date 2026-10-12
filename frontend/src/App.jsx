@@ -11,6 +11,8 @@ import Geo from './pages/Geo';
 import Audit from './pages/Audit';
 import Customers from './pages/Customers';
 import Reversals from './pages/Reversals';
+import T24TestConsole from './components/T24TestConsole';
+import AzuriteDrive from './components/AzuriteDrive';
 
 function Routed() {
   const { staff } = useAuth();
@@ -26,6 +28,10 @@ function Routed() {
         <Route path="sar" element={<Sar />} />
         <Route path="geo" element={<Geo />} />
         <Route path="audit" element={<Audit />} />
+        <Route path="cbs" element={<T24TestConsole />} />
+        <Route path="drive" element={<AzuriteDrive />} />
+        <Route path="t24-test" element={<Navigate to="/cbs" replace />} />
+        <Route path="azurite-drive" element={<Navigate to="/drive" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

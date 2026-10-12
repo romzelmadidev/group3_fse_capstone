@@ -29,7 +29,7 @@ const testsToCreate = [
     tags: ['service:gateway-service', 'tier:p1', 'env:dev']
   },
   {
-    name: 'Ledger Mutation Engine - Concurrency & Solvency Probe',
+    name: 'Transfer Orchestrator - Perimeter & OFS Gateway Probe',
     type: 'api',
     subtype: 'http',
     status: 'live',
@@ -37,12 +37,12 @@ const testsToCreate = [
     config: {
       request: {
         method: 'GET',
-        url: 'http://ledger-mutation-engine:8082/actuator/health',
+        url: 'http://transfer-orchestrator:8082/actuator/health',
         timeout: 5
       },
       assertions: [
         { type: 'statusCode', operator: 'is', target: 200 },
-        { type: 'responseTime', operator: 'lessThan', target: 150 }
+        { type: 'responseTime', operator: 'lessThan', target: 100 }
       ]
     },
     options: {
@@ -50,8 +50,8 @@ const testsToCreate = [
       min_failure_duration: 0,
       min_location_failed: 1
     },
-    message: 'CRITICAL: Core Ledger Mutation Engine is UNHEALTHY',
-    tags: ['service:ledger-mutation-engine', 'tier:core', 'env:dev']
+    message: 'CRITICAL: Core Transfer Orchestrator Perimeter is UNHEALTHY',
+    tags: ['service:transfer-orchestrator', 'tier:core', 'env:dev']
   },
   {
     name: 'Account & Identity Service - KYC Probe',
@@ -127,6 +127,56 @@ const testsToCreate = [
     },
     message: 'CRITICAL: Risk Service or Laya AI model inference is UNHEALTHY',
     tags: ['service:risk-service', 'tier:ai', 'env:dev']
+  },
+  {
+    name: 'T24 Mock Core Banking System - Ledger & Audit Vault Probe',
+    type: 'api',
+    subtype: 'http',
+    status: 'live',
+    locations: [location],
+    config: {
+      request: {
+        method: 'GET',
+        url: 'http://t24-mock-cbs:8085/actuator/health',
+        timeout: 5
+      },
+      assertions: [
+        { type: 'statusCode', operator: 'is', target: 200 },
+        { type: 'responseTime', operator: 'lessThan', target: 150 }
+      ]
+    },
+    options: {
+      tick_every: 60,
+      min_failure_duration: 0,
+      min_location_failed: 1
+    },
+    message: 'CRITICAL: T24 Mock Core Banking System is UNHEALTHY',
+    tags: ['service:t24-mock-cbs', 'tier:core', 'env:dev']
+  },
+  {
+    name: 'Compliance & Regulatory Engine - Azurite Storage Probe',
+    type: 'api',
+    subtype: 'http',
+    status: 'live',
+    locations: [location],
+    config: {
+      request: {
+        method: 'GET',
+        url: 'http://compliance-service:8086/actuator/health',
+        timeout: 5
+      },
+      assertions: [
+        { type: 'statusCode', operator: 'is', target: 200 },
+        { type: 'responseTime', operator: 'lessThan', target: 150 }
+      ]
+    },
+    options: {
+      tick_every: 60,
+      min_failure_duration: 0,
+      min_location_failed: 1
+    },
+    message: 'WARNING: Compliance & Regulatory Service is UNHEALTHY',
+    tags: ['service:compliance-service', 'tier:regulatory', 'env:dev']
   }
 ];
 

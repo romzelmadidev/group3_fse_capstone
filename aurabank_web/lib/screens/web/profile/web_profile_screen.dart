@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:aurabank_core/services/auth_api_service.dart';
 import 'package:aurabank_core/services/bank_service.dart';
+import 'package:aurabank_core/models/user_persona.dart' show DeviceIdentity;
 import 'package:aurabank_core/theme/aura_theme.dart';
 
 class WebProfileScreen extends StatefulWidget {
@@ -30,33 +32,10 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
   late TextEditingController _addressController;
 
   bool _isSaving = false;
+  bool _isLoadingDevices = false;
 
-  final List<_PortalDevice> _devices = [
-    _PortalDevice(
-      name: 'Aura Mobile App on iPhone 15 Pro',
-      detail: 'San Francisco, US • iOS 17.5',
-      badge: 'MAIN',
-      isThisBrowser: false,
-      icon: Icons.phone_iphone_rounded,
-    ),
-  ];
-
-  final List<_PortalDevice> _sessions = [
-    _PortalDevice(
-      name: 'Chrome on macOS',
-      detail: 'San Francisco, US • IP: 192.0.2.1',
-      badge: 'THIS SESSION',
-      isThisBrowser: true,
-      icon: Icons.laptop_mac_rounded,
-    ),
-    _PortalDevice(
-      name: 'Edge Browser on Windows 11',
-      detail: 'New York, US • IP: 198.51.100.4',
-      badge: '',
-      isThisBrowser: false,
-      icon: Icons.laptop_windows_rounded,
-    ),
-  ];
+  final List<_PortalDevice> _devices = [];
+  final List<_PortalDevice> _sessions = [];
 
   @override
   void initState() {
@@ -67,6 +46,55 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
     _phoneController = TextEditingController(text: user.phoneNumber);
     _addressController = TextEditingController(text: user.address);
     _bankService.addListener(_onServiceUpdate);
+    _loadBackendDevices();
+  }
+
+  Future<void> _loadBackendDevices() async {
+    setState(() => _isLoadingDevices = true);
+    try {
+      final devices = await AuthApiService().getRegisteredDevices();
+      if (!mounted) return;
+      final currentId = AuthApiService().currentDeviceId.isNotEmpty
+          ? AuthApiService().currentDeviceId
+          : DeviceIdentity().id;
+
+      _devices.clear();
+      _sessions.clear();
+
+      for (final d in devices) {
+        final type = (d['device_type'] as String? ?? 'MOBILE').toUpperCase();
+        final isWeb = type == 'WEB';
+        final isPrim = d['is_primary'] == true;
+        final devId = d['device_id'] as String? ?? '';
+        final devName = d['device_name'] as String? ?? (isWeb ? 'Web Browser' : 'Mobile Device');
+        final ip = d['client_ip']?.toString() ?? '';
+        final detail = ip.isNotEmpty ? 'IP: $ip' : (isWeb ? 'Web Session' : 'Registered Device');
+
+        if (isWeb) {
+          final isCurrent = devId == currentId;
+          _sessions.add(_PortalDevice(
+            id: devId,
+            name: devName,
+            detail: detail,
+            badge: isCurrent ? 'THIS SESSION' : '',
+            isThisBrowser: isCurrent,
+            icon: Icons.laptop_mac_rounded,
+          ));
+        } else {
+          _devices.add(_PortalDevice(
+            id: devId,
+            name: devName,
+            detail: detail,
+            badge: isPrim ? 'MAIN' : 'SECONDARY',
+            isThisBrowser: false,
+            icon: Icons.phone_iphone_rounded,
+          ));
+        }
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _isLoadingDevices = false);
+    }
   }
 
   @override
@@ -475,6 +503,14 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
   }
 
   Widget _buildActiveSessionsSection() {
+    if (_isLoadingDevices) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(40.0),
+          child: CircularProgressIndicator(color: brandViolet, strokeWidth: 2.5),
+        ),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -531,6 +567,18 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
 
   Future<void> _confirmRevoke(_PortalDevice entry, List<_PortalDevice> entries) async {
     final isSession = identical(entries, _sessions);
+
+    // Desktop/web sessions CANNOT revoke primary devices
+    if (entry.badge == 'MAIN' || entry.badge == 'PRIMARY') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Secondary and desktop devices cannot revoke the primary device.'),
+          backgroundColor: Color(0xFFC8423B),
+        ),
+      );
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -560,14 +608,17 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
     );
     if (confirmed != true || !mounted) return;
     if (entry.isThisBrowser) {
+      if (entry.id.isNotEmpty) {
+        await AuthApiService().revokeDevice(deviceId: entry.id);
+      }
       Navigator.of(context).pushReplacementNamed('/login');
       return;
     }
+    if (entry.id.isNotEmpty) {
+      await AuthApiService().revokeDevice(deviceId: entry.id);
+    }
     setState(() {
       entries.remove(entry);
-      if (!isSession && entries.isNotEmpty && !entries.any((item) => item.badge == 'MAIN')) {
-        entries.first.badge = 'MAIN';
-      }
     });
   }
 
@@ -651,6 +702,7 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
 
 class _PortalDevice {
   _PortalDevice({
+    this.id = '',
     required this.name,
     required this.detail,
     required this.badge,
@@ -658,6 +710,7 @@ class _PortalDevice {
     required this.icon,
   });
 
+  final String id;
   final String name;
   final String detail;
   String badge;

@@ -226,15 +226,17 @@ public class BalanceMutationController {
     }
 
     /**
-     * Security Risk Engine Blocked -> HTTP 422 Unprocessable Entity (Matches Fraud Security Notice Modal)
+     * Security Risk Engine Blocked -> HTTP 403 Forbidden
      */
     @ExceptionHandler(SecurityException.class)
     public ResponseEntity<Map<String, Object>> handleSecurityBlocked(SecurityException ex) {
-        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
-                "status", "REJECTED_FRAUD",
-                "error_code", "RISK_THRESHOLD_EXCEEDED",
-                "title", "Security Notice: Transaction Temporarily Held",
-                "message", ex.getMessage(),
+        log.warn("[SECURITY REJECTION] Transaction blocked by security policy: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                "error", "TRANSACTION_DECLINED",
+                "code", "TX_DECLINED_POLICY",
+                "error_code", "TX_DECLINED_POLICY",
+                "status", "Cancelled",
+                "message", "Transaction could not be processed at this time. Please contact customer support.",
                 "timestamp", Instant.now()
         ));
     }

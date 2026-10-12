@@ -158,7 +158,9 @@ public class AuthService {
         }
 
         // Restrict mobile app access to CUSTOMER role only; Administrative & staff must use Web Admin Portal (team accounts permitted)
-        String resolvedDeviceType = resolveDeviceType(request.getDeviceType(), request.getDeviceId(), request.getDeviceName(), userAgent);
+        String resolvedDeviceId = resolveDeviceId(request.getDeviceId(), clientIp, userAgent);
+        String resolvedDeviceName = resolveDeviceName(request.getDeviceName(), userAgent);
+        String resolvedDeviceType = resolveDeviceType(request.getDeviceType(), resolvedDeviceId, resolvedDeviceName, userAgent);
         boolean isWeb = "WEB".equalsIgnoreCase(resolvedDeviceType);
         if (!isWeb && user.getRole() != UserRole.CUSTOMER && !user.getUserId().startsWith("USR-TM-")) {
             log.warn("Blocked mobile login attempt for non-customer user {} (role={}, deviceType={})",
@@ -166,8 +168,18 @@ public class AuthService {
             throw new ForbiddenException("Administrative accounts are restricted from mobile access. Please use the Web Admin Portal.");
         }
 
-        // Enforce First-Time Login MFA Verification
-        if (user.getLastLoginAt() == null) {
+        // Check device trust status for this user
+        String primaryDeviceId = redisSessionStore.getPrimaryDeviceId(user.getUserId());
+        Optional<DeviceInfoDto> existingDevice = redisSessionStore.getDevice(user.getUserId(), resolvedDeviceId);
+        boolean isKnownApprovedDevice = existingDevice.isPresent() && existingDevice.get().isApproved();
+
+        // Enforce MFA for:
+        // 1. First-time login onboarding (user.getLastLoginAt() == null)
+        // 2. Initial primary mobile device binding for a user (no primary mobile registered yet, and device not pre-approved)
+        boolean isFirstTimeLogin = user.getLastLoginAt() == null;
+        boolean requiresDeviceBindingMfa = !isWeb && !isKnownApprovedDevice && (primaryDeviceId == null || primaryDeviceId.isBlank());
+
+        if (isFirstTimeLogin || requiresDeviceBindingMfa) {
             String otp = redisSessionStore.getLoginOtp(user.getUserId());
             if (otp == null || otp.isBlank()) {
                 sendLoginOtp(user);
@@ -238,12 +250,15 @@ public class AuthService {
         return createAuthenticatedSession(user, clientIp, userAgent, request.getDeviceId(), request.getDeviceName(), request.getDeviceType());
     }
 
-    /** Emails a new code to an account that has not verified its email yet. Returns the masked address. */
+    /** Emails a new code to an account that has not verified its email yet or is in an active login MFA challenge. Returns the masked address. */
     public String resendLoginOtp(String userId) {
         UserEntity user = userRepository.findById(userId)
                 .orElseThrow(() -> new UnauthorizedException("User account not found."));
         if (user.getLastLoginAt() != null) {
-            throw new ConflictException("This email is already verified. Sign in with your password.");
+            String pendingOtp = redisSessionStore.getLoginOtp(user.getUserId());
+            if (pendingOtp == null || pendingOtp.isBlank()) {
+                throw new ConflictException("This email is already verified. Sign in with your password.");
+            }
         }
         long wait = sendLoginOtp(user);
         if (wait > 0) {
@@ -289,24 +304,20 @@ public class AuthService {
             // Configuration: 1 Web session allowed
             // A desktop/web session cannot be the primary mobile device
             isPrimary = false;
-            isApproved = true;
 
-            // Enforce 1-web limit: deregister any existing web session
-            List<DeviceInfoDto> allDevices = redisSessionStore.getUserDevices(user.getUserId());
-            List<DeviceInfoDto> existingWebDevices = allDevices.stream()
-                    .filter(d -> "WEB".equalsIgnoreCase(d.getDeviceType()))
-                    .filter(d -> !d.getDeviceId().equals(resolvedDeviceId))
-                    .toList();
-            for (DeviceInfoDto oldWeb : existingWebDevices) {
-                log.info("Enforcing 1-web limit: deregistering previous web session {} for user {}", oldWeb.getDeviceId(), user.getUserId());
-                redisSessionStore.deleteUserDevice(user.getUserId(), oldWeb.getDeviceId());
-                redisSessionStore.deleteSessionsForDevice(user.getUserId(), oldWeb.getDeviceId());
-                dispatchDeviceApprovalEvent(user.getUserId(), oldWeb.getDeviceId(), "device-revoked");
-            }
-
-            // Also send a push notification to the primary device whenever there is a desktop session login
-            if (primaryDeviceId != null && !primaryDeviceId.isBlank()) {
-                dispatchDesktopSessionAlert(user.getUserId(), resolvedDeviceName, clientIp, primaryDeviceId, resolvedDeviceId);
+            if (primaryDeviceId == null || primaryDeviceId.isBlank()) {
+                // If there is no primary mobile device registered (e.g. admin or onboarding), auto-approve
+                isApproved = true;
+                deregisterOtherWebSessions(user.getUserId(), resolvedDeviceId);
+            } else {
+                Optional<DeviceInfoDto> existingWeb = redisSessionStore.getDevice(user.getUserId(), resolvedDeviceId);
+                if (existingWeb.isPresent() && existingWeb.get().isApproved()) {
+                    isApproved = true;
+                    deregisterOtherWebSessions(user.getUserId(), resolvedDeviceId);
+                } else {
+                    isApproved = false;
+                    dispatchDesktopSessionAlert(user.getUserId(), resolvedDeviceName, clientIp, primaryDeviceId, resolvedDeviceId);
+                }
             }
         } else {
             // Mobile device: 2 Mobiles allowed (1 Primary Mobile + 1 Secondary Mobile)
@@ -370,7 +381,7 @@ public class AuthService {
                 .deviceType(resolvedDeviceType)
                 .isPrimary(isPrimary)
                 .isApproved(isApproved)
-                .status(isApproved ? (isWeb ? "ACTIVE_SESSION" : "APPROVED") : (isThirdDevice ? "PENDING_CONFIRMATION" : "PENDING_APPROVAL"))
+                .status(isApproved ? "APPROVED" : (isThirdDevice ? "PENDING_CONFIRMATION" : "PENDING_APPROVAL"))
                 .clientIp(clientIp)
                 .userAgent(userAgent)
                 .registeredAt(Instant.now())
@@ -380,7 +391,7 @@ public class AuthService {
 
         String jti = UUID.randomUUID().toString();
         String roleAuthority = user.getRole().getAuthority();
-        String accessToken = jwtProvider.generateAccessToken(user.getUserId(), user.getEmail(), roleAuthority, jti);
+        String accessToken = jwtProvider.generateAccessToken(user.getUserId(), user.getEmail(), roleAuthority, jti, resolvedDeviceId);
 
         // Enforce max concurrent sessions in Redis
         redisSessionStore.registerSessionToken(user.getUserId(), jti, user.getMaxConcurrentSessions());
@@ -404,6 +415,7 @@ public class AuthService {
                 .tokenId(refreshTokenId)
                 .userId(user.getUserId())
                 .sessionId(sessionId)
+                .deviceId(resolvedDeviceId)
                 .role(roleAuthority)
                 .status("ACTIVE")
                 .parentTokenId(null)
@@ -483,8 +495,12 @@ public class AuthService {
         log.info("Primary device for user {} set to {}", userId, deviceId);
     }
 
-    public void approveDevice(String userId, String deviceId) {
+    public void approveDevice(String userId, String deviceId, String requesterDeviceId) {
         String primaryDeviceId = redisSessionStore.getPrimaryDeviceId(userId);
+        if (primaryDeviceId == null || !primaryDeviceId.equals(requesterDeviceId)) {
+            log.warn("Device {} attempted to approve {} for user {} but is not the primary device", requesterDeviceId, deviceId, userId);
+            throw new IllegalArgumentException("Only the primary device can approve access requests.");
+        }
         List<DeviceInfoDto> allDevices = redisSessionStore.getUserDevices(userId);
         String targetDeviceType = redisSessionStore.getDevice(userId, deviceId)
                 .map(DeviceInfoDto::getDeviceType)
@@ -525,14 +541,18 @@ public class AuthService {
     }
 
     public void revokeDevice(String userId, String deviceId) {
+        revokeDevice(userId, deviceId, null);
+    }
+
+    public void revokeDevice(String userId, String deviceId, String requesterDeviceId) {
         String primaryDeviceId = redisSessionStore.getPrimaryDeviceId(userId);
         if (deviceId != null && deviceId.equals(primaryDeviceId)) {
-            log.warn("Attempt to revoke primary device {} for user {} rejected", deviceId, userId);
-            throw new IllegalArgumentException("Cannot deregister the primary device.");
+            log.warn("Attempt to revoke primary device {} for user {} by requester {} rejected", deviceId, userId, requesterDeviceId);
+            throw new IllegalArgumentException("Cannot revoke the primary device's access.");
         }
         redisSessionStore.deleteUserDevice(userId, deviceId);
         redisSessionStore.deleteSessionsForDevice(userId, deviceId);
-        log.info("Device {} for user {} deleted/revoked", deviceId, userId);
+        log.info("Device {} for user {} deleted/revoked by requester {}", deviceId, userId, requesterDeviceId);
         dispatchDeviceApprovalEvent(userId, deviceId, "device-revoked");
     }
 
@@ -600,6 +620,20 @@ public class AuthService {
         return "MOBILE";
     }
 
+    private void deregisterOtherWebSessions(String userId, String currentDeviceId) {
+        List<DeviceInfoDto> allDevices = redisSessionStore.getUserDevices(userId);
+        List<DeviceInfoDto> existingWebDevices = allDevices.stream()
+                .filter(d -> "WEB".equalsIgnoreCase(d.getDeviceType()))
+                .filter(d -> !d.getDeviceId().equals(currentDeviceId))
+                .toList();
+        for (DeviceInfoDto oldWeb : existingWebDevices) {
+            log.info("Enforcing 1-web limit: deregistering previous web session {} for user {}", oldWeb.getDeviceId(), userId);
+            redisSessionStore.deleteUserDevice(userId, oldWeb.getDeviceId());
+            redisSessionStore.deleteSessionsForDevice(userId, oldWeb.getDeviceId());
+            dispatchDeviceApprovalEvent(userId, oldWeb.getDeviceId(), "device-revoked");
+        }
+    }
+
     private void dispatchDesktopSessionAlert(
             String userId,
             String deviceName,
@@ -615,15 +649,15 @@ public class AuthService {
 
             java.util.Map<String, Object> payload = new java.util.HashMap<>();
             payload.put("user_id", userId);
-            payload.put("title", "Security Alert: Desktop Session Login");
-            payload.put("message", "A desktop/web session (" + deviceName + ") just logged into your account from IP " + clientIp + ". (Policy: 1 Web session permitted).");
+            payload.put("title", "Security Alert: Desktop Login Request");
+            payload.put("message", "A desktop/web session (" + deviceName + ") is requesting access to your account from IP " + clientIp + ". Confirm if you wish to grant this device access.");
             payload.put("type", "SECURITY_ALERT");
             payload.put("device_type", "WEB");
             payload.put("device_name", deviceName);
             payload.put("device_id", deviceId != null ? deviceId : "");
             payload.put("client_ip", clientIp);
             payload.put("target_device_id", targetPrimaryDeviceId != null ? targetPrimaryDeviceId : "");
-            payload.put("status", "ACTIVE_SESSION");
+            payload.put("status", "PENDING_APPROVAL");
             payload.put("is_third_device", false);
             payload.put("replaced_device_id", "");
             payload.put("replaced_device_name", "");

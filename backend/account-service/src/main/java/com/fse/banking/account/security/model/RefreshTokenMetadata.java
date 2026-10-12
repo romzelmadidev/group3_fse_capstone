@@ -20,6 +20,7 @@ public class RefreshTokenMetadata implements Serializable {
     private String tokenId;
     private String userId;
     private String sessionId;
+    private String deviceId;
     private String role;
     private String status; // "ACTIVE" or "REVOKED"
     private String parentTokenId;

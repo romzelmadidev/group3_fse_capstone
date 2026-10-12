@@ -1,5 +1,6 @@
 package com.bank.ledger.contracts.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -9,6 +10,9 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.Instant;
 
+/**
+ * Data Transfer Object representing an account transaction ledger record.
+ */
 @Data
 @Builder
 @NoArgsConstructor
@@ -16,13 +20,36 @@ import java.time.Instant;
 public class AccountTransactionDto {
 
     @JsonProperty("transaction_id")
+    @JsonAlias("transactionId")
     private String transactionId;
 
     @JsonProperty("source_account_id")
+    @JsonAlias({"sourceAccountId", "from_account_id", "fromAccountId"})
     private String sourceAccountId;
 
     @JsonProperty("target_account_id")
+    @JsonAlias({"targetAccountId", "to_account_id", "toAccountId"})
     private String targetAccountId;
+
+    @JsonProperty("from_account_id")
+    public String getFromAccountId() {
+        return sourceAccountId;
+    }
+
+    @JsonProperty("from_account_id")
+    public void setFromAccountId(String fromAccountId) {
+        this.sourceAccountId = fromAccountId;
+    }
+
+    @JsonProperty("to_account_id")
+    public String getToAccountId() {
+        return targetAccountId;
+    }
+
+    @JsonProperty("to_account_id")
+    public void setToAccountId(String toAccountId) {
+        this.targetAccountId = toAccountId;
+    }
 
     @JsonProperty("amount")
     private BigDecimal amount;
@@ -30,7 +57,11 @@ public class AccountTransactionDto {
     @JsonProperty("currency")
     private String currency;
 
+    @JsonProperty("type")
+    private String type;
+
     @JsonProperty("transaction_type")
+    @JsonAlias("transactionType")
     private String transactionType;
 
     @JsonProperty("status")
@@ -40,5 +71,35 @@ public class AccountTransactionDto {
     private String memo;
 
     @JsonProperty("created_at")
+    @JsonAlias("createdAt")
     private Instant createdAt;
+
+    @JsonProperty("before_balance")
+    @JsonAlias({"beforeBalance", "before_balance"})
+    private BigDecimal beforeBalance;
+
+    @JsonProperty("after_balance")
+    @JsonAlias({"afterBalance", "after_balance"})
+    private BigDecimal afterBalance;
+
+    public AccountTransactionDto(
+            String transactionId,
+            String sourceAccountId,
+            String targetAccountId,
+            BigDecimal amount,
+            String currency,
+            String transactionType,
+            String status,
+            String memo,
+            Instant createdAt) {
+        this.transactionId = transactionId;
+        this.sourceAccountId = sourceAccountId;
+        this.targetAccountId = targetAccountId;
+        this.amount = amount;
+        this.currency = currency;
+        this.transactionType = transactionType;
+        this.status = status;
+        this.memo = memo;
+        this.createdAt = createdAt;
+    }
 }
