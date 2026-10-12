@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 FROM registry.datadoghq.com/agent:7
 
 WORKDIR /app

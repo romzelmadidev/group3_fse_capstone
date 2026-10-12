@@ -31,6 +31,7 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
   void initState() {
     super.initState();
     _bankService.addListener(_onServiceUpdate);
+    _bankService.syncWithBackend();
   }
 
   @override
@@ -222,13 +223,16 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
 
   // --- 2. KPI METRICS ---
   Widget _buildKpiMetricsRow() {
+    final inflow = _bankService.monthlyInflow;
+    final outflow = _bankService.monthlyOutflow;
+
     return Row(
       children: [
         Expanded(
           child: _buildMetricTile(
             title: 'Monthly Inflow',
-            value: '+ ₱125,000.00',
-            trend: '+ 12.4% vs last mo',
+            value: '+ ${_formatCurrency(inflow)}',
+            trend: inflow > 0 ? 'Live from database' : 'No incoming volume',
             trendColor: const Color(0xFF17805F),
             icon: Icons.arrow_downward_rounded,
             iconBg: const Color(0xFFE4F5EE),
@@ -239,8 +243,8 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
         Expanded(
           child: _buildMetricTile(
             title: 'Monthly Outflow',
-            value: '- ₱45,820.00',
-            trend: 'Within budget',
+            value: '- ${_formatCurrency(outflow)}',
+            trend: outflow > 0 ? 'Live from database' : 'No outgoing volume',
             trendColor: const Color(0xFF7D8892),
             icon: Icons.arrow_upward_rounded,
             iconBg: const Color(0xFFFDF3F2),
@@ -318,7 +322,7 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
 
   // --- 3. TRANSACTIONS LEDGER TABLE ---
   Widget _buildTransactionLedgerTable() {
-    final allTxns = _bankService.statements.values.expand((s) => s.transactions).toList();
+    final allTxns = _bankService.recentLedgerTransactions;
     final txns = allTxns.where((t) {
       if (_selectedTxnFilter == 'Credit') return t.isIncoming;
       if (_selectedTxnFilter == 'Debit') return !t.isIncoming;
@@ -381,7 +385,7 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
             const Padding(
               padding: EdgeInsets.all(32),
               child: Center(
-                child: Text('No transaction history found', style: TextStyle(color: Color(0xFF9AA3AB))),
+                child: Text('No transaction history found in database', style: TextStyle(color: Color(0xFF9AA3AB))),
               ),
             )
           else
