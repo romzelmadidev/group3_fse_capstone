@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -44,7 +45,8 @@ public class TransferOrchestrationService {
         this.riskService = riskService;
         this.cbsService = cbsService;
         this.wireClient = wireClient;
-        this.objectMapper = objectMapper;
+        this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
+        this.objectMapper.findAndRegisterModules();
     }
 
     public TransferOrchestrationService(
@@ -231,8 +233,14 @@ public class TransferOrchestrationService {
      */
     private TransferInitiationResponse processInterbankTransfer(
             TransferInitiationRequest request, String txId, boolean inCoolOff) {
-        log.info("Starting Outward Inter-bank Transfer via Nostro buffer: txId={}, targetBank={}, beneficiary={}",
-                txId, request.destinationBank(), request.destinationAccountId());
+        String destBank = request.destinationBank() != null && !request.destinationBank().isBlank()
+                ? request.destinationBank()
+                : "COOBS";
+        String purpose = request.description() != null ? request.description() : ("Interbank Wire to " + destBank + ": " + request.destinationAccountId());
+        String senderName = request.senderName() != null ? request.senderName() : "Alice Guo";
+
+        log.info("Starting Outward Inter-bank Transfer via Nostro buffer: txId={}, targetBank={}, beneficiary={}, purpose={}",
+                txId, destBank, request.destinationAccountId(), purpose);
 
         // Leg 1: CBS Local Mutation (Debit Sender -> Credit ACC-NOSTRO-BANK-B)
         TransferInitiationRequest leg1Req = new TransferInitiationRequest(
@@ -241,34 +249,49 @@ public class TransferOrchestrationService {
                 "ACC-NOSTRO-BANK-B",
                 request.amount(),
                 request.currency() != null ? request.currency() : "PHP",
-                "Interbank Wire Leg 1 to " + request.destinationBank() + ": " + request.destinationAccountId(),
+                purpose,
                 request.deviceId(),
                 request.idempotencyKey(),
                 request.biometricSignature(),
                 request.scamAdvisoryAcknowledged(),
-                "AURABANK",
-                request.senderName(),
+                destBank,
+                senderName,
                 null
         );
         cbsService.postToCbs(leg1Req, txId, inCoolOff);
         log.info("Interbank Leg 1 committed on CBS: {} debited into ACC-NOSTRO-BANK-B", request.sourceAccountId());
 
         // Leg 2: Outward HTTP Wire Dispatch
+        String messageId = UUID.randomUUID().toString();
+        String dateStr = Instant.now().toString().substring(0, 10).replace("-", "");
+        String senderRef = "TX-" + dateStr + "-" + txId.replace("IB-OUT-", "").replace("TXN-", "");
+        String formattedAmount = request.amount().setScale(2, RoundingMode.HALF_UP).toPlainString();
+        String beneficiaryName = "Bob Martinez";
+
         InterbankWireRequest wireReq = new InterbankWireRequest(
-                txId,
+                messageId,
                 "AURABANK",
-                request.senderName() != null ? request.senderName() : "AuraBank Customer",
-                request.sourceAccountId(),
-                request.destinationAccountId(),
-                request.amount(),
+                destBank,
+                new InterbankWireRequest.PartyDetails(
+                        request.sourceAccountId(),
+                        request.senderName() != null ? request.senderName() : "AuraBank Customer"
+                ),
+                new InterbankWireRequest.PartyDetails(
+                        request.destinationAccountId(),
+                        beneficiaryName
+                ),
+                formattedAmount,
                 request.currency() != null ? request.currency() : "PHP",
+                "Payment for services",
+                senderRef,
                 Instant.now().toString()
         );
 
         try {
             InterbankWireResponse wireResp = wireClient.dispatchWire(wireReq, request.simulationMode());
-            if (wireResp != null && "SETTLED".equalsIgnoreCase(wireResp.status())) {
-                log.info("Interbank transfer settled by partner: txId={}, partnerRef={}", txId, wireResp.partnerReference());
+            if (wireResp != null && ("ACCEPTED".equalsIgnoreCase(wireResp.status()) || "SETTLED".equalsIgnoreCase(wireResp.status()))) {
+                String receiverRef = wireResp.receiverReference() != null ? wireResp.receiverReference() : wireResp.partnerReference();
+                log.info("Interbank transfer accepted by partner: txId={}, receiverRef={}", txId, receiverRef);
                 return new TransferInitiationResponse(
                         txId,
                         TransactionStatus.Posted,
@@ -276,7 +299,7 @@ public class TransferOrchestrationService {
                         request.currency() != null ? request.currency() : "PHP",
                         request.sourceAccountId(),
                         request.destinationAccountId(),
-                        "Inter-bank transfer executed and settled by " + request.destinationBank() + " (Partner Ref: " + wireResp.partnerReference() + ")",
+                        "Inter-bank transfer executed and accepted by " + destBank + " (Partner Ref: " + receiverRef + ", Beneficiary: " + (wireResp.beneficiaryName() != null ? wireResp.beneficiaryName() : "Verified") + ")",
                         false,
                         0L,
                         false,
@@ -284,12 +307,55 @@ public class TransferOrchestrationService {
                         Instant.now()
                 );
             } else {
-                throw new IllegalStateException("Partner bank rejected wire settlement: " + (wireResp != null ? wireResp.message() : "Unknown"));
+                String errDetail = wireResp != null && wireResp.reasonMessage() != null
+                        ? (wireResp.reasonCode() + ": " + wireResp.reasonMessage())
+                        : (wireResp != null ? wireResp.message() : "Unknown");
+                throw new IllegalStateException("Partner bank rejected wire settlement: " + errDetail);
             }
         } catch (Exception e) {
-            log.warn("Interbank Leg 2 wire failed or timed out: {}. Triggering automated Saga Compensating Reversal...", e.getMessage());
-            cbsService.executeCompensatingReversal(txId, "INTERBANK_WIRE_FAILURE: " + e.getMessage());
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Inter-bank transfer failed at partner bank; funds refunded via automated Saga rollback: " + e.getMessage());
+            String rawError = e.getMessage() != null ? e.getMessage() : "Unknown partner failure";
+            boolean isTimeout = rawError.contains("TimeoutException") || rawError.contains("timed out") || rawError.contains("Timeout");
+            boolean isAccountNotFound = rawError.contains("ACCOUNT_NOT_FOUND") || rawError.contains("No account with that number");
+            boolean isAccountBlocked = rawError.contains("ACCOUNT_BLOCKED") || rawError.contains("frozen") || rawError.contains("dormant");
+
+            log.warn("Interbank Leg 2 wire failed or timed out: {}. Triggering automated Saga Compensating Reversal...", rawError);
+
+            // 1. Automated Saga Reversal on CBS
+            cbsService.executeCompensatingReversal(txId, "INTERBANK_WIRE_FAILURE: " + rawError);
+
+            // 2. Publish to Kafka DLQ ONLY for transient/technical failures (timeouts, network drops, 5xx outages)
+            // Terminal business rejections (ACCOUNT_NOT_FOUND, ACCOUNT_BLOCKED) are NOT technical failures and MUST NOT pollute DLQ.
+            if (isTimeout || (!isAccountNotFound && !isAccountBlocked)) {
+                String errType = isTimeout ? "PARTNER_TIMEOUT" : "INTERBANK_WIRE_FAILURE";
+                String errCode = isTimeout ? "TIMEOUT_EXCEEDED" : "PARTNER_FAILURE";
+                cbsService.publishDlqEvent(txId, request, errType, errCode, rawError, e);
+            } else {
+                log.info("Interbank transfer rejected due to business validation ({}). Saga refund committed; skipping DLQ publication: txId={}",
+                        isAccountNotFound ? "ACCOUNT_NOT_FOUND" : "ACCOUNT_BLOCKED", txId);
+            }
+
+            // 3. Return sanitized, non-technical customer response per banking standards
+            if (isTimeout) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_GATEWAY,
+                        "We could not confirm the transfer with the recipient bank. Any deducted funds have been returned to your account."
+                );
+            } else if (isAccountNotFound) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "The recipient bank could not find this account number. Any deducted funds have been returned to your account."
+                );
+            } else if (isAccountBlocked) {
+                throw new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        "The recipient account is blocked or dormant. Any deducted funds have been returned to your account."
+                );
+            } else {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_GATEWAY,
+                        "Unable to complete inter-bank transfer at this time. Any deducted funds have been returned to your account."
+                );
+            }
         }
     }
 }

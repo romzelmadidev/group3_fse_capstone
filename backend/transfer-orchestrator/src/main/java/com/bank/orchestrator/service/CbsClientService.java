@@ -145,9 +145,27 @@ public class CbsClientService {
         log.info("Sending funds transfer request to CBS via OFS: txId={}, amount={}, fundsHeld={}", txId, request.amount(), fundsHeld);
 
         String idempKey = request.idempotencyKey() != null ? request.idempotencyKey() : txId;
+        String txType = "AC";
+        String orderingCust = request.senderName();
+        String benCust = null;
+        String benAcct = null;
+        String cpBank = request.destinationBank() != null ? request.destinationBank() : "COOBS";
+
+        if ("ACC-NOSTRO-BANK-B".equalsIgnoreCase(request.destinationAccountId())) {
+            txType = "OT";
+            benCust = "Bob Martinez";
+            benAcct = "B-ACC-998877";
+        } else if ("ACC-NOSTRO-BANK-B".equalsIgnoreCase(request.sourceAccountId())) {
+            txType = "IT";
+            orderingCust = request.senderName() != null ? request.senderName() : "Bob Martinez";
+            benCust = "Alice Guo";
+            benAcct = request.destinationAccountId();
+        }
+
         String ofsPostingReq = OfsMessageUtil.buildFundsTransferInitiate(
                 txId, request.sourceAccountId(), request.destinationAccountId(),
-                request.amount(), request.currency() != null ? request.currency() : "PHP", null, idempKey
+                request.amount(), request.currency() != null ? request.currency() : "PHP", null, idempKey,
+                txType, request.description(), orderingCust, benCust, benAcct, cpBank, "SHA"
         );
 
         String ofsResponse;
@@ -238,6 +256,40 @@ public class CbsClientService {
                 "Core banking system is temporarily unavailable. Transaction queued into DLQ for safe replay: incident=" + incidentId,
                 t
         );
+    }
+
+    /**
+     * Emits a standardized TransferFailedToDlqEvent to Kafka topic banking.transfers.dlq
+     * for auditing, incident tracking, and ops alerting.
+     */
+    public void publishDlqEvent(String txId, TransferInitiationRequest request, String errorType, String errorCode, String details, Throwable t) {
+        String incidentId = UUID.randomUUID().toString();
+        TransferFailedToDlqEvent dlqEvent = TransferFailedToDlqEvent.builder()
+                .incidentId(incidentId)
+                .correlationId(txId)
+                .transactionId(txId)
+                .errorType(errorType != null ? errorType : "INTERBANK_WIRE_FAILURE")
+                .errorCode(errorCode != null ? errorCode : "PARTNER_FAILURE")
+                .circuitBreakerState("CLOSED")
+                .sourceAccountId(request != null ? request.sourceAccountId() : "UNKNOWN")
+                .destinationAccountId(request != null ? request.destinationAccountId() : "UNKNOWN")
+                .amount(request != null ? request.amount() : BigDecimal.ZERO)
+                .currency(request != null && request.currency() != null ? request.currency() : "PHP")
+                .failureTimestampUtc(Instant.now())
+                .stackTrace(details != null ? details : (t != null ? t.getMessage() : "Unknown"))
+                .originalPayload(request != null ? Map.of(
+                        "sourceAccountId", request.sourceAccountId(),
+                        "destinationAccountId", request.destinationAccountId(),
+                        "amount", request.amount()
+                ) : Map.of())
+                .build();
+
+        try {
+            kafkaTemplate.send(DLQ_TOPIC, txId, dlqEvent);
+            log.info("Published failed interbank transfer event to DLQ: incidentId={}, txId={}, errorType={}", incidentId, txId, errorType);
+        } catch (Exception e) {
+            log.error("Failed to publish interbank DLQ event to Kafka: {}", e.getMessage(), e);
+        }
     }
 
     private ResponseStatusException extractClientException(Throwable t) {

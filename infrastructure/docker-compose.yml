@@ -201,6 +201,7 @@ services:
     volumes:
       - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
     environment:
+      - SERVER_PORT=8081
       - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
       - DD_AGENT_HOST=dd-agent
       - DD_TRACE_AGENT_PORT=8126
@@ -366,6 +367,8 @@ services:
       - CBS_SERVICE_URL=http://t24-mock-cbs:8085
       - RISK_SERVICE_URL=http://risk-service:8084
       - ACCOUNT_SERVICE_URL=http://account-service:8081
+      # Interbank Partner routing override (Group B / CooBS URL configuration)
+      - PARTNER_BANK_URL=${PARTNER_BANK_URL:-}
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "transfer-orchestrator"}]'
     networks:

@@ -33,20 +33,59 @@ public final class OfsMessageUtil {
     public static String buildFundsTransferInitiate(String transactionId, String sourceAccountId,
                                                     String destinationAccountId, BigDecimal amount,
                                                     String currency, String valueDate, String idempotencyKey) {
+        return buildFundsTransferInitiate(transactionId, sourceAccountId, destinationAccountId, amount, currency, valueDate, idempotencyKey,
+                "AC", null, null, null, null, null, "SHA");
+    }
+
+    /**
+     * Builds an OFS message string for funds transfer initiation with full Temenos T24 interbank remittance metadata.
+     */
+    public static String buildFundsTransferInitiate(String transactionId, String sourceAccountId,
+                                                    String destinationAccountId, BigDecimal amount,
+                                                    String currency, String valueDate, String idempotencyKey,
+                                                    String transactionType, String paymentDetails,
+                                                    String orderingCustomer, String beneficiaryCustomer,
+                                                    String beneficiaryAccount, String counterpartyBank,
+                                                    String chargeBearer) {
         String cleanDate = (valueDate != null) ? valueDate.replace("-", "") : "";
         String amt = (amount != null) ? amount.toPlainString() : "";
         String idempPart = (idempotencyKey != null && !idempotencyKey.isBlank()) ? ",IDEMPOTENCY.KEY=" + idempotencyKey : "";
-        return String.format(
-                "FUNDS.TRANSFER,INITIATE/I/PROCESS//%s,USER01/%s,TRANSACTION.TYPE=AC,DEBIT.ACCT.NO=%s,CREDIT.ACCT.NO=%s,AMOUNT=%s,CURRENCY=%s,VALUE.DATE=%s%s",
+        String txType = (transactionType != null && !transactionType.isBlank()) ? transactionType.trim() : "AC";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format(
+                "FUNDS.TRANSFER,INITIATE/I/PROCESS//%s,USER01/%s,TRANSACTION.TYPE=%s,DEBIT.ACCT.NO=%s,CREDIT.ACCT.NO=%s,AMOUNT=%s,CURRENCY=%s,VALUE.DATE=%s%s",
                 transactionId != null ? transactionId : "",
                 transactionId != null ? transactionId : "",
+                txType,
                 sourceAccountId != null ? sourceAccountId : "",
                 destinationAccountId != null ? destinationAccountId : "",
                 amt,
-                currency != null ? currency : "",
+                currency != null ? currency : "PHP",
                 cleanDate,
                 idempPart
-        );
+        ));
+
+        if (paymentDetails != null && !paymentDetails.isBlank()) {
+            sb.append(",PAYMENT.DETAILS=").append(paymentDetails.replace(",", " ").replace(":", " ").trim());
+        }
+        if (orderingCustomer != null && !orderingCustomer.isBlank()) {
+            sb.append(",ORDERING.CUST=").append(orderingCustomer.replace(",", " ").replace(":", " ").trim());
+        }
+        if (beneficiaryCustomer != null && !beneficiaryCustomer.isBlank()) {
+            sb.append(",BEN.CUSTOMER=").append(beneficiaryCustomer.replace(",", " ").replace(":", " ").trim());
+        }
+        if (beneficiaryAccount != null && !beneficiaryAccount.isBlank()) {
+            sb.append(",BEN.ACCT.NO=").append(beneficiaryAccount.trim());
+        }
+        if (counterpartyBank != null && !counterpartyBank.isBlank()) {
+            sb.append(",BK.TO.BK.OUT=").append(counterpartyBank.replace(",", " ").replace(":", " ").trim());
+        }
+        if (chargeBearer != null && !chargeBearer.isBlank()) {
+            sb.append(",BEN.OUR.CHARGES=").append(chargeBearer.trim());
+        }
+
+        return sb.toString();
     }
 
     /**
