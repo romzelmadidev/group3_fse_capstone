@@ -13,6 +13,7 @@ import 'web_annual_report_screen.dart';
 class FlowPointData {
   final String label;
   final String shortLabel;
+  final String rangeLabel;
   final String dateSubtitle;
   final double received;
   final double sent;
@@ -23,6 +24,7 @@ class FlowPointData {
   const FlowPointData({
     required this.label,
     required this.shortLabel,
+    this.rangeLabel = '',
     required this.dateSubtitle,
     required this.received,
     required this.sent,
@@ -54,6 +56,7 @@ class AnalyticsTxItem {
   final String initial;
   final Color avatarBg;
   final String time;
+  final DateTime postedAt;
   final double amount;
   final bool isReceived;
   final String status;
@@ -63,10 +66,18 @@ class AnalyticsTxItem {
     required this.initial,
     required this.avatarBg,
     required this.time,
+    required this.postedAt,
     required this.amount,
     required this.isReceived,
     this.status = 'COMPLETED',
   });
+}
+
+class _MonthWeekSpan {
+  final DateTime start;
+  final DateTime end;
+
+  const _MonthWeekSpan(this.start, this.end);
 }
 
 class WebAnalyticsScreen extends StatefulWidget {
@@ -82,12 +93,11 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
     with SingleTickerProviderStateMixin {
   bool _isMonthly = true;
 
-  // Selected indices
-  final int _selectedMonthOfYear = 9; // Defaults to October 2026 (Index 9 in Jan..Dec)
-  int _selectedWeekIndex = 3; // Defaults to Week 4 (matches Page 11 design)
-  int _selectedMonthIndex = 3; // Defaults to April in Yearly mode
-  final int _selectedYear = 2026; // Defaults to 2026 (options: 2026, 2025)
-  final int _selectedQuarterIndex = 0; // 0 = All (12M), 1 = Q1, 2 = Q2, 3 = Q3, 4 = Q4
+  // Selected indices. Null week means the whole month is in view.
+  int _selectedMonthOfYear = 9; // Defaults to October 2026 (Index 9 in Jan..Dec)
+  int? _selectedWeekIndex;
+  int? _dragWeekIndex;
+  int _selectedMonthIndex = 0;
   late AnimationController _animController;
   late Animation<double> _scrubAnimation;
   double _currentScrubFraction = 3.0; // Current floating position in index space
@@ -95,9 +105,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
   // Catalog of all 12 Months in 2026 with weekly data
   late List<MonthFlowData> _monthsCatalog;
 
-  // Yearly Datasets
   late List<FlowPointData> _yearlyMonths2026;
-  late final List<FlowPointData> _yearlyMonths2025;
   bool _isLoading = false;
   String? _loadedAccountId;
 
@@ -144,54 +152,12 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
     _monthsCatalog = List.generate(12, (mIdx) {
       final mName = monthNames[mIdx];
       final sName = shortNames[mIdx];
-      final lastDay = monthDays[mIdx];
 
       return MonthFlowData(
         monthName: '$mName 2026',
         shortName: sName,
         monthIndex: mIdx,
-        weeks: [
-          FlowPointData(
-            label: 'Week 1',
-            shortLabel: 'W1',
-            dateSubtitle: '$sName 01 - $sName 07, 2026',
-            received: 0.0,
-            sent: 0.0,
-            inTransfers: 0,
-            outTransfers: 0,
-            transactions: const [],
-          ),
-          FlowPointData(
-            label: 'Week 2',
-            shortLabel: 'W2',
-            dateSubtitle: '$sName 08 - $sName 14, 2026',
-            received: 0.0,
-            sent: 0.0,
-            inTransfers: 0,
-            outTransfers: 0,
-            transactions: const [],
-          ),
-          FlowPointData(
-            label: 'Week 3',
-            shortLabel: 'W3',
-            dateSubtitle: '$sName 15 - $sName 21, 2026',
-            received: 0.0,
-            sent: 0.0,
-            inTransfers: 0,
-            outTransfers: 0,
-            transactions: const [],
-          ),
-          FlowPointData(
-            label: 'Week 4',
-            shortLabel: 'W4',
-            dateSubtitle: '$sName 22 - $sName ${lastDay.toString().padLeft(2, '0')}, 2026',
-            received: 0.0,
-            sent: 0.0,
-            inTransfers: 0,
-            outTransfers: 0,
-            transactions: const [],
-          ),
-        ],
+        weeks: _composeWeeks(mIdx),
       );
     });
 
@@ -284,6 +250,73 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
     return '$m $d, $hour12:$minute $ampm';
   }
 
+  static const List<String> _shortMonthNames = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  static const List<String> _weekdayNames = [
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+  ];
+
+  List<_MonthWeekSpan> _weekSpans(int year, int month) {
+    final spans = <_MonthWeekSpan>[];
+    var cursor = DateTime(year, month, 1);
+    final monthEnd = DateTime(year, month + 1, 0);
+    while (!cursor.isAfter(monthEnd)) {
+      final daysUntilSunday = DateTime.sunday - cursor.weekday;
+      var end = DateTime(cursor.year, cursor.month, cursor.day + daysUntilSunday);
+      if (end.isAfter(monthEnd)) end = monthEnd;
+      spans.add(_MonthWeekSpan(cursor, end));
+      cursor = DateTime(end.year, end.month, end.day + 1);
+    }
+    return spans;
+  }
+
+  String _spanRangeLabel(_MonthWeekSpan span) {
+    final startLabel = _shortMonthNames[span.start.month - 1];
+    final endLabel = _shortMonthNames[span.end.month - 1];
+    if (span.start.month == span.end.month) {
+      return '$startLabel ${span.start.day}–${span.end.day}';
+    }
+    return '$startLabel ${span.start.day}–$endLabel ${span.end.day}';
+  }
+
+  List<FlowPointData> _composeWeeks(
+    int monthIndex, {
+    List<double>? received,
+    List<double>? sent,
+    List<int>? inCounts,
+    List<int>? outCounts,
+    List<List<AnalyticsTxItem>>? txns,
+  }) {
+    final spans = _weekSpans(2026, monthIndex + 1);
+    return List.generate(spans.length, (w) {
+      final range = _spanRangeLabel(spans[w]);
+      return FlowPointData(
+        label: 'Week ${w + 1}',
+        shortLabel: 'W${w + 1}',
+        rangeLabel: range,
+        dateSubtitle: '$range, 2026',
+        received: (received != null && w < received.length) ? received[w] : 0.0,
+        sent: (sent != null && w < sent.length) ? sent[w] : 0.0,
+        inTransfers: (inCounts != null && w < inCounts.length) ? inCounts[w] : 0,
+        outTransfers: (outCounts != null && w < outCounts.length) ? outCounts[w] : 0,
+        transactions: (txns != null && w < txns.length) ? txns[w] : const [],
+      );
+    });
+  }
+
+  int _weekIndexForDay(DateTime day, List<_MonthWeekSpan> spans) {
+    final date = DateTime(day.year, day.month, day.day);
+    for (var i = 0; i < spans.length; i++) {
+      final start = DateTime(spans[i].start.year, spans[i].start.month, spans[i].start.day);
+      final end = DateTime(spans[i].end.year, spans[i].end.month, spans[i].end.day);
+      if (!date.isBefore(start) && !date.isAfter(end)) return i;
+    }
+    return 0;
+  }
+
   Future<void> _loadOracleTransactions() async {
     final accountId = _resolveAccountId();
     _loadedAccountId = accountId;
@@ -373,35 +406,27 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
     ];
     const monthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
-    final weekReceived = List.generate(12, (_) => List.filled(4, 0.0));
-    final weekSent = List.generate(12, (_) => List.filled(4, 0.0));
-    final weekInCount = List.generate(12, (_) => List.filled(4, 0));
-    final weekOutCount = List.generate(12, (_) => List.filled(4, 0));
-    final weekTxns = List.generate(12, (_) => List.generate(4, (_) => <AnalyticsTxItem>[]));
+    final spansByMonth = List.generate(12, (m) => _weekSpans(2026, m + 1));
+    final weekReceived = spansByMonth.map((spans) => List<double>.filled(spans.length, 0.0)).toList();
+    final weekSent = spansByMonth.map((spans) => List<double>.filled(spans.length, 0.0)).toList();
+    final weekInCount = spansByMonth.map((spans) => List<int>.filled(spans.length, 0)).toList();
+    final weekOutCount = spansByMonth.map((spans) => List<int>.filled(spans.length, 0)).toList();
+    final weekTxns = spansByMonth.map((spans) => List.generate(spans.length, (_) => <AnalyticsTxItem>[])).toList();
 
     for (final item in rawList) {
       if (item is! Map) continue;
       final createdAtStr = (item['created_at'] ?? item['createdAt'])?.toString();
       if (createdAtStr == null) continue;
 
-      DateTime? dt = DateTime.tryParse(createdAtStr);
-      if (dt == null) continue;
+      DateTime? parsed = DateTime.tryParse(createdAtStr);
+      if (parsed == null) continue;
+      final dt = parsed.toLocal();
 
       if (dt.year != 2026) continue;
       final mIdx = dt.month - 1;
       if (mIdx < 0 || mIdx > 11) continue;
 
-      final day = dt.day;
-      int wIdx;
-      if (day <= 7) {
-        wIdx = 0;
-      } else if (day <= 14) {
-        wIdx = 1;
-      } else if (day <= 21) {
-        wIdx = 2;
-      } else {
-        wIdx = 3;
-      }
+      final wIdx = _weekIndexForDay(dt, spansByMonth[mIdx]);
 
       final amount = ((item['amount'] ?? 0) as num).toDouble();
       final src = (item['source_account_id'] ?? item['from_account_id'] ?? item['fromAccountId'])?.toString() ?? '';
@@ -428,9 +453,10 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
         initial: counterpartyName.isNotEmpty ? counterpartyName[0].toUpperCase() : 'T',
         avatarBg: _getAvatarColor(counterpartyName),
         time: _formatTxnTime(dt),
+        postedAt: dt,
         amount: amount,
         isReceived: isIncoming,
-        status: isIncoming ? 'RECEIVED' : 'COMPLETED',
+        status: isIncoming ? 'RECEIVED' : 'SETTLED',
       );
 
       if (isIncoming) {
@@ -447,54 +473,19 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
     _monthsCatalog = List.generate(12, (mIdx) {
       final mName = monthNames[mIdx];
       final sName = shortNames[mIdx];
-      final lastDay = monthDays[mIdx];
 
       return MonthFlowData(
         monthName: '$mName 2026',
         shortName: sName,
         monthIndex: mIdx,
-        weeks: [
-          FlowPointData(
-            label: 'Week 1',
-            shortLabel: 'W1',
-            dateSubtitle: '$sName 01 - $sName 07, 2026',
-            received: weekReceived[mIdx][0],
-            sent: weekSent[mIdx][0],
-            inTransfers: weekInCount[mIdx][0],
-            outTransfers: weekOutCount[mIdx][0],
-            transactions: weekTxns[mIdx][0],
-          ),
-          FlowPointData(
-            label: 'Week 2',
-            shortLabel: 'W2',
-            dateSubtitle: '$sName 08 - $sName 14, 2026',
-            received: weekReceived[mIdx][1],
-            sent: weekSent[mIdx][1],
-            inTransfers: weekInCount[mIdx][1],
-            outTransfers: weekOutCount[mIdx][1],
-            transactions: weekTxns[mIdx][1],
-          ),
-          FlowPointData(
-            label: 'Week 3',
-            shortLabel: 'W3',
-            dateSubtitle: '$sName 15 - $sName 21, 2026',
-            received: weekReceived[mIdx][2],
-            sent: weekSent[mIdx][2],
-            inTransfers: weekInCount[mIdx][2],
-            outTransfers: weekOutCount[mIdx][2],
-            transactions: weekTxns[mIdx][2],
-          ),
-          FlowPointData(
-            label: 'Week 4',
-            shortLabel: 'W4',
-            dateSubtitle: '$sName 22 - $sName ${lastDay.toString().padLeft(2, '0')}, 2026',
-            received: weekReceived[mIdx][3],
-            sent: weekSent[mIdx][3],
-            inTransfers: weekInCount[mIdx][3],
-            outTransfers: weekOutCount[mIdx][3],
-            transactions: weekTxns[mIdx][3],
-          ),
-        ],
+        weeks: _composeWeeks(
+          mIdx,
+          received: weekReceived[mIdx],
+          sent: weekSent[mIdx],
+          inCounts: weekInCount[mIdx],
+          outCounts: weekOutCount[mIdx],
+          txns: weekTxns[mIdx],
+        ),
       );
     });
 
@@ -509,7 +500,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
       int mOutCount = 0;
       final List<AnalyticsTxItem> mAllTxns = [];
 
-      for (int w = 0; w < 4; w++) {
+      for (int w = 0; w < weekReceived[mIdx].length; w++) {
         mRec += weekReceived[mIdx][w];
         mSent += weekSent[mIdx][w];
         mInCount += weekInCount[mIdx][w];
@@ -531,130 +522,6 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
   }
   void _initDatasets() {
     _buildEmpty2026Catalog();
-
-    // Yearly Dataset (12 Months in 2025)
-    _yearlyMonths2025 = [
-      FlowPointData(
-        label: 'January',
-        shortLabel: 'Jan',
-        dateSubtitle: 'Jan 01 - Jan 31, 2025',
-        received: 12000.0,
-        sent: 38000.0,
-        inTransfers: 2,
-        outTransfers: 12,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'February',
-        shortLabel: 'Feb',
-        dateSubtitle: 'Feb 01 - Feb 28, 2025',
-        received: 20000.0,
-        sent: 32000.0,
-        inTransfers: 3,
-        outTransfers: 11,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'March',
-        shortLabel: 'Mar',
-        dateSubtitle: 'Mar 01 - Mar 31, 2025',
-        received: 9000.0,
-        sent: 36000.0,
-        inTransfers: 2,
-        outTransfers: 14,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'April',
-        shortLabel: 'Apr',
-        dateSubtitle: 'Apr 01 - Apr 30, 2025',
-        received: 52000.0,
-        sent: 14000.0,
-        inTransfers: 4,
-        outTransfers: 10,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'May',
-        shortLabel: 'May',
-        dateSubtitle: 'May 01 - May 31, 2025',
-        received: 18000.0,
-        sent: 30000.0,
-        inTransfers: 3,
-        outTransfers: 12,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'June',
-        shortLabel: 'Jun',
-        dateSubtitle: 'Jun 01 - Jun 30, 2025',
-        received: 13000.0,
-        sent: 42000.0,
-        inTransfers: 2,
-        outTransfers: 8,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'July',
-        shortLabel: 'Jul',
-        dateSubtitle: 'Jul 01 - Jul 31, 2025',
-        received: 21000.0,
-        sent: 35000.0,
-        inTransfers: 4,
-        outTransfers: 18,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'August',
-        shortLabel: 'Aug',
-        dateSubtitle: 'Aug 01 - Aug 31, 2025',
-        received: 11500.0,
-        sent: 32000.0,
-        inTransfers: 3,
-        outTransfers: 15,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'September',
-        shortLabel: 'Sep',
-        dateSubtitle: 'Sep 01 - Sep 30, 2025',
-        received: 15000.0,
-        sent: 39000.0,
-        inTransfers: 3,
-        outTransfers: 14,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'October',
-        shortLabel: 'Oct',
-        dateSubtitle: 'Oct 01 - Oct 31, 2025',
-        received: 45000.0,
-        sent: 85000.0,
-        inTransfers: 3,
-        outTransfers: 15,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'November',
-        shortLabel: 'Nov',
-        dateSubtitle: 'Nov 01 - Nov 30, 2025',
-        received: 16000.0,
-        sent: 40000.0,
-        inTransfers: 2,
-        outTransfers: 14,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'December',
-        shortLabel: 'Dec',
-        dateSubtitle: 'Dec 01 - Dec 31, 2025',
-        received: 25000.0,
-        sent: 52000.0,
-        inTransfers: 3,
-        outTransfers: 18,
-        transactions: const [],
-      ),
-    ];
   }
 
   @override
@@ -677,9 +544,18 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
 
   void _onSelectWeek(int index) {
     setState(() {
-      _selectedWeekIndex = index;
+      _dragWeekIndex = null;
+      _selectedWeekIndex = _selectedWeekIndex == index ? null : index;
     });
-    _animateToTarget(index.toDouble());
+  }
+
+  void _setMonth(int index) {
+    if (index < 0 || index > 11 || index == _selectedMonthOfYear) return;
+    setState(() {
+      _selectedMonthOfYear = index;
+      _selectedWeekIndex = null;
+      _dragWeekIndex = null;
+    });
   }
 
   void _onSelectMonth(int index) {
@@ -693,38 +569,43 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
     if (_isMonthly == monthly) return;
     setState(() {
       _isMonthly = monthly;
-      final maxLen = (monthly ? _currentMonthlyWeeks : _currentYearlyFilteredMonths).length;
-      final activeIdx = monthly
-          ? _selectedWeekIndex.clamp(0, maxLen - 1)
-          : _selectedMonthIndex.clamp(0, maxLen - 1);
-      _currentScrubFraction = activeIdx.toDouble();
+      _dragWeekIndex = null;
+      if (!monthly) {
+        final maxLen = _currentYearlyFilteredMonths.length;
+        _selectedMonthIndex = _selectedMonthIndex.clamp(0, maxLen - 1);
+        _currentScrubFraction = _selectedMonthIndex.toDouble();
+      }
     });
-    _animateToTarget(
-      (monthly ? _selectedWeekIndex : _selectedMonthIndex).toDouble(),
-    );
+    if (!monthly) {
+      _animateToTarget(_selectedMonthIndex.toDouble());
+    }
   }
 
   List<FlowPointData> get _currentMonthlyWeeks =>
       _monthsCatalog[_selectedMonthOfYear].weeks;
 
-  List<FlowPointData> get _currentFullYearMonths =>
-      _selectedYear == 2026 ? _yearlyMonths2026 : _yearlyMonths2025;
-
-  List<FlowPointData> get _currentYearlyFilteredMonths {
-    final full = _currentFullYearMonths;
-    switch (_selectedQuarterIndex) {
-      case 1:
-        return full.sublist(0, 3);
-      case 2:
-        return full.sublist(3, 6);
-      case 3:
-        return full.sublist(6, 9);
-      case 4:
-        return full.sublist(9, 12);
-      default:
-        return full.length > 5 ? full.sublist(0, 5) : full;
-    }
+  int? get _focusedWeekIndex {
+    final index = _selectedWeekIndex;
+    if (index == null || index < 0 || index >= _currentMonthlyWeeks.length) return null;
+    return index;
   }
+
+  List<FlowPointData> get _scopedMonthlyPoints {
+    final weeks = _currentMonthlyWeeks;
+    final index = _focusedWeekIndex;
+    if (index == null) return weeks;
+    return [weeks[index]];
+  }
+
+  String get _monthlyPeriodLabel {
+    final index = _focusedWeekIndex;
+    if (index == null) return _monthsCatalog[_selectedMonthOfYear].monthName;
+    return _currentMonthlyWeeks[index].dateSubtitle;
+  }
+
+  List<FlowPointData> get _currentFullYearMonths => _yearlyMonths2026;
+
+  List<FlowPointData> get _currentYearlyFilteredMonths => _yearlyMonths2026;
 
   List<FlowPointData> get _currentDataset =>
       _isMonthly ? _currentMonthlyWeeks : _currentYearlyFilteredMonths;
@@ -734,7 +615,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
   // Grand totals
   double get _totalSentMonth {
     double sum = 0;
-    for (final w in _currentMonthlyWeeks) {
+    for (final w in _scopedMonthlyPoints) {
       sum += w.sent;
     }
     return sum;
@@ -742,7 +623,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
 
   double get _totalReceivedMonth {
     double sum = 0;
-    for (final w in _currentMonthlyWeeks) {
+    for (final w in _scopedMonthlyPoints) {
       sum += w.received;
     }
     return sum;
@@ -750,7 +631,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
 
   int get _transfersOutMonth {
     int sum = 0;
-    for (final w in _currentMonthlyWeeks) {
+    for (final w in _scopedMonthlyPoints) {
       sum += w.outTransfers;
     }
     return sum;
@@ -758,10 +639,56 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
 
   int get _transfersInMonth {
     int sum = 0;
-    for (final w in _currentMonthlyWeeks) {
+    for (final w in _scopedMonthlyPoints) {
       sum += w.inTransfers;
     }
     return sum;
+  }
+
+  double get _totalSentYear {
+    var sum = 0.0;
+    for (final month in _yearlyMonths2026) {
+      sum += month.sent;
+    }
+    return sum;
+  }
+
+  double get _totalReceivedYear {
+    var sum = 0.0;
+    for (final month in _yearlyMonths2026) {
+      sum += month.received;
+    }
+    return sum;
+  }
+
+  int get _transfersOutYear {
+    var sum = 0;
+    for (final month in _yearlyMonths2026) {
+      sum += month.outTransfers;
+    }
+    return sum;
+  }
+
+  int get _transfersInYear {
+    var sum = 0;
+    for (final month in _yearlyMonths2026) {
+      sum += month.inTransfers;
+    }
+    return sum;
+  }
+
+  String get _yearOutflowShareLabel {
+    final total = _totalSentYear + _totalReceivedYear;
+    if (total <= 0) return 'No volume';
+    final pct = ((_totalSentYear / total) * 100).round();
+    return '$pct% of volume';
+  }
+
+  String get _outflowShareLabel {
+    final total = _totalSentMonth + _totalReceivedMonth;
+    if (total <= 0) return 'No volume';
+    final pct = ((_totalSentMonth / total) * 100).round();
+    return '$pct% of volume';
   }
 
 
@@ -870,6 +797,11 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                 ],
               ),
 
+              if (_isMonthly) ...[
+                const SizedBox(height: 16),
+                _buildMonthStepper(),
+              ],
+
               const SizedBox(height: 24),
 
               // 2. Executive 3-Card KPI Bento (Outflow, Inflow, Net Cash Position)
@@ -893,6 +825,174 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildMonthStepper() {
+    final month = _monthsCatalog[_selectedMonthOfYear];
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: const Color(0xFFEAECEE)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _monthStepButton(
+                icon: Icons.chevron_left_rounded,
+                tooltip: 'Previous month',
+                onPressed: _selectedMonthOfYear > 0 ? () => _setMonth(_selectedMonthOfYear - 1) : null,
+              ),
+              PopupMenuButton<int>(
+                tooltip: 'Choose month',
+                initialValue: _selectedMonthOfYear,
+                onSelected: _setMonth,
+                offset: const Offset(0, 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                itemBuilder: (context) => List.generate(12, (index) {
+                  final selected = index == _selectedMonthOfYear;
+                  return PopupMenuItem<int>(
+                    value: index,
+                    height: 40,
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 22,
+                          child: selected
+                              ? const Icon(Icons.check_rounded, size: 16, color: Color(0xFF10171C))
+                              : const SizedBox.shrink(),
+                        ),
+                        Text(
+                          _monthsCatalog[index].monthName,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                            color: const Color(0xFF10171C),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        month.monthName,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF10171C),
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Color(0xFF47525C)),
+                    ],
+                  ),
+                ),
+              ),
+              _monthStepButton(
+                icon: Icons.chevron_right_rounded,
+                tooltip: 'Next month',
+                onPressed: _selectedMonthOfYear < 11 ? () => _setMonth(_selectedMonthOfYear + 1) : null,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _monthStepButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onPressed,
+  }) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      visualDensity: VisualDensity.compact,
+      icon: Icon(
+        icon,
+        size: 20,
+        color: onPressed == null ? const Color(0xFFD5DADF) : const Color(0xFF10171C),
+      ),
+    );
+  }
+
+  Widget _kpiHeading(String title, {required Color titleColor, required bool onDark}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            color: titleColor,
+          ),
+        ),
+        if (_isMonthly) ...[
+          const SizedBox(height: 2),
+          Text(
+            _monthlyPeriodLabel,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: onDark ? const Color(0xFFC4B5FD) : const Color(0xFF7D8892),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildMonthChangeBadge() {
+    if (!_isMonthly || _focusedWeekIndex != null || _selectedMonthOfYear == 0) {
+      return const SizedBox.shrink();
+    }
+    final previous = _monthsCatalog[_selectedMonthOfYear - 1];
+    var previousSent = 0.0;
+    var previousReceived = 0.0;
+    for (final week in previous.weeks) {
+      previousSent += week.sent;
+      previousReceived += week.received;
+    }
+    if (previousSent == 0 && previousReceived == 0) return const SizedBox.shrink();
+    final previousNet = previousReceived - previousSent;
+    if (previousNet == 0) return const SizedBox.shrink();
+    final currentNet = _totalReceivedMonth - _totalSentMonth;
+    final pct = ((currentNet - previousNet) / previousNet.abs()) * 100;
+    final up = pct >= 0;
+    final tone = up ? const Color(0xFF15803D) : const Color(0xFF9B3A3A);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: up ? const Color(0xFFE4F5EE) : const Color(0xFFF8E8E8),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(up ? Icons.trending_up_rounded : Icons.trending_down_rounded, size: 13, color: tone),
+          const SizedBox(width: 3),
+          Text(
+            '${up ? '+' : ''}${pct.toStringAsFixed(1)}% vs ${previous.shortName}',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: tone,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -934,12 +1034,12 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
 
   Widget _buildDynamicKpiCards() {
     final sentTitle = _isMonthly ? 'Total Sent' : 'Total Sent (2026)';
-    final sentAmount = _isMonthly ? _totalSentMonth : 508000.00;
-    final sentCount = _isMonthly ? '$_transfersOutMonth Transfers Out' : '185 Transfers Out';
+    final sentAmount = _isMonthly ? _totalSentMonth : _totalSentYear;
+    final sentCount = _isMonthly ? '$_transfersOutMonth Transfers Out' : '$_transfersOutYear Transfers Out';
 
     final receivedTitle = _isMonthly ? 'Total Received' : 'Total Received (2026)';
-    final receivedAmount = _isMonthly ? _totalReceivedMonth : 160000.00;
-    final receivedCount = _isMonthly ? '$_transfersInMonth Transfers In' : '43 Transfers In';
+    final receivedAmount = _isMonthly ? _totalReceivedMonth : _totalReceivedYear;
+    final receivedCount = _isMonthly ? '$_transfersInMonth Transfers In' : '$_transfersInYear Transfers In';
 
     final netDiff = receivedAmount - sentAmount;
 
@@ -972,12 +1072,11 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      sentTitle,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFD8B4FE),
+                    Flexible(
+                      child: _kpiHeading(
+                        sentTitle,
+                        titleColor: const Color(0xFFD8B4FE),
+                        onDark: true,
                       ),
                     ),
                     Container(
@@ -1052,12 +1151,11 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      receivedTitle,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1C6E5A),
+                    Flexible(
+                      child: _kpiHeading(
+                        receivedTitle,
+                        titleColor: const Color(0xFF1C6E5A),
+                        onDark: false,
                       ),
                     ),
                     Container(
@@ -1132,36 +1230,15 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Net Volume Difference',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF47525C),
+                    Flexible(
+                      child: _kpiHeading(
+                        'Net Volume Difference',
+                        titleColor: const Color(0xFF47525C),
+                        onDark: false,
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE4F5EE),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.trending_up_rounded, size: 13, color: Color(0xFF17805F)),
-                          SizedBox(width: 3),
-                          Text(
-                            '+14.2% YoY',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF15803D),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    const SizedBox(width: 8),
+                    _buildMonthChangeBadge(),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -1175,10 +1252,10 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Row(
+                Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
+                    const Text(
                       'Expenditure Ratio',
                       style: TextStyle(
                         fontSize: 12,
@@ -1187,8 +1264,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                       ),
                     ),
                     Text(
-                      '76% of Outflow',
-                      style: TextStyle(
+                      _isMonthly ? _outflowShareLabel : _yearOutflowShareLabel,
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: Color(0xFF26313A),
@@ -1238,8 +1315,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text(
+                children: [
+                  const Text(
                     'Transfer Flow',
                     style: TextStyle(
                       fontSize: 18,
@@ -1248,10 +1325,14 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                       letterSpacing: -0.4,
                     ),
                   ),
-                  SizedBox(height: 3),
+                  const SizedBox(height: 3),
                   Text(
-                    'Smooth comparison of outgoing versus incoming capital',
-                    style: TextStyle(
+                    _isMonthly
+                        ? (_focusedWeekIndex == null
+                            ? 'Each week of ${_monthsCatalog[_selectedMonthOfYear].monthName}. Select a week to focus.'
+                            : 'Showing $_monthlyPeriodLabel. The chart still compares every week.')
+                        : 'Smooth comparison of outgoing versus incoming capital',
+                    style: const TextStyle(
                       fontSize: 12.5,
                       color: Color(0xFF7D8892),
                       fontWeight: FontWeight.w400,
@@ -1281,12 +1362,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
 
               return GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTapDown: (details) {
-                  _handleScrubGesture(details.localPosition.dx, chartWidth, dataset.length);
-                },
                 onTapUp: (details) {
-                  _handleScrubGesture(details.localPosition.dx, chartWidth, dataset.length);
-                  final targetIndex = _currentScrubFraction.round().clamp(0, dataset.length - 1);
+                  final targetIndex = _indexForChartX(details.localPosition.dx, chartWidth, dataset.length);
                   if (_isMonthly) {
                     _onSelectWeek(targetIndex);
                   } else {
@@ -1294,15 +1371,25 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                   }
                 },
                 onHorizontalDragUpdate: (details) {
-                  _handleScrubGesture(details.localPosition.dx, chartWidth, dataset.length);
+                  if (!_isMonthly) {
+                    _handleScrubGesture(details.localPosition.dx, chartWidth, dataset.length);
+                    return;
+                  }
+                  final targetIndex = _indexForChartX(details.localPosition.dx, chartWidth, dataset.length);
+                  if (_dragWeekIndex == targetIndex) return;
+                  setState(() => _dragWeekIndex = targetIndex);
                 },
                 onHorizontalDragEnd: (details) {
-                  final targetIndex = _currentScrubFraction.round().clamp(0, dataset.length - 1);
-                  if (_isMonthly) {
-                    _onSelectWeek(targetIndex);
-                  } else {
+                  if (!_isMonthly) {
+                    final targetIndex = _currentScrubFraction.round().clamp(0, dataset.length - 1);
                     _onSelectMonth(targetIndex);
+                    return;
                   }
+                  final targetIndex = _dragWeekIndex;
+                  setState(() {
+                    _dragWeekIndex = null;
+                    if (targetIndex != null) _selectedWeekIndex = targetIndex;
+                  });
                 },
                 child: MouseRegion(
                   cursor: SystemMouseCursors.click,
@@ -1313,6 +1400,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                       painter: _PointedTransferFlowPainter(
                         dataset: dataset,
                         scrubFraction: _currentScrubFraction,
+                        activeIndex: _isMonthly ? (_dragWeekIndex ?? _focusedWeekIndex) : null,
                         isMonthly: _isMonthly,
                       ),
                     ),
@@ -1326,6 +1414,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
 
           // Clickable Week / Month Pills Bar with Apple-like Container
           Container(
+            clipBehavior: Clip.antiAlias,
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
             decoration: BoxDecoration(
               color: const Color(0xFFF7F7F7),
@@ -1349,100 +1438,121 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
 
     setState(() {
       _currentScrubFraction = indexFraction;
-      final nearest = indexFraction.round().clamp(0, count - 1);
-      if (_isMonthly) {
-        _selectedWeekIndex = nearest;
-      } else {
-        _selectedMonthIndex = nearest;
-      }
+      _selectedMonthIndex = indexFraction.round().clamp(0, count - 1);
     });
+  }
+
+  int _indexForChartX(double localX, double totalWidth, int count) {
+    const double paddingX = 24.0;
+    final usableWidth = totalWidth - (2 * paddingX);
+    if (count <= 1 || usableWidth <= 0) return 0;
+    final normalized = ((localX - paddingX) / usableWidth).clamp(0.0, 1.0);
+    return (normalized * (count - 1)).round().clamp(0, count - 1);
   }
 
   Widget _buildWeekClickablePills() {
     final weeks = _currentMonthlyWeeks;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: List.generate(weeks.length, (index) {
-        final isSelected = _selectedWeekIndex == index;
-        return GestureDetector(
-          onTap: () => _onSelectWeek(index),
-          behavior: HitTestBehavior.opaque,
-          child: MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 6.0),
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.white : Colors.transparent,
-                borderRadius: BorderRadius.circular(8),
-                border: isSelected ? Border.all(color: const Color(0xFFEAECEE)) : null,
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 4,
-                          offset: const Offset(0, 1),
-                        ),
-                      ]
-                    : null,
-              ),
-              child: Text(
-                'Week ${index + 1}',
+    final highlighted = _dragWeekIndex ?? _focusedWeekIndex;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _scopePill(
+            title: 'All month',
+            subtitle: _monthsCatalog[_selectedMonthOfYear].shortName,
+            selected: highlighted == null,
+            onTap: () {
+              setState(() {
+                _selectedWeekIndex = null;
+                _dragWeekIndex = null;
+              });
+            },
+          ),
+          for (var index = 0; index < weeks.length; index++) ...[
+            const SizedBox(width: 4),
+            _scopePill(
+              title: 'Week ${index + 1}',
+              subtitle: weeks[index].rangeLabel,
+              selected: highlighted == index,
+              onTap: () => _onSelectWeek(index),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _scopePill({
+    required String title,
+    required String subtitle,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+          decoration: BoxDecoration(
+            color: selected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: selected ? Border.all(color: const Color(0xFFEAECEE)) : null,
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
                 style: TextStyle(
                   fontSize: 11.5,
-                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
-                  color: isSelected ? const Color(0xFF10171C) : const Color(0xFF7D8892),
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  color: selected ? const Color(0xFF10171C) : const Color(0xFF7D8892),
                 ),
               ),
-            ),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w500,
+                  color: selected ? const Color(0xFF47525C) : const Color(0xFF98A2AB),
+                ),
+              ),
+            ],
           ),
-        );
-      }),
+        ),
+      ),
     );
   }
 
   Widget _buildMonthClickablePills() {
-    const months = ['January', 'February', 'March', 'April', 'May'];
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: months.asMap().entries.map((entry) {
-        final index = entry.key;
-        final m = entry.value;
-        final isSelected = _selectedMonthIndex == index;
-        return GestureDetector(
-          onTap: () => _onSelectMonth(index),
-          behavior: HitTestBehavior.opaque,
-          child: MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 6.0),
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.white : Colors.transparent,
-                borderRadius: BorderRadius.circular(8),
-                border: isSelected ? Border.all(color: const Color(0xFFEAECEE)) : null,
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 4,
-                          offset: const Offset(0, 1),
-                        ),
-                      ]
-                    : null,
-              ),
-              child: Text(
-                m,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
-                  color: isSelected ? const Color(0xFF10171C) : const Color(0xFF7D8892),
-                ),
-              ),
+    final months = _currentYearlyFilteredMonths;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var index = 0; index < months.length; index++) ...[
+            if (index > 0) const SizedBox(width: 4),
+            _scopePill(
+              title: months[index].shortLabel,
+              subtitle: months[index].label,
+              selected: _selectedMonthIndex == index,
+              onTap: () => _onSelectMonth(index),
             ),
-          ),
-        );
-      }).toList(),
+          ],
+        ],
+      ),
     );
   }
 
@@ -1490,8 +1600,8 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text(
+                children: [
+                  const Text(
                     'Settlement History Ledger',
                     style: TextStyle(
                       fontSize: 16,
@@ -1500,10 +1610,12 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                       letterSpacing: -0.3,
                     ),
                   ),
-                  SizedBox(height: 2),
+                  const SizedBox(height: 2),
                   Text(
-                    'Transfers settled & cleared in October 2026',
-                    style: TextStyle(
+                    _focusedWeekIndex == null
+                        ? 'Transfers settled & cleared in ${_monthsCatalog[_selectedMonthOfYear].monthName}'
+                        : 'Transfers settled & cleared in $_monthlyPeriodLabel',
+                    style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                       color: Color(0xFF7D8892),
@@ -1542,88 +1654,93 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
           ),
 
           const SizedBox(height: 18),
-
-          // Date Group 1: October 14, 2026
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F7F7),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: const Text(
-              'Wednesday, October 14, 2026',
-              style: TextStyle(
-                fontSize: 11,
-                color: Color(0xFF47525C),
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.2,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          _buildTransactionItem(
-            avatarBg: const Color(0xFF220055),
-            initial: 'D',
-            name: 'Drake Montefalco',
-            category: 'Intra-Bank Direct Transfer',
-            time: 'Oct 14, 2:45 PM',
-            amount: '- PHP 2,500.00',
-            isPositive: false,
-            status: 'SETTLED',
-            statusColor: const Color(0xFF17805F),
-            statusBg: const Color(0xFFE4F5EE),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Divider(height: 1, color: Color(0xFFF1F3F4)),
-          ),
-          _buildTransactionItem(
-            avatarBg: const Color(0xFF2F78A8),
-            initial: 'K',
-            name: 'Klare Riego',
-            category: 'CBS Wire Inward Remittance',
-            time: 'Oct 14, 1:45 PM',
-            amount: '+ PHP 26,500.00',
-            isPositive: true,
-            status: 'RECEIVED',
-            statusColor: const Color(0xFF17805F),
-            statusBg: const Color(0xFFE4F5EE),
-          ),
-
-          const SizedBox(height: 18),
-
-          // Date Group 2: October 03, 2026
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F7F7),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: const Text(
-              'Friday, October 03, 2026',
-              style: TextStyle(
-                fontSize: 11,
-                color: Color(0xFF47525C),
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.2,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          _buildTransactionItem(
-            avatarBg: const Color(0xFF1C6E5A),
-            initial: 'A',
-            name: 'Angel Lou',
-            category: 'Settlement Disbursement',
-            time: 'Oct 03, 11:20 AM',
-            amount: '- PHP 2,500.00',
-            isPositive: false,
-            status: 'SETTLED',
-            statusColor: const Color(0xFF17805F),
-            statusBg: const Color(0xFFE4F5EE),
-          ),
+          _buildMonthlyLedgerBody(),
         ],
       ),
+    );
+  }
+
+  Widget _buildMonthlyLedgerBody() {
+    final transactions = <AnalyticsTxItem>[];
+    for (final point in _scopedMonthlyPoints) {
+      transactions.addAll(point.transactions);
+    }
+    transactions.sort((a, b) => b.postedAt.compareTo(a.postedAt));
+
+    if (transactions.isEmpty) {
+      final period = _focusedWeekIndex == null
+          ? _monthsCatalog[_selectedMonthOfYear].monthName
+          : _monthlyPeriodLabel;
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 28),
+        child: Center(
+          child: Text(
+            'No transfers in $period.',
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF7D8892),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final groups = <DateTime, List<AnalyticsTxItem>>{};
+    for (final tx in transactions) {
+      final day = DateTime(tx.postedAt.year, tx.postedAt.month, tx.postedAt.day);
+      groups.putIfAbsent(day, () => <AnalyticsTxItem>[]).add(tx);
+    }
+    final days = groups.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < days.length; i++) ...[
+          if (i > 0) const SizedBox(height: 18),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7F7F7),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              '${_weekdayNames[days[i].weekday - 1]}, ${_monthsCatalog[days[i].month - 1].monthName.split(' ').first} ${days[i].day}, ${days[i].year}',
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF47525C),
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          for (var j = 0; j < groups[days[i]]!.length; j++) ...[
+            if (j > 0)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Divider(height: 1, color: Color(0xFFF1F3F4)),
+              ),
+            _ledgerRow(groups[days[i]]![j]),
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _ledgerRow(AnalyticsTxItem tx) {
+    final positive = tx.isReceived;
+    return _buildTransactionItem(
+      avatarBg: tx.avatarBg,
+      initial: tx.initial,
+      name: tx.name,
+      category: positive ? 'Incoming transfer' : 'Outgoing transfer',
+      time: tx.time,
+      amount: '${positive ? '+' : '-'} PHP ${_formatCurrency(tx.amount)}',
+      isPositive: positive,
+      status: tx.status,
+      statusColor: const Color(0xFF17805F),
+      statusBg: const Color(0xFFE4F5EE),
     );
   }
 
@@ -1650,9 +1767,9 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Column(
+              const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
+                children: [
                   Text(
                     'Monthly Summaries',
                     style: TextStyle(
@@ -1664,7 +1781,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
                   ),
                   SizedBox(height: 3),
                   Text(
-                    'Quarterly disbursement (2026)',
+                    'Posted transfers in 2026',
                     style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w500,
@@ -1704,80 +1821,96 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
           ),
 
           const SizedBox(height: 18),
-
-          // Quarter 3
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F7F7),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: const Text(
-              'Quarter 3 (Q3 2026)',
-              style: TextStyle(
-                fontSize: 11,
-                color: Color(0xFF47525C),
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.2,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          _buildQuarterRow(
-            initial: 'Jul',
-            monthTitle: 'July 2026',
-            transfersText: '24 transfers • ',
-            greenAmount: '+ 55,000.00',
-            gross: 'PHP 42,000.00',
-            net: '+ PHP 26.5k net',
-            avatarBg: const Color(0xFF10171C),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Divider(height: 1, color: Color(0xFFF1F3F4)),
-          ),
-          _buildQuarterRow(
-            initial: 'Aug',
-            monthTitle: 'August 2026',
-            transfersText: '19 Transfers • ',
-            greenAmount: '+ 39,000.00',
-            gross: 'PHP 38,200.00',
-            net: '+ PHP 13.8k net',
-            avatarBg: const Color(0xFF1C6E5A),
-          ),
-
-          const SizedBox(height: 18),
-
-          // Quarter 2
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F7F7),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: const Text(
-              'Quarter 2 (Q2 2026)',
-              style: TextStyle(
-                fontSize: 11,
-                color: Color(0xFF47525C),
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.2,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          _buildQuarterRow(
-            initial: 'Jun',
-            monthTitle: 'June 2026',
-            transfersText: '10 Transfers • ',
-            greenAmount: '+ 32,000.00',
-            gross: 'PHP 50,000.00',
-            net: '+ PHP 15.2k net',
-            avatarBg: const Color(0xFF2F78A8),
-          ),
+          ..._buildYearlyQuarterGroups(),
         ],
       ),
     );
+  }
+
+  List<Widget> _buildYearlyQuarterGroups() {
+    const quarterNames = ['Quarter 1 (Q1 2026)', 'Quarter 2 (Q2 2026)', 'Quarter 3 (Q3 2026)', 'Quarter 4 (Q4 2026)'];
+    const avatarColors = [
+      Color(0xFF10171C),
+      Color(0xFF1C6E5A),
+      Color(0xFF2F78A8),
+      Color(0xFF4A5568),
+    ];
+    final months = _yearlyMonths2026;
+    final grouped = <int, List<int>>{};
+    for (var index = 0; index < months.length; index++) {
+      final month = months[index];
+      if (month.sent == 0 && month.received == 0) continue;
+      grouped.putIfAbsent(index ~/ 3, () => <int>[]).add(index);
+    }
+    if (grouped.isEmpty) {
+      return const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 28),
+          child: Center(
+            child: Text(
+              'No transfers in 2026.',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF7D8892),
+              ),
+            ),
+          ),
+        ),
+      ];
+    }
+
+    final widgets = <Widget>[];
+    final quarterKeys = grouped.keys.toList()..sort();
+    for (var q = 0; q < quarterKeys.length; q++) {
+      final key = quarterKeys[q];
+      if (q > 0) widgets.add(const SizedBox(height: 18));
+      widgets.add(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF7F7F7),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            quarterNames[key],
+            style: const TextStyle(
+              fontSize: 11,
+              color: Color(0xFF47525C),
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ),
+      );
+      widgets.add(const SizedBox(height: 10));
+      final indexes = grouped[key]!;
+      for (var i = 0; i < indexes.length; i++) {
+        if (i > 0) {
+          widgets.add(
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Divider(height: 1, color: Color(0xFFF1F3F4)),
+            ),
+          );
+        }
+        final month = months[indexes[i]];
+        final transfers = month.inTransfers + month.outTransfers;
+        final net = month.received - month.sent;
+        widgets.add(
+          _buildQuarterRow(
+            initial: month.shortLabel,
+            monthTitle: '${month.label} 2026',
+            transfersText: '$transfers ${transfers == 1 ? 'transfer' : 'transfers'} • ',
+            greenAmount: '+ ${_formatCurrency(month.received)}',
+            gross: 'PHP ${_formatCurrency(month.sent)}',
+            net: '${net >= 0 ? '+' : '-'} PHP ${_formatCurrency(net.abs())} net',
+            avatarBg: avatarColors[indexes[i] % avatarColors.length],
+          ),
+        );
+      }
+    }
+    return widgets;
   }
 
   Widget _buildQuarterRow({
@@ -1986,11 +2119,13 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
 class _PointedTransferFlowPainter extends CustomPainter {
   final List<FlowPointData> dataset;
   final double scrubFraction;
+  final int? activeIndex;
   final bool isMonthly;
 
   _PointedTransferFlowPainter({
     required this.dataset,
     required this.scrubFraction,
+    required this.activeIndex,
     required this.isMonthly,
   });
 
@@ -2117,8 +2252,13 @@ class _PointedTransferFlowPainter extends CustomPainter {
       canvas.drawCircle(violetPoints[i], 2.2, whiteInnerPaint);
     }
 
-    // 4. Calculate Current Animated Scrub Position
-    final clampedScrub = scrubFraction.clamp(0.0, (n - 1).toDouble());
+    // 4. Highlight the focused week. The whole-month view keeps every point equal.
+    final bool showScrub = !isMonthly || activeIndex != null;
+    if (!showScrub) return;
+
+    final clampedScrub = isMonthly
+        ? activeIndex!.toDouble().clamp(0.0, (n - 1).toDouble())
+        : scrubFraction.clamp(0.0, (n - 1).toDouble());
     final scrubX = paddingX + (clampedScrub * xStep);
 
     // Interpolate Y positions at the exact scrub position
@@ -2287,6 +2427,7 @@ class _PointedTransferFlowPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _PointedTransferFlowPainter oldDelegate) {
     return oldDelegate.scrubFraction != scrubFraction ||
+        oldDelegate.activeIndex != activeIndex ||
         oldDelegate.dataset != dataset ||
         oldDelegate.isMonthly != isMonthly;
   }
