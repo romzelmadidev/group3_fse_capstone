@@ -780,7 +780,12 @@ VALUES ('1000-8801-0006', 'USR-TM-MAYE', '1000-8801-0006', 'SAVINGS', 'ACTIVE');
 INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
 VALUES ('1000-8801-0007', 'USR-TM-ANGEL', '1000-8801-0007', 'SAVINGS', 'ACTIVE');
 
+INSERT INTO accounts (account_id, user_id, account_number, account_type, status)
+VALUES ('ACC-NOSTRO-BANK-B', 'usr-1001-cst-001', '900100000001', 'SAVINGS', 'ACTIVE');
+
 -- 3. Balance Master (Exact 4-decimal precision with Surrogate balance_id PK)
+INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES ('bal-ACC-NOSTRO-BANK-B', 'ACC-NOSTRO-BANK-B', 5000000.0000, 0.0000);
 INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount)
 VALUES ('bal-1000-2000-3001', '1000-2000-3001', 25000000.0000, 0.0000);
 

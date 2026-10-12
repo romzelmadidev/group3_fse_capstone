@@ -45,7 +45,7 @@ spring:
         - id: transfer-orchestrator
           uri: ${TRANSFER_ORCHESTRATOR_URI:http://transfer-orchestrator:8082}
           predicates:
-            - Path=/api/v1/transfers/**, /api/v1/transfers, /api/v1/reversals/**, /api/v1/reversals, /api/v1/ledger/transfers/**, /api/v1/ledger/transfers
+            - Path=/api/v1/transfers/**, /api/v1/transfers, /api/v1/reversals/**, /api/v1/reversals, /api/v1/ledger/transfers/**, /api/v1/ledger/transfers, /api/v1/holds/**, /api/v1/interbank/**, /api/v1/mock-partner/**
           filters:
             - RewritePath=/api/v1/ledger/transfers(?<segment>/?.*), /api/v1/transfers$1
             - name: RequestRateLimiter
@@ -53,6 +53,11 @@ spring:
                 redis-rate-limiter.replenishRate: 20
                 redis-rate-limiter.burstCapacity: 40
                 key-resolver: "#{@userKeyResolver}"
+
+        - id: t24-mock-cbs-audit
+          uri: ${CBS_SERVICE_URI:http://localhost:8085}
+          predicates:
+            - Path=/api/v1/cbs/**
 
         - id: compliance-service
           uri: ${COMPLIANCE_SERVICE_URI:http://localhost:8086}

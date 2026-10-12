@@ -1,7 +1,7 @@
 networks:
   banking-net:
     name: banking-net
-    external: true
+    driver: bridge
 
 services:
   # ============================================================================
@@ -201,6 +201,7 @@ services:
     volumes:
       - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
     environment:
+      - SERVER_PORT=8081
       - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
       - DD_AGENT_HOST=dd-agent
       - DD_TRACE_AGENT_PORT=8126
@@ -224,11 +225,16 @@ services:
     networks:
       - banking-net
     depends_on:
-      - oracle-xe-master
-      - redis-cache
-      - azurite
-      - risk-service
-      - dd-agent
+      oracle-xe-master:
+        condition: service_healthy
+      redis-cache:
+        condition: service_started
+      azurite:
+        condition: service_started
+      risk-service:
+        condition: service_healthy
+      dd-agent:
+        condition: service_started
 
   # ============================================================================
   # ============================================================================
@@ -317,11 +323,16 @@ services:
     networks:
       - banking-net
     depends_on:
-      - oracle-xe-master
-      - postgres-audit-vault
-      - redis-cache
-      - kafka-broker
-      - dd-agent
+      oracle-xe-master:
+        condition: service_healthy
+      postgres-audit-vault:
+        condition: service_healthy
+      redis-cache:
+        condition: service_started
+      kafka-broker:
+        condition: service_started
+      dd-agent:
+        condition: service_started
 
   # ============================================================================
   # 9b. Stateless Transfer Orchestrator (Spring Boot :8082)
@@ -350,6 +361,8 @@ services:
       - CBS_SERVICE_URL=http://t24-mock-cbs:8085
       - RISK_SERVICE_URL=http://risk-service:8084
       - ACCOUNT_SERVICE_URL=http://account-service:8081
+      # Interbank Partner routing override (Group B / CooBS URL configuration)
+      - PARTNER_BANK_URL=${PARTNER_BANK_URL:-http://transfer-orchestrator:8082/api/v1/mock-partner/transfers}
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "transfer-orchestrator"}]'
     networks:
@@ -488,11 +501,16 @@ services:
     networks:
       - banking-net
     depends_on:
-      - oracle-xe-master
-      - redis-cache
-      - mailhog
-      - kafka-broker
-      - dd-agent
+      oracle-xe-master:
+        condition: service_healthy
+      redis-cache:
+        condition: service_started
+      mailhog:
+        condition: service_started
+      kafka-broker:
+        condition: service_started
+      dd-agent:
+        condition: service_started
 
   # ============================================================================
   # 11. API Gateway Service (Spring Cloud Gateway :8080)

@@ -355,7 +355,8 @@ VALUES
     ('2100-CUST-LIAB', 'Customer Deposit Liabilities (Subledger Control)', 'LIABILITY', 'PHP', 1),
     ('4010-FEE-INCOME', 'Fee and Commission Income', 'REVENUE', 'PHP', 1),
     ('5010-INT-EXPENSE', 'Deposit Interest Expense', 'EXPENSE', 'PHP', 1),
-    ('2150-TAX-WITHHOLD-PAYABLE', 'BIR Final Withholding Tax Payable (20%)', 'LIABILITY', 'PHP', 1);
+    ('2150-TAX-WITHHOLD-PAYABLE', 'BIR Final Withholding Tax Payable (20%)', 'LIABILITY', 'PHP', 1),
+    ('1020-NOSTRO-CLEARING', 'Interbank Nostro Settlement Buffer (CooBS)', 'ASSET', 'PHP', 1);
 
 INSERT INTO core.gl_balances (gl_code, fiscal_period, total_debit, total_credit, net_balance, updated_at)
 VALUES
@@ -363,7 +364,29 @@ VALUES
     ('2100-CUST-LIAB', '2026-10', 0.0000, 0.0000, 0.0000, SYSDATETIMEOFFSET()),
     ('4010-FEE-INCOME', '2026-10', 0.0000, 0.0000, 0.0000, SYSDATETIMEOFFSET()),
     ('5010-INT-EXPENSE', '2026-10', 0.0000, 0.0000, 0.0000, SYSDATETIMEOFFSET()),
-    ('2150-TAX-WITHHOLD-PAYABLE', '2026-10', 0.0000, 0.0000, 0.0000, SYSDATETIMEOFFSET());
+    ('2150-TAX-WITHHOLD-PAYABLE', '2026-10', 0.0000, 0.0000, 0.0000, SYSDATETIMEOFFSET()),
+    ('1020-NOSTRO-CLEARING', '2026-10', 0.0000, 0.0000, 0.0000, SYSDATETIMEOFFSET());
+
+-- 17. Table: core.participant_banks (Participant Banks Master Directory)
+CREATE TABLE core.participant_banks (
+    bank_code           NVARCHAR(32) PRIMARY KEY,
+    bank_name           NVARCHAR(100) NOT NULL,
+    bic_swift_code      NVARCHAR(11) NULL,
+    clearing_network    NVARCHAR(20) DEFAULT 'BILATERAL',
+    nostro_account_id   NVARCHAR(64) NOT NULL,
+    api_endpoint_url    NVARCHAR(255) NULL,
+    api_key             NVARCHAR(128) NULL,
+    is_active           TINYINT DEFAULT 1 NOT NULL,
+    settlement_currency NVARCHAR(3) DEFAULT 'PHP' NOT NULL,
+    created_at          DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
+    updated_at          DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
+    CONSTRAINT fk_pb_nostro_acc FOREIGN KEY (nostro_account_id) REFERENCES core.accounts(account_id)
+);
+
+INSERT INTO core.participant_banks (bank_code, bank_name, bic_swift_code, clearing_network, nostro_account_id, api_endpoint_url, api_key, is_active)
+VALUES
+    ('COOBS', 'Cooperative Overseas Banking System (CooBS)', 'COOBPHM2XXX', 'BILATERAL', 'ACC-NOSTRO-BANK-B', 'http://localhost:8082/api/v1/mock-partner/transfers', 'AURABANK-SECURE-KEY-2026', 1),
+    ('AURABANK', 'AuraBank Core Retail', 'AURAPHM1XXX', 'CORE', 'ACC-NOSTRO-BANK-B', NULL, NULL, 1);
 
 INSERT INTO core.system_dates (system_date_id, business_date, status, posting_window_open, last_cob_completed_at, updated_at)
 VALUES ('SYS-DATE-001', '2026-10-07', 'ONLINE', 1, NULL, SYSDATETIMEOFFSET());
@@ -387,7 +410,8 @@ VALUES
 ('1000-2000-3003', 'usr-1001-cst-001', '1000-2000-3003', 'CHECKING', 'ACTIVE', 0.0000),
 ('acc-2001-sav-001', 'usr-1001-cst-001', '100100001234', 'SAVINGS', 'ACTIVE', 0.0000),
 ('acc-2002-chk-001', 'usr-1001-cst-001', '100100005678', 'SAVINGS', 'ACTIVE', 0.0000),
-('acc-2003-sav-002', 'usr-1002-cst-002', '100200009999', 'SAVINGS', 'ACTIVE', 0.0000);
+('acc-2003-sav-002', 'usr-1002-cst-002', '100200009999', 'SAVINGS', 'ACTIVE', 0.0000),
+('ACC-NOSTRO-BANK-B', 'usr-1004-adm-001', '900100000001', 'CHECKING', 'ACTIVE', 0.0000);
 
 INSERT INTO core.balance_master (account_id, balance_amount, hold_amount)
 VALUES 
@@ -396,4 +420,5 @@ VALUES
 ('1000-2000-3003', 10000000.0000, 0.0000),
 ('acc-2001-sav-001', 25000000.0000, 5000000.0000),
 ('acc-2002-chk-001', 8500000.0000, 0.0000),
-('acc-2003-sav-002', 12345678.1250, 0.0000);
+('acc-2003-sav-002', 12345678.1250, 0.0000),
+('ACC-NOSTRO-BANK-B', 5000000.0000, 0.0000);

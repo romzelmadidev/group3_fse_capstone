@@ -44,6 +44,7 @@ public class CbsFundsTransferService {
     private final OutboxEventMasterRepository outboxRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final ObjectMapper objectMapper;
+    private final AccountMasterRepository accountRepository;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private org.springframework.data.redis.core.StringRedisTemplate redisTemplate;
 
@@ -57,6 +58,24 @@ public class CbsFundsTransferService {
             OutboxEventMasterRepository outboxRepository,
             KafkaTemplate<String, Object> kafkaTemplate,
             ObjectMapper objectMapper) {
+        this(balanceRepository, transactionRepository, glLedgerRepository, glBalanceRepository,
+             systemDateRepository, statusHistoryRepository, outboxRepository,
+             kafkaTemplate, objectMapper, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public CbsFundsTransferService(
+            BalanceMasterRepository balanceRepository,
+            TransactionMasterRepository transactionRepository,
+            GlLedgerMasterRepository glLedgerRepository,
+            GlBalanceMasterRepository glBalanceRepository,
+            SystemDateMasterRepository systemDateRepository,
+            TransactionStatusHistoryMasterRepository statusHistoryRepository,
+            OutboxEventMasterRepository outboxRepository,
+            KafkaTemplate<String, Object> kafkaTemplate,
+            ObjectMapper objectMapper,
+            @org.springframework.beans.factory.annotation.Autowired(required = false)
+            AccountMasterRepository accountRepository) {
         this.balanceRepository = balanceRepository;
         this.transactionRepository = transactionRepository;
         this.glLedgerRepository = glLedgerRepository;
@@ -66,6 +85,22 @@ public class CbsFundsTransferService {
         this.outboxRepository = outboxRepository;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
+        this.accountRepository = accountRepository;
+    }
+
+    private String resolveToAccountId(String identifier) {
+        if (identifier == null || identifier.isBlank()) {
+            return identifier;
+        }
+        if (balanceRepository.existsById(identifier)) {
+            return identifier;
+        }
+        if (accountRepository != null) {
+            return accountRepository.findByAccountNumber(identifier)
+                    .map(AccountMaster::getAccountId)
+                    .orElse(identifier);
+        }
+        return identifier;
     }
 
     @Transactional("masterTransactionManager")
@@ -113,8 +148,8 @@ public class CbsFundsTransferService {
             throw new IllegalStateException("CBS Posting window is closed. Business status: " + systemDate.getStatus());
         }
 
-        String sourceId = request.sourceAccountId();
-        String destId = request.destinationAccountId();
+        String sourceId = resolveToAccountId(request.sourceAccountId());
+        String destId = resolveToAccountId(request.destinationAccountId());
         if (sourceId == null || sourceId.isBlank() || destId == null || destId.isBlank()) {
             throw new IllegalArgumentException("Source and destination accounts must not be null or blank.");
         }
@@ -189,14 +224,34 @@ public class CbsFundsTransferService {
             }
         }
 
-        // 5. Double-entry GL postings
+        // 5. Double-entry GL postings & transaction classification
         String txId = resolveTransactionId(request.transactionId());
         LocalDate valDate = systemDate.getBusinessDate() != null ? systemDate.getBusinessDate() : LocalDate.now();
+
+        String rawType = request.transactionType();
+        String txType;
+        if ("OT".equalsIgnoreCase(rawType) || "INTER_BANK_OUTWARD".equalsIgnoreCase(rawType) || "ACC-NOSTRO-BANK-B".equalsIgnoreCase(destId)) {
+            txType = "INTER_BANK_OUTWARD";
+        } else if ("IT".equalsIgnoreCase(rawType) || "INTER_BANK_INWARD".equalsIgnoreCase(rawType) || "ACC-NOSTRO-BANK-B".equalsIgnoreCase(sourceId)) {
+            txType = "INTER_BANK_INWARD";
+        } else {
+            txType = "INTRA_BANK";
+        }
+
+        String debitGl = "20100";
+        String creditGl = "20100";
+        if ("INTER_BANK_OUTWARD".equals(txType)) {
+            debitGl = "20100";
+            creditGl = "1020-NOSTRO-CLEARING";
+        } else if ("INTER_BANK_INWARD".equals(txType)) {
+            debitGl = "1020-NOSTRO-CLEARING";
+            creditGl = "20100";
+        }
 
         GlLedgerMaster drEntry = GlLedgerMaster.builder()
                 .journalId(UUID.randomUUID().toString())
                 .transactionId(txId)
-                .glCode("20100")
+                .glCode(debitGl)
                 .debitAmount(request.amount())
                 .creditAmount(BigDecimal.ZERO)
                 .postingDate(valDate)
@@ -207,7 +262,7 @@ public class CbsFundsTransferService {
         GlLedgerMaster crEntry = GlLedgerMaster.builder()
                 .journalId(UUID.randomUUID().toString())
                 .transactionId(txId)
-                .glCode("20100")
+                .glCode(creditGl)
                 .debitAmount(BigDecimal.ZERO)
                 .creditAmount(request.amount())
                 .postingDate(valDate)
@@ -215,9 +270,29 @@ public class CbsFundsTransferService {
                 .build();
         glLedgerRepository.save(crEntry);
 
-        updateGlBalance("20100", request.amount(), request.amount());
+        updateGlBalance(debitGl, request.amount(), BigDecimal.ZERO);
+        updateGlBalance(creditGl, BigDecimal.ZERO, request.amount());
 
-        // 6. Record transaction master
+        // 6. Record transaction master with structured remittance metadata
+        String structuredMemo;
+        if ("INTER_BANK_OUTWARD".equals(txType)) {
+            String benName = request.beneficiaryCustomer() != null ? request.beneficiaryCustomer() : "Bob Martinez";
+            String benAcc = request.beneficiaryAccount() != null ? request.beneficiaryAccount() : "B-ACC-998877";
+            String targetBank = request.counterpartyBank() != null ? request.counterpartyBank() : "COOBS";
+            String purpose = request.description() != null ? request.description() : "Interbank Wire";
+            structuredMemo = String.format("[%s OUTWARD] To: %s (%s) | %s", targetBank, benName, benAcc, purpose);
+        } else if ("INTER_BANK_INWARD".equals(txType)) {
+            String sender = request.orderingCustomer() != null ? request.orderingCustomer() : "Bob Martinez";
+            String srcBank = request.counterpartyBank() != null ? request.counterpartyBank() : "COOBS";
+            String purpose = request.description() != null ? request.description() : "Inward Interbank Wire";
+            structuredMemo = String.format("[%s INWARD] From: %s | %s", srcBank, sender, purpose);
+        } else {
+            structuredMemo = request.description() != null ? request.description() : "Funds Transfer";
+        }
+        if (structuredMemo.length() > 255) {
+            structuredMemo = structuredMemo.substring(0, 252) + "...";
+        }
+
         TransactionMaster tx = transactionRepository.findById(txId).orElse(null);
         if (tx == null) {
             tx = TransactionMaster.builder()
@@ -229,15 +304,17 @@ public class CbsFundsTransferService {
                     .beforeBalance(sourceBefore)
                     .afterBalance(sourceAfter)
                     .currency(request.currency() != null ? request.currency() : "PHP")
-                    .transactionType("INTRA_BANK")
+                    .transactionType(txType)
                     .status(TransactionStatus.Posted.name())
                     .requiresMakerChecker(0)
-                    .memo(request.description() != null ? request.description() : "Funds Transfer")
+                    .memo(structuredMemo)
                     .createdAt(now)
                     .updatedAt(now)
                     .build();
         } else {
             tx.setStatus(TransactionStatus.Posted.name());
+            tx.setTransactionType(txType);
+            tx.setMemo(structuredMemo);
             tx.setBeforeBalance(sourceBefore);
             tx.setAfterBalance(sourceAfter);
             tx.setUpdatedAt(now);
@@ -353,6 +430,12 @@ public class CbsFundsTransferService {
                 .sourceBalanceAfter(sourceBal.getBalanceAmount())
                 .destinationBalanceAfter(destBal.getBalanceAmount())
                 .executedAtUtc(now)
+                .transactionType(txType)
+                .memo(structuredMemo)
+                .senderName(request.orderingCustomer())
+                .beneficiaryName(request.beneficiaryCustomer())
+                .counterpartyBank(request.counterpartyBank())
+                .endToEndId(request.transactionId())
                 .build();
         saveOutbox("TransferExecutedEvent", txId, transferEvent);
 
