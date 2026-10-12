@@ -409,13 +409,22 @@ services:
       - DD_ENV=local
       - DD_VERSION=1.0.0
       - DD_LOGS_INJECTION=true
-      - DD_TRACE_SAMPLE_RATE=1.0
+      - SPRING_DATA_REDIS_HOST=redis-cache
+      - SPRING_DATA_REDIS_PORT=6379
+      - REDIS_HOST=redis-cache
+      - REDIS_PORT=6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:29092
       - CBS_SERVICE_URL=http://t24-mock-cbs:8085
       - ORCHESTRATOR_SERVICE_URL=http://transfer-orchestrator:8082
       - AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "compliance-service"}]'
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:8086/actuator/health" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
     networks:
       - banking-net
     depends_on:
@@ -423,6 +432,7 @@ services:
       - azurite
       - t24-mock-cbs
       - dd-agent
+      - redis-cache
 
   # ============================================================================
   # 9b. Local NanoJev Risk Engine (FastAPI / Threaded Python :8084)
