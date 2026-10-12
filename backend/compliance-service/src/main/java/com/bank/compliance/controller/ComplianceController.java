@@ -34,6 +34,7 @@ public class ComplianceController {
     private final WebClient cbsWebClient;
     private final WebClient orchestratorWebClient;
     private final ObjectMapper objectMapper;
+    private final com.bank.compliance.scheduler.AutonomousDlqRecoveryWorker dlqRecoveryWorker;
 
     public ComplianceController(
             AzuriteBlobStorageService azuriteService,
@@ -41,12 +42,14 @@ public class ComplianceController {
             WebClient.Builder webClientBuilder,
             ObjectMapper objectMapper,
             @Value("${services.cbs.url:http://localhost:8085}") String cbsServiceUrl,
-            @Value("${services.orchestrator.url:http://localhost:8082}") String orchestratorUrl) {
+            @Value("${services.orchestrator.url:http://localhost:8082}") String orchestratorUrl,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.bank.compliance.scheduler.AutonomousDlqRecoveryWorker dlqRecoveryWorker) {
         this.azuriteService = azuriteService;
         this.statementPdfGenerator = statementPdfGenerator;
         this.cbsWebClient = webClientBuilder.baseUrl(cbsServiceUrl).build();
         this.orchestratorWebClient = webClientBuilder.baseUrl(orchestratorUrl).build();
         this.objectMapper = objectMapper;
+        this.dlqRecoveryWorker = dlqRecoveryWorker;
     }
 
     @GetMapping({"/audit", "/audit/records"})
@@ -170,34 +173,55 @@ public class ComplianceController {
                 .body(pdfBytes);
     }
 
+    @GetMapping("/dlq/status")
+    public ResponseEntity<Map<String, Object>> getDlqStatus() {
+        if (dlqRecoveryWorker != null) {
+            return ResponseEntity.ok(dlqRecoveryWorker.getDaemonStatus());
+        }
+        return ResponseEntity.ok(Map.of(
+                "autonomousDaemonActive", false,
+                "reason", "Autonomous DLQ Recovery Worker is not initialized"
+        ));
+    }
+
     @GetMapping("/dlq/incidents")
     public ResponseEntity<List<?>> getDlqIncidents(
+            @RequestParam(name = "status", required = false) String status,
             @RequestParam(name = "page", defaultValue = "0") int page,
-            @RequestParam(name = "size", defaultValue = "20") int size) {
+            @RequestParam(name = "size", defaultValue = "50") int size) {
         List<?> incidents = cbsWebClient.get()
-                .uri(uriBuilder -> uriBuilder.path("/api/v1/cbs/audit/failed-transactions")
-                        .queryParam("page", page)
-                        .queryParam("size", size)
-                        .build())
+                .uri(uriBuilder -> {
+                    var builder = uriBuilder.path("/api/v1/cbs/audit/failed-transactions")
+                            .queryParam("page", page)
+                            .queryParam("size", size);
+                    if (status != null && !status.isBlank()) {
+                        builder.queryParam("status", status);
+                    }
+                    return builder.build();
+                })
                 .retrieve()
                 .bodyToMono(List.class)
                 .timeout(Duration.ofSeconds(3))
                 .block();
-        return ResponseEntity.ok(incidents);
+        return ResponseEntity.ok(incidents != null ? incidents : List.of());
     }
 
     @PostMapping(path = {"/dlq/replays/{transferId}", "/dlq/replay/{transferId}"})
     public ResponseEntity<Map<String, Object>> replayDlqTransaction(
             @PathVariable String transferId,
             @RequestBody(required = false) Map<String, Object> replayOverride) {
-        log.info("Initiating DLQ replay for failed transfer ID: {}", transferId);
+        log.info("Initiating manual DLQ replay for failed transfer ID: {}", transferId);
 
         // 1. Resolve incident in CBS audit vault
         Map<?, ?> resolvedAudit = null;
         try {
             resolvedAudit = cbsWebClient.post()
                     .uri("/api/v1/cbs/audit/failed-transactions/" + transferId + "/resolve")
-                    .bodyValue(Map.of("notes", "Triggered manual replay via compliance console"))
+                    .bodyValue(Map.of(
+                            "notes", "Triggered manual replay via compliance console",
+                            "operatorId", "COMPLIANCE_OPERATOR",
+                            "replayStatus", "RESOLVED"
+                    ))
                     .retrieve()
                     .bodyToMono(Map.class)
                     .timeout(Duration.ofSeconds(3))

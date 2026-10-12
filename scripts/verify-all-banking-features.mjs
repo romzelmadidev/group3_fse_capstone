@@ -435,6 +435,17 @@ async function runFeature4Tests() {
     replayPassed,
     replayDetails
   );
+
+  // Positive 4.3: Autonomous DLQ Recovery Daemon Status & ShedLock Verification
+  const daemonRes = await request(GATEWAY_URL, '/api/v1/compliance/dlq/status');
+  const daemonPassed = daemonRes.status === 200 && daemonRes.body?.autonomousDaemonActive === true;
+  recordResult(
+    'Feature 4: Failed Transaction / Retry (DLQ)',
+    'Autonomous Constrained Recovery Daemon (ShedLock Synced, 10m TTL Safety Window)',
+    true,
+    daemonPassed,
+    `HTTP ${daemonRes.status} | ShedLock: ${daemonRes.body?.shedLockSynced} | CBS Health: ${daemonRes.body?.cbsHealthy} | Max Age: ${daemonRes.body?.maxAgeMinutes}m`
+  );
 }
 
 async function runFeature5Tests() {

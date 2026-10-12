@@ -82,11 +82,41 @@ public class CbsAuditQueryService {
         return getUnresolvedFailedTransactions(0, 20);
     }
 
+    @Transactional(value = "auditTransactionManager", readOnly = true)
+    public List<FailedTransactionAudit> getFailedTransactionsByStatus(String replayStatus, int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        return failedTransactionAuditRepository.findByReplayStatusOrderByFailureTimestampDesc(
+                replayStatus, PageRequest.of(safePage, safeSize));
+    }
+
+    @Transactional(value = "auditTransactionManager", readOnly = true)
+    public List<FailedTransactionAudit> getAllFailedTransactions(int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        return failedTransactionAuditRepository.findAllByOrderByFailureTimestampDesc(
+                PageRequest.of(safePage, safeSize));
+    }
+
     @Transactional("auditTransactionManager")
     public FailedTransactionAudit resolveFailedTransaction(String transactionId, String resolutionNotes, String operatorId) {
-        FailedTransactionAudit audit = failedTransactionAuditRepository.findByTransactionId(transactionId)
-                .orElseThrow(() -> new IllegalArgumentException("Failed transaction record not found: " + transactionId));
-        audit.setReplayStatus("RESOLVED");
+        return resolveFailedTransaction(transactionId, resolutionNotes, operatorId, "RESOLVED");
+    }
+
+    @Transactional("auditTransactionManager")
+    public FailedTransactionAudit resolveFailedTransaction(String identifier, String resolutionNotes, String operatorId, String replayStatus) {
+        FailedTransactionAudit audit = failedTransactionAuditRepository.findByTransactionId(identifier)
+                .or(() -> failedTransactionAuditRepository.findById(identifier))
+                .or(() -> {
+                    if (identifier != null && identifier.startsWith("TX-")) {
+                        return failedTransactionAuditRepository.findByTransactionId("TXN-" + identifier.substring(3));
+                    } else if (identifier != null && identifier.startsWith("TXN-")) {
+                        return failedTransactionAuditRepository.findByTransactionId("TX-" + identifier.substring(4));
+                    }
+                    return Optional.empty();
+                })
+                .orElseThrow(() -> new IllegalArgumentException("Failed transaction record not found: " + identifier));
+        audit.setReplayStatus(replayStatus != null && !replayStatus.isBlank() ? replayStatus : "RESOLVED");
         audit.setResolvedBy(operatorId != null ? operatorId : "SYSTEM");
         audit.setResolvedAt(Instant.now());
         return failedTransactionAuditRepository.save(audit);

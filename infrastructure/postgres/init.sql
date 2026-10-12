@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS failed_transaction_audit (
 );
 
 CREATE INDEX IF NOT EXISTS idx_dlq_incident_status ON failed_transaction_audit(replay_status, failure_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_failed_tx_replay_status_time ON failed_transaction_audit(replay_status, failure_timestamp DESC);
 
 -- ============================================================
 -- TABLE: eod_reports_metadata
