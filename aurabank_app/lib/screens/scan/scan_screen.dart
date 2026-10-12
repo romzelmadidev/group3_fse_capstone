@@ -10,13 +10,17 @@ import '../transfer/send_money_screen.dart';
 class ScanScreen extends StatefulWidget {
   final VoidCallback? onBack;
 
-  const ScanScreen({super.key, this.onBack});
+  /// True only while the Scan tab is the visible tab. The camera runs only then.
+  final bool active;
+
+  const ScanScreen({super.key, this.onBack, this.active = true});
 
   @override
   State<ScanScreen> createState() => _ScanScreenState();
 }
 
-class _ScanScreenState extends State<ScanScreen> with SingleTickerProviderStateMixin {
+class _ScanScreenState extends State<ScanScreen>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final BankService _bankService = BankService();
   final ImagePicker _imagePicker = ImagePicker();
   late final MobileScannerController _scannerController;
@@ -26,13 +30,22 @@ class _ScanScreenState extends State<ScanScreen> with SingleTickerProviderStateM
   bool _hasScanned = false;
   bool _isProcessingImage = false;
 
+  // Camera visibility state: the camera runs only while the Scan tab is
+  // selected, no other route covers the shell, and the app is resumed.
+  bool _appResumed = true;
+  bool _routeCurrent = true;
+  bool _cameraOn = false;
+  bool _syncing = false;
+
   static const Color brandViolet = Color(0xFF10171C);
   static const Color accentGreen = Color(0xFF17805F);
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scannerController = MobileScannerController(
+      autoStart: false,
       detectionSpeed: DetectionSpeed.noDuplicates,
       facing: CameraFacing.back,
       torchEnabled: false,
@@ -45,7 +58,54 @@ class _ScanScreenState extends State<ScanScreen> with SingleTickerProviderStateM
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _routeCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+    _syncCamera();
+  }
+
+  @override
+  void didUpdateWidget(covariant ScanScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active != widget.active) _syncCamera();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appResumed = state == AppLifecycleState.resumed;
+    _syncCamera();
+  }
+
+  /// Starts or stops the camera to match the current visibility state.
+  Future<void> _syncCamera() async {
+    if (_syncing) return;
+    _syncing = true;
+    try {
+      while (mounted) {
+        final want = widget.active && _appResumed && _routeCurrent;
+        if (want == _cameraOn) break;
+        try {
+          if (want) {
+            await _scannerController.start();
+          } else {
+            await _scannerController.stop();
+            if (mounted && _isTorchOn) setState(() => _isTorchOn = false);
+          }
+          _cameraOn = want;
+        } catch (_) {
+          // Permission denied or controller busy: the errorBuilder fallback
+          // handles UI, and the next visibility change retries.
+          break;
+        }
+      }
+    } finally {
+      _syncing = false;
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _laserAnimController.dispose();
     _scannerController.dispose();
     super.dispose();
@@ -136,6 +196,7 @@ class _ScanScreenState extends State<ScanScreen> with SingleTickerProviderStateM
             Positioned.fill(
               child: MobileScanner(
                 controller: _scannerController,
+                useAppLifecycleState: false,
                 onDetect: _onDetectBarcode,
                 errorBuilder: (context, error) {
                   return _buildCameraFallback();

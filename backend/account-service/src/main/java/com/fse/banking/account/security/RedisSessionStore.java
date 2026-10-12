@@ -8,9 +8,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +30,12 @@ public class RedisSessionStore {
 
     private static final String BLACKLIST_PREFIX = "auth:blacklist:";
     private static final String GATEWAY_BLACKLIST_PREFIX = "blacklist:jti:";
-    private static final String USER_SESSIONS_PREFIX = "auth:user-sessions:";
+    // "-z" key: sorted set. The old "auth:user-sessions:" key was a plain set, and reusing it would raise WRONGTYPE.
+    private static final String USER_SESSIONS_PREFIX = "auth:user-sessions-z:";
+    private static final String SESSION_JTI_PREFIX = "auth:session-jti:";
+    private static final String JTI_SESSION_PREFIX = "auth:jti-session:";
+    private static final String LOGIN_FAIL_PREFIX = "auth:login-fail:";
+    private static final String LOGIN_LOCK_PREFIX = "auth:login-lock:";
     private static final String REFRESH_TOKEN_PREFIX = "refresh_token:";
     private static final String TOKEN_FAMILY_PREFIX = "token_family:";
     private static final String SESSION_PREFIX = "session:";
@@ -59,23 +66,67 @@ public class RedisSessionStore {
     }
 
     // --- Active Sessions & Concurrency Limits ---
-    public void registerSessionToken(String userId, String jti, int maxSessions) {
+    // Sessions live in a sorted set: member = access-token jti, score = its expiry (epoch seconds).
+    // Expired tokens are pruned first; at the limit the token closest to expiry is evicted.
+
+    /** Tracks a new session's access token, evicting the oldest live one if the user is at the limit. */
+    public void registerSessionToken(String userId, String sessionId, String jti, long expiryEpochSeconds, int maxSessions) {
         String key = USER_SESSIONS_PREFIX + userId;
-        Long currentCount = stringRedisTemplate.opsForSet().size(key);
-        if (currentCount != null && currentCount >= maxSessions) {
-            String evictedJti = stringRedisTemplate.opsForSet().pop(key);
-            if (evictedJti != null) {
-                blacklistToken(evictedJti, 900); // 15m blacklist
-                log.info("Evicted session token jti {} for user {} due to concurrency limit", evictedJti, userId);
+        long now = Instant.now().getEpochSecond();
+        ZSetOperations<String, String> sessions = stringRedisTemplate.opsForZSet();
+
+        sessions.removeRangeByScore(key, 0, now);
+        Long count = sessions.size(key);
+        while (count != null && count >= maxSessions) {
+            ZSetOperations.TypedTuple<String> oldest = sessions.popMin(key);
+            if (oldest == null || oldest.getValue() == null) {
+                break;
             }
+            evictSession(userId, oldest.getValue(), oldest.getScore(), now);
+            count--;
         }
-        stringRedisTemplate.opsForSet().add(key, jti);
+        trackSessionToken(userId, sessionId, jti, expiryEpochSeconds);
+    }
+
+    /** Swaps a refreshed session's old access token for its new one so it keeps a single slot. */
+    public void rotateSessionToken(String userId, String sessionId, String newJti, long expiryEpochSeconds) {
+        String oldJti = stringRedisTemplate.opsForValue().get(SESSION_JTI_PREFIX + sessionId);
+        if (oldJti != null) {
+            stringRedisTemplate.opsForZSet().remove(USER_SESSIONS_PREFIX + userId, oldJti);
+            stringRedisTemplate.delete(JTI_SESSION_PREFIX + oldJti);
+        }
+        trackSessionToken(userId, sessionId, newJti, expiryEpochSeconds);
+    }
+
+    private void trackSessionToken(String userId, String sessionId, String jti, long expiryEpochSeconds) {
+        String key = USER_SESSIONS_PREFIX + userId;
+        stringRedisTemplate.opsForZSet().add(key, jti, expiryEpochSeconds);
         stringRedisTemplate.expire(key, Duration.ofDays(7));
+        long ttl = Math.max(1, expiryEpochSeconds - Instant.now().getEpochSecond());
+        stringRedisTemplate.opsForValue().set(JTI_SESSION_PREFIX + jti, sessionId, Duration.ofSeconds(ttl));
+        stringRedisTemplate.opsForValue().set(SESSION_JTI_PREFIX + sessionId, jti, Duration.ofDays(7));
+    }
+
+    private void evictSession(String userId, String jti, Double expiryScore, long now) {
+        long remaining = expiryScore == null ? 900 : Math.max(1, expiryScore.longValue() - now);
+        blacklistToken(jti, remaining);
+        String sessionId = stringRedisTemplate.opsForValue().get(JTI_SESSION_PREFIX + jti);
+        if (sessionId != null) {
+            // Without this the evicted device could simply refresh its way back in.
+            purgeEntireTokenFamily(sessionId, userId);
+            stringRedisTemplate.delete(SESSION_JTI_PREFIX + sessionId);
+        }
+        stringRedisTemplate.delete(JTI_SESSION_PREFIX + jti);
+        log.info("Evicted session token jti {} for user {} due to concurrency limit", jti, userId);
     }
 
     public void removeSessionToken(String userId, String jti) {
-        String key = USER_SESSIONS_PREFIX + userId;
-        stringRedisTemplate.opsForSet().remove(key, jti);
+        stringRedisTemplate.opsForZSet().remove(USER_SESSIONS_PREFIX + userId, jti);
+        String sessionId = stringRedisTemplate.opsForValue().get(JTI_SESSION_PREFIX + jti);
+        stringRedisTemplate.delete(JTI_SESSION_PREFIX + jti);
+        if (sessionId != null) {
+            stringRedisTemplate.delete(SESSION_JTI_PREFIX + sessionId);
+        }
     }
 
     // --- Refresh Tokens ---
@@ -194,6 +245,39 @@ public class RedisSessionStore {
         }
         Long remaining = stringRedisTemplate.getExpire(key);
         return remaining == null || remaining < 1 ? 1 : remaining;
+    }
+
+    /** Drops the resend cooldown once a code was verified, so the next challenge on another device gets its own code. */
+    public void clearLoginOtpCooldown(String userId) {
+        stringRedisTemplate.delete(LOGIN_OTP_COOLDOWN_PREFIX + userId);
+    }
+
+    // --- Failed-login lockout (temporary, self-expiring) ---
+
+    /** Counts a wrong password. The counter expires on its own, so old failures decay. */
+    public long recordFailedLogin(String userId, Duration window) {
+        String key = LOGIN_FAIL_PREFIX + userId;
+        Long failures = stringRedisTemplate.opsForValue().increment(key);
+        if (failures != null && failures == 1) {
+            stringRedisTemplate.expire(key, window);
+        }
+        return failures == null ? 0 : failures;
+    }
+
+    /** Locks password logins for the window and resets the counter. */
+    public void lockLogin(String userId, Duration lockDuration) {
+        stringRedisTemplate.opsForValue().set(LOGIN_LOCK_PREFIX + userId, "1", lockDuration);
+        stringRedisTemplate.delete(LOGIN_FAIL_PREFIX + userId);
+    }
+
+    /** Seconds until the lock ends, or 0 when the account is not locked. */
+    public long getLoginLockSeconds(String userId) {
+        Long remaining = stringRedisTemplate.getExpire(LOGIN_LOCK_PREFIX + userId);
+        return remaining == null || remaining < 0 ? 0 : Math.max(1, remaining);
+    }
+
+    public void clearFailedLogins(String userId) {
+        stringRedisTemplate.delete(LOGIN_FAIL_PREFIX + userId);
     }
 
     // --- Device Registry Operations ---

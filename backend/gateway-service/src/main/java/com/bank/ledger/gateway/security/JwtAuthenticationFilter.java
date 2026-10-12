@@ -64,16 +64,16 @@ public class JwtAuthenticationFilter implements GlobalFilter {
 
         String token = authHeader.substring(7);
 
-        // Check Redis blacklist
-        if (blacklistService.isBlacklisted(token)) {
-            System.err.println("[GATEWAY JWT] Token is blacklisted in Redis");
+        // Validate the signature first, so only a genuine token chooses which blacklist key is read
+        if (!jwtTokenValidator.validate(token)) {
+            System.err.println("[GATEWAY JWT] jwtTokenValidator returned false");
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             return exchange.getResponse().setComplete();
         }
 
-        // Validate token
-        if (!jwtTokenValidator.validate(token)) {
-            System.err.println("[GATEWAY JWT] jwtTokenValidator returned false");
+        // Check Redis blacklist by jti (the key account-service writes on logout/eviction)
+        if (blacklistService.isBlacklisted(jwtTokenValidator.extractJti(token))) {
+            System.err.println("[GATEWAY JWT] Token is blacklisted in Redis");
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             return exchange.getResponse().setComplete();
         }

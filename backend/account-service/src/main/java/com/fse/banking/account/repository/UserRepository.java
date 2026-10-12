@@ -23,4 +23,6 @@ public interface UserRepository extends JpaRepository<UserEntity, String> {
     List<UserEntity> findByStatus(UserStatus status);
 
     List<UserEntity> findByRole(UserRole role);
+
+    List<UserEntity> findByRoleAndKycStatus(UserRole role, com.fse.banking.common.enums.KycStatus kycStatus);
 }

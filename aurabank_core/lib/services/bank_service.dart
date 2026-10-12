@@ -940,6 +940,8 @@ class BankService extends ChangeNotifier {
           DeviceStorage.getUserId() ??
           (activeAccountId.contains('3001') ? 'U1001' : 'usr-1001-cst-001');
 
+      await syncKycStatus(effectiveUserId);
+
       // Fetch fresh balance for active account directly if set
       if (activeAccountId.isNotEmpty) {
         try {
@@ -1373,6 +1375,27 @@ class BankService extends ChangeNotifier {
       status: 'COMMITTED',
     );
     notifyListeners();
+  }
+
+  /// Loads the customer's KYC status from the backend so every channel shows
+  /// the same state, including decisions made by staff after submission.
+  Future<void> syncKycStatus(String userId) async {
+    final token = AuthApiService().currentAccessToken;
+    if (token == null || token.isEmpty) return;
+    try {
+      final res = await http
+          .get(
+            Uri.parse('$baseUrl/api/v1/kyc/$userId'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 3));
+      if (res.statusCode != 200) return;
+      final data = jsonDecode(res.body);
+      final status = data['kyc_status'] as String?;
+      if (status != null && status.isNotEmpty) {
+        setKycStatus(status, reason: data['kyc_review_reason'] as String?);
+      }
+    } catch (_) {}
   }
 
   void setKycStatus(String status, {String? reason}) {
