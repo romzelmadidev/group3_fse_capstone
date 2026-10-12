@@ -1,5 +1,5 @@
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { LayoutGrid, ScanFace, ArrowLeftRight, MapPinned, FileWarning, ScrollText, LogOut, Users, Undo2, Database, FolderArchive } from 'lucide-react';
+import { LayoutGrid, ScanFace, ArrowLeftRight, MapPinned, FileWarning, ScrollText, LogOut, Users, Undo2, AlertOctagon, FolderArchive } from 'lucide-react';
 import { canOpen, useAuth } from '../context/Auth';
 import { Aurora, Logo, cn } from './ui';
 
@@ -12,7 +12,7 @@ const NAV = [
   { to: '/sar', label: 'SAR / STR', icon: FileWarning },
   { to: '/geo', label: 'Location simulator', icon: MapPinned },
   { to: '/audit', label: 'Audit trail', icon: ScrollText },
-  { to: '/cbs', label: 'T24 Core Banking', icon: Database },
+  { to: '/dlq', label: 'DLQ incidents', icon: AlertOctagon },
   { to: '/drive', label: 'Compliance Drive', icon: FolderArchive },
 ];
 
