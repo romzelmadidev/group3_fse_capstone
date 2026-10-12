@@ -1,5 +1,7 @@
 **/target
 !account-service/target/*.jar
+!t24-mock-cbs/target/*.jar
+!transfer-orchestrator/target/*.jar
 **/*.log
 .git
 .idea

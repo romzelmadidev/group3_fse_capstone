@@ -1,6 +1,11 @@
-import 'package:aurabank_core/widgets/aura_logo.dart';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:aurabank_core/widgets/aura_logo.dart';
+import 'package:aurabank_core/services/bank_service.dart';
+import 'package:aurabank_core/services/auth_api_service.dart';
+import 'package:aurabank_core/services/device_storage.dart';
 import 'web_statement_screen.dart';
 import 'web_annual_report_screen.dart';
 
@@ -88,11 +93,13 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
   double _currentScrubFraction = 3.0; // Current floating position in index space
 
   // Catalog of all 12 Months in 2026 with weekly data
-  late final List<MonthFlowData> _monthsCatalog;
+  late List<MonthFlowData> _monthsCatalog;
 
   // Yearly Datasets
-  late final List<FlowPointData> _yearlyMonths2026;
+  late List<FlowPointData> _yearlyMonths2026;
   late final List<FlowPointData> _yearlyMonths2025;
+  bool _isLoading = false;
+  String? _loadedAccountId;
 
   @override
   void initState() {
@@ -112,876 +119,418 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
       });
 
     _initDatasets();
+    BankService().addListener(_onBankServiceUpdated);
+    _loadOracleTransactions();
   }
 
-  void _initDatasets() {
-    // 12 Months Catalog for 2026 with realistic weekly breakdown
-    _monthsCatalog = [
-      MonthFlowData(
-        monthName: 'January 2026',
-        shortName: 'Jan',
-        monthIndex: 0,
-        weeks: [
-          FlowPointData(
-            label: 'Week 1',
-            shortLabel: 'W1',
-            dateSubtitle: 'Jan 01 - Jan 07, 2026',
-            received: 8000.0,
-            sent: 18000.0,
-            inTransfers: 1,
-            outTransfers: 3,
-            transactions: const [
-              AnalyticsTxItem(name: 'Annual Software License', initial: 'S', avatarBg: Color(0xFF2F78A8), time: 'Jan 03, 11:30 am', amount: 12000.0, isReceived: false),
-              AnalyticsTxItem(name: 'Client Retainer', initial: 'C', avatarBg: Color(0xFF1C6E5A), time: 'Jan 05, 2:15 pm', amount: 8000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Office Supplies', initial: 'O', avatarBg: Color(0xFFD9822B), time: 'Jan 06, 4:00 pm', amount: 6000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 2',
-            shortLabel: 'W2',
-            dateSubtitle: 'Jan 08 - Jan 14, 2026',
-            received: 10000.0,
-            sent: 15000.0,
-            inTransfers: 2,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Direct Credit', initial: 'D', avatarBg: Color(0xFF2F78A8), time: 'Jan 10, 10:00 am', amount: 10000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Operational Expenses', initial: 'O', avatarBg: Color(0xFFD9705A), time: 'Jan 12, 1:45 pm', amount: 15000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 3',
-            shortLabel: 'W3',
-            dateSubtitle: 'Jan 15 - Jan 21, 2026',
-            received: 12000.0,
-            sent: 22000.0,
-            inTransfers: 1,
-            outTransfers: 4,
-            transactions: const [
-              AnalyticsTxItem(name: 'Consultancy Inward', initial: 'C', avatarBg: Color(0xFF2FA37E), time: 'Jan 18, 9:20 am', amount: 12000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Marketing Campaign', initial: 'M', avatarBg: Color(0xFF6E7BD9), time: 'Jan 19, 3:30 pm', amount: 22000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 4',
-            shortLabel: 'W4',
-            dateSubtitle: 'Jan 22 - Jan 31, 2026',
-            received: 15000.0,
-            sent: 19000.0,
-            inTransfers: 2,
-            outTransfers: 3,
-            transactions: const [
-              AnalyticsTxItem(name: 'Direct Settlement', initial: 'S', avatarBg: Color(0xFF3FA7C9), time: 'Jan 25, 2:00 pm', amount: 15000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Interbank Clearing', initial: 'I', avatarBg: Color(0xFFE53935), time: 'Jan 28, 5:15 pm', amount: 19000.0, isReceived: false),
-            ],
-          ),
-        ],
-      ),
-      MonthFlowData(
-        monthName: 'February 2026',
-        shortName: 'Feb',
-        monthIndex: 1,
-        weeks: [
-          FlowPointData(
-            label: 'Week 1',
-            shortLabel: 'W1',
-            dateSubtitle: 'Feb 01 - Feb 07, 2026',
-            received: 14000.0,
-            sent: 11000.0,
-            inTransfers: 1,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Consulting Honorarium', initial: 'C', avatarBg: Color(0xFF2F78A8), time: 'Feb 03, 10:15 am', amount: 14000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Other Bank Transfer', initial: 'O', avatarBg: Color(0xFFD9822B), time: 'Feb 05, 3:20 pm', amount: 11000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 2',
-            shortLabel: 'W2',
-            dateSubtitle: 'Feb 08 - Feb 14, 2026',
-            received: 18000.0,
-            sent: 16000.0,
-            inTransfers: 2,
-            outTransfers: 3,
-            transactions: const [
-              AnalyticsTxItem(name: 'Commercial Inward', initial: 'M', avatarBg: Color(0xFF1C6E5A), time: 'Feb 10, 1:15 pm', amount: 18000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Supplier Settlement', initial: 'S', avatarBg: Color(0xFF2F78A8), time: 'Feb 12, 4:40 pm', amount: 16000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 3',
-            shortLabel: 'W3',
-            dateSubtitle: 'Feb 15 - Feb 21, 2026',
-            received: 20000.0,
-            sent: 12000.0,
-            inTransfers: 1,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Direct Wire', initial: 'W', avatarBg: Color(0xFF2F78A8), time: 'Feb 17, 11:00 am', amount: 20000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Software Upgrade', initial: 'S', avatarBg: Color(0xFFD9705A), time: 'Feb 19, 2:50 pm', amount: 12000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 4',
-            shortLabel: 'W4',
-            dateSubtitle: 'Feb 22 - Feb 28, 2026',
-            received: 15000.0,
-            sent: 13000.0,
-            inTransfers: 1,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Service Deposit', initial: 'S', avatarBg: Color(0xFF2FA37E), time: 'Feb 24, 9:30 am', amount: 15000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Facility Lease', initial: 'F', avatarBg: Color(0xFF6E7BD9), time: 'Feb 27, 4:10 pm', amount: 13000.0, isReceived: false),
-            ],
-          ),
-        ],
-      ),
-      MonthFlowData(
-        monthName: 'March 2026',
-        shortName: 'Mar',
-        monthIndex: 2,
-        weeks: [
-          FlowPointData(
-            label: 'Week 1',
-            shortLabel: 'W1',
-            dateSubtitle: 'Mar 01 - Mar 07, 2026',
-            received: 8000.0,
-            sent: 16000.0,
-            inTransfers: 1,
-            outTransfers: 3,
-            transactions: const [
-              AnalyticsTxItem(name: 'Apex Digital Wire', initial: 'A', avatarBg: Color(0xFF17805F), time: 'Mar 04, 11:20 am', amount: 8000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Q1 Compliance Filing', initial: 'C', avatarBg: Color(0xFFD9822B), time: 'Mar 06, 2:10 pm', amount: 16000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 2',
-            shortLabel: 'W2',
-            dateSubtitle: 'Mar 08 - Mar 14, 2026',
-            received: 12000.0,
-            sent: 21000.0,
-            inTransfers: 1,
-            outTransfers: 3,
-            transactions: const [
-              AnalyticsTxItem(name: 'Project Payout', initial: 'P', avatarBg: Color(0xFF2F78A8), time: 'Mar 11, 1:45 pm', amount: 12000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Marketing Campaign', initial: 'M', avatarBg: Color(0xFF2F78A8), time: 'Mar 13, 3:30 pm', amount: 21000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 3',
-            shortLabel: 'W3',
-            dateSubtitle: 'Mar 15 - Mar 21, 2026',
-            received: 15000.0,
-            sent: 18000.0,
-            inTransfers: 1,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Client Honorarium', initial: 'C', avatarBg: Color(0xFF1C6E5A), time: 'Mar 18, 10:00 am', amount: 15000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Server Infrastructure', initial: 'S', avatarBg: Color(0xFFD9705A), time: 'Mar 20, 4:15 pm', amount: 18000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 4',
-            shortLabel: 'W4',
-            dateSubtitle: 'Mar 22 - Mar 31, 2026',
-            received: 10000.0,
-            sent: 14000.0,
-            inTransfers: 1,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Settlement Credit', initial: 'S', avatarBg: Color(0xFF2FA37E), time: 'Mar 25, 2:20 pm', amount: 10000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Office Maintenance', initial: 'O', avatarBg: Color(0xFF6E7BD9), time: 'Mar 29, 5:00 pm', amount: 14000.0, isReceived: false),
-            ],
-          ),
-        ],
-      ),
-      MonthFlowData(
-        monthName: 'April 2026',
-        shortName: 'Apr',
-        monthIndex: 3,
-        weeks: [
-          FlowPointData(
-            label: 'Week 1',
-            shortLabel: 'W1',
-            dateSubtitle: 'Apr 01 - Apr 07, 2026',
-            received: 25000.0,
-            sent: 8000.0,
-            inTransfers: 2,
-            outTransfers: 1,
-            transactions: const [
-              AnalyticsTxItem(name: 'Enterprise Contract', initial: 'E', avatarBg: Color(0xFF2F78A8), time: 'Apr 03, 9:45 am', amount: 25000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Cloud Maintenance', initial: 'C', avatarBg: Color(0xFFD9822B), time: 'Apr 05, 3:30 pm', amount: 8000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 2',
-            shortLabel: 'W2',
-            dateSubtitle: 'Apr 08 - Apr 14, 2026',
-            received: 32000.0,
-            sent: 14000.0,
-            inTransfers: 2,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Partner Bank Settlement', initial: 'P', avatarBg: Color(0xFF1C6E5A), time: 'Apr 10, 11:15 am', amount: 32000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Vendor Clearing', initial: 'V', avatarBg: Color(0xFF2F78A8), time: 'Apr 12, 2:40 pm', amount: 14000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 3',
-            shortLabel: 'W3',
-            dateSubtitle: 'Apr 15 - Apr 21, 2026',
-            received: 18000.0,
-            sent: 6500.0,
-            inTransfers: 1,
-            outTransfers: 1,
-            transactions: const [
-              AnalyticsTxItem(name: 'Project Milestone B', initial: 'P', avatarBg: Color(0xFF2FA37E), time: 'Apr 17, 10:20 am', amount: 18000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Other Bank Transfer', initial: 'O', avatarBg: Color(0xFFD9705A), time: 'Apr 19, 4:10 pm', amount: 6500.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 4',
-            shortLabel: 'W4',
-            dateSubtitle: 'Apr 22 - Apr 30, 2026',
-            received: 28500.0,
-            sent: 12000.0,
-            inTransfers: 2,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Retainer Inflow', initial: 'R', avatarBg: Color(0xFF6E7BD9), time: 'Apr 25, 1:30 pm', amount: 28500.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Facility Lease Share', initial: 'F', avatarBg: Color(0xFF3FA7C9), time: 'Apr 28, 5:00 pm', amount: 12000.0, isReceived: false),
-            ],
-          ),
-        ],
-      ),
-      MonthFlowData(
-        monthName: 'May 2026',
-        shortName: 'May',
-        monthIndex: 4,
-        weeks: [
-          FlowPointData(
-            label: 'Week 1',
-            shortLabel: 'W1',
-            dateSubtitle: 'May 01 - May 07, 2026',
-            received: 9000.0,
-            sent: 12000.0,
-            inTransfers: 1,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Advisory Inflow', initial: 'A', avatarBg: Color(0xFF2F78A8), time: 'May 03, 11:00 am', amount: 9000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Office Supplies', initial: 'O', avatarBg: Color(0xFFD9822B), time: 'May 05, 2:15 pm', amount: 12000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 2',
-            shortLabel: 'W2',
-            dateSubtitle: 'May 08 - May 14, 2026',
-            received: 14000.0,
-            sent: 10000.0,
-            inTransfers: 1,
-            outTransfers: 1,
-            transactions: const [
-              AnalyticsTxItem(name: 'Client Deposit', initial: 'C', avatarBg: Color(0xFF1C6E5A), time: 'May 11, 10:45 am', amount: 14000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Logistics Fee', initial: 'L', avatarBg: Color(0xFF2F78A8), time: 'May 13, 3:30 pm', amount: 10000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 3',
-            shortLabel: 'W3',
-            dateSubtitle: 'May 15 - May 21, 2026',
-            received: 22000.0,
-            sent: 25000.0,
-            inTransfers: 2,
-            outTransfers: 3,
-            transactions: const [
-              AnalyticsTxItem(name: 'Settlement Inward', initial: 'S', avatarBg: Color(0xFF2F78A8), time: 'May 18, 1:20 pm', amount: 22000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Equipment Maintenance', initial: 'E', avatarBg: Color(0xFFD9705A), time: 'May 20, 4:50 pm', amount: 25000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 4',
-            shortLabel: 'W4',
-            dateSubtitle: 'May 22 - May 31, 2026',
-            received: 16000.0,
-            sent: 13000.0,
-            inTransfers: 1,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Contract Payout', initial: 'C', avatarBg: Color(0xFF2FA37E), time: 'May 26, 11:30 am', amount: 16000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Rent Allocation', initial: 'R', avatarBg: Color(0xFF6E7BD9), time: 'May 29, 2:10 pm', amount: 13000.0, isReceived: false),
-            ],
-          ),
-        ],
-      ),
-      MonthFlowData(
-        monthName: 'June 2026',
-        shortName: 'Jun',
-        monthIndex: 5,
-        weeks: [
-          FlowPointData(
-            label: 'Week 1',
-            shortLabel: 'W1',
-            dateSubtitle: 'Jun 01 - Jun 07, 2026',
-            received: 12000.0,
-            sent: 15000.0,
-            inTransfers: 1,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Inward Wire', initial: 'I', avatarBg: Color(0xFF3FA7C9), time: 'Jun 04, 10:15 am', amount: 12000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Software Licensing', initial: 'S', avatarBg: Color(0xFFD9822B), time: 'Jun 06, 3:45 pm', amount: 15000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 2',
-            shortLabel: 'W2',
-            dateSubtitle: 'Jun 08 - Jun 14, 2026',
-            received: 28000.0,
-            sent: 12500.0,
-            inTransfers: 2,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Apex Digital Wire', initial: 'A', avatarBg: Color(0xFF17805F), time: 'Jun 10, 1:30 pm', amount: 28000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Supplier Order', initial: 'S', avatarBg: Color(0xFF2F78A8), time: 'Jun 12, 4:20 pm', amount: 12500.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 3',
-            shortLabel: 'W3',
-            dateSubtitle: 'Jun 15 - Jun 21, 2026',
-            received: 14000.0,
-            sent: 18000.0,
-            inTransfers: 1,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Service Fee', initial: 'S', avatarBg: Color(0xFF2F78A8), time: 'Jun 17, 11:10 am', amount: 14000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Insurance Premium', initial: 'I', avatarBg: Color(0xFFD9705A), time: 'Jun 19, 2:50 pm', amount: 18000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 4',
-            shortLabel: 'W4',
-            dateSubtitle: 'Jun 22 - Jun 30, 2026',
-            received: 19000.0,
-            sent: 16500.0,
-            inTransfers: 1,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Professional Fee', initial: 'P', avatarBg: Color(0xFF2FA37E), time: 'Jun 25, 9:40 am', amount: 19000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Same Bank Transfer', initial: 'S', avatarBg: Color(0xFF6E7BD9), time: 'Jun 28, 5:15 pm', amount: 16500.0, isReceived: false),
-            ],
-          ),
-        ],
-      ),
-      MonthFlowData(
-        monthName: 'July 2026',
-        shortName: 'Jul',
-        monthIndex: 6,
-        weeks: [
-          FlowPointData(
-            label: 'Week 1',
-            shortLabel: 'W1',
-            dateSubtitle: 'Jul 01 - Jul 07, 2026',
-            received: 10000.0,
-            sent: 8000.0,
-            inTransfers: 1,
-            outTransfers: 1,
-            transactions: const [
-              AnalyticsTxItem(name: 'Inward Remittance', initial: 'I', avatarBg: Color(0xFF2F78A8), time: 'Jul 03, 10:30 am', amount: 10000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Interbank Transfer', initial: 'I', avatarBg: Color(0xFFD9822B), time: 'Jul 06, 2:15 pm', amount: 8000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 2',
-            shortLabel: 'W2',
-            dateSubtitle: 'Jul 08 - Jul 14, 2026',
-            received: 16000.0,
-            sent: 19000.0,
-            inTransfers: 1,
-            outTransfers: 3,
-            transactions: const [
-              AnalyticsTxItem(name: 'Service Contract', initial: 'S', avatarBg: Color(0xFF1C6E5A), time: 'Jul 10, 1:45 pm', amount: 16000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Hardware Maintenance', initial: 'H', avatarBg: Color(0xFF2F78A8), time: 'Jul 12, 4:30 pm', amount: 19000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 3',
-            shortLabel: 'W3',
-            dateSubtitle: 'Jul 15 - Jul 21, 2026',
-            received: 21000.0,
-            sent: 14000.0,
-            inTransfers: 2,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Commercial Inflow', initial: 'C', avatarBg: Color(0xFF2F78A8), time: 'Jul 17, 11:20 am', amount: 21000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Office Supplies', initial: 'O', avatarBg: Color(0xFFD9705A), time: 'Jul 19, 3:15 pm', amount: 14000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 4',
-            shortLabel: 'W4',
-            dateSubtitle: 'Jul 22 - Jul 31, 2026',
-            received: 25000.0,
-            sent: 11000.0,
-            inTransfers: 2,
-            outTransfers: 1,
-            transactions: const [
-              AnalyticsTxItem(name: 'Retainer Payment', initial: 'R', avatarBg: Color(0xFF2FA37E), time: 'Jul 26, 10:00 am', amount: 25000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Supplier Transfer', initial: 'S', avatarBg: Color(0xFF6E7BD9), time: 'Jul 29, 4:45 pm', amount: 11000.0, isReceived: false),
-            ],
-          ),
-        ],
-      ),
-      MonthFlowData(
-        monthName: 'August 2026',
-        shortName: 'Aug',
-        monthIndex: 7,
-        weeks: [
-          FlowPointData(
-            label: 'Week 1',
-            shortLabel: 'W1',
-            dateSubtitle: 'Aug 01 - Aug 07, 2026',
-            received: 18000.0,
-            sent: 11000.0,
-            inTransfers: 1,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Project Milestone', initial: 'P', avatarBg: Color(0xFF3FA7C9), time: 'Aug 03, 11:15 am', amount: 18000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Internet Fiber', initial: 'I', avatarBg: Color(0xFFD9822B), time: 'Aug 05, 3:20 pm', amount: 11000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 2',
-            shortLabel: 'W2',
-            dateSubtitle: 'Aug 08 - Aug 14, 2026',
-            received: 9500.0,
-            sent: 20500.0,
-            inTransfers: 1,
-            outTransfers: 3,
-            transactions: const [
-              AnalyticsTxItem(name: 'Apex Digital Transfer', initial: 'A', avatarBg: Color(0xFF17805F), time: 'Aug 10, 10:45 am', amount: 9500.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Vendor Payout', initial: 'V', avatarBg: Color(0xFF2F78A8), time: 'Aug 12, 2:50 pm', amount: 20500.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 3',
-            shortLabel: 'W3',
-            dateSubtitle: 'Aug 15 - Aug 21, 2026',
-            received: 34000.0,
-            sent: 15000.0,
-            inTransfers: 2,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Customer Wire Settlement', initial: 'C', avatarBg: Color(0xFF2F78A8), time: 'Aug 17, 1:15 pm', amount: 34000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Cloud Hosting Subscription', initial: 'C', avatarBg: Color(0xFFD9705A), time: 'Aug 19, 4:10 pm', amount: 15000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 4',
-            shortLabel: 'W4',
-            dateSubtitle: 'Aug 22 - Aug 31, 2026',
-            received: 12500.0,
-            sent: 16500.0,
-            inTransfers: 1,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Consultation Fee', initial: 'C', avatarBg: Color(0xFF2FA37E), time: 'Aug 25, 9:30 am', amount: 12500.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Operational Expenses', initial: 'O', avatarBg: Color(0xFF6E7BD9), time: 'Aug 28, 5:00 pm', amount: 16500.0, isReceived: false),
-            ],
-          ),
-        ],
-      ),
-      MonthFlowData(
-        monthName: 'September 2026',
-        shortName: 'Sep',
-        monthIndex: 8,
-        weeks: [
-          FlowPointData(
-            label: 'Week 1',
-            shortLabel: 'W1',
-            dateSubtitle: 'Sep 01 - Sep 07, 2026',
-            received: 14000.0,
-            sent: 9500.0,
-            inTransfers: 1,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Client Retainer', initial: 'C', avatarBg: Color(0xFF2F78A8), time: 'Sep 03, 10:15 am', amount: 14000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Software Licenses', initial: 'S', avatarBg: Color(0xFFD9822B), time: 'Sep 05, 3:30 pm', amount: 9500.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 2',
-            shortLabel: 'W2',
-            dateSubtitle: 'Sep 08 - Sep 14, 2026',
-            received: 22500.0,
-            sent: 18000.0,
-            inTransfers: 2,
-            outTransfers: 3,
-            transactions: const [
-              AnalyticsTxItem(name: 'MeyBank Inward Clearing', initial: 'M', avatarBg: Color(0xFF701A75), time: 'Sep 10, 1:40 pm', amount: 22500.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Supplier Clearing Payout', initial: 'S', avatarBg: Color(0xFF2F78A8), time: 'Sep 12, 4:15 pm', amount: 18000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 3',
-            shortLabel: 'W3',
-            dateSubtitle: 'Sep 15 - Sep 21, 2026',
-            received: 16000.0,
-            sent: 24500.0,
-            inTransfers: 1,
-            outTransfers: 4,
-            transactions: const [
-              AnalyticsTxItem(name: 'Direct Settlement', initial: 'D', avatarBg: Color(0xFF1C6E5A), time: 'Sep 17, 11:20 am', amount: 16000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Office Equipment Refresh', initial: 'O', avatarBg: Color(0xFF2F78A8), time: 'Sep 19, 2:50 pm', amount: 24500.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 4',
-            shortLabel: 'W4',
-            dateSubtitle: 'Sep 22 - Sep 30, 2026',
-            received: 28000.0,
-            sent: 12000.0,
-            inTransfers: 2,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Dividend Credit', initial: 'D', avatarBg: Color(0xFF2FA37E), time: 'Sep 25, 9:50 am', amount: 28000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Other Bank Transfer', initial: 'O', avatarBg: Color(0xFFD9705A), time: 'Sep 28, 4:30 pm', amount: 12000.0, isReceived: false),
-            ],
-          ),
-        ],
-      ),
-      // October 2026 (Default - 5 Weeks)
-      MonthFlowData(
-        monthName: 'October 2026',
-        shortName: 'Oct',
-        monthIndex: 9,
-        weeks: [
-          FlowPointData(
-            label: 'Week 1',
-            shortLabel: 'W1',
-            dateSubtitle: 'Oct 01 - Oct 07, 2026',
-            received: 8000.0,
-            sent: 14500.0,
-            inTransfers: 1,
-            outTransfers: 3,
-            transactions: const [
-              AnalyticsTxItem(name: 'Angel Lou F. Yabut', initial: 'A', avatarBg: Color(0xFF2F78A8), time: 'Oct 03, 2:45 pm', amount: 2500.0, isReceived: false),
-              AnalyticsTxItem(name: 'Mae G. Mercado', initial: 'M', avatarBg: Color(0xFF2F78A8), time: 'Oct 04, 9:15 am', amount: 4500.0, isReceived: false),
-              AnalyticsTxItem(name: 'Direct Deposit', initial: 'D', avatarBg: Color(0xFF1C6E5A), time: 'Oct 02, 10:00 am', amount: 8000.0, isReceived: true, status: 'RECEIVED'),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 2',
-            shortLabel: 'W2',
-            dateSubtitle: 'Oct 08 - Oct 14, 2026',
-            received: 26500.0,
-            sent: 18500.0,
-            inTransfers: 1,
-            outTransfers: 4,
-            transactions: const [
-              AnalyticsTxItem(name: 'Drake Montefalco', initial: 'D', avatarBg: Color(0xFF220055), time: 'Oct 14, 2:45 pm', amount: 2500.0, isReceived: false),
-              AnalyticsTxItem(name: 'Klare Riego', initial: 'K', avatarBg: Color(0xFFBA68C8), time: 'Oct 14, 1:45 pm', amount: 26500.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Business Supplies', initial: 'B', avatarBg: Color(0xFF2F78A8), time: 'Oct 11, 4:20 pm', amount: 16000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 3',
-            shortLabel: 'W3',
-            dateSubtitle: 'Oct 15 - Oct 21, 2026',
-            received: 5000.0,
-            sent: 32500.0,
-            inTransfers: 1,
-            outTransfers: 5,
-            transactions: const [
-              AnalyticsTxItem(name: 'Jessie Mae Dela Paz', initial: 'J', avatarBg: Color(0xFF3FA7C9), time: 'Oct 16, 11:30 am', amount: 5000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Hardware Reorder', initial: 'H', avatarBg: Color(0xFF5E35B1), time: 'Oct 18, 3:15 pm', amount: 27500.0, isReceived: false),
-              AnalyticsTxItem(name: 'Cloud Services', initial: 'C', avatarBg: Color(0xFF43A047), time: 'Oct 20, 8:40 am', amount: 5000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 4',
-            shortLabel: 'W4',
-            dateSubtitle: 'Oct 22 - Oct 28, 2026',
-            received: 18500.0,
-            sent: 10500.0,
-            inTransfers: 1,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Mae G. Mercado', initial: 'M', avatarBg: Color(0xFF2F78A8), time: 'Oct 24, 10:15 am', amount: 18500.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Office Lease Share', initial: 'O', avatarBg: Color(0xFFD9705A), time: 'Oct 26, 4:00 pm', amount: 10500.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 5',
-            shortLabel: 'W5',
-            dateSubtitle: 'Oct 29 - Oct 31, 2026',
-            received: 5000.0,
-            sent: 29000.0,
-            inTransfers: 1,
-            outTransfers: 4,
-            transactions: const [
-              AnalyticsTxItem(name: 'Payroll Reimbursement', initial: 'P', avatarBg: Color(0xFF1E88E5), time: 'Oct 30, 2:00 pm', amount: 25000.0, isReceived: false),
-              AnalyticsTxItem(name: 'Consulting Honorarium', initial: 'C', avatarBg: Color(0xFF2FA37E), time: 'Oct 31, 5:30 pm', amount: 5000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Petty Cash', initial: 'P', avatarBg: Color(0xFF6E7BD9), time: 'Oct 31, 6:00 pm', amount: 4000.0, isReceived: false),
-            ],
-          ),
-        ],
-      ),
-      MonthFlowData(
-        monthName: 'November 2026',
-        shortName: 'Nov',
-        monthIndex: 10,
-        weeks: [
-          FlowPointData(
-            label: 'Week 1',
-            shortLabel: 'W1',
-            dateSubtitle: 'Nov 01 - Nov 07, 2026',
-            received: 16000.0,
-            sent: 14000.0,
-            inTransfers: 1,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Retainer Credit', initial: 'R', avatarBg: Color(0xFF2F78A8), time: 'Nov 03, 10:20 am', amount: 16000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Operations Reserve', initial: 'O', avatarBg: Color(0xFFD9822B), time: 'Nov 05, 3:15 pm', amount: 14000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 2',
-            shortLabel: 'W2',
-            dateSubtitle: 'Nov 08 - Nov 14, 2026',
-            received: 21000.0,
-            sent: 11000.0,
-            inTransfers: 2,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Client Settlement', initial: 'C', avatarBg: Color(0xFF1C6E5A), time: 'Nov 10, 1:45 pm', amount: 21000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Hardware Upgrade', initial: 'H', avatarBg: Color(0xFF2F78A8), time: 'Nov 12, 4:20 pm', amount: 11000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 3',
-            shortLabel: 'W3',
-            dateSubtitle: 'Nov 15 - Nov 21, 2026',
-            received: 15000.0,
-            sent: 25000.0,
-            inTransfers: 1,
-            outTransfers: 3,
-            transactions: const [
-              AnalyticsTxItem(name: 'Direct Deposit', initial: 'D', avatarBg: Color(0xFF2F78A8), time: 'Nov 17, 11:30 am', amount: 15000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Vendor Clearing', initial: 'V', avatarBg: Color(0xFFD9705A), time: 'Nov 19, 3:00 pm', amount: 25000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 4',
-            shortLabel: 'W4',
-            dateSubtitle: 'Nov 22 - Nov 30, 2026',
-            received: 24000.0,
-            sent: 18000.0,
-            inTransfers: 2,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Inward Wire', initial: 'I', avatarBg: Color(0xFF2FA37E), time: 'Nov 25, 10:00 am', amount: 24000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Facility Share', initial: 'F', avatarBg: Color(0xFF6E7BD9), time: 'Nov 28, 4:40 pm', amount: 18000.0, isReceived: false),
-            ],
-          ),
-        ],
-      ),
-      MonthFlowData(
-        monthName: 'December 2026',
-        shortName: 'Dec',
-        monthIndex: 11,
-        weeks: [
-          FlowPointData(
-            label: 'Week 1',
-            shortLabel: 'W1',
-            dateSubtitle: 'Dec 01 - Dec 07, 2026',
-            received: 18000.0,
-            sent: 12000.0,
-            inTransfers: 1,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Holiday Retainer', initial: 'H', avatarBg: Color(0xFF2F78A8), time: 'Dec 03, 11:15 am', amount: 18000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Holiday Corporate Event', initial: 'C', avatarBg: Color(0xFFD9822B), time: 'Dec 05, 3:30 pm', amount: 12000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 2',
-            shortLabel: 'W2',
-            dateSubtitle: 'Dec 08 - Dec 14, 2026',
-            received: 24000.0,
-            sent: 19000.0,
-            inTransfers: 2,
-            outTransfers: 3,
-            transactions: const [
-              AnalyticsTxItem(name: 'Project Bonus Release', initial: 'P', avatarBg: Color(0xFF1C6E5A), time: 'Dec 10, 1:20 pm', amount: 24000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Operational Reserve', initial: 'O', avatarBg: Color(0xFF2F78A8), time: 'Dec 12, 4:10 pm', amount: 19000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 3',
-            shortLabel: 'W3',
-            dateSubtitle: 'Dec 15 - Dec 21, 2026',
-            received: 35000.0,
-            sent: 28000.0,
-            inTransfers: 2,
-            outTransfers: 3,
-            transactions: const [
-              AnalyticsTxItem(name: 'Client Wire', initial: 'C', avatarBg: Color(0xFF2F78A8), time: 'Dec 17, 10:45 am', amount: 35000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Annual Vendor Settlement', initial: 'V', avatarBg: Color(0xFFD9705A), time: 'Dec 19, 2:50 pm', amount: 28000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 4',
-            shortLabel: 'W4',
-            dateSubtitle: 'Dec 22 - Dec 28, 2026',
-            received: 42000.0,
-            sent: 34000.0,
-            inTransfers: 3,
-            outTransfers: 4,
-            transactions: const [
-              AnalyticsTxItem(name: '13th Month Settlement', initial: 'M', avatarBg: Color(0xFF2FA37E), time: 'Dec 24, 9:30 am', amount: 42000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Year-End Clearing', initial: 'Y', avatarBg: Color(0xFF6E7BD9), time: 'Dec 27, 4:00 pm', amount: 34000.0, isReceived: false),
-            ],
-          ),
-          FlowPointData(
-            label: 'Week 5',
-            shortLabel: 'W5',
-            dateSubtitle: 'Dec 29 - Dec 31, 2026',
-            received: 20000.0,
-            sent: 15000.0,
-            inTransfers: 1,
-            outTransfers: 2,
-            transactions: const [
-              AnalyticsTxItem(name: 'Final Inward Settlement', initial: 'F', avatarBg: Color(0xFF3FA7C9), time: 'Dec 30, 2:15 pm', amount: 20000.0, isReceived: true, status: 'RECEIVED'),
-              AnalyticsTxItem(name: 'Year-End Reserve', initial: 'R', avatarBg: Color(0xFF5E35B1), time: 'Dec 31, 5:00 pm', amount: 15000.0, isReceived: false),
-            ],
-          ),
-        ],
-      ),
-    ];
+  void _onBankServiceUpdated() {
+    final currentAcc = _resolveAccountId();
+    if (currentAcc != _loadedAccountId && mounted) {
+      _loadOracleTransactions();
+    }
+  }
 
-    // Yearly Dataset (12 Months in 2026)
-    _yearlyMonths2026 = [
-      FlowPointData(
-        label: 'January',
-        shortLabel: 'Jan',
-        dateSubtitle: 'Jan 01 - Jan 31, 2026',
-        received: 15000.0,
-        sent: 45000.0,
-        inTransfers: 3,
-        outTransfers: 16,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'February',
-        shortLabel: 'Feb',
-        dateSubtitle: 'Feb 01 - Feb 28, 2026',
-        received: 25000.0,
-        sent: 38000.0,
-        inTransfers: 4,
-        outTransfers: 14,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'March',
-        shortLabel: 'Mar',
-        dateSubtitle: 'Mar 01 - Mar 31, 2026',
-        received: 10000.0,
-        sent: 42000.0,
-        inTransfers: 2,
-        outTransfers: 19,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'April',
-        shortLabel: 'Apr',
-        dateSubtitle: 'Apr 01 - Apr 30, 2026',
-        received: 68500.0,
-        sent: 16500.0,
-        inTransfers: 6,
-        outTransfers: 12,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'May',
-        shortLabel: 'May',
-        dateSubtitle: 'May 01 - May 31, 2026',
-        received: 22000.0,
-        sent: 35000.0,
-        inTransfers: 3,
-        outTransfers: 15,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'June',
-        shortLabel: 'Jun',
-        dateSubtitle: 'Jun 01 - Jun 30, 2026',
-        received: 15200.0,
-        sent: 50000.0,
-        inTransfers: 3,
-        outTransfers: 10,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'July',
-        shortLabel: 'Jul',
-        dateSubtitle: 'Jul 01 - Jul 31, 2026',
-        received: 25500.0,
-        sent: 42000.0,
-        inTransfers: 5,
-        outTransfers: 24,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'August',
-        shortLabel: 'Aug',
-        dateSubtitle: 'Aug 01 - Aug 31, 2026',
-        received: 13800.0,
-        sent: 38200.0,
-        inTransfers: 3,
-        outTransfers: 19,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'September',
-        shortLabel: 'Sep',
-        dateSubtitle: 'Sep 01 - Sep 30, 2026',
-        received: 18000.0,
-        sent: 45000.0,
-        inTransfers: 4,
-        outTransfers: 18,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'October',
-        shortLabel: 'Oct',
-        dateSubtitle: 'Oct 01 - Oct 31, 2026',
-        received: 58000.0,
-        sent: 105000.0,
-        inTransfers: 4,
-        outTransfers: 18,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'November',
-        shortLabel: 'Nov',
-        dateSubtitle: 'Nov 01 - Nov 30, 2026',
-        received: 20000.0,
-        sent: 48000.0,
-        inTransfers: 3,
-        outTransfers: 17,
-        transactions: const [],
-      ),
-      FlowPointData(
-        label: 'December',
-        shortLabel: 'Dec',
-        dateSubtitle: 'Dec 01 - Dec 31, 2026',
-        received: 30000.0,
-        sent: 63300.0,
-        inTransfers: 4,
-        outTransfers: 22,
-        transactions: const [],
-      ),
+  void _buildEmpty2026Catalog() {
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
     ];
+    const shortNames = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    const monthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+    _monthsCatalog = List.generate(12, (mIdx) {
+      final mName = monthNames[mIdx];
+      final sName = shortNames[mIdx];
+      final lastDay = monthDays[mIdx];
+
+      return MonthFlowData(
+        monthName: '$mName 2026',
+        shortName: sName,
+        monthIndex: mIdx,
+        weeks: [
+          FlowPointData(
+            label: 'Week 1',
+            shortLabel: 'W1',
+            dateSubtitle: '$sName 01 - $sName 07, 2026',
+            received: 0.0,
+            sent: 0.0,
+            inTransfers: 0,
+            outTransfers: 0,
+            transactions: const [],
+          ),
+          FlowPointData(
+            label: 'Week 2',
+            shortLabel: 'W2',
+            dateSubtitle: '$sName 08 - $sName 14, 2026',
+            received: 0.0,
+            sent: 0.0,
+            inTransfers: 0,
+            outTransfers: 0,
+            transactions: const [],
+          ),
+          FlowPointData(
+            label: 'Week 3',
+            shortLabel: 'W3',
+            dateSubtitle: '$sName 15 - $sName 21, 2026',
+            received: 0.0,
+            sent: 0.0,
+            inTransfers: 0,
+            outTransfers: 0,
+            transactions: const [],
+          ),
+          FlowPointData(
+            label: 'Week 4',
+            shortLabel: 'W4',
+            dateSubtitle: '$sName 22 - $sName ${lastDay.toString().padLeft(2, '0')}, 2026',
+            received: 0.0,
+            sent: 0.0,
+            inTransfers: 0,
+            outTransfers: 0,
+            transactions: const [],
+          ),
+        ],
+      );
+    });
+
+    _yearlyMonths2026 = List.generate(12, (mIdx) {
+      final mName = monthNames[mIdx];
+      final sName = shortNames[mIdx];
+      final lastDay = monthDays[mIdx];
+      return FlowPointData(
+        label: mName,
+        shortLabel: sName,
+        dateSubtitle: '$sName 01 - $sName ${lastDay.toString().padLeft(2, '0')}, 2026',
+        received: 0.0,
+        sent: 0.0,
+        inTransfers: 0,
+        outTransfers: 0,
+        transactions: const [],
+      );
+    });
+  }
+
+  String _resolveAccountId() {
+    final bank = BankService();
+    String acc = bank.activeAccountId;
+    if (acc.isEmpty) {
+      acc = DeviceStorage.getUserAccountId() ?? '';
+    }
+    final userEmail = (bank.user.email).toLowerCase();
+    final userName = (bank.user.name).toLowerCase();
+    final userId = AuthApiService().currentUserId ?? DeviceStorage.getUserId() ?? '';
+
+    if (userId == 'U9001' || acc == '1000-9000-0001' || userEmail.contains('paolo') || userName.contains('paolo')) {
+      return 'A9001';
+    }
+    if (userId == 'U9002' || acc == '1000-9000-0002' || userEmail.contains('elena') || userName.contains('elena')) {
+      return 'A9002';
+    }
+    if (userId == 'U9003' || acc == '1000-9000-0003' || userEmail.contains('marco') || userName.contains('marco')) {
+      return 'A9003';
+    }
+    if (acc.isNotEmpty) {
+      if (acc == '1000-9000-0001') return 'A9001';
+      if (acc == '1000-9000-0002') return 'A9002';
+      if (acc == '1000-9000-0003') return 'A9003';
+      return acc;
+    }
+    return 'A9001';
+  }
+
+  String _resolveCounterpartyName(String otherId, bool isIncoming) {
+    switch (otherId) {
+      case 'A9001':
+      case '1000-9000-0001':
+        return 'Paolo Reyes';
+      case 'A9002':
+      case '1000-9000-0002':
+        return 'Elena Cruz';
+      case 'A9003':
+      case '1000-9000-0003':
+        return 'Marco Santos';
+      case 'A8001':
+        return 'Enterprise Payroll';
+      case 'A8002':
+        return 'Merchant Settlement';
+      case 'A8003':
+        return 'Global Exchange';
+      case 'A8004':
+        return 'Utility & Bill Settlement';
+      default:
+        return isIncoming ? 'Counterparty Deposit' : 'Transfer Settlement';
+    }
+  }
+
+  Color _getAvatarColor(String name) {
+    if (name.contains('Paolo')) return const Color(0xFF2F78A8);
+    if (name.contains('Elena')) return const Color(0xFF1C6E5A);
+    if (name.contains('Marco')) return const Color(0xFF8B5CF6);
+    if (name.contains('Payroll') || name.contains('Enterprise')) return const Color(0xFF2F78A8);
+    if (name.contains('Utility') || name.contains('Bill')) return const Color(0xFFD9822B);
+    if (name.contains('Merchant')) return const Color(0xFFE11D48);
+    return const Color(0xFF4A5568);
+  }
+
+  String _formatTxnTime(DateTime dt) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final m = months[dt.month - 1];
+    final d = dt.day.toString().padLeft(2, '0');
+    final hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final ampm = dt.hour >= 12 ? 'pm' : 'am';
+    return '$m $d, $hour12:$minute $ampm';
+  }
+
+  Future<void> _loadOracleTransactions() async {
+    final accountId = _resolveAccountId();
+    _loadedAccountId = accountId;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final token = AuthApiService().currentAccessToken ?? DeviceStorage.getAccessToken();
+      final headers = <String, String>{
+        'Accept': 'application/json',
+        if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+      };
+
+      final candidateBases = [
+        BankService().baseUrl,
+        'http://localhost:8080',
+        'http://127.0.0.1:8080',
+        'http://localhost:8082',
+        'http://127.0.0.1:8082',
+      ];
+
+      List<dynamic> allTransactions = [];
+
+      for (final base in candidateBases) {
+        try {
+          List<dynamic> fetched = [];
+          int page = 0;
+          bool hasMore = true;
+
+          while (hasMore && page < 10) {
+            final uri = Uri.parse('$base/api/v1/transfers/accounts/$accountId/transactions?page=$page&size=100');
+            http.Response res;
+            try {
+              res = await http.get(uri, headers: headers).timeout(const Duration(seconds: 4));
+            } catch (_) {
+              res = await http.get(uri).timeout(const Duration(seconds: 4));
+            }
+
+            if (res.statusCode == 200) {
+              final decoded = jsonDecode(res.body);
+              if (decoded is List) {
+                fetched.addAll(decoded);
+                if (decoded.length < 100) {
+                  hasMore = false;
+                } else {
+                  page++;
+                }
+              } else {
+                hasMore = false;
+              }
+            } else {
+              hasMore = false;
+            }
+          }
+
+          if (fetched.isNotEmpty) {
+            allTransactions = fetched;
+            break;
+          }
+        } catch (_) {}
+      }
+
+      if (allTransactions.isNotEmpty) {
+        _aggregateTransactionsIntoCatalog(accountId, allTransactions);
+      }
+    } catch (e) {
+      debugPrint('[Analytics] Error loading Oracle transactions: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _aggregateTransactionsIntoCatalog(String accountId, List<dynamic> rawList) {
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const shortNames = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    const monthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+    final weekReceived = List.generate(12, (_) => List.filled(4, 0.0));
+    final weekSent = List.generate(12, (_) => List.filled(4, 0.0));
+    final weekInCount = List.generate(12, (_) => List.filled(4, 0));
+    final weekOutCount = List.generate(12, (_) => List.filled(4, 0));
+    final weekTxns = List.generate(12, (_) => List.generate(4, (_) => <AnalyticsTxItem>[]));
+
+    for (final item in rawList) {
+      if (item is! Map) continue;
+      final createdAtStr = (item['created_at'] ?? item['createdAt'])?.toString();
+      if (createdAtStr == null) continue;
+
+      DateTime? dt = DateTime.tryParse(createdAtStr);
+      if (dt == null) continue;
+
+      if (dt.year != 2026) continue;
+      final mIdx = dt.month - 1;
+      if (mIdx < 0 || mIdx > 11) continue;
+
+      final day = dt.day;
+      int wIdx;
+      if (day <= 7) {
+        wIdx = 0;
+      } else if (day <= 14) {
+        wIdx = 1;
+      } else if (day <= 21) {
+        wIdx = 2;
+      } else {
+        wIdx = 3;
+      }
+
+      final amount = ((item['amount'] ?? 0) as num).toDouble();
+      final src = (item['source_account_id'] ?? item['from_account_id'] ?? item['fromAccountId'])?.toString() ?? '';
+      final tgt = (item['target_account_id'] ?? item['to_account_id'] ?? item['toAccountId'])?.toString() ?? '';
+
+      final isIncoming = tgt == accountId ||
+          (accountId == 'A9001' && tgt == '1000-9000-0001') ||
+          (accountId == 'A9002' && tgt == '1000-9000-0002') ||
+          (accountId == 'A9003' && tgt == '1000-9000-0003');
+
+      final isOutgoing = src == accountId ||
+          (accountId == 'A9001' && src == '1000-9000-0001') ||
+          (accountId == 'A9002' && src == '1000-9000-0002') ||
+          (accountId == 'A9003' && src == '1000-9000-0003');
+
+      final otherAccId = isIncoming ? src : tgt;
+      final memo = item['memo']?.toString();
+      final counterpartyName = (memo != null && memo.isNotEmpty)
+          ? memo
+          : _resolveCounterpartyName(otherAccId, isIncoming);
+
+      final txItem = AnalyticsTxItem(
+        name: counterpartyName,
+        initial: counterpartyName.isNotEmpty ? counterpartyName[0].toUpperCase() : 'T',
+        avatarBg: _getAvatarColor(counterpartyName),
+        time: _formatTxnTime(dt),
+        amount: amount,
+        isReceived: isIncoming,
+        status: isIncoming ? 'RECEIVED' : 'COMPLETED',
+      );
+
+      if (isIncoming) {
+        weekReceived[mIdx][wIdx] += amount;
+        weekInCount[mIdx][wIdx] += 1;
+        weekTxns[mIdx][wIdx].add(txItem);
+      } else if (isOutgoing) {
+        weekSent[mIdx][wIdx] += amount;
+        weekOutCount[mIdx][wIdx] += 1;
+        weekTxns[mIdx][wIdx].add(txItem);
+      }
+    }
+
+    _monthsCatalog = List.generate(12, (mIdx) {
+      final mName = monthNames[mIdx];
+      final sName = shortNames[mIdx];
+      final lastDay = monthDays[mIdx];
+
+      return MonthFlowData(
+        monthName: '$mName 2026',
+        shortName: sName,
+        monthIndex: mIdx,
+        weeks: [
+          FlowPointData(
+            label: 'Week 1',
+            shortLabel: 'W1',
+            dateSubtitle: '$sName 01 - $sName 07, 2026',
+            received: weekReceived[mIdx][0],
+            sent: weekSent[mIdx][0],
+            inTransfers: weekInCount[mIdx][0],
+            outTransfers: weekOutCount[mIdx][0],
+            transactions: weekTxns[mIdx][0],
+          ),
+          FlowPointData(
+            label: 'Week 2',
+            shortLabel: 'W2',
+            dateSubtitle: '$sName 08 - $sName 14, 2026',
+            received: weekReceived[mIdx][1],
+            sent: weekSent[mIdx][1],
+            inTransfers: weekInCount[mIdx][1],
+            outTransfers: weekOutCount[mIdx][1],
+            transactions: weekTxns[mIdx][1],
+          ),
+          FlowPointData(
+            label: 'Week 3',
+            shortLabel: 'W3',
+            dateSubtitle: '$sName 15 - $sName 21, 2026',
+            received: weekReceived[mIdx][2],
+            sent: weekSent[mIdx][2],
+            inTransfers: weekInCount[mIdx][2],
+            outTransfers: weekOutCount[mIdx][2],
+            transactions: weekTxns[mIdx][2],
+          ),
+          FlowPointData(
+            label: 'Week 4',
+            shortLabel: 'W4',
+            dateSubtitle: '$sName 22 - $sName ${lastDay.toString().padLeft(2, '0')}, 2026',
+            received: weekReceived[mIdx][3],
+            sent: weekSent[mIdx][3],
+            inTransfers: weekInCount[mIdx][3],
+            outTransfers: weekOutCount[mIdx][3],
+            transactions: weekTxns[mIdx][3],
+          ),
+        ],
+      );
+    });
+
+    _yearlyMonths2026 = List.generate(12, (mIdx) {
+      final mName = monthNames[mIdx];
+      final sName = shortNames[mIdx];
+      final lastDay = monthDays[mIdx];
+
+      double mRec = 0;
+      double mSent = 0;
+      int mInCount = 0;
+      int mOutCount = 0;
+      final List<AnalyticsTxItem> mAllTxns = [];
+
+      for (int w = 0; w < 4; w++) {
+        mRec += weekReceived[mIdx][w];
+        mSent += weekSent[mIdx][w];
+        mInCount += weekInCount[mIdx][w];
+        mOutCount += weekOutCount[mIdx][w];
+        mAllTxns.addAll(weekTxns[mIdx][w]);
+      }
+
+      return FlowPointData(
+        label: mName,
+        shortLabel: sName,
+        dateSubtitle: '$sName 01 - $sName ${lastDay.toString().padLeft(2, '0')}, 2026',
+        received: mRec,
+        sent: mSent,
+        inTransfers: mInCount,
+        outTransfers: mOutCount,
+        transactions: mAllTxns,
+      );
+    });
+  }
+  void _initDatasets() {
+    _buildEmpty2026Catalog();
 
     // Yearly Dataset (12 Months in 2025)
     _yearlyMonths2025 = [
@@ -1110,6 +659,7 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
 
   @override
   void dispose() {
+    BankService().removeListener(_onBankServiceUpdated);
     _animController.dispose();
     super.dispose();
   }
@@ -1228,6 +778,10 @@ class _WebAnalyticsScreenState extends State<WebAnalyticsScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (_isLoading) ...[
+                const LinearProgressIndicator(minHeight: 2, backgroundColor: Colors.transparent, color: Color(0xFF6B46C1)),
+                const SizedBox(height: 8),
+              ],
               // 1. Executive Module Header (Replaces redundant underlined title)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
