@@ -151,7 +151,7 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Account & Security Management',
+                  'Security & Profile',
                   style: TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.w800,
@@ -161,7 +161,7 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Manage institutional profile settings, Multi-Factor Authentication, and active desktop sessions.',
+                  'Manage your personal details, password, and security preferences.',
                   style: TextStyle(
                     fontSize: 14,
                     color: textGray.withValues(alpha: 0.9),
@@ -228,7 +228,7 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
                             const Divider(height: 24, color: cardBorder),
 
                             _buildSettingsNavItem(0, Icons.person_outline_rounded, 'Personal Information'),
-                            _buildSettingsNavItem(1, Icons.shield_outlined, 'Security & 2FA'),
+                            _buildSettingsNavItem(1, Icons.lock_outline_rounded, 'Security & Password'),
                             _buildSettingsNavItem(2, Icons.devices_rounded, 'Devices & Sessions'),
                             _buildSettingsNavItem(3, Icons.account_balance_wallet_outlined, 'Transfer Limits'),
                             const SizedBox(height: 14),
@@ -442,37 +442,50 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Security',
+          'Security & Password',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: textDark),
         ),
         const SizedBox(height: 4),
         const Text(
-          'Manage sign-in, transfer approval, and alerts.',
+          'Manage your web sign-in password and security preferences.',
           style: TextStyle(fontSize: 13, color: textGray),
         ),
         const SizedBox(height: 28),
 
-        _buildSecurityToggleTile(
-          title: 'Face ID',
-          subtitle: 'Sign in and authorize transfers with Face ID.',
-          value: user.faceIdEnabled,
-          onChanged: (val) {
-            _bankService.setFaceIdEnabled(val);
-            setState(() {});
-          },
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    'Password',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: textDark),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Used to sign in and authorize web transfers.',
+                    style: TextStyle(fontSize: 12.5, color: textGray),
+                  ),
+                ],
+              ),
+            ),
+            OutlinedButton(
+              onPressed: _showChangePasswordDialog,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: brandViolet,
+                side: const BorderSide(color: Color(0xFFDDD6FE)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              ),
+              child: const Text(
+                'Change Password',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ),
+          ],
         ),
-        const Divider(height: 24, color: cardBorder),
-
-        _buildSecurityToggleTile(
-          title: 'Fingerprint',
-          subtitle: 'Sign in and authorize transfers with your fingerprint.',
-          value: user.fingerprintEnabled,
-          onChanged: (val) {
-            _bankService.setFingerprintEnabled(val);
-            setState(() {});
-          },
-        ),
-        const Divider(height: 24, color: cardBorder),
+        const Divider(height: 32, color: cardBorder),
 
         _buildSecurityToggleTile(
           title: 'Notifications',
@@ -484,6 +497,179 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
           },
         ),
       ],
+    );
+  }
+
+  void _showChangePasswordDialog() {
+    final currentPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    bool obscureCurrent = true;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
+    String? errorMessage;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              backgroundColor: Colors.white,
+              child: Container(
+                width: 420,
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: brandViolet.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.lock_reset_rounded, color: brandViolet, size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Change Password',
+                                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: textDark),
+                              ),
+                              Text(
+                                'Update your web sign-in credentials',
+                                style: TextStyle(fontSize: 12, color: textGray),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    if (errorMessage != null) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF2F2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFFCA5A5)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                errorMessage!,
+                                style: const TextStyle(color: Color(0xFFDC2626), fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    TextField(
+                      controller: currentPasswordController,
+                      obscureText: obscureCurrent,
+                      decoration: InputDecoration(
+                        labelText: 'Current Password',
+                        suffixIcon: IconButton(
+                          icon: Icon(obscureCurrent ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 18),
+                          onPressed: () => setModalState(() => obscureCurrent = !obscureCurrent),
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: newPasswordController,
+                      obscureText: obscureNew,
+                      decoration: InputDecoration(
+                        labelText: 'New Password',
+                        suffixIcon: IconButton(
+                          icon: Icon(obscureNew ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 18),
+                          onPressed: () => setModalState(() => obscureNew = !obscureNew),
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: confirmPasswordController,
+                      obscureText: obscureConfirm,
+                      decoration: InputDecoration(
+                        labelText: 'Confirm New Password',
+                        suffixIcon: IconButton(
+                          icon: Icon(obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 18),
+                          onPressed: () => setModalState(() => obscureConfirm = !obscureConfirm),
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(),
+                          child: const Text('Cancel', style: TextStyle(color: textGray, fontWeight: FontWeight.w600)),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: () {
+                            final current = currentPasswordController.text;
+                            final next = newPasswordController.text;
+                            final confirm = confirmPasswordController.text;
+                            if (current.isEmpty || next.isEmpty) {
+                              setModalState(() => errorMessage = 'Please enter all password fields');
+                              return;
+                            }
+                            if (next.length < 6) {
+                              setModalState(() => errorMessage = 'New password must be at least 6 characters');
+                              return;
+                            }
+                            if (next != confirm) {
+                              setModalState(() => errorMessage = 'New passwords do not match');
+                              return;
+                            }
+                            Navigator.of(ctx).pop();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Password updated successfully'),
+                                backgroundColor: accentGreen,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: brandViolet,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          ),
+                          child: const Text('Update Password', style: TextStyle(fontWeight: FontWeight.w700)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

@@ -1,7 +1,7 @@
 # Paste these keys into CUSTOMER_PROFILES in backend/risk-service/app/seed_data.py.
 # The risk service does not read Oracle. Same home GPS on every send.
-# Anchor is the latest outgoing transfer on or before 2026-10-11.
-# December rows stay in the ledger for the yearly chart. They are not the risk anchor.
+# Anchor is the latest outgoing transfer on or before 2026-10-13.
+# Real data ends on 2026-10-13. November and December have zero seeded transactions.
 
 CUSTOMER_PROFILES_2026 = {
     "U9001": {

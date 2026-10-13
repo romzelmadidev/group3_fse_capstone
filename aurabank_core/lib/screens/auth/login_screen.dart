@@ -262,12 +262,18 @@ class _LoginScreenState extends State<LoginScreen>
     final accountId = authResult.primaryAccountId ??
         authResult.persona?.accountId ??
         '1000-2000-3001';
+    final targetEmail = authResult.email ?? email.trim();
+    final storedEmail = DeviceStorage.getUserEmail() ?? DeviceStorage.getLastLoginEmail();
+    final storedBal = (storedEmail?.toLowerCase() == targetEmail.toLowerCase())
+        ? DeviceStorage.getUserBalance()
+        : null;
     final balance = authResult.availableBalance ??
+        storedBal ??
         authResult.persona?.balance;
 
     _bankService.setUserProfileFromAuth(
       name: resolvedName,
-      email: authResult.email ?? email.trim(),
+      email: targetEmail,
       phoneNumber: authResult.phoneNumber,
       accountId: accountId,
       balance: balance,
@@ -275,6 +281,9 @@ class _LoginScreenState extends State<LoginScreen>
 
     DeviceStorage.saveLastLoginEmail(email.trim());
     DeviceStorage.saveLastLoginName(resolvedName);
+    if (authResult.userId != null) {
+      DeviceStorage.saveUserId(authResult.userId!);
+    }
     _bankService.syncWithBackend();
   }
 

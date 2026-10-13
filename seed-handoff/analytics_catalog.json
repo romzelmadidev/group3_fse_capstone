@@ -1,5 +1,5 @@
 {
-  "asOf": "2026-10-12",
+  "asOf": "2026-10-13",
   "year": 2026,
   "weekBounds": [
     "1-7",
@@ -14,9 +14,9 @@
       "accountNumber": "1000-9000-0001",
       "fullName": "Paolo Reyes",
       "home": "Bonifacio Global City, Taguig",
-      "yearReceived": 398000,
-      "yearSent": 264000,
-      "yearNet": 134000,
+      "yearReceived": 322500,
+      "yearSent": 204200,
+      "yearNet": 118300,
       "months": [
         {
           "monthName": "January 2026",
@@ -1831,9 +1831,9 @@
           "monthName": "October 2026",
           "shortName": "Oct",
           "monthIndex": 9,
-          "received": 32500,
-          "sent": 21500,
-          "net": 11000,
+          "received": 30000,
+          "sent": 10700,
+          "net": 19300,
           "weeks": [
             {
               "label": "Week 1",
@@ -1940,91 +1940,23 @@
               "label": "Week 3",
               "shortLabel": "W3",
               "dateSubtitle": "Oct 15 - Oct 21, 2026",
-              "received": 1500,
-              "sent": 5800,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": -4300,
-              "transactions": [
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Oct 18, 8:15 am",
-                  "amount": 3000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0333",
-                  "memo": "Family support"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Oct 18, 8:40 am",
-                  "amount": 2800,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0334",
-                  "memo": "Groceries"
-                },
-                {
-                  "name": "Elena Cruz",
-                  "initial": "EC",
-                  "avatarBg": "Color(0xFF6E7BD9)",
-                  "time": "Oct 18, 7:10 pm",
-                  "amount": 1500,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0336",
-                  "memo": "Transfer to Paolo Reyes"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 4",
               "shortLabel": "W4",
               "dateSubtitle": "Oct 22 - Oct 31, 2026",
-              "received": 1000,
-              "sent": 5000,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": -4000,
-              "transactions": [
-                {
-                  "name": "Aura Payroll",
-                  "initial": "AP",
-                  "avatarBg": "Color(0xFF2F78A8)",
-                  "time": "Oct 22, 8:00 am",
-                  "amount": 1000,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0341",
-                  "memo": "Payroll cashback"
-                },
-                {
-                  "name": "Elena Cruz",
-                  "initial": "EC",
-                  "avatarBg": "Color(0xFF6E7BD9)",
-                  "time": "Oct 25, 8:15 am",
-                  "amount": 4500,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0343",
-                  "memo": "Transfer to Elena Cruz"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Oct 25, 8:40 am",
-                  "amount": 500,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0344",
-                  "memo": "Card payment"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             }
           ]
         },
@@ -2032,200 +1964,53 @@
           "monthName": "November 2026",
           "shortName": "Nov",
           "monthIndex": 10,
-          "received": 32500,
-          "sent": 21500,
-          "net": 11000,
+          "received": 0,
+          "sent": 0,
+          "net": 0,
           "weeks": [
             {
               "label": "Week 1",
               "shortLabel": "W1",
               "dateSubtitle": "Nov 01 - Nov 07, 2026",
-              "received": 28000,
-              "sent": 4500,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": 23500,
-              "transactions": [
-                {
-                  "name": "Aura Payroll",
-                  "initial": "AP",
-                  "avatarBg": "Color(0xFF2F78A8)",
-                  "time": "Nov 01, 8:00 am",
-                  "amount": 28000,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0349",
-                  "memo": "Monthly salary"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 04, 8:15 am",
-                  "amount": 2500,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0352",
-                  "memo": "Rent share"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 04, 8:40 am",
-                  "amount": 2000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0353",
-                  "memo": "Groceries"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 2",
               "shortLabel": "W2",
               "dateSubtitle": "Nov 08 - Nov 14, 2026",
-              "received": 2000,
-              "sent": 6200,
-              "inTransfers": 1,
-              "outTransfers": 3,
-              "net": -4200,
-              "transactions": [
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 11, 8:15 am",
-                  "amount": 2200,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0359",
-                  "memo": "Utilities"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 11, 8:40 am",
-                  "amount": 2000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0360",
-                  "memo": "Transport"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 11, 9:05 am",
-                  "amount": 2000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0361",
-                  "memo": "Groceries"
-                },
-                {
-                  "name": "Marco Santos",
-                  "initial": "MS",
-                  "avatarBg": "Color(0xFFD9822B)",
-                  "time": "Nov 11, 4:20 pm",
-                  "amount": 2000,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0362",
-                  "memo": "Transfer to Paolo Reyes"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 3",
               "shortLabel": "W3",
               "dateSubtitle": "Nov 15 - Nov 21, 2026",
-              "received": 1500,
-              "sent": 5800,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": -4300,
-              "transactions": [
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 18, 8:15 am",
-                  "amount": 3000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0368",
-                  "memo": "Family support"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 18, 8:40 am",
-                  "amount": 2800,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0369",
-                  "memo": "Groceries"
-                },
-                {
-                  "name": "Elena Cruz",
-                  "initial": "EC",
-                  "avatarBg": "Color(0xFF6E7BD9)",
-                  "time": "Nov 18, 7:10 pm",
-                  "amount": 1500,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0372",
-                  "memo": "Transfer to Paolo Reyes"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 4",
               "shortLabel": "W4",
               "dateSubtitle": "Nov 22 - Nov 30, 2026",
-              "received": 1000,
-              "sent": 5000,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": -4000,
-              "transactions": [
-                {
-                  "name": "Aura Payroll",
-                  "initial": "AP",
-                  "avatarBg": "Color(0xFF2F78A8)",
-                  "time": "Nov 22, 8:00 am",
-                  "amount": 1000,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0377",
-                  "memo": "Payroll cashback"
-                },
-                {
-                  "name": "Elena Cruz",
-                  "initial": "EC",
-                  "avatarBg": "Color(0xFF6E7BD9)",
-                  "time": "Nov 25, 8:15 am",
-                  "amount": 4800,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0379",
-                  "memo": "Transfer to Elena Cruz"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 25, 8:40 am",
-                  "amount": 200,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0380",
-                  "memo": "Card payment"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             }
           ]
         },
@@ -2233,233 +2018,53 @@
           "monthName": "December 2026",
           "shortName": "Dec",
           "monthIndex": 11,
-          "received": 40500,
-          "sent": 27500,
-          "net": 13000,
+          "received": 0,
+          "sent": 0,
+          "net": 0,
           "weeks": [
             {
               "label": "Week 1",
               "shortLabel": "W1",
               "dateSubtitle": "Dec 01 - Dec 07, 2026",
-              "received": 28000,
-              "sent": 4500,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": 23500,
-              "transactions": [
-                {
-                  "name": "Aura Payroll",
-                  "initial": "AP",
-                  "avatarBg": "Color(0xFF2F78A8)",
-                  "time": "Dec 01, 8:00 am",
-                  "amount": 28000,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0385",
-                  "memo": "Monthly salary"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 04, 8:15 am",
-                  "amount": 2500,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0388",
-                  "memo": "Rent share"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 04, 8:40 am",
-                  "amount": 2000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0389",
-                  "memo": "Groceries"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 2",
               "shortLabel": "W2",
               "dateSubtitle": "Dec 08 - Dec 14, 2026",
-              "received": 2000,
-              "sent": 6200,
-              "inTransfers": 1,
-              "outTransfers": 3,
-              "net": -4200,
-              "transactions": [
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 11, 8:15 am",
-                  "amount": 2200,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0396",
-                  "memo": "Utilities"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 11, 8:40 am",
-                  "amount": 2000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0397",
-                  "memo": "Transport"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 11, 9:05 am",
-                  "amount": 2000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0398",
-                  "memo": "Groceries"
-                },
-                {
-                  "name": "Marco Santos",
-                  "initial": "MS",
-                  "avatarBg": "Color(0xFFD9822B)",
-                  "time": "Dec 11, 4:20 pm",
-                  "amount": 2000,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0399",
-                  "memo": "Transfer to Paolo Reyes"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 3",
               "shortLabel": "W3",
               "dateSubtitle": "Dec 15 - Dec 21, 2026",
-              "received": 9500,
-              "sent": 5800,
-              "inTransfers": 2,
-              "outTransfers": 2,
-              "net": 3700,
-              "transactions": [
-                {
-                  "name": "Aura Payroll",
-                  "initial": "AP",
-                  "avatarBg": "Color(0xFF2F78A8)",
-                  "time": "Dec 15, 8:00 am",
-                  "amount": 8000,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0404",
-                  "memo": "Year-end bonus"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 18, 8:15 am",
-                  "amount": 3000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0407",
-                  "memo": "Family support"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 18, 8:40 am",
-                  "amount": 2800,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0408",
-                  "memo": "Groceries"
-                },
-                {
-                  "name": "Elena Cruz",
-                  "initial": "EC",
-                  "avatarBg": "Color(0xFF6E7BD9)",
-                  "time": "Dec 18, 7:10 pm",
-                  "amount": 1500,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0412",
-                  "memo": "Transfer to Paolo Reyes"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 4",
               "shortLabel": "W4",
               "dateSubtitle": "Dec 22 - Dec 31, 2026",
-              "received": 1000,
-              "sent": 11000,
-              "inTransfers": 1,
-              "outTransfers": 4,
-              "net": -10000,
-              "transactions": [
-                {
-                  "name": "Aura Payroll",
-                  "initial": "AP",
-                  "avatarBg": "Color(0xFF2F78A8)",
-                  "time": "Dec 22, 8:00 am",
-                  "amount": 1000,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0418",
-                  "memo": "Payroll cashback"
-                },
-                {
-                  "name": "Elena Cruz",
-                  "initial": "EC",
-                  "avatarBg": "Color(0xFF6E7BD9)",
-                  "time": "Dec 25, 8:15 am",
-                  "amount": 5400,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0420",
-                  "memo": "Transfer to Elena Cruz"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 25, 8:40 am",
-                  "amount": 2000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0421",
-                  "memo": "Holiday expenses"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 25, 9:05 am",
-                  "amount": 1800,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0422",
-                  "memo": "Holiday expenses"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 25, 9:30 am",
-                  "amount": 1800,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0423",
-                  "memo": "Holiday expenses"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             }
           ]
         }
@@ -2471,9 +2076,9 @@
       "accountNumber": "1000-9000-0002",
       "fullName": "Elena Cruz",
       "home": "Diliman, Quezon City",
-      "yearReceived": 278000,
-      "yearSent": 208500,
-      "yearNet": 69500,
+      "yearReceived": 198000,
+      "yearSent": 141750,
+      "yearNet": 56250,
       "months": [
         {
           "monthName": "January 2026",
@@ -4288,9 +3893,9 @@
           "monthName": "October 2026",
           "shortName": "Oct",
           "monthIndex": 9,
-          "received": 30000,
-          "sent": 22500,
-          "net": 7500,
+          "received": 18000,
+          "sent": 6750,
+          "net": 11250,
           "weeks": [
             {
               "label": "Week 1",
@@ -4386,124 +3991,23 @@
               "label": "Week 3",
               "shortLabel": "W3",
               "dateSubtitle": "Oct 15 - Oct 21, 2026",
-              "received": 7500,
-              "sent": 10125,
-              "inTransfers": 1,
-              "outTransfers": 5,
-              "net": -2625,
-              "transactions": [
-                {
-                  "name": "Northwind Studio",
-                  "initial": "NS",
-                  "avatarBg": "Color(0xFF2FA37E)",
-                  "time": "Oct 15, 10:00 am",
-                  "amount": 7500,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0331",
-                  "memo": "Client payment"
-                },
-                {
-                  "name": "Paolo Reyes",
-                  "initial": "PR",
-                  "avatarBg": "Color(0xFF1C6E5A)",
-                  "time": "Oct 18, 7:10 pm",
-                  "amount": 1500,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0336",
-                  "memo": "Transfer to Paolo Reyes"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Oct 18, 7:35 pm",
-                  "amount": 2157,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0337",
-                  "memo": "Contractor payout"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Oct 18, 8:00 pm",
-                  "amount": 2156,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0338",
-                  "memo": "Contractor payout"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Oct 18, 8:25 pm",
-                  "amount": 2156,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0339",
-                  "memo": "Contractor payout"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Oct 18, 8:50 pm",
-                  "amount": 2156,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0340",
-                  "memo": "Contractor payout"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 4",
               "shortLabel": "W4",
               "dateSubtitle": "Oct 22 - Oct 31, 2026",
-              "received": 4500,
-              "sent": 5625,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": -1125,
-              "transactions": [
-                {
-                  "name": "Paolo Reyes",
-                  "initial": "PR",
-                  "avatarBg": "Color(0xFF1C6E5A)",
-                  "time": "Oct 25, 8:15 am",
-                  "amount": 4500,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0343",
-                  "memo": "Transfer to Elena Cruz"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Oct 25, 7:10 pm",
-                  "amount": 2813,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0347",
-                  "memo": "Software and tools"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Oct 25, 7:35 pm",
-                  "amount": 2812,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0348",
-                  "memo": "Software and tools"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             }
           ]
         },
@@ -4511,222 +4015,53 @@
           "monthName": "November 2026",
           "shortName": "Nov",
           "monthIndex": 10,
-          "received": 32000,
-          "sent": 24000,
-          "net": 8000,
+          "received": 0,
+          "sent": 0,
+          "net": 0,
           "weeks": [
             {
               "label": "Week 1",
               "shortLabel": "W1",
               "dateSubtitle": "Nov 01 - Nov 07, 2026",
-              "received": 3200,
-              "sent": 3600,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": -400,
-              "transactions": [
-                {
-                  "name": "Northwind Studio",
-                  "initial": "NS",
-                  "avatarBg": "Color(0xFF2FA37E)",
-                  "time": "Nov 01, 10:00 am",
-                  "amount": 3200,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0350",
-                  "memo": "Client payment"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 04, 7:10 pm",
-                  "amount": 1800,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0355",
-                  "memo": "Studio expenses"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 04, 7:35 pm",
-                  "amount": 1800,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0356",
-                  "memo": "Studio expenses"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 2",
               "shortLabel": "W2",
               "dateSubtitle": "Nov 08 - Nov 14, 2026",
-              "received": 16000,
-              "sent": 3600,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": 12400,
-              "transactions": [
-                {
-                  "name": "Northwind Studio",
-                  "initial": "NS",
-                  "avatarBg": "Color(0xFF2FA37E)",
-                  "time": "Nov 08, 10:00 am",
-                  "amount": 16000,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0357",
-                  "memo": "Client payment"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 11, 7:10 pm",
-                  "amount": 1800,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0364",
-                  "memo": "Supplies"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 11, 7:35 pm",
-                  "amount": 1800,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0365",
-                  "memo": "Supplies"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 3",
               "shortLabel": "W3",
               "dateSubtitle": "Nov 15 - Nov 21, 2026",
-              "received": 8000,
-              "sent": 10800,
-              "inTransfers": 1,
-              "outTransfers": 5,
-              "net": -2800,
-              "transactions": [
-                {
-                  "name": "Northwind Studio",
-                  "initial": "NS",
-                  "avatarBg": "Color(0xFF2FA37E)",
-                  "time": "Nov 15, 10:00 am",
-                  "amount": 8000,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0366",
-                  "memo": "Client payment"
-                },
-                {
-                  "name": "Paolo Reyes",
-                  "initial": "PR",
-                  "avatarBg": "Color(0xFF1C6E5A)",
-                  "time": "Nov 18, 7:10 pm",
-                  "amount": 1500,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0372",
-                  "memo": "Transfer to Paolo Reyes"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 18, 7:35 pm",
-                  "amount": 2325,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0373",
-                  "memo": "Contractor payout"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 18, 8:00 pm",
-                  "amount": 2325,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0374",
-                  "memo": "Contractor payout"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 18, 8:25 pm",
-                  "amount": 2325,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0375",
-                  "memo": "Contractor payout"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 18, 8:50 pm",
-                  "amount": 2325,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0376",
-                  "memo": "Contractor payout"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 4",
               "shortLabel": "W4",
               "dateSubtitle": "Nov 22 - Nov 30, 2026",
-              "received": 4800,
-              "sent": 6000,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": -1200,
-              "transactions": [
-                {
-                  "name": "Paolo Reyes",
-                  "initial": "PR",
-                  "avatarBg": "Color(0xFF1C6E5A)",
-                  "time": "Nov 25, 8:15 am",
-                  "amount": 4800,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0379",
-                  "memo": "Transfer to Elena Cruz"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 25, 7:10 pm",
-                  "amount": 3000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0383",
-                  "memo": "Software and tools"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 25, 7:35 pm",
-                  "amount": 3000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0384",
-                  "memo": "Software and tools"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             }
           ]
         },
@@ -4734,233 +4069,53 @@
           "monthName": "December 2026",
           "shortName": "Dec",
           "monthIndex": 11,
-          "received": 36000,
-          "sent": 27000,
-          "net": 9000,
+          "received": 0,
+          "sent": 0,
+          "net": 0,
           "weeks": [
             {
               "label": "Week 1",
               "shortLabel": "W1",
               "dateSubtitle": "Dec 01 - Dec 07, 2026",
-              "received": 3600,
-              "sent": 4050,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": -450,
-              "transactions": [
-                {
-                  "name": "Northwind Studio",
-                  "initial": "NS",
-                  "avatarBg": "Color(0xFF2FA37E)",
-                  "time": "Dec 01, 10:00 am",
-                  "amount": 3600,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0386",
-                  "memo": "Client payment"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 04, 7:10 pm",
-                  "amount": 2025,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0392",
-                  "memo": "Studio expenses"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 04, 7:35 pm",
-                  "amount": 2025,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0393",
-                  "memo": "Studio expenses"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 2",
               "shortLabel": "W2",
               "dateSubtitle": "Dec 08 - Dec 14, 2026",
-              "received": 18000,
-              "sent": 4050,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": 13950,
-              "transactions": [
-                {
-                  "name": "Northwind Studio",
-                  "initial": "NS",
-                  "avatarBg": "Color(0xFF2FA37E)",
-                  "time": "Dec 08, 10:00 am",
-                  "amount": 18000,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0394",
-                  "memo": "Client payment"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 11, 7:10 pm",
-                  "amount": 2025,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0402",
-                  "memo": "Supplies"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 11, 7:35 pm",
-                  "amount": 2025,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0403",
-                  "memo": "Supplies"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 3",
               "shortLabel": "W3",
               "dateSubtitle": "Dec 15 - Dec 21, 2026",
-              "received": 9000,
-              "sent": 12150,
-              "inTransfers": 1,
-              "outTransfers": 6,
-              "net": -3150,
-              "transactions": [
-                {
-                  "name": "Northwind Studio",
-                  "initial": "NS",
-                  "avatarBg": "Color(0xFF2FA37E)",
-                  "time": "Dec 15, 10:00 am",
-                  "amount": 9000,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0405",
-                  "memo": "Client payment"
-                },
-                {
-                  "name": "Paolo Reyes",
-                  "initial": "PR",
-                  "avatarBg": "Color(0xFF1C6E5A)",
-                  "time": "Dec 18, 7:10 pm",
-                  "amount": 1500,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0412",
-                  "memo": "Transfer to Paolo Reyes"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 18, 7:15 pm",
-                  "amount": 2130,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0413",
-                  "memo": "Contractor payout"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 18, 7:35 pm",
-                  "amount": 2130,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0414",
-                  "memo": "Contractor payout"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 18, 8:00 pm",
-                  "amount": 2130,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0415",
-                  "memo": "Contractor payout"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 18, 8:25 pm",
-                  "amount": 2130,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0416",
-                  "memo": "Contractor payout"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 18, 8:50 pm",
-                  "amount": 2130,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0417",
-                  "memo": "Contractor payout"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 4",
               "shortLabel": "W4",
               "dateSubtitle": "Dec 22 - Dec 31, 2026",
-              "received": 5400,
-              "sent": 6750,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": -1350,
-              "transactions": [
-                {
-                  "name": "Paolo Reyes",
-                  "initial": "PR",
-                  "avatarBg": "Color(0xFF1C6E5A)",
-                  "time": "Dec 25, 8:15 am",
-                  "amount": 5400,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0420",
-                  "memo": "Transfer to Elena Cruz"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 25, 7:10 pm",
-                  "amount": 3375,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0428",
-                  "memo": "Software and tools"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 25, 7:35 pm",
-                  "amount": 3375,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0429",
-                  "memo": "Software and tools"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             }
           ]
         }
@@ -4972,9 +4127,9 @@
       "accountNumber": "1000-9000-0003",
       "fullName": "Marco Santos",
       "home": "Cebu Business Park, Cebu City",
-      "yearReceived": 216000,
-      "yearSent": 311000,
-      "yearNet": -95000,
+      "yearReceived": 160800,
+      "yearSent": 230600,
+      "yearNet": -69800,
       "months": [
         {
           "monthName": "January 2026",
@@ -6668,9 +5823,9 @@
           "monthName": "October 2026",
           "shortName": "Oct",
           "monthIndex": 9,
-          "received": 18000,
-          "sent": 16000,
-          "net": 2000,
+          "received": 10800,
+          "sent": 5600,
+          "net": 5200,
           "weeks": [
             {
               "label": "Week 1",
@@ -6755,80 +5910,23 @@
               "label": "Week 3",
               "shortLabel": "W3",
               "dateSubtitle": "Oct 15 - Oct 21, 2026",
-              "received": 3600,
-              "sent": 4000,
-              "inTransfers": 1,
-              "outTransfers": 1,
-              "net": -400,
-              "transactions": [
-                {
-                  "name": "Cebu Trade Co",
-                  "initial": "CT",
-                  "avatarBg": "Color(0xFF3FA7C9)",
-                  "time": "Oct 15, 11:00 am",
-                  "amount": 3600,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0332",
-                  "memo": "Trade proceeds"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Oct 18, 4:20 pm",
-                  "amount": 4000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0335",
-                  "memo": "Supplier payment"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 4",
               "shortLabel": "W4",
               "dateSubtitle": "Oct 22 - Oct 31, 2026",
-              "received": 3600,
-              "sent": 6400,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": -2800,
-              "transactions": [
-                {
-                  "name": "Cebu Trade Co",
-                  "initial": "CT",
-                  "avatarBg": "Color(0xFF3FA7C9)",
-                  "time": "Oct 22, 11:00 am",
-                  "amount": 3600,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0342",
-                  "memo": "Trade proceeds"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Oct 25, 4:20 pm",
-                  "amount": 3200,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0345",
-                  "memo": "Supplier payment"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Oct 25, 4:45 pm",
-                  "amount": 3200,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0346",
-                  "memo": "Supplier payment"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             }
           ]
         },
@@ -6836,178 +5934,53 @@
           "monthName": "November 2026",
           "shortName": "Nov",
           "monthIndex": 10,
-          "received": 16000,
-          "sent": 22000,
-          "net": -6000,
+          "received": 0,
+          "sent": 0,
+          "net": 0,
           "weeks": [
             {
               "label": "Week 1",
               "shortLabel": "W1",
               "dateSubtitle": "Nov 01 - Nov 07, 2026",
-              "received": 6400,
-              "sent": 3300,
-              "inTransfers": 1,
-              "outTransfers": 1,
-              "net": 3100,
-              "transactions": [
-                {
-                  "name": "Cebu Trade Co",
-                  "initial": "CT",
-                  "avatarBg": "Color(0xFF3FA7C9)",
-                  "time": "Nov 01, 11:00 am",
-                  "amount": 6400,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0351",
-                  "memo": "Trade proceeds"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 04, 4:20 pm",
-                  "amount": 3300,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0354",
-                  "memo": "Shop inventory"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 2",
               "shortLabel": "W2",
               "dateSubtitle": "Nov 08 - Nov 14, 2026",
-              "received": 3200,
-              "sent": 4400,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": -1200,
-              "transactions": [
-                {
-                  "name": "Cebu Trade Co",
-                  "initial": "CT",
-                  "avatarBg": "Color(0xFF3FA7C9)",
-                  "time": "Nov 08, 11:00 am",
-                  "amount": 3200,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0358",
-                  "memo": "Trade proceeds"
-                },
-                {
-                  "name": "Paolo Reyes",
-                  "initial": "PR",
-                  "avatarBg": "Color(0xFF1C6E5A)",
-                  "time": "Nov 11, 4:20 pm",
-                  "amount": 2000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0362",
-                  "memo": "Transfer to Paolo Reyes"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 11, 4:45 pm",
-                  "amount": 2400,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0363",
-                  "memo": "Shop inventory"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 3",
               "shortLabel": "W3",
               "dateSubtitle": "Nov 15 - Nov 21, 2026",
-              "received": 3200,
-              "sent": 5500,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": -2300,
-              "transactions": [
-                {
-                  "name": "Cebu Trade Co",
-                  "initial": "CT",
-                  "avatarBg": "Color(0xFF3FA7C9)",
-                  "time": "Nov 15, 11:00 am",
-                  "amount": 3200,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0367",
-                  "memo": "Trade proceeds"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 18, 4:20 pm",
-                  "amount": 2750,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0370",
-                  "memo": "Supplier payment"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 18, 4:45 pm",
-                  "amount": 2750,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0371",
-                  "memo": "Supplier payment"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 4",
               "shortLabel": "W4",
               "dateSubtitle": "Nov 22 - Nov 30, 2026",
-              "received": 3200,
-              "sent": 8800,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": -5600,
-              "transactions": [
-                {
-                  "name": "Cebu Trade Co",
-                  "initial": "CT",
-                  "avatarBg": "Color(0xFF3FA7C9)",
-                  "time": "Nov 22, 11:00 am",
-                  "amount": 3200,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0378",
-                  "memo": "Trade proceeds"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 25, 4:20 pm",
-                  "amount": 4400,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0381",
-                  "memo": "Supplier payment"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Nov 25, 4:45 pm",
-                  "amount": 4400,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0382",
-                  "memo": "Supplier payment"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             }
           ]
         },
@@ -7015,233 +5988,53 @@
           "monthName": "December 2026",
           "shortName": "Dec",
           "monthIndex": 11,
-          "received": 32000,
-          "sent": 48000,
-          "net": -16000,
+          "received": 0,
+          "sent": 0,
+          "net": 0,
           "weeks": [
             {
               "label": "Week 1",
               "shortLabel": "W1",
               "dateSubtitle": "Dec 01 - Dec 07, 2026",
-              "received": 12800,
-              "sent": 7200,
-              "inTransfers": 1,
-              "outTransfers": 2,
-              "net": 5600,
-              "transactions": [
-                {
-                  "name": "Cebu Trade Co",
-                  "initial": "CT",
-                  "avatarBg": "Color(0xFF3FA7C9)",
-                  "time": "Dec 01, 11:00 am",
-                  "amount": 12800,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0387",
-                  "memo": "Trade proceeds"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 04, 4:20 pm",
-                  "amount": 3600,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0390",
-                  "memo": "Shop inventory"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 04, 4:45 pm",
-                  "amount": 3600,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0391",
-                  "memo": "Shop inventory"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 2",
               "shortLabel": "W2",
               "dateSubtitle": "Dec 08 - Dec 14, 2026",
-              "received": 6400,
-              "sent": 9600,
-              "inTransfers": 1,
-              "outTransfers": 3,
-              "net": -3200,
-              "transactions": [
-                {
-                  "name": "Cebu Trade Co",
-                  "initial": "CT",
-                  "avatarBg": "Color(0xFF3FA7C9)",
-                  "time": "Dec 08, 11:00 am",
-                  "amount": 6400,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0395",
-                  "memo": "Trade proceeds"
-                },
-                {
-                  "name": "Paolo Reyes",
-                  "initial": "PR",
-                  "avatarBg": "Color(0xFF1C6E5A)",
-                  "time": "Dec 11, 4:20 pm",
-                  "amount": 2000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0399",
-                  "memo": "Transfer to Paolo Reyes"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 11, 4:45 pm",
-                  "amount": 3800,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0400",
-                  "memo": "Shop inventory"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 11, 5:10 pm",
-                  "amount": 3800,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0401",
-                  "memo": "Shop inventory"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 3",
               "shortLabel": "W3",
               "dateSubtitle": "Dec 15 - Dec 21, 2026",
-              "received": 6400,
-              "sent": 12000,
-              "inTransfers": 1,
-              "outTransfers": 3,
-              "net": -5600,
-              "transactions": [
-                {
-                  "name": "Cebu Trade Co",
-                  "initial": "CT",
-                  "avatarBg": "Color(0xFF3FA7C9)",
-                  "time": "Dec 15, 11:00 am",
-                  "amount": 6400,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0406",
-                  "memo": "Trade proceeds"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 18, 4:20 pm",
-                  "amount": 4000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0409",
-                  "memo": "Supplier payment"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 18, 4:45 pm",
-                  "amount": 4000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0410",
-                  "memo": "Supplier payment"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 18, 5:10 pm",
-                  "amount": 4000,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0411",
-                  "memo": "Supplier payment"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             },
             {
               "label": "Week 4",
               "shortLabel": "W4",
               "dateSubtitle": "Dec 22 - Dec 31, 2026",
-              "received": 6400,
-              "sent": 19200,
-              "inTransfers": 1,
-              "outTransfers": 4,
-              "net": -12800,
-              "transactions": [
-                {
-                  "name": "Cebu Trade Co",
-                  "initial": "CT",
-                  "avatarBg": "Color(0xFF3FA7C9)",
-                  "time": "Dec 22, 11:00 am",
-                  "amount": 6400,
-                  "isReceived": true,
-                  "status": "RECEIVED",
-                  "transactionId": "TX-2026-0419",
-                  "memo": "Trade proceeds"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 25, 4:20 pm",
-                  "amount": 4800,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0424",
-                  "memo": "Supplier payment"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 25, 4:45 pm",
-                  "amount": 4800,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0425",
-                  "memo": "Supplier payment"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 25, 5:10 pm",
-                  "amount": 4800,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0426",
-                  "memo": "Supplier payment"
-                },
-                {
-                  "name": "City Utilities",
-                  "initial": "CU",
-                  "avatarBg": "Color(0xFFD9705A)",
-                  "time": "Dec 25, 5:35 pm",
-                  "amount": 4800,
-                  "isReceived": false,
-                  "status": "COMPLETED",
-                  "transactionId": "TX-2026-0427",
-                  "memo": "Supplier payment"
-                }
-              ]
+              "received": 0,
+              "sent": 0,
+              "inTransfers": 0,
+              "outTransfers": 0,
+              "net": 0,
+              "transactions": []
             }
           ]
         }

@@ -88,7 +88,6 @@ CREATE TABLE accounts (
     account_type   VARCHAR2(20) NOT NULL CHECK (account_type IN ('SAVINGS')),
     currency       VARCHAR2(3) DEFAULT 'PHP' NOT NULL,
     status         VARCHAR2(20) DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'LOCKED', 'PENDING_APPROVAL')),
-    credit_limit   NUMBER(18, 4) DEFAULT 0.0000 NOT NULL CHECK (credit_limit >= 0),
     created_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT fk_acc_user FOREIGN KEY (user_id) REFERENCES users(user_id)
@@ -96,7 +95,6 @@ CREATE TABLE accounts (
 
 COMMENT ON TABLE accounts IS 'Stores individual customer bank account records';
 COMMENT ON COLUMN accounts.account_number IS 'Official formatted bank account number';
-COMMENT ON COLUMN accounts.credit_limit IS 'Approved credit limit for CREDIT accounts; 0 for standard deposit accounts';
 
 
 -- ------------------------------------------------------------------------------

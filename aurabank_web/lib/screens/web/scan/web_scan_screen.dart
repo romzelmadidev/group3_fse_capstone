@@ -56,7 +56,7 @@ class _WebScanScreenState extends State<WebScanScreen> {
       if (image != null) {
         // On web/desktop file picker, process the payload or simulate QR reading
         await Future.delayed(const Duration(milliseconds: 600));
-        _handleDetectedQr('aura://pay?account=AURA-8829-4102&name=Stripe+Merchant+Services&amount=250.00');
+        _handleDetectedQr('aura://pay?account=1000-8801-0001&name=Wax&amount=250.00');
       }
     } catch (e) {
       if (mounted) {
@@ -126,7 +126,7 @@ class _WebScanScreenState extends State<WebScanScreen> {
                   Text('Account: $targetAccount', style: const TextStyle(fontFamily: 'monospace', fontSize: 13, color: textGray)),
                   if (amount != null) ...[
                     const SizedBox(height: 6),
-                    Text('Requested: \$$amount', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: brandViolet)),
+                    Text('Requested: ₱$amount', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: brandViolet)),
                   ],
                 ],
               ),
@@ -141,13 +141,17 @@ class _WebScanScreenState extends State<WebScanScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(ctx);
-              if (widget.onTransfer != null) {
-                widget.onTransfer!();
-                return;
-              }
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const WebTransferScreen()),
+                MaterialPageRoute(
+                  builder: (_) => WebTransferScreen(
+                    draft: QuickTransferDraft(
+                      accountNumber: targetAccount,
+                      amount: amount ?? '0.00',
+                      bank: 'Aura Bank Direct',
+                    ),
+                  ),
+                ),
               );
             },
             style: ElevatedButton.styleFrom(
@@ -167,7 +171,7 @@ class _WebScanScreenState extends State<WebScanScreen> {
     Clipboard.setData(ClipboardData(text: _bankService.savingsAccountNumber));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Account clearance number copied to clipboard'),
+        content: Text('Account number copied to clipboard'),
         behavior: SnackBarBehavior.floating,
         duration: Duration(seconds: 2),
       ),
@@ -197,7 +201,7 @@ class _WebScanScreenState extends State<WebScanScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'QR Settlement & Clearance Hub',
+                          'Scan & Pay',
                           style: TextStyle(
                             fontSize: 26,
                             fontWeight: FontWeight.w800,
@@ -207,7 +211,7 @@ class _WebScanScreenState extends State<WebScanScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Instant desktop invoice clearance, QR routing, and corporate account wire payloads.',
+                          'Scan or upload a QR code to pay, or share your QR code to receive money.',
                           style: TextStyle(
                             fontSize: 14,
                             color: textGray.withValues(alpha: 0.9),
@@ -234,7 +238,7 @@ class _WebScanScreenState extends State<WebScanScreen> {
                           ),
                           const SizedBox(width: 8),
                           const Text(
-                            'EMVCo Real-Time Clearance: Active',
+                            'QR Ph / Instant Pay: Active',
                             style: TextStyle(
                               fontSize: 12.5,
                               fontWeight: FontWeight.w600,
@@ -288,7 +292,7 @@ class _WebScanScreenState extends State<WebScanScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'My Settlement QR',
+                                      'My QR Code',
                                       style: TextStyle(
                                         fontSize: 17,
                                         fontWeight: FontWeight.w700,
@@ -346,7 +350,7 @@ class _WebScanScreenState extends State<WebScanScreen> {
                                           borderRadius: BorderRadius.circular(6),
                                         ),
                                         child: const Text(
-                                          'PREMIER SAVINGS',
+                                          'SAVINGS ACCOUNT',
                                           style: TextStyle(
                                             fontSize: 11,
                                             fontWeight: FontWeight.w800,
@@ -386,7 +390,7 @@ class _WebScanScreenState extends State<WebScanScreen> {
                                   Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      const Text('Account Clearance Code', style: TextStyle(fontSize: 11, color: textGray, fontWeight: FontWeight.w500)),
+                                      const Text('Account Number', style: TextStyle(fontSize: 11, color: textGray, fontWeight: FontWeight.w500)),
                                       const SizedBox(height: 2),
                                       Text(_bankService.savingsAccountNumber, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: textDark, fontFamily: 'monospace')),
                                     ],
@@ -413,7 +417,7 @@ class _WebScanScreenState extends State<WebScanScreen> {
                                   child: OutlinedButton.icon(
                                     onPressed: () {
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('High-resolution QR package downloaded')),
+                                        const SnackBar(content: Text('QR code image saved')),
                                       );
                                     },
                                     style: OutlinedButton.styleFrom(
@@ -422,7 +426,7 @@ class _WebScanScreenState extends State<WebScanScreen> {
                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     ),
                                     icon: const Icon(Icons.download_rounded, size: 18, color: textDark),
-                                    label: const Text('Export PNG', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textDark)),
+                                    label: const Text('Download QR', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textDark)),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -437,7 +441,7 @@ class _WebScanScreenState extends State<WebScanScreen> {
                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     ),
                                     icon: const Icon(Icons.share_rounded, size: 18),
-                                    label: const Text('Share Link', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                                    label: const Text('Share QR', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                                   ),
                                 ),
                               ],
@@ -479,7 +483,7 @@ class _WebScanScreenState extends State<WebScanScreen> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          'Settle Payment via QR',
+                                          'Pay via QR Code',
                                           style: TextStyle(
                                             fontSize: 17,
                                             fontWeight: FontWeight.w700,
@@ -488,7 +492,7 @@ class _WebScanScreenState extends State<WebScanScreen> {
                                         ),
                                         SizedBox(height: 2),
                                         Text(
-                                          'Upload an invoice screenshot or billing QR file',
+                                          'Upload a QR code or billing invoice to pay',
                                           style: TextStyle(fontSize: 12.5, color: textGray),
                                         ),
                                       ],
@@ -538,12 +542,12 @@ class _WebScanScreenState extends State<WebScanScreen> {
                                           ),
                                           const SizedBox(height: 14),
                                           const Text(
-                                            'Click to upload or drag QR invoice here',
+                                            'Click to upload or drag QR code here',
                                             style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: textDark),
                                           ),
                                           const SizedBox(height: 4),
                                           const Text(
-                                            'Our clearance engine will decode and populate payment details automatically',
+                                            'We\'ll decode the QR code and prepare your transfer automatically',
                                             textAlign: TextAlign.center,
                                             style: TextStyle(fontSize: 12, color: textGray),
                                           ),
@@ -577,7 +581,7 @@ class _WebScanScreenState extends State<WebScanScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const Text(
-                                  'Manual Payee Clearance',
+                                  'Pay by Account Number',
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w700,
@@ -586,7 +590,7 @@ class _WebScanScreenState extends State<WebScanScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 const Text(
-                                  'Enter a merchant identifier or routing number if you do not have an image',
+                                  'Enter account or merchant details if you don\'t have a QR image',
                                   style: TextStyle(fontSize: 12.5, color: textGray),
                                 ),
                                 const SizedBox(height: 20),
@@ -598,8 +602,8 @@ class _WebScanScreenState extends State<WebScanScreen> {
                                       child: TextField(
                                         controller: _payeeCodeController,
                                         decoration: InputDecoration(
-                                          labelText: 'Payee Account / Merchant ID',
-                                          hintText: 'e.g. AURA-8829-4102',
+                                          labelText: 'Account / Merchant ID',
+                                          hintText: 'e.g. 1000-8801-0001',
                                           prefixIcon: const Icon(Icons.account_balance_wallet_outlined, size: 20),
                                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -613,9 +617,22 @@ class _WebScanScreenState extends State<WebScanScreen> {
                                         controller: _amountController,
                                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                         decoration: InputDecoration(
-                                          labelText: 'Amount (USD)',
+                                          labelText: 'Amount (PHP)',
                                           hintText: '0.00',
-                                          prefixIcon: const Icon(Icons.attach_money_rounded, size: 20),
+                                          prefixIcon: const Padding(
+                                            padding: EdgeInsets.only(left: 14, right: 10),
+                                            child: Center(
+                                              widthFactor: 1.0,
+                                              child: Text(
+                                                '₱',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: textDark,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
                                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                         ),
@@ -633,11 +650,15 @@ class _WebScanScreenState extends State<WebScanScreen> {
                                       final code = _payeeCodeController.text.trim();
                                       if (code.isEmpty) {
                                         ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Please enter a Payee Account or Merchant ID')),
+                                          const SnackBar(content: Text('Please enter an Account Number or Merchant ID')),
                                         );
                                         return;
                                       }
-                                      _handleDetectedQr(code);
+                                      final amt = _amountController.text.trim();
+                                      final raw = amt.isNotEmpty
+                                          ? 'aura://pay?account=$code&name=Aura+Recipient&amount=$amt'
+                                          : 'aura://pay?account=$code&name=Aura+Recipient';
+                                      _handleDetectedQr(raw);
                                     },
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: const Color(0xFF10171C),
@@ -646,7 +667,7 @@ class _WebScanScreenState extends State<WebScanScreen> {
                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     ),
                                     icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-                                    label: const Text('Verify & Settle Payee', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                                    label: const Text('Continue to Pay', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                                   ),
                                 ),
                               ],

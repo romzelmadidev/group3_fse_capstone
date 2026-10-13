@@ -78,13 +78,6 @@ class WebHeader extends StatelessWidget {
               );
             },
           ),
-          const SizedBox(width: 12),
-          FilledButton.icon(
-            onPressed: onQuickTransfer,
-            icon: const Icon(Icons.north_east_rounded, size: 18),
-            label: const Text('Send money'),
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 44), padding: const EdgeInsets.symmetric(horizontal: 20)),
-          ),
         ],
       ),
     );
