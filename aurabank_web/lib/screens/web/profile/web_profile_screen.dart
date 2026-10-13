@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:aurabank_core/services/auth_api_service.dart';
 import 'package:aurabank_core/services/bank_service.dart';
+import 'package:aurabank_core/models/bank_models.dart' show TransferLimits;
 import 'package:aurabank_core/models/user_persona.dart' show DeviceIdentity;
 import 'package:aurabank_core/theme/aura_theme.dart';
 
@@ -23,7 +24,7 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
   static const Color cardBorder = Color(0xFFEAECEE);
   static const Color accentGreen = Color(0xFF17805F);
 
-  int _selectedNavSection = 0; // 0: Personal Information, 1: Security & 2FA, 2: Active Sessions
+  int _selectedNavSection = 0; // 0: Personal Info, 1: Security & 2FA, 2: Active Sessions, 3: Transfer Limits
 
   // Form Controllers for interactive editing
   late TextEditingController _nameController;
@@ -47,6 +48,9 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
     _addressController = TextEditingController(text: user.address);
     _bankService.addListener(_onServiceUpdate);
     _loadBackendDevices();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _bankService.loadLimits();
+    });
   }
 
   Future<void> _loadBackendDevices() async {
@@ -226,6 +230,9 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
                             _buildSettingsNavItem(0, Icons.person_outline_rounded, 'Personal Information'),
                             _buildSettingsNavItem(1, Icons.lock_outline_rounded, 'Security & Password'),
                             _buildSettingsNavItem(2, Icons.devices_rounded, 'Devices & Sessions'),
+                            _buildSettingsNavItem(3, Icons.account_balance_wallet_outlined, 'Transfer Limits'),
+                            const SizedBox(height: 14),
+                            _buildTransferLimitsRailCard(),
                           ],
                         ),
                       ),
@@ -279,12 +286,15 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
             children: [
               Icon(icon, size: 18, color: isSelected ? brandViolet : textGray),
               const SizedBox(width: 12),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected ? brandViolet : textDark,
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    color: isSelected ? brandViolet : textDark,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -302,6 +312,8 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
         return _buildSecuritySection();
       case 2:
         return _buildActiveSessionsSection();
+      case 3:
+        return _buildTransferLimitsSection();
       default:
         return _buildPersonalInfoSection();
     }
@@ -879,6 +891,747 @@ class _WebProfileScreenState extends State<WebProfileScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             child: const Text('Revoke', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _limitMoney(double v) {
+    final fixed = v.toStringAsFixed(2).split('.');
+    final whole = fixed[0].replaceAllMapped(
+        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
+    return '₱$whole.${fixed[1]}';
+  }
+
+  Widget _buildTransferLimitsRailCard() {
+    final limits = _bankService.limits;
+    final loading = _bankService.limitsLoading;
+    final restricted = limits?.restricted ?? false;
+    final isBasic = limits?.isBasic ?? true;
+    final badgeLabel = limits == null
+        ? (loading ? 'Loading...' : 'Unavailable')
+        : (restricted ? 'Restricted' : (isBasic ? 'Basic' : 'Fully Verified'));
+    final badgeFg = restricted
+        ? AuraColors.debitRed
+        : (limits != null && isBasic ? AuraColors.primary : AuraColors.creditGreen);
+    final badgeBg = restricted
+        ? AuraColors.debitRedBg
+        : (limits != null && isBasic ? AuraColors.tintPurple : AuraColors.creditGreenBg);
+
+    return InkWell(
+      onTap: () => setState(() => _selectedNavSection = 3),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF9FAFB),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: cardBorder),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.shield_outlined, size: 14, color: brandViolet),
+                const SizedBox(width: 6),
+                const Expanded(
+                  child: Text(
+                    'TRANSFER LIMITS',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
+                      color: textGray,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: badgeBg,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    badgeLabel,
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w700,
+                      color: badgeFg,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (limits != null && !restricted) ...[
+              Text(
+                'Daily remaining',
+                style: TextStyle(fontSize: 11, color: textGray.withValues(alpha: 0.9)),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _limitMoney(limits.dailyWindow.remaining),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: textDark,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Per transfer cap',
+                style: TextStyle(fontSize: 11, color: textGray.withValues(alpha: 0.9)),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _limitMoney(limits.perTransferCap),
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: textDark,
+                ),
+              ),
+            ] else if (restricted) ...[
+              const Text(
+                'Transfers restricted. Review needed.',
+                style: TextStyle(fontSize: 11, color: AuraColors.debitRed, fontWeight: FontWeight.w600),
+              ),
+            ] else ...[
+              const Text(
+                'View KYC velocity caps and allowances.',
+                style: TextStyle(fontSize: 11, color: textGray),
+              ),
+            ],
+            const SizedBox(height: 10),
+            Row(
+              children: const [
+                Text(
+                  'Manage Limits',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: brandViolet,
+                  ),
+                ),
+                SizedBox(width: 4),
+                Icon(Icons.arrow_forward_rounded, size: 12, color: brandViolet),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTransferLimitsSection() {
+    final limits = _bankService.limits;
+    final loading = _bankService.limitsLoading;
+    final failed = _bankService.limitsError;
+    final restricted = limits?.restricted ?? false;
+    final isBasic = limits?.isBasic ?? false;
+
+    final badgeLabel = limits == null
+        ? null
+        : (restricted ? 'Restricted' : (isBasic ? 'Basic Tier' : 'Fully Verified'));
+    final badgeFg = restricted
+        ? AuraColors.debitRed
+        : (isBasic ? AuraColors.primary : AuraColors.creditGreen);
+    final badgeBg = restricted
+        ? AuraColors.debitRedBg
+        : (isBasic ? AuraColors.tintPurple : AuraColors.creditGreenBg);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section Header
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      const Text(
+                        'Transfer Limits & Tiering',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: textDark),
+                      ),
+                      if (badgeLabel != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: badgeBg,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            badgeLabel,
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w800,
+                              color: badgeFg,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Your transfer caps are set according to regulatory KYC requirements and rolling usage windows.',
+                    style: TextStyle(fontSize: 13, color: textGray),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            SizedBox(
+              height: 38,
+              child: OutlinedButton.icon(
+                onPressed: loading ? null : () => _bankService.loadLimits(),
+                icon: loading
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: brandViolet),
+                      )
+                    : const Icon(Icons.refresh_rounded, size: 16, color: brandViolet),
+                label: Text(
+                  loading ? 'Refreshing...' : 'Refresh',
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: brandViolet),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: cardBorder),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                ),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 28),
+
+        // Body States
+        if (limits == null && loading) ...[
+          Container(
+            padding: const EdgeInsets.all(40),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF9FAFB),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: cardBorder),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2.5, color: brandViolet),
+                ),
+                SizedBox(width: 14),
+                Text(
+                  'Loading your transfer limits and usage data...',
+                  style: TextStyle(fontSize: 13.5, color: textGray, fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ),
+        ] else if (limits == null) ...[
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: AuraColors.debitRedBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AuraColors.debitRed.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.cloud_off_rounded, color: AuraColors.debitRed, size: 28),
+                const SizedBox(width: 16),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Unable to load transfer limits',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AuraColors.debitRed),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'We could not reach the account service to fetch your latest caps. Please check your connection and retry.',
+                        style: TextStyle(fontSize: 12.5, color: textDark),
+                      ),
+                    ],
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () => _bankService.loadLimits(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AuraColors.debitRed,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: const Text('Retry', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                ),
+              ],
+            ),
+          ),
+        ] else ...[
+          if (restricted)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(18),
+              margin: const EdgeInsets.only(bottom: 24),
+              decoration: BoxDecoration(
+                color: AuraColors.debitRedBg,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AuraColors.debitRed.withValues(alpha: 0.35)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.gpp_bad_rounded, color: AuraColors.debitRed, size: 28),
+                  SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Transfers are restricted on this account',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AuraColors.debitRed),
+                        ),
+                        SizedBox(height: 3),
+                        Text(
+                          'Your account has been temporarily restricted from sending money. Please complete identity verification or contact Aura Bank compliance.',
+                          style: TextStyle(fontSize: 12.5, color: textDark, height: 1.35),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          if (isBasic && !restricted)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(18),
+              margin: const EdgeInsets.only(bottom: 24),
+              decoration: BoxDecoration(
+                color: AuraColors.tintPurple,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: brandViolet.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: brandViolet.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.verified_user_outlined, color: brandViolet, size: 24),
+                  ),
+                  const SizedBox(width: 16),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Upgrade to Fully Verified for higher allowances',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: textDark),
+                        ),
+                        SizedBox(height: 3),
+                        Text(
+                          'Basic accounts are capped at ₱10,000 per transfer and ₱20,000 daily. Verify your identity with a valid government ID to unlock up to ₱50,000 per transfer and ₱100,000 daily.',
+                          style: TextStyle(fontSize: 12.5, color: textGray, height: 1.35),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // 3 Metric Cards Grid
+          LayoutBuilder(builder: (context, constraints) {
+            final isNarrow = constraints.maxWidth < 750;
+            final cards = [
+              _buildLimitMetricCard(
+                title: 'Per-Transaction Limit',
+                badge: 'Single Send',
+                amount: _limitMoney(limits.perTransferCap),
+                subtitle: 'Maximum allowed per single fund transfer',
+                icon: Icons.speed_rounded,
+                iconColor: brandViolet,
+                iconBg: brandViolet.withValues(alpha: 0.08),
+                footer: const Text(
+                  'Applies to InstaPay, PESONet & Aura Direct',
+                  style: TextStyle(fontSize: 11, color: textGray),
+                ),
+              ),
+              _buildLimitMetricCard(
+                title: 'Daily Remaining',
+                badge: '24h Rolling',
+                amount: _limitMoney(limits.dailyWindow.remaining),
+                subtitle: 'of ${_limitMoney(limits.dailyWindow.cap)} total daily cap',
+                icon: Icons.today_rounded,
+                iconColor: const Color(0xFF0D9488),
+                iconBg: const Color(0xFFCCFBF1),
+                progressUsed: limits.dailyWindow.used,
+                progressCap: limits.dailyWindow.cap,
+                footer: Text(
+                  '${_limitMoney(limits.dailyWindow.used)} used today • Resets at 00:00',
+                  style: const TextStyle(fontSize: 11, color: textGray),
+                ),
+              ),
+              _buildLimitMetricCard(
+                title: 'Monthly Remaining',
+                badge: 'Calendar Month',
+                amount: _limitMoney(limits.monthlyWindow.remaining),
+                subtitle: 'of ${_limitMoney(limits.monthlyWindow.cap)} monthly cap',
+                icon: Icons.calendar_month_rounded,
+                iconColor: const Color(0xFF2563EB),
+                iconBg: const Color(0xFFDBEAFE),
+                progressUsed: limits.monthlyWindow.used,
+                progressCap: limits.monthlyWindow.cap,
+                footer: Text(
+                  '${_limitMoney(limits.monthlyWindow.used)} used • Resets 1st of month',
+                  style: const TextStyle(fontSize: 11, color: textGray),
+                ),
+              ),
+            ];
+
+            if (isNarrow) {
+              return Column(
+                children: cards.map((c) => Padding(padding: const EdgeInsets.only(bottom: 16), child: c)).toList(),
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: cards[0]),
+                const SizedBox(width: 16),
+                Expanded(child: cards[1]),
+                const SizedBox(width: 16),
+                Expanded(child: cards[2]),
+              ],
+            );
+          }),
+
+          if (failed)
+            Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFFF59E0B)),
+                  const SizedBox(width: 8),
+                  const Text(
+                    "Showing last loaded limits. Background refresh failed.",
+                    style: TextStyle(fontSize: 12, color: textGray),
+                  ),
+                  const Spacer(),
+                  InkWell(
+                    onTap: () => _bankService.loadLimits(),
+                    child: const Text(
+                      'Retry Now',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: brandViolet),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          const SizedBox(height: 32),
+
+          // Detailed Tier Comparison Table
+          _buildTierComparisonTable(limits),
+
+          const SizedBox(height: 24),
+
+          // Compliance & Regulatory Notice Footer
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF9FAFB),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: cardBorder),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Icon(Icons.verified_outlined, size: 18, color: textGray),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Regulatory Compliance Note: Transfer limits are calibrated in compliance with Bangko Sentral ng Pilipinas (BSP) Circular No. 982 and the Anti-Money Laundering Act (AMLA). Limits refresh dynamically against the T24 CBS core ledger upon real-time settlement.',
+                    style: TextStyle(fontSize: 12, color: textGray, height: 1.45),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildLimitMetricCard({
+    required String title,
+    required String badge,
+    required String amount,
+    required String subtitle,
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBg,
+    double? progressUsed,
+    double? progressCap,
+    required Widget footer,
+  }) {
+    final double? ratio = (progressUsed != null && progressCap != null && progressCap > 0)
+        ? (progressUsed / progressCap).clamp(0.0, 1.0)
+        : null;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: iconColor, size: 18),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F4F6),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  badge,
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: textGray),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textGray),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            amount,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: textDark,
+              letterSpacing: -0.4,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 11.5, color: textGray),
+          ),
+          if (ratio != null) ...[
+            const SizedBox(height: 14),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: ratio,
+                minHeight: 6,
+                backgroundColor: const Color(0xFFF1F3F5),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  ratio > 0.85 ? const Color(0xFFEF4444) : (ratio > 0.6 ? const Color(0xFFF59E0B) : brandViolet),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: cardBorder),
+          const SizedBox(height: 10),
+          footer,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTierComparisonTable(TransferLimits limits) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text(
+                  'Tier Comparison & Privileges',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: textDark),
+                ),
+                SizedBox(height: 3),
+                Text(
+                  'Limits correspond to verification tier requirements defined by banking regulations.',
+                  style: TextStyle(fontSize: 12.5, color: textGray),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: cardBorder),
+          // Table Header
+          Container(
+            color: const Color(0xFFF9FAFB),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: const Row(
+              children: [
+                Expanded(flex: 3, child: Text('TIER LEVEL', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: textGray, letterSpacing: 0.5), overflow: TextOverflow.ellipsis)),
+                Expanded(flex: 3, child: Text('REQUIREMENTS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: textGray, letterSpacing: 0.5), overflow: TextOverflow.ellipsis)),
+                Expanded(flex: 2, child: Text('PER SEND', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: textGray, letterSpacing: 0.5), overflow: TextOverflow.ellipsis)),
+                Expanded(flex: 2, child: Text('DAILY CAP', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: textGray, letterSpacing: 0.5), overflow: TextOverflow.ellipsis)),
+                Expanded(flex: 2, child: Text('MONTHLY', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: textGray, letterSpacing: 0.5), overflow: TextOverflow.ellipsis)),
+                Expanded(flex: 2, child: Text('STATUS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: textGray, letterSpacing: 0.5), overflow: TextOverflow.ellipsis)),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: cardBorder),
+          // Basic Row
+          _buildTierTableRow(
+            tierName: 'Basic Tier',
+            requirements: 'Phone + Basic Info',
+            perTransfer: '₱10,000.00',
+            daily: '₱20,000.00',
+            monthly: '₱100,000.00',
+            isCurrent: limits.isBasic && !limits.restricted,
+            isRestricted: limits.restricted,
+          ),
+          const Divider(height: 1, color: cardBorder),
+          // Fully Verified Row
+          _buildTierTableRow(
+            tierName: 'Fully Verified',
+            requirements: 'Government ID + Biometrics',
+            perTransfer: '₱50,000.00',
+            daily: '₱100,000.00',
+            monthly: '₱500,000.00',
+            isCurrent: !limits.isBasic && !limits.restricted,
+            isRestricted: false,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTierTableRow({
+    required String tierName,
+    required String requirements,
+    required String perTransfer,
+    required String daily,
+    required String monthly,
+    required bool isCurrent,
+    required bool isRestricted,
+  }) {
+    return Container(
+      color: isCurrent ? brandViolet.withValues(alpha: 0.04) : Colors.transparent,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Text(
+              tierName,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
+                color: textDark,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              requirements,
+              style: const TextStyle(fontSize: 12, color: textGray),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              perTransfer,
+              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textDark),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              daily,
+              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textDark),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              monthly,
+              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textDark),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: isCurrent
+                ? Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE4F5EE),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text(
+                        'CURRENT TIER',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF17805F),
+                        ),
+                      ),
+                    ),
+                  )
+                : const Text('—', style: TextStyle(color: textGray, fontSize: 13)),
           ),
         ],
       ),

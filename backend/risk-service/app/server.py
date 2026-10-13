@@ -34,6 +34,8 @@ from app.threat_builder import has_threat_context, build_threat_narrative, detec
 from app.warning_catalog import get_warning_dialog
 from hybrid_bench.sar_generator import trigger_sar_async
 from app import sar_registry
+from app import basic_tier_rule
+from app import geo_velocity_rule
 from app.reviewer import (
     NanoJevSecondLookEngine,
     AsyncReviewWorkerPool,
@@ -322,6 +324,21 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
                 decision = "ALLOW"
                 reason = "Standard low risk transaction"
 
+            source_account = payload.get("sourceAccountId") or payload.get("source_account_id") or payload.get("account_id")
+
+            # Travel-speed check first: a customer who "moved" faster than a plane can fly is blocked
+            # whatever the amount or memo.
+            travel = geo_velocity_rule.check(source_account)
+            if travel:
+                self._send_json(200, {
+                    "transactionId": tx_id,
+                    "score": 100,
+                    "decision": "BLOCK",
+                    "riskReason": f"{geo_velocity_rule.REASON} "
+                                  f"({travel['distance_km']} km at {travel['velocity_kmh']} km/h)"
+                })
+                return
+
             # Automatically draft a SAR if anomalous high value (>= 50,000 PHP) or scam memo is intercepted
             if is_scam_memo or amount >= 50000.0 or decision in ("BLOCK", "ADVISORY_WARNING"):
                 try:
@@ -360,6 +377,14 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
                     trigger_sar_async(sar_tx_row, sar_verdict)
                 except Exception as sar_err:
                     print(f"[/risk/score SAR TRIGGER ERROR] {sar_err}", flush=True)
+            # Basic-tier advisory is applied after SAR drafting so a 30k-50k basic transfer alone never drafts a SAR
+            if decision == "ALLOW" and basic_tier_rule.applies(
+                source_account,
+                amount,
+            ):
+                score = basic_tier_rule.SCORE
+                decision = "ADVISORY_WARNING"
+                reason = basic_tier_rule.REASON
 
             self._send_json(200, {
                 "transactionId": tx_id,
@@ -538,8 +563,8 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
 
             if gate0_action:
                 decision = gate0_action
-                p_fraud = 1.0 if decision == "BLOCK" else 0.85
-                fraud_score = 100 if decision == "BLOCK" else 85
+                fraud_score = 100 if decision == "BLOCK" else 75
+                p_fraud = 0.0
                 is_anomaly = True
                 anomaly_prob = p_fraud
                 primary_flag = gate0_reason
@@ -610,18 +635,18 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
                 else:
                     p_fraud = 0.05 if spike_ratio < 2.0 else 0.45
 
-                if p_fraud >= TAU_BLOCK:
+                fraud_score = int(round(p_fraud * 100))
+                if fraud_score >= int(TAU_BLOCK * 100):
                     decision = "BLOCK"
                     status = "BLOCKED"
-                elif p_fraud >= TAU_2FA:
+                elif fraud_score >= int(TAU_2FA * 100):
                     decision = "REQUIRE_2FA"
                     status = "REQUIRE_2FA"
                 else:
                     decision = "ALLOW"
                     status = "SETTLED"
 
-                fraud_score = int(p_fraud * 100)
-                is_anomaly = p_fraud >= TAU_2FA
+                is_anomaly = fraud_score >= int(TAU_2FA * 100)
                 anomaly_prob = round(p_fraud, 4)
                 primary_flag = "NONE" if decision == "ALLOW" else ("ELEVATED_S2_SCORE" if decision == "REQUIRE_2FA" else "CRITICAL_FRAUD_RISK")
                 all_flags = [primary_flag] if primary_flag != "NONE" else []
@@ -695,6 +720,24 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
                 elif decision == "REQUIRE_2FA":
                     threat_cat = "ELEVATED_RISK"
 
+            # 4b. Basic-tier high-amount rule: only ever raises ALLOW / ADVISORY_WARNING.
+            # Gate 0 verdicts keep their own flags. The SAR trigger below uses the score from
+            # before this rule, so a Basic-tier advisory alone never drafts a SAR.
+            basic_tier_cause = None
+            sar_fraud_score = fraud_score
+            if not gate0_action and decision in ("ALLOW", "ADVISORY_WARNING") and basic_tier_rule.applies(account_id, amount):
+                fraud_score = max(fraud_score, basic_tier_rule.SCORE)
+                all_flags.append(basic_tier_rule.FLAG)
+                if decision == "ALLOW":
+                    decision = "ADVISORY_WARNING"
+                    status = "ADVISORY_PENDING"
+                    advisory_tier = "ADVISORY_WARNING"
+                    primary_flag = basic_tier_rule.FLAG
+                    threat_cat = basic_tier_rule.FLAG
+                    basic_tier_cause = f"{basic_tier_rule.REASON} (PHP {amount:,.2f})"
+                    wd = get_warning_dialog(basic_tier_rule.FLAG, custom_message=basic_tier_cause)
+                    warning_dialog = wd.model_dump() if hasattr(wd, "model_dump") else wd.dict()
+
             # 5. Laya Cause of Suspicion Synthesis
             if laya_engine_instance is not None:
                 cause_of_suspicion = laya_engine_instance.determine_cause_of_suspicion(
@@ -707,6 +750,8 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
                 )
             else:
                 cause_of_suspicion = f"Evaluated fraud risk score of {fraud_score}/100 with flag {primary_flag}."
+            if basic_tier_cause:
+                cause_of_suspicion = basic_tier_cause
 
             # 6. Automated AMLC SAR/STR Draft Trigger
             sar_draft_created = False
@@ -725,7 +770,7 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
                     "CRITICAL_DEVICE_TAMPERING_ENVIRONMENT",
                     "DEVICE_TAMPERING"
                 ]
-                or fraud_score >= 60
+                or sar_fraud_score >= 60
                 or amount >= 50000.0
                 or geo_signals.get("is_impossible_travel", False)
                 or geo_signals.get("velocity_kmh", 0.0) > 800.0

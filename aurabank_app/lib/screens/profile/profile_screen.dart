@@ -37,6 +37,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _fingerprintEnabled = _bankService.user.fingerprintEnabled;
     _pushAlertsEnabled = _bankService.user.pushAlertsEnabled;
     _bankService.addListener(_onServiceUpdate);
+    if (_bankService.limits == null) {
+      // loadLimits notifies listeners synchronously; defer so other listeners
+      // don't call setState while this frame is still building.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _bankService.loadLimits();
+      });
+    }
   }
 
   @override
@@ -1406,6 +1413,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               const SizedBox(height: 14),
 
+              // 2.6 Transfer Limits Card
+              _buildTransferLimitsCard(),
+
+              const SizedBox(height: 14),
+
               // 3. Card 2: Security & Authentication
               _buildSectionCardContainer(
                 title: 'Security & Authentication',
@@ -1591,6 +1603,277 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  String _limitMoney(double v) {
+    final fixed = v.toStringAsFixed(2).split('.');
+    final whole = fixed[0].replaceAllMapped(
+        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
+    return '₱$whole.${fixed[1]}';
+  }
+
+  Widget _buildTransferLimitsCard() {
+    final limits = _bankService.limits;
+    final loading = _bankService.limitsLoading;
+    final failed = _bankService.limitsError;
+    final restricted = limits?.restricted ?? false;
+    final showBasicPrompt = limits != null && !restricted && limits.isBasic;
+
+    Widget body;
+    if (limits == null && loading) {
+      body = Semantics(
+        label: 'Loading transfer limits',
+        child: const Row(
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2, color: brandViolet),
+            ),
+            SizedBox(width: 12),
+            Text('Loading your limits...', style: TextStyle(fontSize: 12.5, color: textGray)),
+          ],
+        ),
+      );
+    } else if (limits == null) {
+      // Failed (or not yet requested): show retry instead of values.
+      body = Row(
+        children: [
+          const Expanded(
+            child: Text(
+              "We couldn't load your transfer limits.",
+              style: TextStyle(fontSize: 12.5, color: textGray, height: 1.3),
+            ),
+          ),
+          Semantics(
+            button: true,
+            label: 'Retry loading transfer limits',
+            child: InkWell(
+              onTap: () => _bankService.loadLimits(),
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: brandViolet,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'Retry',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    } else {
+      Widget row(String label, String value) => Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Semantics(
+              label: '$label $value',
+              excludeSemantics: true,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: const TextStyle(fontSize: 12, color: textGray)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      value,
+                      textAlign: TextAlign.end,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: textDark,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (restricted)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AuraColors.debitRedBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                'Your account is restricted. Transfers are unavailable right now.',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AuraColors.debitRed,
+                  height: 1.3,
+                ),
+              ),
+            )
+          else ...[
+            row('Per transfer', _limitMoney(limits.perTransferCap)),
+            row(
+              'Daily remaining',
+              '${_limitMoney(limits.dailyWindow.remaining)} of ${_limitMoney(limits.dailyWindow.cap)}',
+            ),
+            row(
+              'Monthly remaining',
+              '${_limitMoney(limits.monthlyWindow.remaining)} of ${_limitMoney(limits.monthlyWindow.cap)}',
+            ),
+          ],
+          if (failed)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      "Couldn't refresh. Showing last known limits.",
+                      style: TextStyle(fontSize: 11.5, color: textGray),
+                    ),
+                  ),
+                  Semantics(
+                    button: true,
+                    label: 'Retry loading transfer limits',
+                    child: InkWell(
+                      onTap: () => _bankService.loadLimits(),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        child: Text(
+                          'Retry',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: brandViolet,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (showBasicPrompt)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Semantics(
+                button: true,
+                label: 'Complete KYC verification to raise your limits',
+                child: InkWell(
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => KycWizardScreen(
+                          onCompleted: () => setState(() {}),
+                        ),
+                      ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AuraColors.tintPurple,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Complete KYC verification to raise your limits.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: textDark,
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Icon(Icons.arrow_forward_rounded, size: 16, color: brandViolet),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
+    final badgeLabel = limits == null
+        ? null
+        : (restricted ? 'Restricted' : (limits.isBasic ? 'Basic' : 'Fully Verified'));
+    final badgeFg = restricted
+        ? AuraColors.debitRed
+        : (limits != null && limits.isBasic ? AuraColors.primary : AuraColors.creditGreen);
+    final badgeBg = restricted
+        ? AuraColors.debitRedBg
+        : (limits != null && limits.isBasic ? AuraColors.tintPurple : AuraColors.creditGreenBg);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: restricted ? AuraColors.debitRed.withValues(alpha: 0.35) : AuraColors.borderLavender,
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              const Text(
+                'Transfer limits',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: textDark),
+              ),
+              if (badgeLabel != null)
+                Semantics(
+                  label: 'Tier: $badgeLabel',
+                  excludeSemantics: true,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: badgeBg,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      badgeLabel,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: badgeFg,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          body,
+        ],
       ),
     );
   }

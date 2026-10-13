@@ -124,14 +124,6 @@ class UserPersona {
       accountId: '1000-2000-3002',
       balance: 5000000.00,
     ),
-    UserPersona(
-      name: 'Diana Vance',
-      role: 'Admin',
-      email: 'diana.admin@bank.com',
-      password: 'password123',
-      accountId: '1000-8800-9902',
-      balance: 450000.00,
-    ),
   ];
 
   static const List<Map<String, String>> transferableRecipients = [

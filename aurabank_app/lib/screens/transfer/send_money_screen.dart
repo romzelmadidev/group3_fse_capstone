@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../models/bank_models.dart';
 import '../../models/user_persona.dart';
 import '../../services/bank_service.dart';
 import '../../widgets/aura_logo.dart';
@@ -141,6 +142,12 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
     _amountController = TextEditingController(
       text: widget.initialAmount ?? '',
     );
+    if (_bankService.limits == null) {
+      // Deferred: loadLimits notifies listeners synchronously, which must not happen during build.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _bankService.loadLimits();
+      });
+    }
   }
 
   @override
@@ -172,6 +179,12 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
     );
   }
 
+
+  double get _enteredAmount =>
+      double.tryParse(_amountController.text.replaceAll(',', '').trim()) ?? 0.0;
+
+  /// Null when limits are not loaded: the server decides (Req 8.7).
+  LimitBreach? get _limitBreach => _bankService.limits?.check(_enteredAmount);
 
   void _onSendMoney() {
     if (!RequireDeviceApproval.canTransact(context)) {
@@ -211,6 +224,27 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
               SizedBox(width: 10),
               Expanded(
                 child: Text('Amount exceeds available account balance', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        ),
+      );
+      return;
+    }
+
+    final breach = _limitBreach;
+    if (breach != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFFC8423B),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(breach.message, style: const TextStyle(fontWeight: FontWeight.w700)),
               ),
             ],
           ),
@@ -836,6 +870,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                 Expanded(
                   child: TextField(
                     controller: _amountController,
+                    onChanged: (_) => setState(() {}),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     style: const TextStyle(
                       fontSize: 15,
@@ -866,6 +901,37 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
               fontWeight: FontWeight.w600,
             ),
           ),
+          if (_bankService.limits != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              'You can send up to ₱${_formatAmountPlain(_bankService.limits!.lowestRemaining)}',
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF7D8892),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+          if (_limitBreach != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.error_outline, color: Color(0xFFC8423B), size: 14),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    _limitBreach!.message,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFFC8423B),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

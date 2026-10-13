@@ -64,12 +64,12 @@ Login page: **`http://localhost:3000`**
 
 | Persona | Email | Password | Role | Permissions |
 | :--- | :--- | :--- | :--- | :--- |
-| **Diana Vance (Administrator)** | `diana.admin@bank.com` | `password123` | `ADMIN` | All portals: Overview, Customers, KYC, Transfers, Reversals, SAR/STR, Geo Simulator, Audit Trail, T24 Core Banking, Compliance Drive |
-| **Crisostomo Ibarra (Teller Maker)** | `crisostomo.teller@bank.com` | `password123` | `TELLER` | Branch Operations: Overview, Customers, KYC, Transfers, Reversals (Maker file only), T24 Core Banking, Compliance Drive |
+| **Diana Vance (Administrator)** | `diana.admin@bank.com` | `Staff@Aura2026` | `ADMIN` | All portals: Overview, Customers, KYC, Transfers, Reversals, SAR/STR, Geo Simulator, Audit Trail, T24 Core Banking, Compliance Drive |
+| **Crisostomo Ibarra (Teller Maker)** | `crisostomo.ibarra@eastwestbanker.com` | `Staff@Aura2026` | `TELLER` | Branch Operations: Overview, Customers, KYC, Transfers, Reversals (Maker file only), T24 Core Banking, Compliance Drive |
 | **Beatriz Ocampo (Teller)** | `beatriz.teller@bank.com` | `password123` | `TELLER` | Branch Operations |
 | **Carlos Mendoza (Manager Checker)** | `carlos.teller@bank.com` | `password123` | `MANAGER` | Branch Operations + Reversal Checker approvals |
 | **Alex Rivera (Security Admin)** | `alex.admin@bank.com` | `password123` | `ADMIN` | Full administrative, compliance, and fraud desk access |
-| **Team Member Accounts** | `wax@bank.com`, `hans@bank.com`, `zel@bank.com`, `maye@bank.com` (`ADMIN`)<br>`jm@bank.com`, `jessy@bank.com`, `angel@bank.com` (`TELLER`) | `password123` | `ADMIN` / `TELLER` | Full testing capabilities matching their designated role |
+| **Team Member Staff Accounts** | `wax.staff@bank.com`, `hans.staff@bank.com`, `zel.staff@bank.com`, `maye.staff@bank.com` (`ADMIN`)<br>`jm.staff@bank.com`, `jessy.staff@bank.com`, `angel.staff@bank.com` (`TELLER`) | `Staff@Aura2026` | `ADMIN` / `TELLER` | Staff Console only. Full testing capabilities matching their designated role. The same people sign in to the AuraBank customer apps with their separate customer logins (`wax@bank.com`, `hans@bank.com`, ... / `password123`). |
 
 ---
 
@@ -96,7 +96,7 @@ Login page: **`http://localhost:3000`**
 
 ## 2. PART 1: Testing via the Unified Staff Console (`http://localhost:3000`)
 
-Sign in with `diana.admin@bank.com` and `password123`.
+Sign in with `diana.admin@bank.com` and `Staff@Aura2026`.
 
 ---
 

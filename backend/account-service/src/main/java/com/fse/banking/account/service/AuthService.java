@@ -77,7 +77,7 @@ public class AuthService {
     public RegisterResponse register(RegisterRequest request) {
         log.info("Processing registration for email: {}", request.getEmail());
 
-        if (userRepository.existsByEmail(request.getEmail())) {
+        if (userRepository.existsByEmail(request.getEmail()) || adminUserRepository.existsByEmail(request.getEmail())) {
             throw new ConflictException("Email " + request.getEmail() + " is already registered.");
         }
         if (userRepository.existsByPhoneNumber(request.getPhoneNumber())) {
@@ -138,29 +138,31 @@ public class AuthService {
         boolean isConsoleRequest = (request.getDeviceName() != null && request.getDeviceName().toLowerCase().contains("console"))
                 || "Aura Console".equalsIgnoreCase(request.getDeviceName());
 
-        if (isConsoleRequest && adminUserRepository != null) {
-            Optional<AdminUserEntity> adminOpt = adminUserRepository.findByEmail(request.getEmail());
-            if (adminOpt.isPresent()) {
-                return loginAdmin(adminOpt.get(), request, clientIp, userAgent);
-            }
+        // Staff and customers are separate identities with separate credentials. The staff console
+        // resolves only against admin_users and every other channel only against users, with no
+        // fallback in either direction. A wrong-channel attempt gets the same generic error as a
+        // wrong password, so the response does not reveal which table an email lives in.
+        if (isConsoleRequest) {
+            AdminUserEntity admin = adminUserRepository.findByEmail(request.getEmail())
+                    .orElseThrow(() -> new UnauthorizedException("Invalid email or password."));
+            return loginAdmin(admin, request, clientIp, userAgent);
         }
 
-        Optional<UserEntity> userOpt = userRepository.findByEmail(request.getEmail());
-        if (userOpt.isPresent()) {
-            return loginCustomer(userOpt.get(), request, clientIp, userAgent);
-        }
+        UserEntity user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new UnauthorizedException("Invalid email or password."));
+        return loginCustomer(user, request, clientIp, userAgent);
+    }
 
-        if (adminUserRepository != null) {
-            Optional<AdminUserEntity> adminOpt = adminUserRepository.findByEmail(request.getEmail());
-            if (adminOpt.isPresent()) {
-                return loginAdmin(adminOpt.get(), request, clientIp, userAgent);
-            }
+    /** Customer channels never authenticate a staff-role row, even one left over in the users table. */
+    private void requireCustomerRole(UserEntity user) {
+        if (user.getRole() != UserRole.CUSTOMER) {
+            log.warn("Blocked customer-channel sign-in for staff-role account {}", user.getUserId());
+            throw new UnauthorizedException("Invalid email or password.");
         }
-
-        throw new UnauthorizedException("Invalid email or password.");
     }
 
     private LoginResult loginCustomer(UserEntity user, LoginRequest request, String clientIp, String userAgent) {
+        requireCustomerRole(user);
         if (user.getStatus() == UserStatus.LOCKED) {
             throw new LockedUserException("User account is locked due to security policy. Contact customer support.");
         }
@@ -201,7 +203,9 @@ public class AuthService {
         boolean isKnownApprovedDevice = existingDevice.isPresent() && existingDevice.get().isApproved();
 
         boolean isFirstTimeLogin = user.getLastLoginAt() == null;
-        boolean requiresDeviceBindingMfa = !isWeb && !isKnownApprovedDevice;
+        // OTP binds only the first (primary) mobile; later devices skip OTP and need primary-device approval.
+        boolean noPrimaryYet = primaryDeviceId == null || primaryDeviceId.isBlank();
+        boolean requiresDeviceBindingMfa = !isWeb && !isKnownApprovedDevice && noPrimaryYet;
 
         if (isFirstTimeLogin || requiresDeviceBindingMfa) {
             String otp = redisSessionStore.getLoginOtp(user.getUserId());
@@ -274,9 +278,11 @@ public class AuthService {
         boolean isKnownApprovedDevice = existingDevice.isPresent() && existingDevice.get().isApproved();
 
         boolean isFirstTimeLogin = admin.getLastLoginAt() == null;
-        boolean requiresDeviceBindingMfa = !isWeb && !isKnownApprovedDevice;
+        boolean noPrimaryYet = primaryDeviceId == null || primaryDeviceId.isBlank();
+        boolean requiresDeviceBindingMfa = !isWeb && !isKnownApprovedDevice && noPrimaryYet;
 
-        if (isFirstTimeLogin || requiresDeviceBindingMfa) {
+        // Web admin portal logins for staff/admin roles bypass OTP/MFA challenge
+        if (!isWeb && (isFirstTimeLogin || requiresDeviceBindingMfa)) {
             String otp = redisSessionStore.getLoginOtp(admin.getAdminId());
             if (otp == null || otp.isBlank()) {
                 long wait = sendAdminLoginOtp(admin);
@@ -327,6 +333,7 @@ public class AuthService {
 
         UserEntity user = userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new UnauthorizedException("User account not found."));
+        requireCustomerRole(user);
 
         if (user.getStatus() == UserStatus.LOCKED || user.getStatus() == UserStatus.SUSPENDED) {
             throw new UnauthorizedException("Account is inactive.");
@@ -487,14 +494,19 @@ public class AuthService {
         boolean isThirdDevice = false;
         String replacedDeviceId = null;
         String replacedDeviceName = null;
+        boolean isStaffRole = roleAuthority != null && (
+                roleAuthority.contains("ADMIN") ||
+                roleAuthority.contains("TELLER") ||
+                roleAuthority.contains("MANAGER") ||
+                roleAuthority.contains("COMPLIANCE"));
 
         if (isWeb) {
             // Configuration: 1 Web session allowed
             // A desktop/web session cannot be the primary mobile device
             isPrimary = false;
 
-            if (primaryDeviceId == null || primaryDeviceId.isBlank()) {
-                // If there is no primary mobile device registered (e.g. admin or onboarding), auto-approve
+            if (isStaffRole || primaryDeviceId == null || primaryDeviceId.isBlank()) {
+                // Staff web portal logins or accounts without a primary mobile are auto-approved without mobile push alerts
                 isApproved = true;
                 deregisterOtherWebSessions(userId, resolvedDeviceId);
             } else {

@@ -3,6 +3,7 @@ import '../../theme/aura_theme.dart';
 import '../../widgets/motion.dart';
 import '../../widgets/aurora_background.dart';
 import '../../models/user_persona.dart';
+import '../../navigation/root_navigator.dart';
 import '../../services/auth_api_service.dart';
 import '../../services/bank_service.dart';
 import '../../services/biometric_service.dart';
@@ -79,6 +80,15 @@ class _LoginScreenState extends State<LoginScreen>
     NotificationStreamService().disconnect();
     _bankService.addListener(_onServiceUpdate);
     _loadPreferences();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || ModalRoute.of(context)?.settings.arguments != sessionExpiredArg) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Your session has expired. Please sign in again.'),
+          backgroundColor: Color(0xFFC53030),
+        ),
+      );
+    });
   }
 
   void _loadPreferences() async {

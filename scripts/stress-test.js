@@ -33,8 +33,9 @@ const HAMMER_AUTH_RATIO = parseFloat(process.env.HAMMER_AUTH) || 0.15;
 
 const TEST_USERS = [
   { email: 'juan.dc@email.com', password: 'password123' },
-  { email: 'beatriz.ocampo@bank.com', password: 'password123' },
-  { email: 'diana.admin@bank.com', password: 'password123' }
+  // Staff sign in through the Aura Console channel with the staff-only password.
+  { email: 'beatriz.ocampo@bank.com', password: 'Staff@Aura2026', deviceType: 'WEB', deviceName: 'Aura Console' },
+  { email: 'diana.admin@bank.com', password: 'Staff@Aura2026', deviceType: 'WEB', deviceName: 'Aura Console' }
 ];
 
 // Helper: Percentile calculation

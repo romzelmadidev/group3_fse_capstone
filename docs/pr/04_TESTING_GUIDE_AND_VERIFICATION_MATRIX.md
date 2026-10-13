@@ -83,7 +83,7 @@ Reviewers can manually reproduce every feature without using the command line:
 
 ```mermaid
 graph TD
-    LOGIN["1. Sign In at http://localhost:3000<br/>(diana.admin@bank.com / password123)"]
+    LOGIN["1. Sign In at http://localhost:3000<br/>(diana.admin@bank.com / Staff@Aura2026)"]
     CONSOLE["2. Navigate to 'T24 Core Banking' (/cbs or /t24-test)"]
     
     subgraph Tabs ["Interactive Tabs"]

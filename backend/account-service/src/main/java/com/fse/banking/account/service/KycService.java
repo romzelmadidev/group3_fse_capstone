@@ -39,6 +39,9 @@ public class KycService {
     private final KycClient kycClient;
     private final KycReviewStore reviewStore;
 
+    @org.springframework.beans.factory.annotation.Value("${app.services.notification-service.url:http://notification-service:8083}")
+    private String notificationServiceUrl;
+
     public KycUploadIntentResponse generateUploadIntent(String userId, KycUploadIntentRequest request) {
         log.info("Generating KYC upload intent for user {} and ID type {}", userId, request.getIdType());
         userRepository.findById(userId)
@@ -250,6 +253,7 @@ public class KycService {
         user.setKycStatus(KycStatus.VERIFIED);
         user.setKycReviewReason("Approved by " + reviewerId);
         UserEntity updated = userRepository.save(user);
+        notifyKycDecision(userId, KycStatus.VERIFIED, null);
         return toProfileResponse(updated);
     }
 
@@ -263,7 +267,44 @@ public class KycService {
         user.setKycStatus(KycStatus.REJECTED);
         user.setKycReviewReason(reason);
         UserEntity updated = userRepository.save(user);
+        notifyKycDecision(userId, KycStatus.REJECTED, reason);
         return toProfileResponse(updated);
+    }
+
+    /**
+     * Pushes the decision to the customer's live sessions once the status is committed, so a
+     * client that re-reads the profile on the event never sees the old status. A failed push
+     * only delays the update until the client's next sync; it must not undo the decision.
+     */
+    private void notifyKycDecision(String userId, KycStatus status, String reason) {
+        Runnable push = () -> {
+            try {
+                if (notificationServiceUrl == null || notificationServiceUrl.isBlank()) return;
+                org.springframework.http.client.SimpleClientHttpRequestFactory factory =
+                        new org.springframework.http.client.SimpleClientHttpRequestFactory();
+                factory.setConnectTimeout(3000);
+                factory.setReadTimeout(3000);
+                org.springframework.web.client.RestTemplate rest = new org.springframework.web.client.RestTemplate(factory);
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("user_id", userId);
+                payload.put("kyc_status", status.name());
+                if (reason != null) payload.put("reason", reason);
+                rest.postForEntity(notificationServiceUrl + "/api/v1/notifications/kyc-status", payload, Map.class);
+            } catch (Exception e) {
+                log.warn("Could not push KYC status {} for user {}: {}", status, userId, e.getMessage());
+            }
+        };
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            push.run();
+                        }
+                    });
+        } else {
+            push.run();
+        }
     }
 
     private KycProfileResponse toProfileResponse(UserEntity user) {
