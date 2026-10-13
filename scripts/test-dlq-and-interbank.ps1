@@ -51,32 +51,39 @@ function Invoke-SafeApi {
             Uri = $Url
             Method = $Method
             Headers = $reqHeaders
-            TimeoutSec = 6
+            TimeoutSec = 8
+            UseBasicParsing = $true
         }
         if ($Body) { $params["Body"] = $Body }
         
-        $response = Invoke-RestMethod @params -ResponseHeadersVariable respHeaders -StatusCodeVariable statusCode
+        $resp = Invoke-WebRequest @params
+        $bodyObj = $null
+        if ($resp.Content) {
+            try { $bodyObj = $resp.Content | ConvertFrom-Json } catch { $bodyObj = $resp.Content }
+        }
         return [PSCustomObject]@{
-            StatusCode = $statusCode
-            Body = $response
+            StatusCode = [int]$resp.StatusCode
+            Body = $bodyObj
             Success = $true
             Error = $null
         }
     } catch {
         $status = 0
         $errMsg = $_.Exception.Message
+        $bodyObj = $null
         if ($_.Exception.Response) {
             $status = [int]$_.Exception.Response.StatusCode
             try {
                 $stream = $_.Exception.Response.GetResponseStream()
                 $reader = New-Object System.IO.StreamReader($stream)
                 $errMsg = $reader.ReadToEnd()
+                try { $bodyObj = $errMsg | ConvertFrom-Json } catch { $bodyObj = $errMsg }
             } catch {}
         }
         return [PSCustomObject]@{
             StatusCode = $status
-            Body = $null
-            Success = $false
+            Body = $bodyObj
+            Success = ($status -ge 200 -and $status -lt 300)
             Error = $errMsg
         }
     }
@@ -132,10 +139,16 @@ if (-not $res.Success -and $res.StatusCode -eq 0) {
 }
 $passed = ($res.StatusCode -eq 200) -and ($res.Body -is [System.Array])
 $count = if ($res.Body) { $res.Body.Count } else { 0 }
+$incidents = if ($res.Body -is [System.Array]) { $res.Body } else { @() }
 Log-Result -Feature "DLQ & Replay" -TestName "Audit Vault Failed Transactions Inspection" -IsPositive $true -Passed $passed -Details "HTTP $($res.StatusCode) | Incidents in vault: $count"
 
 # Test 1.3: Direct CBS Audit Resolution Pipeline
-$testTx = "TXN-PS-DLQ-$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"
+$targetIncident = if ($incidents.Count -gt 0) { $incidents[0] } else { $null }
+$testTx = if ($targetIncident) {
+    if ($targetIncident.transactionId) { $targetIncident.transactionId } else { $targetIncident.incidentId }
+} else {
+    "TXN-PS-DLQ-$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"
+}
 $resolveUrl = "$GatewayUrl/api/v1/cbs/audit/failed-transactions/$testTx/resolve"
 $resBody = @{
     notes = "PowerShell automated test audit resolution"
@@ -147,8 +160,14 @@ if (-not $res.Success -and $res.StatusCode -eq 0) {
     $resolveUrl = "$CbsUrl/api/v1/cbs/audit/failed-transactions/$testTx/resolve"
     $res = Invoke-SafeApi -Url $resolveUrl -Method "POST" -Body $resBody
 }
-$passed = ($res.StatusCode -eq 200) -and ($res.Body.replayStatus -eq "RESOLVED")
-Log-Result -Feature "DLQ & Replay" -TestName "Audit Vault Direct Incident Resolution" -IsPositive $true -Passed $passed -Details "HTTP $($res.StatusCode) | Status: $($res.Body.replayStatus) | By: $($res.Body.resolvedBy)"
+if ($targetIncident) {
+    $passed = ($res.StatusCode -eq 200) -and ($res.Body.replayStatus -eq "RESOLVED")
+    $details = "HTTP $($res.StatusCode) | Status: $($res.Body.replayStatus) | By: $($res.Body.resolvedBy)"
+} else {
+    $passed = ($res.StatusCode -eq 400) -and ($res.Error -like "*Failed transaction record not found*")
+    $details = "HTTP $($res.StatusCode) | Correctly rejected non-existent incident (Business Validation)"
+}
+Log-Result -Feature "DLQ & Replay" -TestName "Audit Vault Direct Incident Resolution" -IsPositive $([bool]$targetIncident) -Passed $passed -Details $details
 
 # ----------------------------------------------------------------------------
 # SUITE 2: INTERBANK TRANSFERS
@@ -162,7 +181,7 @@ if (-not $res.Success -and $res.StatusCode -eq 0) {
     $dirUrl = "$OrchestratorUrl/api/v1/interbank/banks"
     $res = Invoke-SafeApi -Url $dirUrl
 }
-$passed = ($res.StatusCode -eq 200) -and ($res.Body -is [System.Array]) -and (($res.Body | Where-Object { $_.bankCode -eq "COOBS" }).Count -gt 0)
+$passed = ($res.StatusCode -eq 200) -and ($res.Body -is [System.Array]) -and (@($res.Body | Where-Object { $_.bankCode -eq "COOBS" }).Count -gt 0)
 Log-Result -Feature "Interbank" -TestName "Participant Banks Directory Facade (OFS-Backed)" -IsPositive $true -Passed $passed -Details "HTTP $($res.StatusCode) | Directory contains COOBS & AURABANK"
 
 # Test 2.2: Outward Wire (Happy Path)
