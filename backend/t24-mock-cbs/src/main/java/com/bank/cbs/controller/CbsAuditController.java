@@ -43,9 +43,19 @@ public class CbsAuditController {
 
     @GetMapping("/failed-transactions")
     public ResponseEntity<List<FailedTransactionAudit>> getFailedTransactions(
+            @RequestParam(value = "status", required = false) String status,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size) {
+        if (status != null && !status.isBlank() && !status.equalsIgnoreCase("ALL")) {
+            return ResponseEntity.ok(auditQueryService.getFailedTransactionsByStatus(status, page, size));
+        } else if ("ALL".equalsIgnoreCase(status)) {
+            return ResponseEntity.ok(auditQueryService.getAllFailedTransactions(page, size));
+        }
         return ResponseEntity.ok(auditQueryService.getUnresolvedFailedTransactions(page, size));
+    }
+
+    public ResponseEntity<List<FailedTransactionAudit>> getFailedTransactions(int page, int size) {
+        return getFailedTransactions(null, page, size);
     }
 
     @PostMapping("/failed-transactions/{transferId}/resolve")
@@ -54,7 +64,12 @@ public class CbsAuditController {
             @RequestBody Map<String, String> request) {
         String notes = request.getOrDefault("notes", "Resolved manually by compliance operator");
         String operator = request.getOrDefault("operatorId", "COMPLIANCE_OPERATOR");
-        return ResponseEntity.ok(auditQueryService.resolveFailedTransaction(transferId, notes, operator));
+        String replayStatus = request.getOrDefault("replayStatus", "RESOLVED");
+        return ResponseEntity.ok(auditQueryService.resolveFailedTransaction(transferId, notes, operator, replayStatus));
+    }
+
+    public ResponseEntity<FailedTransactionAudit> resolveFailedTransaction(String transferId, String notes, String operator) {
+        return resolveFailedTransaction(transferId, Map.of("notes", notes != null ? notes : "", "operatorId", operator != null ? operator : "", "replayStatus", "RESOLVED"));
     }
 
 
