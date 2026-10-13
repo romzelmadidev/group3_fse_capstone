@@ -34,6 +34,9 @@ class AutonomousDlqRecoveryWorkerTest {
         assertTrue(worker.isTransientError("HTTP 503 SERVICE_UNAVAILABLE"));
         assertTrue(worker.isTransientError("GATEWAY_TIMEOUT_504"));
         assertTrue(worker.isTransientError("CONNECTION_REFUSED"));
+        assertTrue(worker.isTransientError("DATABASE_UNAVAILABLE_LIMIT_CHECK"));
+        assertTrue(worker.isTransientError("CBS_DATABASE_UNAVAILABLE"));
+        assertTrue(worker.isTransientError("LIMIT_SERVICE_DOWN"));
 
         assertFalse(worker.isTransientError("INSUFFICIENT_FUNDS"));
         assertFalse(worker.isTransientError("ACCOUNT_CLOSED"));

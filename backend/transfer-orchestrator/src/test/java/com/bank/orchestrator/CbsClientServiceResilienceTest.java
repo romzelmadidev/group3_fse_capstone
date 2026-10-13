@@ -92,21 +92,23 @@ class CbsClientServiceResilienceTest {
     }
 
     @Test
-    void testFallback_WithCbsDatabaseDown_Rethrows503WithoutDlq() {
+    void testFallback_WithCbsDatabaseDown_Rethrows503WithoutDuplicateDlq() {
         TransferInitiationRequest request = new TransferInitiationRequest(
                 "TXN-DBDOWN-1", "1000-8801-0003", "1000-8801-0001",
                 new BigDecimal("100.00"), "PHP", "DB down test",
                 "DEV-1", "IDEMP-DBDOWN", null, false
         );
-        // postToCbs raises this when CBS answers 503 DB_UNAVAILABLE (nothing posted).
+        // postToCbs raises this with an incident ID when CBS answers 503 DB_UNAVAILABLE.
         ResponseStatusException dbDown = new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                "Core banking database is unavailable. Your transfer was not processed and no money moved.");
+                "Core banking database is unavailable. Transaction queued into DLQ for safe replay: incident=INC-DBDOWN-1");
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
                 cbsClientService.cbsPostingFallback(request, "TXN-DBDOWN-1", false, dbDown)
         );
 
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatusCode());
+        assertTrue(ex.getReason().contains("INC-DBDOWN-1"));
+        // Fallback recognizes the incident was already published to DLQ so does not double-publish
         verify(kafkaTemplate, never()).send(anyString(), anyString(), any());
     }
 

@@ -206,8 +206,19 @@ public class CbsClientService {
                 throw new ResponseStatusException(ex.getStatusCode(), "Posting failed in CBS: " + errMsg);
             }
             if (ex.getResponseBodyAsString().contains("DB_UNAVAILABLE")) {
-                // CBS answered, so nothing was posted. Fail the transfer instead of queueing a replay.
-                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, DB_DOWN_MESSAGE);
+                String incidentId = publishDlqEvent(
+                        txId,
+                        request,
+                        "CBS_DATABASE_UNAVAILABLE",
+                        "DB_UNAVAILABLE",
+                        "Core banking database is unavailable: " + ex.getMessage(),
+                        ex
+                );
+                throw new ResponseStatusException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "Core banking database is unavailable. Transaction queued into DLQ for safe replay: incident=" + incidentId,
+                        ex
+                );
             }
             throw ex;
         }
@@ -245,7 +256,7 @@ public class CbsClientService {
             throw clientEx;
         }
         for (Throwable c = t; c != null; c = c.getCause() == c ? null : c.getCause()) {
-            if (c instanceof ResponseStatusException rse && DB_DOWN_MESSAGE.equals(rse.getReason())) {
+            if (c instanceof ResponseStatusException rse && rse.getReason() != null && rse.getReason().contains("incident=")) {
                 throw rse;
             }
         }
@@ -287,7 +298,7 @@ public class CbsClientService {
      * Emits a standardized TransferFailedToDlqEvent to Kafka topic banking.transfers.dlq
      * for auditing, incident tracking, and ops alerting.
      */
-    public void publishDlqEvent(String txId, TransferInitiationRequest request, String errorType, String errorCode, String details, Throwable t) {
+    public String publishDlqEvent(String txId, TransferInitiationRequest request, String errorType, String errorCode, String details, Throwable t) {
         String incidentId = UUID.randomUUID().toString();
         TransferFailedToDlqEvent dlqEvent = TransferFailedToDlqEvent.builder()
                 .incidentId(incidentId)
@@ -307,10 +318,11 @@ public class CbsClientService {
 
         try {
             kafkaTemplate.send(DLQ_TOPIC, txId, dlqEvent);
-            log.info("Published failed interbank transfer event to DLQ: incidentId={}, txId={}, errorType={}", incidentId, txId, errorType);
+            log.info("Published failed transfer event to DLQ: incidentId={}, txId={}, errorType={}", incidentId, txId, errorType);
         } catch (Exception e) {
-            log.error("Failed to publish interbank DLQ event to Kafka: {}", e.getMessage(), e);
+            log.error("Failed to publish DLQ event to Kafka: {}", e.getMessage(), e);
         }
+        return incidentId;
     }
 
     private Map<String, Object> buildOriginalPayload(TransferInitiationRequest request) {

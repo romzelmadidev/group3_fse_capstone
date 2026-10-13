@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
@@ -203,8 +204,16 @@ class TransferOrchestrationServiceTest {
             ResponseStatusException actual = assertThrows(ResponseStatusException.class,
                     () -> orchestrationService.initiateTransfer(request), "iteration " + i + " amount " + amount);
 
-            assertSame(thrown, actual, "iteration " + i);
-            assertEquals(thrown instanceof LimitExceededException ? 402 : 503, actual.getStatusCode().value());
+            if (thrown instanceof LimitCheckUnavailableException) {
+                assertTrue(actual instanceof LimitCheckUnavailableException, "iteration " + i);
+                assertEquals(503, actual.getStatusCode().value());
+                assertTrue(actual.getReason().contains("queued into DLQ for safe replay: incident="));
+                verify(cbsService, times(1)).publishDlqEvent(eq("TXN-P8-" + i), eq(request), eq("DATABASE_UNAVAILABLE_LIMIT_CHECK"), eq("LIMIT_SERVICE_DOWN"), anyString(), any());
+            } else {
+                assertSame(thrown, actual, "iteration " + i);
+                assertEquals(402, actual.getStatusCode().value());
+                verify(cbsService, never()).publishDlqEvent(anyString(), any(), anyString(), anyString(), anyString(), any());
+            }
             verify(cbsService, never()).postToCbs(any(), anyString(), anyBoolean());
             verify(idempotencyService, never()).evictBalanceCache(any(), any());
             verify(biometricService, never()).generateChallenge(any(), any(), any(), any());
@@ -351,5 +360,33 @@ class TransferOrchestrationServiceTest {
             verify(limitClient, times(1)).evaluate(anyString(), any(), any());
             verify(limitClient, times(1)).release(token);
         }
+    }
+
+    @Test
+    void testInitiateTransfer_WhenLimitCheckUnavailable_PublishesToDlqAndThrows503WithIncidentId() {
+        TransferInitiationRequest request = new TransferInitiationRequest(
+                "TXN-ORACLE-DOWN", "1000-8801-0001", "1000-8801-0002",
+                new BigDecimal("1000.00"), "PHP", "Oracle down test",
+                "DEV-1", "IDEMP-ORACLE-DOWN", null, false
+        );
+
+        when(limitClient.evaluate(eq("TXN-ORACLE-DOWN"), eq("1000-8801-0001"), eq(new BigDecimal("1000.00"))))
+                .thenThrow(new LimitCheckUnavailableException("Transfer limits could not be verified", new RuntimeException("Oracle connection timeout")));
+        when(cbsService.publishDlqEvent(eq("TXN-ORACLE-DOWN"), eq(request), eq("DATABASE_UNAVAILABLE_LIMIT_CHECK"), eq("LIMIT_SERVICE_DOWN"), anyString(), any()))
+                .thenReturn("INC-ORACLE-999");
+
+        LimitCheckUnavailableException ex = assertThrows(LimitCheckUnavailableException.class,
+                () -> orchestrationService.initiateTransfer(request));
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatusCode());
+        assertEquals("INC-ORACLE-999", ex.getIncidentId());
+        assertTrue(ex.getReason().contains("INC-ORACLE-999"));
+        assertTrue(ex.getReason().contains("Transaction queued into DLQ for safe replay"));
+
+        verify(cbsService, times(1)).publishDlqEvent(
+                eq("TXN-ORACLE-DOWN"), eq(request), eq("DATABASE_UNAVAILABLE_LIMIT_CHECK"), eq("LIMIT_SERVICE_DOWN"), anyString(), any()
+        );
+        verify(cbsService, never()).postToCbs(any(), anyString(), anyBoolean());
+        verify(idempotencyService, times(1)).releaseLock("IDEMP-ORACLE-DOWN");
     }
 }

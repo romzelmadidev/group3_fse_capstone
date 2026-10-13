@@ -246,7 +246,10 @@ public class AutonomousDlqRecoveryWorker {
                 upper.contains("504") ||
                 upper.contains("CONNECTION") ||
                 upper.contains("GATEWAY_TIMEOUT") ||
-                upper.contains("SERVICE_UNAVAILABLE");
+                upper.contains("SERVICE_UNAVAILABLE") ||
+                upper.contains("DATABASE") ||
+                upper.contains("DB_DOWN") ||
+                upper.contains("LIMIT");
     }
 
     private Map<String, Object> reconstructPayload(Map<String, Object> incident, String txId) {

@@ -64,13 +64,22 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(LimitCheckUnavailableException.class)
     public ResponseEntity<Map<String, Object>> handleLimitCheckUnavailable(LimitCheckUnavailableException ex) {
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
-                "status", HttpStatus.SERVICE_UNAVAILABLE.value(),
-                "error", "LIMIT_CHECK_UNAVAILABLE",
-                "code", "TX_LIMIT_UNVERIFIED",
-                "message", "We couldn't verify your transfer limits. Please try again shortly.",
-                "timestampUtc", Instant.now().toString()
-        ));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("status", HttpStatus.SERVICE_UNAVAILABLE.value());
+        body.put("error", "LIMIT_CHECK_UNAVAILABLE");
+        body.put("code", "TX_LIMIT_UNVERIFIED");
+        String message;
+        if (ex.getIncidentId() != null || (ex.getReason() != null && ex.getReason().contains("incident="))) {
+            message = ex.getReason();
+        } else {
+            message = "We couldn't verify your transfer limits. Please try again shortly.";
+        }
+        body.put("message", message);
+        if (ex.getIncidentId() != null) {
+            body.put("incidentId", ex.getIncidentId());
+        }
+        body.put("timestampUtc", Instant.now().toString());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
     }
 
     private static String capKindLabel(String capKind) {

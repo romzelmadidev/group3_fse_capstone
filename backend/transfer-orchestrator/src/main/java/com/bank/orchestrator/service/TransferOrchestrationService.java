@@ -2,6 +2,7 @@ package com.bank.orchestrator.service;
 
 import com.bank.ledger.contracts.enums.TransactionStatus;
 import com.bank.orchestrator.dto.*;
+import com.bank.orchestrator.exception.LimitCheckUnavailableException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -98,7 +99,24 @@ public class TransferOrchestrationService {
         String limitLockToken = null;
         try {
             // 1b. KYC tier transfer limits (fails closed; breach throws LimitExceededException)
-            limitLockToken = limitClient.evaluate(txId, request.sourceAccountId(), request.amount()).lockToken();
+            try {
+                limitLockToken = limitClient.evaluate(txId, request.sourceAccountId(), request.amount()).lockToken();
+            } catch (LimitCheckUnavailableException lcue) {
+                log.warn("Transfer limit verification unavailable for txId={}: {}", txId, lcue.getMessage());
+                String incidentId = cbsService.publishDlqEvent(
+                        txId,
+                        request,
+                        "DATABASE_UNAVAILABLE_LIMIT_CHECK",
+                        "LIMIT_SERVICE_DOWN",
+                        "Transfer limits check unavailable due to database outage: " + lcue.getMessage(),
+                        lcue
+                );
+                throw new LimitCheckUnavailableException(
+                        "Core database or limit service is temporarily unavailable. Transaction queued into DLQ for safe replay: incident=" + incidentId,
+                        incidentId,
+                        lcue
+                );
+            }
 
             // 2. Risk Evaluation
             RiskScoreRequest riskReq = new RiskScoreRequest(
