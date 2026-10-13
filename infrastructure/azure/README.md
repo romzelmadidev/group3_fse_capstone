@@ -4,6 +4,22 @@ This directory contains the production-ready deployment scripts and manifests fo
 
 ---
 
+## 0. Recommended: one command (any Azure account)
+
+In Azure Cloud Shell (Bash):
+
+```bash
+git clone <YOUR_GIT_REPO_URL> aurabank && cd aurabank
+bash infrastructure/azure/run_azure.sh          # deploy / repair everything (safe to re-run)
+bash infrastructure/azure/run_azure.sh status   # pods + public URLs
+```
+
+It sizes AKS so no pod stays `Pending` (2 nodes, auto-adds one if needed), applies the Azure SQL schema once
+(existing data is never wiped), builds only missing images, waits for every pod to be Ready and smoke-tests the
+login path. At the end it prints the gateway URL to paste into the mobile app (Login -> server icon).
+
+---
+
 ## 1. Quick Start: Deployment Options
 
 ### Option A: Azure Cloud Shell (Split Scripts — Timeout-Proof)
