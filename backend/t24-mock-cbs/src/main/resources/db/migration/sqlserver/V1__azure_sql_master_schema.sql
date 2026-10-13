@@ -70,6 +70,14 @@ CREATE TABLE auth_identity.users (
     max_concurrent_sessions SMALLINT DEFAULT 3 NOT NULL,
     failed_login_attempts   SMALLINT DEFAULT 0 NOT NULL,
     status                  NVARCHAR(20) DEFAULT 'ACTIVE' NOT NULL,
+    kyc_status              NVARCHAR(30) DEFAULT 'PENDING' NOT NULL,
+    kyc_review_reason       NVARCHAR(500) NULL,
+    last_known_latitude     FLOAT DEFAULT 14.5995 NULL,
+    last_known_longitude    FLOAT DEFAULT 120.9842 NULL,
+    last_known_location_name NVARCHAR(100) DEFAULT 'Manila, Philippines' NULL,
+    last_known_ip           NVARCHAR(45) DEFAULT '112.198.45.10' NULL,
+    last_geo_updated_at     DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NULL,
+    last_login_at           DATETIMEOFFSET NULL,
     created_at              DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     updated_at              DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT chk_usr_role CHECK (role IN ('CUSTOMER', 'TELLER', 'MANAGER', 'ADMIN')),
@@ -84,6 +92,7 @@ CREATE TABLE core.accounts (
     user_id        NVARCHAR(64) NOT NULL,
     account_number NVARCHAR(32) NOT NULL UNIQUE,
     account_type   NVARCHAR(20) NOT NULL,
+    currency       NVARCHAR(3) DEFAULT 'PHP' NOT NULL,
     status         NVARCHAR(20) DEFAULT 'ACTIVE' NOT NULL,
     credit_limit   DECIMAL(18, 4) DEFAULT 0.0000 NOT NULL,
     created_at     DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -100,7 +109,8 @@ CREATE TABLE core.accounts (
 -- Concurrency target for: SELECT ... WITH (UPDLOCK, ROWLOCK)
 -- ==============================================================================
 CREATE TABLE core.balance_master (
-    account_id        NVARCHAR(64) NOT NULL PRIMARY KEY,
+    balance_id        NVARCHAR(64) NOT NULL PRIMARY KEY,
+    account_id        NVARCHAR(64) NOT NULL UNIQUE,
     balance_amount    DECIMAL(18, 4) DEFAULT 0.0000 NOT NULL,
     hold_amount       DECIMAL(18, 4) DEFAULT 0.0000 NOT NULL,
     available_balance AS (balance_amount - hold_amount),
@@ -118,14 +128,28 @@ CREATE TABLE core.balance_master (
 -- ==============================================================================
 CREATE TABLE core.transactions (
     transaction_id         NVARCHAR(64) NOT NULL PRIMARY KEY,
-    from_account_id        NVARCHAR(64) NOT NULL,
-    to_account_id          NVARCHAR(64) NOT NULL,
+    from_account_id        NVARCHAR(64) NULL,
+    to_account_id          NVARCHAR(64) NULL,
     amount                 DECIMAL(18, 4) NOT NULL,
     currency               NVARCHAR(3) DEFAULT 'PHP' NOT NULL,
-    transaction_type       NVARCHAR(20) NOT NULL,
-    status                 NVARCHAR(20) DEFAULT 'PENDING' NOT NULL,
+    type                   NVARCHAR(30) NULL,
+    transaction_type       NVARCHAR(30) DEFAULT 'INTRA_BANK' NOT NULL,
+    before_balance         DECIMAL(18, 4) DEFAULT 0.0000 NULL,
+    after_balance          DECIMAL(18, 4) DEFAULT 0.0000 NULL,
+    status                 NVARCHAR(30) DEFAULT 'PENDING' NOT NULL,
+    requires_2fa_otp       BIT DEFAULT 0 NULL,
     requires_maker_checker BIT DEFAULT 0 NOT NULL,
+    approved_by_user_id    NVARCHAR(64) NULL,
     approved_by            NVARCHAR(64) NULL,
+    latitude               DECIMAL(10, 6) NULL,
+    longitude              DECIMAL(10, 6) NULL,
+    location_name          NVARCHAR(100) NULL,
+    ip_address             NVARCHAR(45) NULL,
+    risk_score             DECIMAL(5, 2) NULL,
+    risk_reason            NVARCHAR(255) NULL,
+    reversed_by_user_id    NVARCHAR(64) NULL,
+    reversal_reason        NVARCHAR(100) NULL,
+    reversal_memo          NVARCHAR(255) NULL,
     memo                   NVARCHAR(255) NULL,
     idempotency_key        NVARCHAR(64) NULL,
     created_at             DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -142,29 +166,27 @@ CREATE TABLE integration.outbox_events (
     event_id        NVARCHAR(64) NOT NULL PRIMARY KEY,
     aggregate_type  NVARCHAR(64) NOT NULL,
     aggregate_id    NVARCHAR(64) NOT NULL,
-    event_type      NVARCHAR(64) NOT NULL,
+    event_type      NVARCHAR(64) DEFAULT 'EVENT' NOT NULL,
+    kafka_topic     NVARCHAR(100) DEFAULT 'banking.events' NOT NULL,
     payload         NVARCHAR(MAX) NOT NULL,
     status          NVARCHAR(20) DEFAULT 'PENDING' NOT NULL,
     retry_count     INT DEFAULT 0 NOT NULL,
     created_at      DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
-    processed_at    DATETIMEOFFSET NULL
+    processed_at    DATETIMEOFFSET NULL,
+    published_at    DATETIMEOFFSET NULL
 );
 
 -- ==============================================================================
 -- 6. Table: integration.notifications
 -- ==============================================================================
 CREATE TABLE integration.notifications (
-    notification_id   NVARCHAR(64) NOT NULL PRIMARY KEY,
-    user_id           NVARCHAR(64) NOT NULL,
-    recipient_address NVARCHAR(255) NOT NULL,
-    notification_type NVARCHAR(30) NOT NULL,
-    channel           NVARCHAR(20) DEFAULT 'EMAIL' NOT NULL,
-    subject           NVARCHAR(255) NOT NULL,
-    content_payload   NVARCHAR(MAX) NOT NULL,
-    dispatch_status   NVARCHAR(20) DEFAULT 'PENDING' NOT NULL,
-    delivery_attempts INT DEFAULT 0 NOT NULL,
-    created_at        DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
-    dispatched_at     DATETIMEOFFSET NULL,
+    notification_id NVARCHAR(64) NOT NULL PRIMARY KEY,
+    user_id         NVARCHAR(64) NOT NULL,
+    type            NVARCHAR(50) NOT NULL,
+    message         NVARCHAR(MAX) NOT NULL,
+    sent_at         DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
+    created_at      DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
+    updated_at      DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT fk_notif_user FOREIGN KEY (user_id) REFERENCES auth_identity.users(user_id)
 );
 
@@ -409,15 +431,15 @@ VALUES
 ('acc-2003-sav-002', 'usr-1002-cst-002', '100200009999', 'SAVINGS', 'ACTIVE', 0.0000),
 ('ACC-NOSTRO-BANK-B', 'usr-1004-adm-001', '900100000001', 'CHECKING', 'ACTIVE', 0.0000);
 
-INSERT INTO core.balance_master (account_id, balance_amount, hold_amount)
-VALUES 
-('1000-2000-3001', 25000000.0000, 0.0000),
-('1000-2000-3002', 5000000.0000, 0.0000),
-('1000-2000-3003', 10000000.0000, 0.0000),
-('acc-2001-sav-001', 25000000.0000, 5000000.0000),
-('acc-2002-chk-001', 8500000.0000, 0.0000),
-('acc-2003-sav-002', 12345678.1250, 0.0000),
-('ACC-NOSTRO-BANK-B', 5000000.0000, 0.0000);
+INSERT INTO core.balance_master (balance_id, account_id, balance_amount, hold_amount)
+VALUES
+('BAL-1000-2000-3001', '1000-2000-3001', 25000000.0000, 0.0000),
+('BAL-1000-2000-3002', '1000-2000-3002', 5000000.0000, 0.0000),
+('BAL-1000-2000-3003', '1000-2000-3003', 10000000.0000, 0.0000),
+('BAL-acc-2001-sav-001', 'acc-2001-sav-001', 25000000.0000, 5000000.0000),
+('BAL-acc-2002-chk-001', 'acc-2002-chk-001', 8500000.0000, 0.0000),
+('BAL-acc-2003-sav-002', 'acc-2003-sav-002', 12345678.1250, 0.0000),
+('BAL-ACC-NOSTRO-BANK-B', 'ACC-NOSTRO-BANK-B', 5000000.0000, 0.0000);
 
 -- Participant banks reference ACC-NOSTRO-BANK-B, so they must be seeded AFTER core.accounts.
 INSERT INTO core.participant_banks (bank_code, bank_name, bic_swift_code, clearing_network, nostro_account_id, api_endpoint_url, api_key, is_active)
@@ -519,5 +541,11 @@ IF NOT EXISTS (SELECT * FROM sys.synonyms WHERE name = 'balance_master' AND sche
     CREATE SYNONYM dbo.balance_master FOR core.balance_master;
 IF NOT EXISTS (SELECT * FROM sys.synonyms WHERE name = 'transactions' AND schema_id = SCHEMA_ID('dbo'))
     CREATE SYNONYM dbo.transactions FOR core.transactions;
+IF NOT EXISTS (SELECT * FROM sys.synonyms WHERE name = 'notifications' AND schema_id = SCHEMA_ID('dbo'))
+    CREATE SYNONYM dbo.notifications FOR integration.notifications;
+IF NOT EXISTS (SELECT * FROM sys.synonyms WHERE name = 'outbox_events' AND schema_id = SCHEMA_ID('dbo'))
+    CREATE SYNONYM dbo.outbox_events FOR integration.outbox_events;
+IF NOT EXISTS (SELECT * FROM sys.synonyms WHERE name = 'v_all_users' AND schema_id = SCHEMA_ID('dbo'))
+    CREATE SYNONYM dbo.v_all_users FOR auth_identity.v_all_users;
 GO
 

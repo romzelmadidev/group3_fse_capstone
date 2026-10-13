@@ -442,8 +442,12 @@ wait_until_ready() {
         local d
         for d in $notready; do
           echo "      -- ${d}: $(kubectl get pods -n banking -l app="$d" -o jsonpath='{range .items[*]}{.status.containerStatuses[0].restartCount}{" restart(s) "}{.status.containerStatuses[0].lastState.terminated.reason}{"  "}{end}' 2>/dev/null)"
-          kubectl logs deploy/"$d" -n banking --tail=60 2>/dev/null \
-            | grep -vE 'dd\.trace|Picked up JAVA_TOOL|Sharing is only' | tail -n 3 | cut -c1-220 | sed 's/^/         /' || true
+          local lg errs
+          lg="$( { kubectl logs deploy/"$d" -n banking --previous --tail=400 2>/dev/null; kubectl logs deploy/"$d" -n banking --tail=400 2>/dev/null; } \
+                 | grep -vE 'dd\.trace|Picked up JAVA_TOOL|Sharing is only' || true)"
+          errs="$(grep -E 'Caused by|ERROR|Exception|Error:|FAILED|conflicted' <<<"$lg" | grep -v '^\s*at ' | tail -n 4 || true)"
+          if [ -n "$errs" ]; then echo "$errs" | cut -c1-260 | sed 's/^/         /'
+          else tail -n 2 <<<"$lg" | cut -c1-220 | sed 's/^/         /'; fi
         done
       fi
     fi
