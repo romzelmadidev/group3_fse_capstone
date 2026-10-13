@@ -418,10 +418,8 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
                 child: Column(
                   children: [
                     _buildAmountRow('Transfer Amount', 'PHP ${_formatAmount(widget.amount)}'),
-                    const SizedBox(height: 14),
-                    _buildAmountRow('Transfer Fee', widget.fee == 0.0 ? 'FREE' : 'PHP ${_formatAmount(widget.fee)}', feeColor: greenSuccess),
                     const Divider(color: cardBorder, height: 28),
-                    _buildAmountRow('Total Amount', 'PHP ${_formatAmount(widget.amount + widget.fee)}', isTotal: true),
+                    _buildAmountRow('Total Amount', 'PHP ${_formatAmount(widget.amount)}', isTotal: true),
                   ],
                 ),
               ),
