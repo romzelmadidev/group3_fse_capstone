@@ -38,57 +38,65 @@ class _AnnualReportScreenState extends State<AnnualReportScreen> {
     'FY 2024 Historical Ledger',
   ];
 
-  late final List<AnnualQuarterItem> _quarterItems;
-
   @override
   void initState() {
     super.initState();
+    _bankService.addListener(_onBankServiceChanged);
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text.trim().toLowerCase();
       });
     });
+  }
 
-    _quarterItems = const [
-      AnnualQuarterItem(
-        id: 'q4',
-        title: 'Quarter 4 (Oct-Dec 2026)',
-        subtitle: 'Q4 2026',
-        amount: 26000.0,
-        settledCount: 53,
-        isIncoming: true,
-      ),
-      AnnualQuarterItem(
-        id: 'q3',
-        title: 'Quarter 3 (July-Sept 2026)',
-        subtitle: '05 Oct 2026 - 10:00 AM',
-        amount: 56700.0,
-        settledCount: 63,
-        isIncoming: true,
-      ),
-      AnnualQuarterItem(
-        id: 'q2',
-        title: 'Quarter 2 (April-June 2026)',
-        subtitle: 'Q2 2026',
-        amount: 90000.0,
-        settledCount: 48,
-        isIncoming: true,
-      ),
-      AnnualQuarterItem(
-        id: 'q1',
-        title: 'Quarter 1 (Jan-March 2026)',
-        subtitle: 'Q1 2026',
-        amount: 50000.0,
-        settledCount: 42,
-        isIncoming: true,
-      ),
-    ];
+  void _onBankServiceChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    _bankService.removeListener(_onBankServiceChanged);
     _searchController.dispose();
     super.dispose();
+  }
+
+  List<AnnualQuarterItem> get _quarterItems => _getQuarterItems();
+
+  List<AnnualQuarterItem> _getQuarterItems() {
+    if (!_selectedPeriod.contains('2026')) {
+      return const [];
+    }
+
+    final quartersDef = [
+      (id: 'q4', title: 'Quarter 4 (Oct-Dec 2026)', subtitle: 'Q4 2026', months: ['2026-10', '2026-11', '2026-12']),
+      (id: 'q3', title: 'Quarter 3 (July-Sept 2026)', subtitle: 'Q3 2026', months: ['2026-07', '2026-08', '2026-09']),
+      (id: 'q2', title: 'Quarter 2 (April-June 2026)', subtitle: 'Q2 2026', months: ['2026-04', '2026-05', '2026-06']),
+      (id: 'q1', title: 'Quarter 1 (Jan-March 2026)', subtitle: 'Q1 2026', months: ['2026-01', '2026-02', '2026-03']),
+    ];
+
+    final items = <AnnualQuarterItem>[];
+    for (final q in quartersDef) {
+      double received = 0.0;
+      int count = 0;
+      for (final m in q.months) {
+        final stmt = _bankService.statements[m];
+        if (stmt != null) {
+          received += stmt.totalReceived;
+          count += stmt.transactions.length;
+        }
+      }
+      items.add(
+        AnnualQuarterItem(
+          id: q.id,
+          title: q.title,
+          subtitle: q.subtitle,
+          amount: received,
+          settledCount: count,
+          isIncoming: true,
+        ),
+      );
+    }
+    return items;
   }
 
   String _formatCurrency(double amount) {
@@ -103,13 +111,24 @@ class _AnnualReportScreenState extends State<AnnualReportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const totalReceived = 560000.0;
-    const totalSent = 415000.0;
-    const allCount = 4;
-    const inCount = 4;
-    const outCount = 0;
+    double totalReceived = 0.0;
+    double totalSent = 0.0;
+    int inCount = 0;
+    int outCount = 0;
+    if (_selectedPeriod.contains('2026')) {
+      for (final stmt in _bankService.statements.values) {
+        if (stmt.monthKey.startsWith('2026')) {
+          totalReceived += stmt.totalReceived;
+          totalSent += stmt.totalSent;
+          inCount += stmt.transactions.where((t) => t.isIncoming).length;
+          outCount += stmt.transactions.where((t) => !t.isIncoming).length;
+        }
+      }
+    }
+    final allCount = inCount + outCount;
+    final quarterItems = _getQuarterItems();
 
-    var filteredItems = _quarterItems.where((item) {
+    var filteredItems = quarterItems.where((item) {
       if (_filterTab == 'In') return item.isIncoming;
       if (_filterTab == 'Out') return !item.isIncoming;
       return true;
