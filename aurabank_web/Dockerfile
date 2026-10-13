@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # ==============================================================================
 # FSE Capstone: Customer Retail Banking Flutter Web Dockerfile
 # Builds Flutter Web bundle and serves via Nginx Alpine
