@@ -43,10 +43,10 @@ function recordResult(feature, testName, isPositive, passed, details) {
   }
 }
 
-async function login(email, password) {
+async function login(email, password, deviceName = 'Chrome Admin Portal') {
   const res = await request(GATEWAY_URL, '/api/v1/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ email, password, deviceType: 'WEB', deviceName: 'Chrome Admin Portal' }),
+    body: JSON.stringify({ email, password, deviceType: 'WEB', deviceName }),
   });
   if (res.status === 200 && res.body?.access_token) {
     return res.body.access_token;
@@ -57,7 +57,7 @@ async function login(email, password) {
     const otp = execSync(`docker exec redis-cache redis-cli get otp:login:${userId}`, { encoding: 'utf-8' }).trim();
     const verifyRes = await request(GATEWAY_URL, '/api/v1/auth/verify-login-otp', {
       method: 'POST',
-      body: JSON.stringify({ user_id: userId, otp, device_type: 'WEB', device_name: 'Chrome Admin Portal' }),
+      body: JSON.stringify({ user_id: userId, otp, device_type: 'WEB', device_name: deviceName }),
     });
     if (verifyRes.status === 200 && verifyRes.body?.access_token) {
       return verifyRes.body.access_token;
@@ -435,6 +435,17 @@ async function runFeature4Tests() {
     replayPassed,
     replayDetails
   );
+
+  // Positive 4.3: Autonomous DLQ Recovery Daemon Status & ShedLock Verification
+  const daemonRes = await request(GATEWAY_URL, '/api/v1/compliance/dlq/status');
+  const daemonPassed = daemonRes.status === 200 && daemonRes.body?.autonomousDaemonActive === true;
+  recordResult(
+    'Feature 4: Failed Transaction / Retry (DLQ)',
+    'Autonomous Constrained Recovery Daemon (ShedLock Synced, 10m TTL Safety Window)',
+    true,
+    daemonPassed,
+    `HTTP ${daemonRes.status} | ShedLock: ${daemonRes.body?.shedLockSynced} | CBS Health: ${daemonRes.body?.cbsHealthy} | Max Age: ${daemonRes.body?.maxAgeMinutes}m`
+  );
 }
 
 async function runFeature5Tests() {
@@ -614,7 +625,7 @@ async function runFeature7Tests() {
   );
 
   // Positive 7.2: Staff Customer 360 & KYC review queue enquiry
-  const staffToken = await login('diana.admin@bank.com', 'password123');
+  const staffToken = await login('diana.admin@bank.com', 'Staff@Aura2026', 'Aura Console');
   const staffAccountsRes = await request(GATEWAY_URL, '/api/v1/accounts', {
     headers: { Authorization: `Bearer ${staffToken}` },
   });

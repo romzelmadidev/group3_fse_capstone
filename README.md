@@ -285,7 +285,7 @@ Once the containers are running, access the web portals directly in your browser
 
 | Portal / Dashboard | URL | Default Credentials / Persona | Description |
 | :--- | :--- | :--- | :--- |
-| **Aura Bank Staff Console** | **`http://localhost:3000`** | `diana.admin@bank.com` / `password123`<br>`crisostomo.teller@bank.com` / `password123` | Unified back-office portal: Customers, KYC, Held Transfers, Reversals, SAR/STR, Location Simulator, Audit Trail, T24 Core Banking (`/cbs`), and Compliance Drive (`/drive`). |
+| **Aura Bank Staff Console** | **`http://localhost:3000`** | `diana.admin@bank.com` / `Staff@Aura2026`<br>`crisostomo.ibarra@eastwestbanker.com` / `Staff@Aura2026` (staff only; customers use the AuraBank apps) | Unified back-office portal: Customers, KYC, Held Transfers, Reversals, SAR/STR, Location Simulator, Audit Trail, T24 Core Banking (`/cbs`), and Compliance Drive (`/drive`). |
 | **Adminer Database GUI** | **`http://localhost:8088`** | *(See detailed login guide below)* | Web SQL console to inspect and query Oracle XE Master DB and PostgreSQL Audit Vault. |
 | **MailHog SMTP Inbox** | **`http://localhost:8025`** | *No authentication required* | Live web inbox capturing transaction receipts, alert emails, and 2FA MFA OTP login codes. |
 | **Kafka Web Console (Kafka UI)**| **`http://localhost:8089`** | *No authentication required* | Real-time topic, consumer group, and message streaming inspector (`banking.transfers.events`, `banking.batch.events`). |

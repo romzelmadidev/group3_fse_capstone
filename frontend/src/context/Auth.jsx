@@ -12,7 +12,7 @@ const STAFF_ROLES = ['ADMIN', 'TELLER', 'MANAGER'];
 /** Zel's Segregation of Duties on the live roles: ADMIN is his compliance and fraud desk, TELLER and MANAGER his branch operations desk. */
 export const BRANCH_ROLES = ['TELLER', 'MANAGER'];
 export const REVERSAL_CHECKERS = ['ADMIN', 'MANAGER'];
-const ACCESS = { '/customers': BRANCH_ROLES, '/sar': ['ADMIN'], '/geo': ['ADMIN'], '/audit': ['ADMIN'] };
+const ACCESS = { '/customers': BRANCH_ROLES, '/sar': ['ADMIN'], '/geo': ['ADMIN'], '/audit': ['ADMIN'], '/dlq': ['ADMIN'] };
 export const canOpen = (role, path) => (ACCESS[path] || STAFF_ROLES).includes(role);
 
 /** Display details for seeded staff; unknown staff fall back to their email. */
@@ -27,20 +27,20 @@ const DIRECTORY = {
   U3002: { name: 'Beatriz Ocampo', title: 'Teller' },
   U3003: { name: 'Carlos Mendoza', title: 'Teller' },
   // Team members
-  'USR-TM-WAX': { name: 'Wax', title: 'Admin' },
-  'USR-TM-HANS': { name: 'Hans', title: 'Admin' },
-  'USR-TM-JM': { name: 'JM', title: 'Teller' },
-  'USR-TM-ZEL': { name: 'Zel', title: 'Admin' },
-  'USR-TM-JESSY': { name: 'Jessy', title: 'Teller' },
-  'USR-TM-MAYE': { name: 'Maye', title: 'Admin' },
-  'USR-TM-ANGEL': { name: 'Angel', title: 'Teller' },
-  'wax@bank.com': { name: 'Wax', title: 'Admin' },
-  'hans@bank.com': { name: 'Hans', title: 'Admin' },
-  'jm@bank.com': { name: 'JM', title: 'Teller' },
-  'zel@bank.com': { name: 'Zel', title: 'Admin' },
-  'jessy@bank.com': { name: 'Jessy', title: 'Teller' },
-  'maye@bank.com': { name: 'Maye', title: 'Admin' },
-  'angel@bank.com': { name: 'Angel', title: 'Teller' },
+  'ADM-TM-WAX': { name: 'Wax', title: 'Admin' },
+  'ADM-TM-HANS': { name: 'Hans', title: 'Admin' },
+  'ADM-TM-JM': { name: 'JM', title: 'Teller' },
+  'ADM-TM-ZEL': { name: 'Zel', title: 'Admin' },
+  'ADM-TM-JESSY': { name: 'Jessy', title: 'Teller' },
+  'ADM-TM-MAYE': { name: 'Maye', title: 'Admin' },
+  'ADM-TM-ANGEL': { name: 'Angel', title: 'Teller' },
+  'wax.staff@bank.com': { name: 'Wax', title: 'Admin' },
+  'hans.staff@bank.com': { name: 'Hans', title: 'Admin' },
+  'jm.staff@bank.com': { name: 'JM', title: 'Teller' },
+  'zel.staff@bank.com': { name: 'Zel', title: 'Admin' },
+  'jessy.staff@bank.com': { name: 'Jessy', title: 'Teller' },
+  'maye.staff@bank.com': { name: 'Maye', title: 'Admin' },
+  'angel.staff@bank.com': { name: 'Angel', title: 'Teller' },
 };
 export const staffName = (id) => DIRECTORY[id]?.name || id || 'Unknown';
 

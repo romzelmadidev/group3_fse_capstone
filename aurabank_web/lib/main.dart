@@ -6,6 +6,7 @@ import 'package:aurabank_core/screens/auth/otp_verification_screen.dart';
 import 'package:aurabank_core/screens/auth/security_gate_screen.dart';
 import 'package:aurabank_core/services/bank_service.dart';
 import 'package:aurabank_core/services/device_storage.dart';
+import 'package:aurabank_core/services/session_guard.dart';
 import 'package:aurabank_core/theme/aura_theme.dart';
 import 'package:flutter/material.dart';
 
@@ -14,6 +15,7 @@ import 'web_shell.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await DeviceStorage.init();
+  SessionGuard.start();
   await BankService().initPreferences();
   runApp(const AuraBankWeb());
 }
