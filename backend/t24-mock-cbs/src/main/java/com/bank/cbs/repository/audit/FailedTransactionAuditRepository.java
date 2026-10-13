@@ -13,4 +13,5 @@ public interface FailedTransactionAuditRepository extends JpaRepository<FailedTr
     Optional<FailedTransactionAudit> findByTransactionId(String transactionId);
     List<FailedTransactionAudit> findByReplayStatus(String replayStatus);
     List<FailedTransactionAudit> findByReplayStatusOrderByFailureTimestampDesc(String replayStatus, Pageable pageable);
+    List<FailedTransactionAudit> findAllByOrderByFailureTimestampDesc(Pageable pageable);
 }

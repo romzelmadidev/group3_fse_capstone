@@ -256,11 +256,7 @@ public class CbsClientService {
                 .currency(request.currency() != null ? request.currency() : "PHP")
                 .failureTimestampUtc(Instant.now())
                 .stackTrace(t.getMessage())
-                .originalPayload(Map.of(
-                        "sourceAccountId", request.sourceAccountId(),
-                        "destinationAccountId", request.destinationAccountId(),
-                        "amount", request.amount()
-                ))
+                .originalPayload(buildOriginalPayload(request))
                 .build();
 
         try {
@@ -296,11 +292,7 @@ public class CbsClientService {
                 .currency(request != null && request.currency() != null ? request.currency() : "PHP")
                 .failureTimestampUtc(Instant.now())
                 .stackTrace(details != null ? details : (t != null ? t.getMessage() : "Unknown"))
-                .originalPayload(request != null ? Map.of(
-                        "sourceAccountId", request.sourceAccountId(),
-                        "destinationAccountId", request.destinationAccountId(),
-                        "amount", request.amount()
-                ) : Map.of())
+                .originalPayload(buildOriginalPayload(request))
                 .build();
 
         try {
@@ -309,6 +301,22 @@ public class CbsClientService {
         } catch (Exception e) {
             log.error("Failed to publish interbank DLQ event to Kafka: {}", e.getMessage(), e);
         }
+    }
+
+    private Map<String, Object> buildOriginalPayload(TransferInitiationRequest request) {
+        if (request == null) {
+            return Collections.emptyMap();
+        }
+        Map<String, Object> payload = new java.util.HashMap<>();
+        if (request.sourceAccountId() != null) payload.put("sourceAccountId", request.sourceAccountId());
+        if (request.destinationAccountId() != null) payload.put("destinationAccountId", request.destinationAccountId());
+        if (request.amount() != null) payload.put("amount", request.amount());
+        if (request.currency() != null) payload.put("currency", request.currency());
+        if (request.destinationBank() != null) payload.put("destinationBank", request.destinationBank());
+        if (request.description() != null) payload.put("description", request.description());
+        if (request.senderName() != null) payload.put("senderName", request.senderName());
+        if (request.deviceId() != null) payload.put("deviceId", request.deviceId());
+        return payload;
     }
 
     private ResponseStatusException extractClientException(Throwable t) {
