@@ -193,14 +193,36 @@ public class RiskEngineClient {
                         .sarReportId(sarReportId)
                         .build();
             } else {
-                log.warn("[RISK ENGINE HTTP {}] Falling back to default threshold", response.statusCode());
+                log.warn("[RISK ENGINE HTTP {}] RISK_SERVICE_UNAVAILABLE: Falling back to default threshold", response.statusCode());
             }
         } catch (Exception e) {
-            log.warn("[RISK ENGINE TIMEOUT/FALLBACK] Could not reach risk service: {}. Falling back to default static threshold.",
+            log.warn("[RISK ENGINE TIMEOUT/FALLBACK] RISK_SERVICE_UNAVAILABLE: Could not reach risk service: {}. Falling back to default static threshold.",
                     e.getMessage());
         }
 
-        // Safe fallback when service is offline or times out
+        return fallbackResult(request);
+    }
+
+    /** Service offline or timed out: step up when the request carries a risk signal, otherwise allow. */
+    private RiskEvaluationResult fallbackResult(MutationRequest request) {
+        boolean hasSignal = Boolean.TRUE.equals(request.getRemoteAppActive())
+                || Boolean.TRUE.equals(request.getIsScreenSharing())
+                || Boolean.TRUE.equals(request.getActiveCall())
+                || Boolean.TRUE.equals(request.getIsOnCall())
+                || Boolean.TRUE.equals(request.getIsPasted())
+                || Boolean.TRUE.equals(request.getRooted())
+                || Boolean.TRUE.equals(request.getHooking())
+                || Boolean.TRUE.equals(request.getEmulator());
+
+        if (hasSignal) {
+            return RiskEvaluationResult.builder()
+                    .decision("REQUIRE_2FA")
+                    .fraudScore(40)
+                    .anomaly(false)
+                    .primaryFlag("RISK_SERVICE_UNAVAILABLE")
+                    .evaluationTimeMs(0.0)
+                    .build();
+        }
         return RiskEvaluationResult.builder()
                 .decision("ALLOW")
                 .fraudScore(0)
