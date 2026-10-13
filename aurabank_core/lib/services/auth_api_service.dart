@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show debugPrint, defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:http/http.dart' as http;
 import '../models/user_persona.dart';
+import '../navigation/root_navigator.dart';
 import 'bank_service.dart';
 import 'device_storage.dart';
+import 'notification_stream_service.dart';
 import 'security_service.dart';
 
 class BackendConfig {
@@ -214,13 +216,47 @@ class AuthApiService {
 
   bool get isDeviceApproved => currentIsApproved ?? (currentIsPrimaryDevice == true);
   bool get isPrimaryDevice {
+    if (kIsWeb) return false;
     final type = (currentDeviceType.isNotEmpty ? currentDeviceType : DeviceIdentity().type).toUpperCase();
     if (type == 'WEB') return false;
     return currentIsPrimaryDevice ?? DeviceStorage.getIsPrimaryDevice() ?? false;
   }
-  bool get isAuthenticated =>
-      (currentAccessToken != null && currentAccessToken!.isNotEmpty) ||
-      (DeviceStorage.getAccessToken() != null && DeviceStorage.getAccessToken()!.isNotEmpty);
+  String? get _accessToken {
+    if (currentAccessToken != null && currentAccessToken!.isNotEmpty) return currentAccessToken;
+    final stored = DeviceStorage.getAccessToken();
+    return stored != null && stored.isNotEmpty ? stored : null;
+  }
+
+  /// True when the token is a JWT whose `exp` has passed. Opaque tokens and
+  /// tokens without a readable `exp` are never treated as expired.
+  bool _isExpired(String token) {
+    final parts = token.split('.');
+    if (parts.length != 3) return false;
+    try {
+      final payload = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
+      final exp = payload is Map ? payload['exp'] : null;
+      if (exp is! num) return false;
+      return exp * 1000 <= DateTime.now().millisecondsSinceEpoch;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool get _canRefresh {
+    final refreshToken = DeviceStorage.getRefreshToken();
+    return !kIsWeb && refreshToken != null && refreshToken.isNotEmpty;
+  }
+
+  /// True when the access token is past its `exp`.
+  bool get isAccessTokenExpired {
+    final token = _accessToken;
+    return token != null && _isExpired(token);
+  }
+
+  bool get isAuthenticated {
+    final token = _accessToken;
+    return token != null && (!_isExpired(token) || _canRefresh);
+  }
 
   void switchDevice(DevicePreset preset) {
     currentDeviceId = preset.id;
@@ -637,16 +673,27 @@ class AuthApiService {
   Future<List<Map<String, dynamic>>> getRegisteredDevices({String? userId}) async {
     final uid = userId ?? currentUserId ?? DeviceStorage.getUserId();
     if (uid == null) return [];
-    final token = currentAccessToken ?? DeviceStorage.getAccessToken();
+    var token = currentAccessToken ?? DeviceStorage.getAccessToken();
     final endpoints = _endpoints;
+    var triedRecovery = false;
     for (final baseUrl in endpoints) {
       try {
-        final headers = <String, String>{'Content-Type': 'application/json'};
-        if (token != null) {
-          headers['Authorization'] = 'Bearer $token';
-        }
         final url = Uri.parse('$baseUrl/api/v1/auth/devices?userId=$uid');
-        final response = await _client.get(url, headers: headers).timeout(const Duration(seconds: 3));
+        Future<http.Response> send() {
+          final headers = <String, String>{'Content-Type': 'application/json'};
+          if (token != null) {
+            headers['Authorization'] = 'Bearer $token';
+          }
+          return _client.get(url, headers: headers).timeout(const Duration(seconds: 3));
+        }
+
+        var response = await send();
+        if (response.statusCode == 401 && !triedRecovery) {
+          triedRecovery = true;
+          if (!await recoverFromUnauthorized()) return [];
+          token = currentAccessToken;
+          response = await send();
+        }
         if (response.statusCode == 200) {
           _recordWorkingEndpoint(baseUrl);
           final list = jsonDecode(response.body) as List<dynamic>;
@@ -660,22 +707,33 @@ class AuthApiService {
   Future<bool> setPrimaryDevice({required String deviceId, String? userId}) async {
     final uid = userId ?? currentUserId ?? DeviceStorage.getUserId();
     if (uid == null) return false;
-    final token = currentAccessToken ?? DeviceStorage.getAccessToken();
+    var token = currentAccessToken ?? DeviceStorage.getAccessToken();
     final endpoints = kIsWeb ? [accountServiceUrl, gatewayUrl] : [gatewayUrl, accountServiceUrl];
+    var triedRecovery = false;
     for (final baseUrl in endpoints) {
       try {
-        final headers = <String, String>{'Content-Type': 'application/json'};
-        if (token != null) {
-          headers['Authorization'] = 'Bearer $token';
-        }
         final url = Uri.parse('$baseUrl/api/v1/auth/devices/primary');
-        final response = await _client
-            .post(
-              url,
-              headers: headers,
-              body: jsonEncode({'user_id': uid, 'device_id': deviceId}),
-            )
-            .timeout(const Duration(seconds: 3));
+        Future<http.Response> send() {
+          final headers = <String, String>{'Content-Type': 'application/json'};
+          if (token != null) {
+            headers['Authorization'] = 'Bearer $token';
+          }
+          return _client
+              .post(
+                url,
+                headers: headers,
+                body: jsonEncode({'user_id': uid, 'device_id': deviceId}),
+              )
+              .timeout(const Duration(seconds: 3));
+        }
+
+        var response = await send();
+        if (response.statusCode == 401 && !triedRecovery) {
+          triedRecovery = true;
+          if (!await recoverFromUnauthorized()) return false;
+          token = currentAccessToken;
+          response = await send();
+        }
         if (response.statusCode == 200) {
           currentPrimaryDeviceId = deviceId;
           currentIsPrimaryDevice = (currentDeviceId == deviceId);
@@ -694,22 +752,33 @@ class AuthApiService {
     }
     final uid = userId ?? currentUserId ?? DeviceStorage.getUserId();
     if (uid == null) return false;
-    final token = currentAccessToken ?? DeviceStorage.getAccessToken();
+    var token = currentAccessToken ?? DeviceStorage.getAccessToken();
     final endpoints = kIsWeb ? [accountServiceUrl, gatewayUrl] : [gatewayUrl, accountServiceUrl];
+    var triedRecovery = false;
     for (final baseUrl in endpoints) {
       try {
-        final headers = <String, String>{'Content-Type': 'application/json'};
-        if (token != null) {
-          headers['Authorization'] = 'Bearer $token';
-        }
         final url = Uri.parse('$baseUrl/api/v1/auth/devices/approve');
-        final response = await _client
-            .post(
-              url,
-              headers: headers,
-              body: jsonEncode({'user_id': uid, 'device_id': deviceId}),
-            )
-            .timeout(const Duration(seconds: 3));
+        Future<http.Response> send() {
+          final headers = <String, String>{'Content-Type': 'application/json'};
+          if (token != null) {
+            headers['Authorization'] = 'Bearer $token';
+          }
+          return _client
+              .post(
+                url,
+                headers: headers,
+                body: jsonEncode({'user_id': uid, 'device_id': deviceId}),
+              )
+              .timeout(const Duration(seconds: 3));
+        }
+
+        var response = await send();
+        if (response.statusCode == 401 && !triedRecovery) {
+          triedRecovery = true;
+          if (!await recoverFromUnauthorized()) return false;
+          token = currentAccessToken;
+          response = await send();
+        }
         if (response.statusCode == 200) {
           return true;
         }
@@ -804,11 +873,35 @@ class AuthApiService {
         } catch (_) {}
       }
     }
+    await _clearLocalSession();
+  }
+
+  Future<void> _clearLocalSession() async {
     currentAccessToken = null;
     currentUserId = null;
     currentEmail = null;
     currentPersona = null;
     await DeviceStorage.clearSession();
+  }
+
+  /// Ends a session the server no longer accepts: clears local state, stops the
+  /// notification stream and returns to sign-in. Safe to call repeatedly.
+  Future<void> expireSession() async {
+    if (_accessToken == null) return;
+    // Cleared before any await so concurrent callers see no session and return.
+    currentAccessToken = null;
+    NotificationStreamService().disconnect();
+    await _clearLocalSession();
+    rootNavigatorKey.currentState
+        ?.pushNamedAndRemoveUntil('/login', (_) => false, arguments: sessionExpiredArg);
+  }
+
+  /// Call after a 401 on an authenticated request. Returns true when the token was
+  /// renewed (retry once), false when the session was ended.
+  Future<bool> recoverFromUnauthorized() async {
+    if (await refreshAccessToken()) return true;
+    await expireSession();
+    return false;
   }
 
   Future<bool> logoutAll({String? userId}) async {

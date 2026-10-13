@@ -212,3 +212,166 @@ class UserProfile {
     return s == 'VERIFIED' || s == 'APPROVED' || s == 'ACTIVE';
   }
 }
+
+/// Cap, usage and reset time for one window (daily or monthly).
+class LimitWindow {
+  final double cap;
+  final double used;
+  final double remaining;
+  final DateTime? resetsAt;
+
+  const LimitWindow({
+    required this.cap,
+    required this.used,
+    required this.remaining,
+    this.resetsAt,
+  });
+
+  factory LimitWindow.fromJson(Map<String, dynamic> json) {
+    final cap = (json['cap'] as num?)?.toDouble() ?? 0.0;
+    final used = (json['used'] as num?)?.toDouble() ?? 0.0;
+    final remaining = (json['remaining'] as num?)?.toDouble() ?? (cap - used);
+    return LimitWindow(
+      cap: cap,
+      used: used,
+      remaining: remaining < 0 ? 0.0 : remaining,
+      resetsAt: DateTime.tryParse(json['resets_at'] as String? ?? ''),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'cap': cap,
+        'used': used,
+        'remaining': remaining,
+        'resets_at': resetsAt?.toIso8601String(),
+      };
+}
+
+/// The cap a transfer would breach. Mirrors the server's Limit_Exceeded_Error.
+class LimitBreach {
+  /// PER_TRANSFER, DAILY or MONTHLY.
+  final String capKind;
+  final double capValue;
+  final double remaining;
+  final String message;
+
+  const LimitBreach({
+    required this.capKind,
+    required this.capValue,
+    required this.remaining,
+    required this.message,
+  });
+}
+
+/// Customer's transfer limits and usage, as returned by GET /api/v1/accounts/me/limits.
+class TransferLimits {
+  static const String perTransfer = 'PER_TRANSFER';
+  static const String daily = 'DAILY';
+  static const String monthly = 'MONTHLY';
+
+  static const String _kycGuidance = 'Complete KYC verification to raise your limits.';
+
+  /// BASIC or FULLY_VERIFIED.
+  final String tier;
+  final bool restricted;
+  final String kycStatus;
+  final String currency;
+  final double perTransferCap;
+  final LimitWindow dailyWindow;
+  final LimitWindow monthlyWindow;
+
+  const TransferLimits({
+    required this.tier,
+    required this.restricted,
+    required this.kycStatus,
+    required this.currency,
+    required this.perTransferCap,
+    required this.dailyWindow,
+    required this.monthlyWindow,
+  });
+
+  bool get isBasic => tier == 'BASIC';
+
+  factory TransferLimits.fromJson(Map<String, dynamic> json) {
+    return TransferLimits(
+      tier: json['tier'] ?? 'BASIC',
+      restricted: json['restricted'] ?? false,
+      kycStatus: json['kyc_status'] ?? 'PENDING',
+      currency: json['currency'] ?? 'PHP',
+      perTransferCap: (json['per_transfer_cap'] as num?)?.toDouble() ?? 0.0,
+      dailyWindow: LimitWindow.fromJson((json['daily'] as Map<String, dynamic>?) ?? const {}),
+      monthlyWindow: LimitWindow.fromJson((json['monthly'] as Map<String, dynamic>?) ?? const {}),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'tier': tier,
+        'restricted': restricted,
+        'kyc_status': kycStatus,
+        'currency': currency,
+        'per_transfer_cap': perTransferCap,
+        'daily': dailyWindow.toJson(),
+        'monthly': monthlyWindow.toJson(),
+      };
+
+  /// Lowest of the per-transfer cap and the daily and monthly remaining amounts.
+  double get lowestRemaining {
+    var lowest = perTransferCap;
+    if (dailyWindow.remaining < lowest) lowest = dailyWindow.remaining;
+    if (monthlyWindow.remaining < lowest) lowest = monthlyWindow.remaining;
+    return lowest;
+  }
+
+  /// Returns the breach the server would report for [amount], or null if it is allowed.
+  /// An amount equal to a cap or remaining value is allowed. Among breached caps the
+  /// lowest remaining wins; ties go to PER_TRANSFER, then DAILY, then MONTHLY.
+  LimitBreach? check(double amount) {
+    if (amount <= 0) return null;
+
+    if (restricted) {
+      return LimitBreach(
+        capKind: perTransfer,
+        capValue: 0,
+        remaining: 0,
+        message: 'Your account is restricted, so transfers are unavailable right now.',
+      );
+    }
+
+    final candidates = <(String, double, double)>[
+      (perTransfer, perTransferCap, perTransferCap),
+      (daily, dailyWindow.cap, dailyWindow.remaining),
+      (monthly, monthlyWindow.cap, monthlyWindow.remaining),
+    ];
+
+    (String, double, double)? worst;
+    for (final c in candidates) {
+      if (amount > c.$3 && (worst == null || c.$3 < worst.$3)) worst = c;
+    }
+    if (worst == null) return null;
+
+    final label = switch (worst.$1) {
+      perTransfer => 'per-transfer',
+      daily => 'daily',
+      _ => 'monthly',
+    };
+    var message = 'This transfer is above your $label limit of ${_money(worst.$2)}. '
+        'You can send up to ${_money(worst.$3)}.';
+    if (isBasic) message += ' $_kycGuidance';
+
+    return LimitBreach(
+      capKind: worst.$1,
+      capValue: worst.$2,
+      remaining: worst.$3,
+      message: message,
+    );
+  }
+
+  String _money(double value) {
+    final parts = value.toStringAsFixed(2).split('.');
+    final intPart = parts[0].replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+    return '$currency $intPart.${parts[1]}';
+  }
+}

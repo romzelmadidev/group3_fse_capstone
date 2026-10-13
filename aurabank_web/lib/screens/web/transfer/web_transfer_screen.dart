@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:aurabank_core/models/user_persona.dart';
+import 'package:aurabank_core/models/bank_models.dart' show LimitBreach;
 import 'package:aurabank_core/services/bank_service.dart';
+import 'package:aurabank_core/theme/aura_theme.dart';
 
 class QuickTransferDraft {
   QuickTransferDraft({
@@ -108,6 +110,9 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
     _accountController.addListener(() => setState(() {}));
     _recipientController.addListener(() => setState(() {}));
     _remarksController.addListener(() => setState(() {}));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _bankService.loadLimits();
+    });
   }
 
   @override
@@ -199,6 +204,15 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
     if (_recipientController.text.trim().isEmpty) {
       _showWarningSnackBar('Please enter the recipient name.');
       return;
+    }
+
+    final limits = _bankService.limits;
+    if (limits != null) {
+      final LimitBreach? breach = limits.check(amount);
+      if (breach != null) {
+        _showWarningSnackBar(breach.message);
+        return;
+      }
     }
 
     _showVerificationModal();
@@ -1839,7 +1853,9 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
             ),
           ),
 
-          const SizedBox(height: 24),
+          _buildLimitsStatusBanner(),
+
+          const SizedBox(height: 20),
 
           // CTA: Send Money Now ->
           SizedBox(
@@ -1870,6 +1886,152 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLimitsStatusBanner() {
+    final limits = _bankService.limits;
+    if (limits == null) {
+      if (_bankService.limitsLoading) {
+        return const Padding(
+          padding: EdgeInsets.only(top: 14),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF7D8892)),
+              ),
+              SizedBox(width: 8),
+              Text('Checking limits...', style: TextStyle(fontSize: 11, color: Color(0xFF7D8892))),
+            ],
+          ),
+        );
+      }
+      return const SizedBox.shrink();
+    }
+
+    final breach = _parsedAmount > 0 ? limits.check(_parsedAmount) : null;
+    final restricted = limits.restricted;
+    final isBasic = limits.isBasic;
+    final badgeLabel = restricted ? 'Restricted' : (isBasic ? 'Basic Tier' : 'Fully Verified');
+    final badgeColor = restricted
+        ? const Color(0xFFDC2626)
+        : (isBasic ? AuraColors.primary : const Color(0xFF17805F));
+    final badgeBg = restricted
+        ? const Color(0xFFFEF2F2)
+        : (isBasic ? AuraColors.tintPurple : const Color(0xFFE4F5EE));
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: breach != null || restricted ? const Color(0xFFFEF2F2) : const Color(0xFFF9FAFB),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: breach != null || restricted ? const Color(0xFFFCA5A5) : borderLight,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  breach != null || restricted ? Icons.error_outline_rounded : Icons.shield_outlined,
+                  size: 15,
+                  color: breach != null || restricted ? const Color(0xFFDC2626) : const Color(0xFF7D8892),
+                ),
+                const SizedBox(width: 6),
+                const Expanded(
+                  child: Text(
+                    'TRANSFER LIMIT',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.7,
+                      color: Color(0xFF7D8892),
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: badgeBg,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: Text(
+                    badgeLabel,
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w700,
+                      color: badgeColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (breach != null) ...[
+              Text(
+                breach.message,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFDC2626),
+                  height: 1.3,
+                ),
+              ),
+            ] else if (restricted) ...[
+              const Text(
+                'Transfers restricted. Account review required.',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFDC2626),
+                ),
+              ),
+            ] else ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Daily remaining:',
+                    style: TextStyle(fontSize: 11.5, color: Color(0xFF7D8892)),
+                  ),
+                  Text(
+                    'PHP ${_formatCurrency(limits.dailyWindow.remaining)}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF10171C),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Per transfer max:',
+                    style: TextStyle(fontSize: 11.5, color: Color(0xFF7D8892)),
+                  ),
+                  Text(
+                    'PHP ${_formatCurrency(limits.perTransferCap)}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF10171C),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
