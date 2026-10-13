@@ -52,7 +52,14 @@ else
   ACR_NAME="${ACR_NAME:-acrbanking$RANDOM_SUFFIX}"
 fi
 
-AKS_CLUSTER_NAME="${AKS_CLUSTER_NAME:-aks-banking-budget}"
+# Detect existing AKS Cluster in the resource group if already created
+EXISTING_AKS=$(az aks list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv 2>/dev/null || true)
+if [ -n "$EXISTING_AKS" ] && [ "$EXISTING_AKS" != "None" ]; then
+  AKS_CLUSTER_NAME="$EXISTING_AKS"
+  echo "Detected existing AKS Cluster: $AKS_CLUSTER_NAME"
+else
+  AKS_CLUSTER_NAME="${AKS_CLUSTER_NAME:-aks-banking-budget}"
+fi
 
 # Detect existing Azure SQL Server in the resource group if already created
 EXISTING_SQL=$(az sql server list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv 2>/dev/null || true)
@@ -268,30 +275,43 @@ else
 fi
 
 echo ""
-AKS_VM_SIZE="${AKS_VM_SIZE:-Standard_B2ms}"
-echo "[7/8] Provisioning Single-Node AKS Cluster ($AKS_VM_SIZE, Free Control Plane, ~\$2.00/day)..."
+AKS_VM_SIZE="${AKS_VM_SIZE:-Standard_B2s}"
+echo "[7/8] Provisioning Single-Node AKS Cluster ($AKS_VM_SIZE, Free Control Plane, ~\$1.00/day)..."
 if az aks show --name "$AKS_CLUSTER_NAME" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
   echo "Using existing AKS Cluster: $AKS_CLUSTER_NAME..."
 else
-  if ! az aks create \
-    --name "$AKS_CLUSTER_NAME" \
-    --resource-group "$RESOURCE_GROUP" \
-    --node-count 1 \
-    --node-vm-size "$AKS_VM_SIZE" \
-    --tier free \
-    --generate-ssh-keys \
-    -o table; then
-    echo "Retrying AKS creation with alternative budget VM size standard_b2s_v2..."
-    az aks create \
+  # Ensure Microsoft.ContainerService provider is registered in the subscription
+  az provider register --namespace Microsoft.ContainerService 2>/dev/null || true
+
+  echo "Provisioning AKS cluster $AKS_CLUSTER_NAME in $RESOURCE_GROUP ($LOCATION)..."
+  CREATED=false
+  # Try VM sizes supported in Azure student/sandbox environments
+  for VM_SIZE in "${AKS_VM_SIZE}" "Standard_B2s" "Standard_D2s_v3" "Standard_DS2_v2"; do
+    echo "Attempting AKS creation with VM size: $VM_SIZE..."
+    if az aks create \
       --name "$AKS_CLUSTER_NAME" \
       --resource-group "$RESOURCE_GROUP" \
+      --location "$LOCATION" \
       --node-count 1 \
-      --node-vm-size "standard_b2s_v2" \
-      --tier free \
+      --node-vm-size "$VM_SIZE" \
       --generate-ssh-keys \
-      -o table
+      -o table; then
+      CREATED=true
+      echo "AKS Cluster $AKS_CLUSTER_NAME successfully provisioned with $VM_SIZE."
+      break
+    else
+      echo "[NOTICE] VM size $VM_SIZE failed or restricted. Retrying with next candidate..."
+    fi
+  done
+
+  if [ "$CREATED" != "true" ]; then
+    echo "Error: Failed to create AKS cluster in resource group $RESOURCE_GROUP."
+    echo "Checking if an existing cluster is present in the resource group:"
+    az aks list --resource-group "$RESOURCE_GROUP" -o table 2>/dev/null || true
+    exit 1
   fi
 fi
+
 
 az aks update -n "$AKS_CLUSTER_NAME" -g "$RESOURCE_GROUP" --attach-acr "$ACR_NAME" 2>/dev/null || true
 
