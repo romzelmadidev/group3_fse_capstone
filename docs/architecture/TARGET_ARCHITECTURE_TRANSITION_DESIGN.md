@@ -2139,7 +2139,7 @@ This section defines the API specifications, HTTP routes, headers, and request/r
 
 #### 9.3.7 `GET /api/v1/cbs/cob/status` (Active COB State Machine & Progress Status [Wire: Native JSON])
 * **Purpose**: Real-time observability during long-running batch runs to poll active pipeline phase, progress percentage, lock state, and diagnostic error telemetry.
-* **Caller**: Operations Admin Portal, Monitoring Daemons, Datadog / Prometheus exporters.
+* **Caller**: Operations Admin Portal, Monitoring Daemons, Datadog exporters.
 
 **Request**: None (HTTP GET).
 

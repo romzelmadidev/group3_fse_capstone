@@ -80,12 +80,8 @@ FSE-Capstone/
 │   │   └── Dockerfile                      # Custom Adminer image with Oracle Instant Client & OCI8
 │   ├── oracle/
 │   │   └── init.sql                        # Master tables DDL & constraints
-│   ├── postgres/
-│   │   └── init.sql                        # Immutable audit tables DDL & trigger blocks
-│   ├── prometheus/
-│   │   └── prometheus.yml                  # Scrape configurations for microservice Actuator endpoints
-│   └── grafana/
-│       └── provisioning/                   # Pre-configured Grafana dashboards (TPS, latency, JVM GC)
+│   └── postgres/
+│       └── init.sql                        # Immutable audit tables DDL & trigger blocks
 ├── testing/                                # Stress Testing & Automated Verification Suites
 │   ├── jmeter/
 │   │   ├── double_spend_stress_test.jmx    # 50 concurrent threads race-condition test plan

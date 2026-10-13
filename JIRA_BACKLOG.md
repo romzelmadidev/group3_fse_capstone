@@ -186,7 +186,7 @@ The formatted, auto-styled Excel file is available at [`jira_backlog_fse_capston
 #### `OPS-801`: Docker Compose Infrastructure Orchestration (5 Points)
 - **User Story**: As a developer, I want a single docker-compose command to launch all infrastructure services with health checks and persistence.
 - **EARS Acceptance Criteria**:
-  - `THE docker-compose file SHALL boot Oracle XE 21c, PostgreSQL 15+, Redis, RabbitMQ, Prometheus, and Grafana in a unified bridge network.`
+  - `THE docker-compose file SHALL boot Oracle XE 21c, PostgreSQL 15+, Redis, Apache Kafka, and Datadog Agent in a unified bridge network.`
 
 #### `OPS-802`: Apache JMeter Concurrent Stress Testing Suite (8 Points)
 - **User Story**: As a QA engineer, I want automated concurrent stress tests to prove that the system prevents double-spending and maintains high throughput.

@@ -9,7 +9,7 @@
 - **Trace ID**: A globally unique 16-byte (32-character hexadecimal) identifier identifying the entire distributed trace.
 - **Span ID**: An 8-byte (16-character hexadecimal) identifier identifying a specific unit of work within the trace.
 - **Trace Correlation Header**: HTTP response header (`X-Trace-Id` and `traceparent`) allowing clients to correlate HTTP responses with backend traces.
-- **OTLP (OpenTelemetry Protocol)**: Protocol buffer and HTTP/gRPC standard for transporting telemetry data from application services to collectors or trace visualization backends (e.g., Jaeger).
+- **OTLP (OpenTelemetry Protocol)**: Protocol buffer and HTTP/gRPC standard for transporting telemetry data from application services to collectors or trace visualization backends (e.g., Datadog Agent, OpenTelemetry Collector).
 - **Sampling Probability**: Configurable ratio governing what fraction of inbound transactions generate recorded trace spans (configured to 1.0 / 100% for full coverage).
 
 ---
@@ -23,8 +23,8 @@
   - HTTP trace correlation response headers (`X-Trace-Id` and `traceparent`) injected on all API responses (success and error).
   - Trace ID enrichment in RFC-7807 `ProblemDetails` error payloads for root-cause correlation.
   - MDC (Mapped Diagnostic Context) log enrichment including `traceId` and `spanId`.
-  - Configurable OTLP HTTP trace exporter targeting local Jaeger / OpenTelemetry collector.
-  - Jaeger all-in-one tracing service defined in `infrastructure/docker-compose.yml`.
+  - Configurable OTLP HTTP trace exporter targeting Datadog Agent / OpenTelemetry collector.
+  - Datadog Agent tracing service defined in `infrastructure/docker-compose.yml`.
   - Automated integration and slice tests validating trace generation, context propagation, header presence, and error payload correlation.
 - **Deferred / Out-of-Scope**:
   - Custom spans for third-party external payment gateway calls (Sprint 2).
@@ -72,8 +72,8 @@
 - **State-Driven Criteria**:
   - `REQ-OTEL-4.2`: WHILE an API request is executing, ANY log message emitted SHALL include the non-empty active `traceId` and `spanId` in its MDC context.
 
-### Requirement 5: Local Telemetry Infrastructure
-**User Story**: As a local software engineer, I want a local tracing backend and visualization UI so that I can inspect traces locally during development and debugging.
+### Requirement 5: Telemetry Infrastructure
+**User Story**: As a software engineer, I want a unified telemetry backend and APM intake so that I can inspect traces during development and debugging.
 
 - **Ubiquitous Criteria**:
-  - `REQ-OTEL-5.1`: THE `infrastructure/docker-compose.yml` SHALL define a Jaeger all-in-one container exposing the OTLP HTTP receiver on port 4318, OTLP gRPC receiver on port 4317, and Jaeger Query UI on port 16686.
+  - `REQ-OTEL-5.1`: THE `infrastructure/docker-compose.yml` SHALL define a Datadog Agent container exposing the OTLP HTTP receiver on port 4318 and OTLP gRPC receiver on port 4317.

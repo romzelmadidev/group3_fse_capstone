@@ -802,8 +802,8 @@
       </div>
       <div class="metric-card">
         <span class="metric-label">APM &amp; Observability</span>
-        <span class="metric-value" style="color: var(--accent-purple);">4</span>
-        <span class="metric-sub">Datadog, Prometheus, Grafana, Jaeger</span>
+        <span class="metric-value" style="color: var(--accent-purple);">2</span>
+        <span class="metric-sub">Datadog Agent &amp; OpenTelemetry</span>
       </div>
       <div class="metric-card">
         <span class="metric-label">Security &amp; Auth</span>
@@ -927,51 +927,6 @@
         snippet: `services:\n  dd-agent:\n    image: registry.datadoghq.com/agent:7\n    environment:\n      - DD_APM_ENABLED=true\n      - DD_LOGS_ENABLED=true\n      - DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT=0.0.0.0:4318`
       },
       {
-        id: "prometheus",
-        name: "Prometheus",
-        version: "v2.53.0",
-        category: "Observability & APM",
-        accent: "#E6522C",
-        logo: "https://cdn.simpleicons.org/prometheus/E6522C",
-        container: "prometheus-engine",
-        ports: "9090",
-        protocol: "HTTP / PromQL",
-        layer: "Tier 5: Telemetry & Tracing",
-        desc: "Time-series database engine polling /actuator/prometheus endpoints every 5 seconds. Evaluates SLA rules against the 200 TPS benchmark and sub-150ms latency target.",
-        tags: ["PromQL", "TSDB", "Metrics Scraping", "SLA Alerts", "Spring Actuator"],
-        snippet: `scrape_configs:\n  - job_name: 'spring-microservices'\n    metrics_path: '/actuator/prometheus'\n    scrape_interval: 5s\n    static_configs:\n      - targets: ['account-service:8081', 'ledger-mutation-engine:8082', 'notification-service:8083']`
-      },
-      {
-        id: "grafana",
-        name: "Grafana",
-        version: "11.1.0",
-        category: "Observability & APM",
-        accent: "#F46800",
-        logo: "https://cdn.simpleicons.org/grafana/F46800",
-        container: "grafana-dashboard",
-        ports: "3001",
-        protocol: "HTTP Web UI",
-        layer: "Tier 5: Telemetry & Tracing",
-        desc: "Operational visualization dashboard pre-provisioned with banking telemetry dashboards, real-time TPS rate counters, p50/p95/p99 latency graphs, and HikariCP connection metrics.",
-        tags: ["Dashboards", "TPS Gauges", "Latency Heatmaps", "HikariCP Telemetry", "Prometheus Datasource"],
-        snippet: `services:\n  grafana:\n    image: grafana/grafana:11.1.0\n    ports:\n      - "3001:3000"\n    volumes:\n      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro`
-      },
-      {
-        id: "jaeger",
-        name: "Jaeger Tracing",
-        version: "1.57+",
-        category: "Observability & APM",
-        accent: "#60D0E4",
-        logo: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/jaegertracing/jaegertracing-original.svg",
-        container: "jaeger-tracing",
-        ports: "16686 (UI) / 4317 (gRPC) / 4318 (HTTP)",
-        protocol: "OTLP / gRPC / HTTP",
-        layer: "Tier 5: Telemetry & Tracing",
-        desc: "OpenTelemetry distributed tracing collector and query UI. Ingests OTLP spans across HTTP gateway calls, Oracle lock transactions, and asynchronous Kafka consumers.",
-        tags: ["Distributed Spans", "OTLP Receiver", "Request Waterfalls", "Latency Bottlenecks"],
-        snippet: `services:\n  jaeger-tracing:\n    image: jaegertracing/all-in-one:latest\n    ports:\n      - "16686:16686"\n      - "4317:4317"\n      - "4318:4318"\n    environment:\n      - COLLECTOR_OTLP_ENABLED=true`
-      },
-      {
         id: "opentelemetry",
         name: "OpenTelemetry (OTel)",
         version: "1.38+",
@@ -994,12 +949,12 @@
         accent: "#6DB33F",
         logo: "https://cdn.simpleicons.org/spring/6DB33F",
         container: "Embedded in Backend",
-        ports: "/actuator/prometheus",
+        ports: "/actuator/metrics",
         protocol: "JVM Metrics Facade",
         layer: "Tier 5: Telemetry & Tracing",
         desc: "Application metrics facade instrumenting JVM heap, GC pauses, HikariCP database pool saturation, Kafka consumer lag, and HTTP transaction latency histograms.",
-        tags: ["JVM Metrics", "Connection Pool Scrape", "Histogram Timers", "Actuator"],
-        snippet: `management:\n  endpoints:\n    web:\n      exposure:\n        include: "health,info,prometheus,metrics"\n  metrics:\n    distribution:\n      percentiles-histogram:\n        http.server.requests: true`
+        tags: ["JVM Metrics", "Connection Pool Telemetry", "Histogram Timers", "Actuator"],
+        snippet: `management:\n  endpoints:\n    web:\n      exposure:\n        include: "health,info,metrics"\n  metrics:\n    distribution:\n      percentiles-histogram:\n        http.server.requests: true`
       },
 
       // 2. Data & Caching
@@ -1213,7 +1168,7 @@
         ports: "Internal Connection Pool",
         protocol: "JDBC Connection Pool",
         layer: "Tier 1: Core Microservices",
-        desc: "Ultra-fast zero-overhead JDBC connection pool configured with minimum idle connections, connection timeout bounds, leak detection thresholds, and Prometheus metric exporters.",
+        desc: "Ultra-fast zero-overhead JDBC connection pool configured with minimum idle connections, connection timeout bounds, leak detection thresholds, and Micrometer metric exporters.",
         tags: ["Connection Pooling", "Zero Overhead", "Leak Detection", "High Concurrency"],
         snippet: `spring.datasource.hikari:\n  maximum-pool-size: 25\n  minimum-idle: 10\n  idle-timeout: 300000\n  connection-timeout: 20000\n  leak-detection-threshold: 2000`
       },

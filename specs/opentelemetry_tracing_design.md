@@ -17,7 +17,7 @@ flowchart TD
     Controller -->|"Business Response"| Filter
     Filter -->|"Injects X-Trace-Id & traceparent"| Client
     ObsFilter -->|"End Span (Async Batch)"| Exporter["OtlpHttpSpanExporter\n(Background Thread)"]
-    Exporter -->|"POST /v1/traces\n(:4318)"| Jaeger["Jaeger All-In-One / OTel Collector\n(:16686 UI)"]
+    Exporter -->|"POST /v1/traces\n(:4318)"| Collector["Datadog Agent / OTel Collector\n(:4318 OTLP)"]
 ```
 
 ### Request Lifecycle Sequence Flow
@@ -33,7 +33,7 @@ sequenceDiagram
     participant CTRL as Controller / Service
     participant GEH as GlobalExceptionHandler
     participant EXP as OtlpHttpSpanExporter
-    participant JAEGER as Jaeger Collector (:4318)
+    participant COLLECTOR as Datadog Agent (:4318)
 
     Client->>CF: HTTP GET /api/v1/accounts/123/balance
     Note over CF,OF: W3C Context extraction or new traceId generation
@@ -58,7 +58,7 @@ sequenceDiagram
     
     par Asynchronous Telemetry Export
         TR->>EXP: enqueue completed span
-        EXP->>JAEGER: POST /v1/traces (batch HTTP)
+        EXP->>COLLECTOR: POST /v1/traces (batch HTTP)
     end
 ```
 
@@ -107,8 +107,8 @@ logging.pattern.level=%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-
 | Tracing Abstraction | Micrometer Tracing 1.3.x | Native Spring Boot 3 observability model; decoupled from specific exporter formats. |
 | Tracing Engine | OpenTelemetry SDK | Industry standard vendor-neutral distributed tracing runtime. |
 | Context Standard | W3C Trace Context | Interoperable across API Gateway, microservices, cloud providers, and browser clients. |
-| Exporter Protocol | OTLP / HTTP | Direct, non-blocking HTTP span transmission compatible with OpenTelemetry Collector and Jaeger. |
-| Local Visualizer | Jaeger All-In-One | Native OTLP receiver (4317/4318) and lightweight developer-friendly UI (16686). |
+| Exporter Protocol | OTLP / HTTP | Direct, non-blocking HTTP span transmission compatible with OpenTelemetry Collector and Datadog Agent. |
+| Telemetry Backend | Datadog Agent | Native OTLP receiver (4317/4318) and APM trace intake. |
 
 ---
 
@@ -142,4 +142,4 @@ logging.pattern.level=%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-
 | `REQ-OTEL-3.2` | `GlobalExceptionHandler.java` | Exception translation tests checking `trace_id` |
 | `REQ-OTEL-4.1` | `application.properties` (`logging.pattern.level`) | Log pattern verification |
 | `REQ-OTEL-4.2` | SLF4J MDC Tracing Handler | Test logging during request processing |
-| `REQ-OTEL-5.1` | `infrastructure/docker-compose.yml` (Jaeger) | Docker Compose manifest validation |
+| `REQ-OTEL-5.1` | `infrastructure/docker-compose.yml` (Datadog Agent) | Docker Compose manifest validation |

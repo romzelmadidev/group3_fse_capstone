@@ -11,6 +11,7 @@ import '../../services/device_storage.dart';
 import '../../services/notification_stream_service.dart';
 import '../../services/security_service.dart';
 import '../../widgets/aura_logo.dart';
+import '../../widgets/backend_routing_sheet.dart';
 import 'otp_verification_screen.dart';
 import 'pending_approval_screen.dart';
 import 'register_screen.dart';
@@ -407,8 +408,22 @@ class _LoginScreenState extends State<LoginScreen>
   /// header. The 48 px button sets the row height on both layouts.
   Widget _buildHeader({required bool onDark}) => Row(
         children: [
-          AuraWordmark(size: 30, onDark: onDark),
-          const Spacer(),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: AuraWordmark(size: 30, onDark: onDark),
+              ),
+            ),
+          ),
+          IconButton(
+            key: const ValueKey('backendRoutingButton'),
+            tooltip: 'Backend & Cloud Routing',
+            icon: Icon(Icons.dns_outlined,
+                color: onDark ? Colors.white70 : AuraColors.textMuted),
+            onPressed: () => BackendRoutingSheet.show(context),
+          ),
           TextButton(
             key: const ValueKey('createAccountLink'),
             style: TextButton.styleFrom(

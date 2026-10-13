@@ -73,18 +73,73 @@ class BankService extends ChangeNotifier {
 
   String get baseUrl => environment == AppEnvironment.prod ? cloudUrl : localUrl;
 
+  static const _envKey = 'backend_environment';
+  static const _cloudUrlKey = 'backend_cloud_url';
+  bool _backendSettingLoaded = false;
+
+  /// Trims [url] and prepends http:// when it has no scheme (bare IP or host:port).
+  static String _normalizeUrl(String url) {
+    final v = url.trim().replaceFirst(RegExp(r'^(https?)//'), r'$1://');
+    return v.isEmpty || v.contains('://') ? v : 'http://$v';
+  }
+
+  /// Host of [url], or null when it has none.
+  static String? _hostOf(String url) {
+    final h = Uri.tryParse(url.trim())?.host;
+    return (h == null || h.isEmpty) ? null : h;
+  }
+
+  /// Keeps BackendConfig.host equal to the host of baseUrl (unchanged if baseUrl has none).
+  void _syncHost() {
+    final h = _hostOf(baseUrl);
+    if (h != null) BackendConfig().host = h;
+  }
+
+  Future<void> _persistBackendSetting() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_envKey, environment.name);
+      await prefs.setString(_cloudUrlKey, cloudUrl);
+    } catch (_) {}
+  }
+
+  Future<void> loadBackendSetting() async {
+    if (_backendSettingLoaded) return;
+    _backendSettingLoaded = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final env = prefs.getString(_envKey);
+      final url = prefs.getString(_cloudUrlKey);
+      if (env != null) {
+        environment = env == 'prod' ? AppEnvironment.prod : AppEnvironment.local;
+      }
+      if (url != null) {
+        final v = _normalizeUrl(url);
+        if (_hostOf(v) != null) cloudUrl = v;
+      }
+      _syncHost();
+    } catch (_) {}
+  }
+
   void setEnvironment(AppEnvironment env) {
     environment = env;
+    _syncHost();
     notifyListeners();
+    _persistBackendSetting();
   }
 
   void setCloudUrl(String url) {
-    cloudUrl = url;
+    final v = _normalizeUrl(url);
+    if (_hostOf(v) == null) return;
+    cloudUrl = v;
+    _syncHost();
     notifyListeners();
+    _persistBackendSetting();
   }
 
   void setLocalUrl(String url) {
     localUrl = url;
+    _syncHost();
     notifyListeners();
   }
 
@@ -113,6 +168,7 @@ class BankService extends ChangeNotifier {
         lastPingLatencyMs = stopwatch.elapsedMilliseconds;
         if (res.statusCode >= 200 && res.statusCode < 400) {
           localUrl = target;
+          _syncHost();
           lastConnectionStatus = 'Healthy (${res.statusCode}) - ${lastPingLatencyMs}ms';
           notifyListeners();
           return true;
@@ -124,6 +180,7 @@ class BankService extends ChangeNotifier {
           lastPingLatencyMs = stopwatch.elapsedMilliseconds;
           if (res.statusCode >= 200 && res.statusCode < 500) {
             localUrl = target;
+            _syncHost();
             lastConnectionStatus = 'Healthy (${res.statusCode}) - ${lastPingLatencyMs}ms';
             notifyListeners();
             return true;
@@ -811,6 +868,7 @@ class BankService extends ChangeNotifier {
   }
 
   Future<void> initPreferences() async {
+    await loadBackendSetting();
     try {
       final prefs = await SharedPreferences.getInstance();
       user.faceIdEnabled = prefs.getBool('face_id_enabled') ?? false;

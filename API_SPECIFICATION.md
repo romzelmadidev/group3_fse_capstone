@@ -369,5 +369,4 @@ Set-Cookie: refresh_token=; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth
 | Method | Endpoint | Authorized Roles | Description |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/v1/audit/account/{account_id}` | Ledger, Admin | Queries immutable PostgreSQL audit journal |
-| `GET` | `/actuator/prometheus` | Internal / Prometheus | Prometheus metrics scrape endpoint |
 | `GET` | `/actuator/health` | Public | Kubernetes / Docker liveness & readiness check |

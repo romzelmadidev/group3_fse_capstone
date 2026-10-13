@@ -4,7 +4,7 @@ if (!(Test-Path $adb)) {
     $adb = 'adb'
 }
 
-$ports = @(8080, 8081, 8082, 8083, 8084, 8085, 8086, 8025, 10005)
+$ports = @(8080, 8081, 8082, 8083, 8084, 8085, 8086, 8025, 10000, 10005)
 
 Write-Host '==========================================================' -ForegroundColor Cyan
 Write-Host ' ADB Device Connection Auto-Reconnect Monitor Active' -ForegroundColor Cyan
@@ -41,7 +41,7 @@ while ($true) {
                 foreach ($p in $ports) {
                     & $adb reverse tcp:$p tcp:$p | Out-Null
                 }
-                Write-Host "[$now] All 9 ports successfully bridged to device!" -ForegroundColor Green
+                Write-Host "[$now] All $($ports.Count) ports successfully bridged to device!" -ForegroundColor Green
             }
             $lastState = 'connected'
         } else {

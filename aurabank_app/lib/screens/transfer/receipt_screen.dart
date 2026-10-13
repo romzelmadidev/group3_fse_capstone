@@ -4,6 +4,9 @@ import '../../theme/aura_theme.dart';
 import '../../widgets/motion.dart';
 
 class TransactionReceiptScreen extends StatefulWidget {
+  static const String genericFailureMessage =
+      "We couldn't complete this transfer. Please try again later.";
+
   final bool isSuccess;
   final bool isPendingReview;
   final String senderName;
@@ -356,10 +359,15 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
                           _buildSimpleRow('Status', 'Failed',
                               feeColor: redFail, isBold: true),
                           const SizedBox(height: 14),
-                          _buildSimpleRow(
-                              'Failure Reason',
-                              widget.failureReason ??
-                                  'Destination Bank Timeout'),
+                          const Text(
+                            TransactionReceiptScreen.genericFailureMessage,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              color: textMuted,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ],
                       ],
                     ),

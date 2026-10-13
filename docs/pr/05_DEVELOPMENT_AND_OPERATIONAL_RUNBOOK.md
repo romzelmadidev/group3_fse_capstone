@@ -93,7 +93,7 @@ graph TD
 
 When merging external branches into `t24-brainstorm`:
 1. Always preserve the database init scripts (`init.sql`, `07_t24_cbs_migration.sql`) to avoid dropping General Ledger and COB tables.
-2. Verify that Docker container port bindings do not conflict (e.g., Datadog trace agent on `:8126` vs Jaeger).
+2. Verify that Docker container port bindings do not conflict (e.g., Datadog trace agent on `:8126`).
 3. Always re-run the full verification script before pushing:
    ```powershell
    node scripts/verify-all-banking-features.mjs

@@ -13,6 +13,7 @@ Write-Host "Setting up ADB reverse port tunnels..." -ForegroundColor Cyan
 & $adb reverse tcp:8085 tcp:8085   # T24 Mock CBS
 & $adb reverse tcp:8086 tcp:8086   # Compliance Service
 & $adb reverse tcp:8025 tcp:8025   # MailHog Web/API
+& $adb reverse tcp:10000 tcp:10000 # Azurite Blob (KYC SAS uploads)
 & $adb reverse tcp:10005 tcp:10005 # Azurite Drive
 
 Write-Host "Active reverse tunnels:" -ForegroundColor Green

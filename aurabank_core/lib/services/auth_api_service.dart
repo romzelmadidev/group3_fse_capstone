@@ -42,9 +42,9 @@ class BackendConfig {
   /// Ordered list of candidate hostnames/IPs to discover working backend
   static List<String> get candidateHosts {
     return <String>{
+      BackendConfig().host,
       '127.0.0.1',
       'localhost',
-      BackendConfig().host,
       defaultLanIp,
       if (defaultTargetPlatform == TargetPlatform.android) ...[
         '10.0.2.2',
@@ -177,6 +177,11 @@ class AuthApiService {
   String get accountServiceUrl => 'http://$defaultBackendHost:8081';
 
   List<String> get _endpoints {
+    // Cloud selected: go straight to the gateway; probing LAN/localhost
+    // fallbacks only adds timeouts.
+    if (BankService().environment == AppEnvironment.prod) {
+      return ['http://${BackendConfig().host}:8080'];
+    }
     final candidateHosts = BackendConfig.candidateHosts;
     final List<String> list = [];
     for (final h in candidateHosts) {

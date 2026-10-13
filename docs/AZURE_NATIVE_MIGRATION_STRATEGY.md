@@ -51,7 +51,7 @@ The production Azure deployment preserves physical segregation between operation
 | **Event Bus** | Apache Kafka 3.7.0 (KRaft :9092) | **Azure Event Hubs (Standard Tier)** | Kafka 1.0+ API compatible on port 9093, auto-inflate, SASL_SSL authentication |
 | **SMTP Delivery** | MailHog mock server (:1025 / :8025) | **Azure Communication Services (Email)** | Authenticated transactional email dispatch for customer receipts and 2FA OTPs |
 | **Secrets Management** | Docker Compose environment variables | **Azure Key Vault + Azure Workload Identity** | CSI driver secret injection, managed identities, zero hardcoded passwords |
-| **Telemetry & APM** | Local Datadog Agent container (:8126 / :4318) | **Datadog Agent AKS DaemonSet** or **Azure Monitor & Managed Prometheus** | W3C trace propagation (`traceparent`), container metrics, OTLP ingestion |
+| **Telemetry & APM** | Local Datadog Agent container (:8126 / :4318) | **Datadog Agent AKS DaemonSet** or **Azure Monitor & Container Insights** | W3C trace propagation (`traceparent`), container metrics, OTLP ingestion |
 | **CI/CD Pipeline** | Local manual builds / scripts | **GitHub Actions + Azure Container Registry (ACR)** | OIDC federated login, automated maven/pytest, Trivy scanning, Helm cluster deployment |
 
 ---

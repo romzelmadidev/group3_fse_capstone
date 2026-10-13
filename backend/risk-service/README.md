@@ -34,7 +34,7 @@ The complete benchmark report is recorded in `hybrid_bench/reports/laya_benchmar
 * Tabular engine: XGBoost, Scikit-Learn, NumPy
 * Fallback threat engine: NanoJev (Qwen2.5-0.5B INT8 ONNX via ONNX Runtime)
 * Audit log: Append-only JSONL event stream with automated AMLC SAR drafting
-* Observability: Structured logging, Prometheus metrics, OpenTelemetry
+* Observability: Structured logging, Datadog APM, OpenTelemetry
 
 ## 4. Architectural flow
 

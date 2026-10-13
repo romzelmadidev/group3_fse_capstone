@@ -17,6 +17,7 @@ In local development, the platform runs via Docker Compose with Oracle XE and Po
 
 
 ### Interactive Architecture Specifications
+* **Breaking Point load lab (Breakscale method):** open [`breakscale-lab/index.html`](breakscale-lab/index.html). Compares the Azure deployment as implemented with an ideal BFF design under load. Model checks: `node breakscale-lab/selfcheck.js`
 * **Local Docker Container Architecture:** Delivered at [`capstone2_architecture.html`](file:///c:/Users/JLB83807/The%20Vault/workspaces/FSE-Capstone/capstone2_architecture.html)
 * **Azure Cloud Scaling & Multi-Tier Load Balancing:** Delivered at [`capstone2_azure_scaling.html`](file:///c:/Users/JLB83807/The%20Vault/workspaces/FSE-Capstone/capstone2_azure_scaling.html)
 

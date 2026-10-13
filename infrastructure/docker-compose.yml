@@ -220,7 +220,7 @@ services:
       - AZURE_STORAGE_PUBLIC_ENDPOINT=http://localhost:10000/devstoreaccount1
       - APP_SERVICES_RISK_SERVICE_URL=http://risk-service:8084
       - APP_SERVICES_CBS_URL=http://t24-mock-cbs:8085
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger-tracing:4318/v1/traces
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://dd-agent:4318/v1/traces
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "account-service"}]'
     networks:
@@ -237,8 +237,6 @@ services:
       risk-service:
         condition: service_healthy
       dd-agent:
-        condition: service_started
-      jaeger-tracing:
         condition: service_started
 
   # ============================================================================
@@ -593,77 +591,6 @@ services:
     depends_on:
       - gateway-service
 
-  # ============================================================================
-  # 13. OpenTelemetry Distributed Tracing Backend & Visualizer (Jaeger All-In-One)
-  # Container Name: jaeger-tracing
-  # Ingests OTLP traces (HTTP :4318, gRPC :4317) and provides trace visualization (:16686)
-  # ============================================================================
-  jaeger-tracing:
-    container_name: jaeger-tracing
-    image: jaegertracing/all-in-one:latest
-    restart: unless-stopped
-    ports:
-      - "16686:16686" # Web UI
-      - "14317:4317" # OTLP gRPC receiver (offset to avoid host conflict with dd-agent)
-      - "14318:4318" # OTLP HTTP receiver (offset to avoid host conflict with dd-agent)
-    environment:
-      - COLLECTOR_OTLP_ENABLED=true
-    networks:
-      - banking-net
-
-  # ============================================================================
-  # 14. Prometheus Metrics Scraper & Time-Series Engine
-  # Container Name: prometheus-engine
-  # Scrapes /actuator/prometheus from services and exposes metrics on :9090
-  # ============================================================================
-  prometheus:
-    container_name: prometheus-engine
-    image: prom/prometheus:v2.53.0
-    restart: unless-stopped
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
-      - prometheus_data:/prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
-      - "--web.console.templates=/usr/share/prometheus/consoles"
-      - "--web.enable-lifecycle"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - banking-net
-
-  # ============================================================================
-  # 15. Grafana Metrics Visualization & Telemetry Dashboard
-  # Container Name: grafana-dashboard
-  # Web UI on :3001 with auto-provisioned Prometheus datasource & banking dashboards
-  # ============================================================================
-  grafana:
-    container_name: grafana-dashboard
-    image: grafana/grafana:11.1.0
-    restart: unless-stopped
-    ports:
-      - "3001:3000"
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
-    volumes:
-      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
-      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
-      - grafana_data:/var/lib/grafana
-    depends_on:
-      - prometheus
-      - jaeger-tracing
-    networks:
-      - banking-net
 
   # ============================================================================
   # 16. Enterprise Observability & Request Tracing (Datadog Agent 7)
@@ -730,8 +657,6 @@ services:
 volumes:
   oracle_data:
   postgres_data:
-  prometheus_data:
-  grafana_data:
   redisinsight_data:
   azurite_data:
 

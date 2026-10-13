@@ -566,19 +566,6 @@
             },
             "description": "Liveness and readiness probe for API Gateway."
           }
-        },
-        {
-          "name": "3. Prometheus Metrics",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/actuator/prometheus",
-              "host": ["{{baseUrl}}"],
-              "path": ["actuator", "prometheus"]
-            },
-            "description": "Prometheus metric telemetry scrape endpoint."
-          }
         }
       ]
     }

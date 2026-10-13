@@ -33,7 +33,7 @@ For a high-concurrency mutation engine handling transfer spikes:
 
 | Metric | Configured Value | Engineering Rationale |
 | :--- | :--- | :--- |
-| **`pool-name`** | `HikariPool-PostgresAudit` | Unique pool identity for JMX monitoring, APM agents (Datadog/Prometheus), and log forensics. |
+| **`pool-name`** | `HikariPool-PostgresAudit` | Unique pool identity for JMX monitoring, APM agents (Datadog), and log forensics. |
 | **`maximum-pool-size`** | `30` | Hard ceiling preventing connection storming on PostgreSQL, keeping query response latencies sub-millisecond without database context-switch thrashing. |
 | **`minimum-idle`** | `5` | Pool pre-warming floor. Guarantees 5 connections are held open in memory at all times, eliminating TCP 3-way handshake and TLS negotiation overhead for incoming transfers. |
 | **`connection-timeout`** | `20,000 ms` (20s) | Fail-fast threshold. If all 30 connections are saturated, incoming requests wait at most 20 seconds before fast-failing, preventing infinite HTTP thread hanging. |

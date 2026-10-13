@@ -90,7 +90,7 @@ gantt
     Audit Query Optimization (Indexes)  :p3_2, after p3_1, 1d
     section Phase 4: UI & Ops
     T24 Console Auto-Recovery Indicator :p4_1, after p2_3, 1d
-    Prometheus Metrics & Actuator Gauges:p4_2, after p4_1, 1d
+    Micrometer Metrics & Actuator Gauges:p4_2, after p4_1, 1d
     section Phase 5: Verification
     End-to-End Simulation Script        :p5_1, after p4_2, 1d
     Outage Chaos & Replay Tests         :p5_2, after p5_1, 1d

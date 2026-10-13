@@ -40,11 +40,10 @@ This document defines actionable, sequential implementation steps for integratin
     - Register standard W3C trace context and baggage propagators in `OpenTelemetryConfig`.
   - _Requirements: REQ-OTEL-1.3, REQ-OTEL-1.4, REQ-OTEL-2.1, REQ-OTEL-2.2, REQ-OTEL-2.3; Design: Section 2.1_
 
-- [x] **Task 5: Update Infrastructure Docker Compose with Jaeger All-In-One**
+- [x] **Task 5: Update Infrastructure Docker Compose with Datadog Agent OTLP Receiver**
   - Path: `infrastructure/docker-compose.yml`
   - Subtasks:
-    - Add `jaeger-tracing` container based on `jaegertracing/all-in-one:latest`.
-    - Expose ports `4317` (OTLP gRPC), `4318` (OTLP HTTP), and `16686` (Web UI).
+    - Configure `dd-agent` container to expose OTLP receiver endpoints (`4317` gRPC, `4318` HTTP).
     - Attach to `banking-net`.
   - _Requirements: REQ-OTEL-5.1; Design: Section 1_
 
