@@ -8,7 +8,7 @@ RUN mvn clean package -DskipTests -Dmaven.test.skip=true -pl notification-servic
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-COPY datadog/dd-java-agent.jar* /app/
+COPY pom.xml datadog/dd-java-agent.jar* /app/
 RUN if [ ! -f /app/dd-java-agent.jar ]; then wget -q --timeout=10 -O /app/dd-java-agent.jar https://dtdg.co/latest-java-tracer || echo "Placeholder" > /app/dd-java-agent.jar; fi
 COPY --from=builder /app.jar app.jar
 EXPOSE 8083

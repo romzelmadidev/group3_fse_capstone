@@ -10,7 +10,7 @@
 #   1. Pre-flight  : tools, login, resource providers
 #   2. Infra       : Resource Group, Azure SQL, Storage, ACR, AKS (sized so pods fit)
 #   3. Cluster     : starts a paused AKS, scales nodes, secrets, ACR pull access
-#   4. Database    : applies the Azure SQL schema ONCE (never wipes existing data)
+#   4. Database    : t24-mock-cbs (Flyway) builds the Azure SQL tables on first start
 #   5. Images      : builds only the images missing from ACR (in parallel)
 #   6. Deploy      : in-cluster deps -> all services -> waits until Ready
 #   7. Self-heal   : adds a node if any pod is Pending ("Insufficient memory/cpu")
@@ -24,7 +24,8 @@
 #   MAX_NODES        upper bound for self-healing scale (default: 4)
 #   AKS_VM_SIZE      force a VM size, e.g. Standard_D2s_v3 (default: try several)
 #   REBUILD          "all" or comma list, e.g. "gateway-service,account-service"
-#   FORCE_SCHEMA     "true" re-creates Azure SQL tables (DELETES ALL DATA)
+#   RESET_DB         "true" deletes + recreates the Azure SQL database (DELETES ALL DATA);
+#                    use it once if a previous attempt left half-created tables
 #   DATADOG_API_KEY  real key to enable Datadog (default: dummy)
 # ==============================================================================
 set -Eeuo pipefail
@@ -40,7 +41,7 @@ mkdir -p "$LOG_DIR"
 NODE_COUNT="${NODE_COUNT:-2}"
 MAX_NODES="${MAX_NODES:-4}"
 REBUILD="${REBUILD:-}"
-FORCE_SCHEMA="${FORCE_SCHEMA:-false}"
+RESET_DB="${RESET_DB:-false}"
 BUILD_PARALLEL="${BUILD_PARALLEL:-3}"
 READY_TIMEOUT="${READY_TIMEOUT:-1500}"
 DATADOG_API_KEY="${DATADOG_API_KEY:-00000000000000000000000000000000}"
@@ -81,8 +82,6 @@ preflight() {
   az account show >/dev/null 2>&1 || die "Not logged in. Run 'az login' (not needed in Cloud Shell)."
   SUB_ID="$(az account show --query id -o tsv)"
   info "Subscription: $(az account show --query name -o tsv) (${SUB_ID})"
-  # Stable per-subscription id => same resource names on every re-run, unique per team member.
-  SUFFIX="${SUFFIX:-$(printf '%s' "$SUB_ID" | md5sum | cut -c1-6)}"
   for ns in Microsoft.ContainerService Microsoft.ContainerRegistry Microsoft.Sql \
             Microsoft.Storage Microsoft.Network Microsoft.Compute; do
     az provider register --namespace "$ns" --only-show-errors >/dev/null 2>&1 || true
@@ -119,6 +118,9 @@ pick_resource_group() {
   fi
   LOC="$(az group show --name "$RG" --query location -o tsv)"
   info "Resource Group: $RG ($LOC)   [override with RESOURCE_GROUP=...]"
+  # SQL/ACR/Storage names are GLOBALLY unique in Azure. Teammates often share one subscription
+  # but each has their own Resource Group, so derive the suffix from subscription + RG.
+  SUFFIX="${SUFFIX:-$(printf '%s' "${SUB_ID}/${RG}" | md5sum | cut -c1-6)}"
 }
 
 load_existing_secret() { # reuse DB password already stored in the cluster, if reachable
@@ -137,12 +139,29 @@ ensure_sql() {
     SQL_ADMIN_USER="$(az sql server show -n "$SQL_SERVER" -g "$RG" --query administratorLogin -o tsv)"
     az sql server update -n "$SQL_SERVER" -g "$RG" --admin-password "$SQL_ADMIN_PASS" -o none
   else
-    info "Creating Azure SQL server $SQL_SERVER (${SQL_LOCATION:-$LOC})"
-    az sql server create -n "$SQL_SERVER" -g "$RG" -l "${SQL_LOCATION:-$LOC}" \
-      --admin-user "$SQL_ADMIN_USER" --admin-password "$SQL_ADMIN_PASS" -o none
+    local attempt=0 err="${LOG_DIR}/sql-create.err"
+    while :; do
+      info "Creating Azure SQL server $SQL_SERVER (${SQL_LOCATION:-$LOC})"
+      if az sql server create -n "$SQL_SERVER" -g "$RG" -l "${SQL_LOCATION:-$LOC}" \
+           --admin-user "$SQL_ADMIN_USER" --admin-password "$SQL_ADMIN_PASS" -o none 2>"$err"; then
+        break
+      fi
+      attempt=$((attempt + 1))
+      if grep -q "NameAlreadyExists" "$err" && [ "$attempt" -lt 4 ]; then
+        SQL_SERVER="sql-aurabank-${SUFFIX}-$((RANDOM % 900 + 100))"
+        warn "SQL server name is taken (names are global in Azure). Retrying as $SQL_SERVER"
+      else
+        cat "$err" >&2; die "Could not create the Azure SQL server. If the region is blocked, set SQL_LOCATION=<region>."
+      fi
+    done
+    SQL_FQDN="${SQL_SERVER}.database.windows.net"
   fi
   az sql server firewall-rule create --server "$SQL_SERVER" -g "$RG" -n AllowAzureInternal \
     --start-ip-address 0.0.0.0 --end-ip-address 0.0.0.0 -o none 2>/dev/null || true
+  if [ "$RESET_DB" = "true" ] && az sql db show --server "$SQL_SERVER" -g "$RG" -n "$SQL_DB_NAME" >/dev/null 2>&1; then
+    warn "RESET_DB=true: deleting database $SQL_DB_NAME so t24-mock-cbs (Flyway) can rebuild it from scratch"
+    az sql db delete --server "$SQL_SERVER" -g "$RG" -n "$SQL_DB_NAME" --yes -o none
+  fi
   if ! az sql db show --server "$SQL_SERVER" -g "$RG" -n "$SQL_DB_NAME" >/dev/null 2>&1; then
     info "Creating database $SQL_DB_NAME (Basic, 5 DTU)"
     az sql db create --server "$SQL_SERVER" -g "$RG" -n "$SQL_DB_NAME" \
@@ -235,7 +254,7 @@ scale_up_one() { # returns 1 when MAX_NODES reached
 }
 
 # ------------------------------------------------------------------------------
-# 4. Cluster secrets + Azure SQL schema
+# 4. Cluster secrets
 # ------------------------------------------------------------------------------
 configure_cluster() {
   log "[4/8] Cluster secrets"
@@ -261,72 +280,6 @@ configure_cluster() {
   info "banking-secrets and acr-secret applied."
 }
 
-apply_sql_schema() {
-  log "[4b/8] Azure SQL schema (applied once; existing data is preserved)"
-  kubectl -n banking delete job sql-schema-init --ignore-not-found >/dev/null
-  cat > "${LOG_DIR}/sql-run.sh" <<'RUNSH'
-set -e
-SQLC="/opt/mssql-tools/bin/sqlcmd -S $SQL_HOST -d $SQL_DB -U $SQL_USER -l 60 -b"
-for i in $(seq 1 30); do
-  if $SQLC -Q "SELECT 1" >/dev/null 2>&1; then break; fi
-  echo "waiting for Azure SQL ($i/30)..."; sleep 10
-done
-CNT=$($SQLC -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name='auth_identity' AND t.name='users'" | tr -d '[:space:]')
-echo "auth_identity.users tables found: $CNT"
-if [ "$CNT" = "0" ] || [ "$FORCE" = "true" ]; then
-  echo "applying schema..."; $SQLC -i /sql/schema.sql; echo "SCHEMA APPLIED"
-else
-  echo "SCHEMA ALREADY PRESENT - skipping (FORCE_SCHEMA=true to recreate)"
-fi
-RUNSH
-  kubectl -n banking create configmap sql-schema \
-    --from-file=schema.sql="${SCRIPT_DIR}/01_azure_sql_master_schema.sql" \
-    --from-file=run.sh="${LOG_DIR}/sql-run.sh" \
-    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-  cat <<EOF | kubectl apply -f - >/dev/null
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: sql-schema-init
-  namespace: banking
-spec:
-  backoffLimit: 2
-  ttlSecondsAfterFinished: 900
-  template:
-    spec:
-      restartPolicy: Never
-      containers:
-        - name: sqlcmd
-          image: mcr.microsoft.com/mssql-tools
-          command: ["/bin/bash", "/sql/run.sh"]
-          env:
-            - { name: ACCEPT_EULA, value: "Y" }
-            - { name: SQL_HOST, value: "${SQL_FQDN}" }
-            - { name: SQL_DB, value: "${SQL_DB_NAME}" }
-            - { name: SQL_USER, value: "${SQL_ADMIN_USER}" }
-            - { name: FORCE, value: "${FORCE_SCHEMA}" }
-            - name: SQLCMDPASSWORD
-              valueFrom:
-                secretKeyRef: { name: banking-secrets, key: azure-sql-password }
-          volumeMounts:
-            - { name: sql, mountPath: /sql }
-      volumes:
-        - name: sql
-          configMap:
-            name: sql-schema
-EOF
-  local deadline=$((SECONDS + 600)) done_ok="" failed=""
-  while (( SECONDS < deadline )); do
-    done_ok="$(kubectl -n banking get job sql-schema-init -o jsonpath='{.status.succeeded}' 2>/dev/null || true)"
-    failed="$(kubectl -n banking get job sql-schema-init -o jsonpath='{.status.failed}' 2>/dev/null || true)"
-    [ "${done_ok:-0}" = "1" ] && break
-    [ "${failed:-0}" -ge 3 ] 2>/dev/null && break
-    sleep 5
-  done
-  kubectl -n banking logs job/sql-schema-init --tail=8 2>/dev/null | sed 's/^/    /' || true
-  [ "${done_ok:-0}" = "1" ] || die "Azure SQL schema job failed. See: kubectl -n banking logs job/sql-schema-init"
-}
-
 # ------------------------------------------------------------------------------
 # 5. Images
 # ------------------------------------------------------------------------------
@@ -345,9 +298,24 @@ build_one() { # runs in a subshell
   fi
 }
 
+ensure_dd_agent() {
+  # The Java Dockerfiles COPY backend/datadog/dd-java-agent.jar, which is not stored in git.
+  local jar="${ROOT}/backend/datadog/dd-java-agent.jar"
+  [ -s "$jar" ] && return 0
+  info "Downloading Datadog Java agent (not stored in git)..."
+  mkdir -p "${ROOT}/backend/datadog"
+  if curl -fsSL --max-time 120 -o "$jar" https://dtdg.co/latest-java-tracer && [ "$(wc -c <"$jar")" -gt 1000000 ]; then
+    info "Datadog agent ready."
+  else
+    rm -f "$jar"
+    warn "Could not download the Datadog agent here; the Dockerfile will try to download it during the build."
+  fi
+}
+
 build_images() {
   log "[5/8] Container images (only missing ones are built)"
   rm -f "${LOG_DIR}"/*.ok
+  ensure_dd_agent
   BUILT=()
   local todo=() e img df ctx dep
   for e in "${IMAGES[@]}"; do
@@ -402,6 +370,11 @@ deploy_workloads() {
   for dep in "${BUILT[@]:-}"; do
     [ -n "$dep" ] && kubectl rollout restart deployment/"$dep" -n banking >/dev/null 2>&1 || true
   done
+  if [ "$RESET_DB" = "true" ]; then # fresh DB: let t24 (Flyway) migrate first, then the DB clients reconnect
+    kubectl rollout restart deployment/t24-mock-cbs -n banking >/dev/null 2>&1 || true
+    kubectl rollout status deployment/t24-mock-cbs -n banking --timeout=600s >/dev/null 2>&1 || true
+    kubectl rollout restart deployment/account-service deployment/notification-service -n banking >/dev/null 2>&1 || true
+  fi
 }
 
 wait_until_ready() {
@@ -472,7 +445,12 @@ smoke_test() {
   # A wrong password must answer 4xx. A 5xx/000 means gateway->account-service->Azure SQL is broken.
   expect "login path (gateway->account->SQL)" '^(400|401|403|404|422|429)$' -X POST \
          -H 'Content-Type: application/json' -d '{"email":"smoke@test.invalid","password":"x"}' \
-         "http://${GW_IP}:8080/api/v1/auth/login" || fails=1
+         "http://${GW_IP}:8080/api/v1/auth/login" || {
+    fails=1
+    warn "Login path failed. The tables are created by t24-mock-cbs (Flyway). Check it:"
+    echo "      kubectl logs deploy/t24-mock-cbs -n banking | grep -iE 'flyway|migrat|error' | tail -n 20"
+    echo "      If it says tables already exist from an earlier failed run:  RESET_DB=true bash infrastructure/azure/run_azure.sh"
+  }
   if [ -n "$STAFF_IP" ]; then expect "staff console" '^200$' "http://${STAFF_IP}/" || fails=1
   else echo "    [FAIL] staff console has no public IP (public IP quota?)"; fails=1; fi
   if [ -n "$WEB_IP" ]; then expect "customer web portal" '^200$' "http://${WEB_IP}/" || fails=1
@@ -535,7 +513,6 @@ main() {
   log "[3/8] AKS cluster"
   ensure_aks
   configure_cluster
-  apply_sql_schema
   build_images
   deploy_workloads
   local ready=0 smoke=0
