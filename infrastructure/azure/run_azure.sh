@@ -24,6 +24,7 @@
 #   MAX_NODES        upper bound for self-healing scale (default: 4)
 #   AKS_VM_SIZE      force a VM size, e.g. Standard_D2s_v3 (default: try several)
 #   REBUILD          "all" or comma list, e.g. "gateway-service,account-service"
+#   SQL_TIER         Azure SQL tier: S1 (default, ~$1/day, fast) | S0 | S2 | Basic (cheapest, very slow)
 #   RESET_DB         "true" deletes + recreates the Azure SQL database (DELETES ALL DATA);
 #                    use it once if a previous attempt left half-created tables
 #   DATADOG_API_KEY  real key to enable Datadog (default: dummy)
@@ -48,6 +49,7 @@ DATADOG_API_KEY="${DATADOG_API_KEY:-00000000000000000000000000000000}"
 JWT_SECRET="${JWT_SECRET:-c3VwZXItc2VjcmV0LWtleS1mb3ItZnNlLWNhcHN0b25lLWJhbmtpbmctcGxhdGZvcm0tMjAyNi0xMjM0NTY3ODkwMTI=}"
 
 SQL_DB_NAME="sqldb-master"
+SQL_TIER="${SQL_TIER:-S1}"
 SQL_ADMIN_USER="sqladminuser"
 PG_DB_NAME="banking_audit"
 PG_ADMIN_USER="audit_admin"
@@ -162,10 +164,22 @@ ensure_sql() {
     warn "RESET_DB=true: deleting database $SQL_DB_NAME so t24-mock-cbs (Flyway) can rebuild it from scratch"
     az sql db delete --server "$SQL_SERVER" -g "$RG" -n "$SQL_DB_NAME" --yes -o none
   fi
+  # Basic (5 DTU) is far too slow for Flyway DDL and for the app under load. Default to S1 (20 DTU).
+  local edition="Standard" want="$SQL_TIER" cur
+  [ "$SQL_TIER" = "Basic" ] && edition="Basic"
   if ! az sql db show --server "$SQL_SERVER" -g "$RG" -n "$SQL_DB_NAME" >/dev/null 2>&1; then
-    info "Creating database $SQL_DB_NAME (Basic, 5 DTU)"
+    info "Creating database $SQL_DB_NAME ($want)"
     az sql db create --server "$SQL_SERVER" -g "$RG" -n "$SQL_DB_NAME" \
-      --edition Basic --service-objective Basic --capacity 5 --backup-storage-redundancy Local --yes -o none
+      --edition "$edition" --service-objective "$want" --backup-storage-redundancy Local --yes -o none
+  else
+    cur="$(az sql db show --server "$SQL_SERVER" -g "$RG" -n "$SQL_DB_NAME" --query currentServiceObjectiveName -o tsv)"
+    if [ "$cur" != "$want" ]; then
+      info "Changing database tier ${cur} -> ${want} (online, ~1-3 min)"
+      az sql db update --server "$SQL_SERVER" -g "$RG" -n "$SQL_DB_NAME" \
+        --edition "$edition" --service-objective "$want" -o none
+    else
+      info "Database tier: $cur"
+    fi
   fi
   SQL_JDBC_URL="jdbc:sqlserver://${SQL_FQDN}:1433;databaseName=${SQL_DB_NAME};encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30;"
 }
@@ -365,6 +379,12 @@ deploy_workloads() {
   local f
   for f in "${K8S_DIR}"/0[1-9]*.yaml "${K8S_DIR}"/10*.yaml; do
     [ -f "$f" ] || continue
+    # Datadog agent is observability only. With the dummy key it just crash-loops and burns CPU.
+    if [[ "$(basename "$f")" == 10_datadog* ]] && [[ "$DATADOG_API_KEY" =~ ^0+$ ]]; then
+      kubectl delete deployment dd-agent -n banking --ignore-not-found >/dev/null 2>&1 || true
+      info "skipped $(basename "$f") (no DATADOG_API_KEY set; services run fine without it)"
+      continue
+    fi
     sed "s/__ACR_NAME__/${ACR}/g" "$f" | kubectl apply -f - >/dev/null
     info "applied $(basename "$f")"
   done
@@ -386,7 +406,7 @@ wait_until_ready() {
   log "[7/8] Waiting for every pod to be Ready (auto-adds nodes if pods are Pending)"
   local deadline=$((SECONDS + READY_TIMEOUT)) strikes=0 notready unsched
   while (( SECONDS < deadline )); do
-    notready="$(kubectl get deploy -n banking -o json | jq -r '.items[] | select((.status.readyReplicas // 0) < (.spec.replicas // 1)) | .metadata.name' | paste -sd' ' -)"
+    notready="$(kubectl get deploy -n banking -o json | jq -r '.items[] | select(.metadata.name != "dd-agent") | select((.status.readyReplicas // 0) < (.spec.replicas // 1)) | .metadata.name' | paste -sd' ' -)"
     if [ -z "$notready" ]; then info "All deployments are Ready."; return 0; fi
 
     unsched="$(kubectl get pods -n banking -o json | jq '[.items[] | select(.status.phase=="Pending") | select(any(.status.conditions[]?; .type=="PodScheduled" and .status=="False"))] | length')"
