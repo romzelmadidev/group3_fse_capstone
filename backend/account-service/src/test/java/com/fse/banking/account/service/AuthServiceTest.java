@@ -5,6 +5,7 @@ import com.fse.banking.account.dto.RegisterRequest;
 import com.fse.banking.account.dto.RegisterResponse;
 import com.fse.banking.account.dto.VerifyLoginOtpRequest;
 import com.fse.banking.account.exception.TooManyRequestsException;
+import com.fse.banking.account.model.AdminUserEntity;
 import com.fse.banking.account.model.UserEntity;
 import com.fse.banking.account.repository.UserRepository;
 import com.fse.banking.account.security.JwtProvider;
@@ -543,19 +544,13 @@ class AuthServiceTest {
         when(userRepository.findByEmail("juan.delacruz@example.ph")).thenReturn(Optional.of(activeUser));
         when(passwordEncoder.matches("Password123!", activeUser.getPasswordHash())).thenReturn(true);
         when(redisSessionStore.getPrimaryDeviceId("USR-100001")).thenReturn("device-iphone-1");
-        when(redisSessionStore.getLoginOtp("USR-100001")).thenReturn("123456");
-        when(userRepository.findById("USR-100001")).thenReturn(Optional.of(activeUser));
         when(jwtProvider.generateAccessToken(any(), any(), any(), any(), any())).thenReturn("mock.jwt.token");
         when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
 
-        // An unapproved (new or revoked) mobile device must pass an OTP challenge first, even when a primary exists
-        AuthService.LoginResult challenge = authService.login(loginRequest, "192.168.1.25", "Mozilla/5.0 (iPad)");
-        assertThat(challenge.getResponse().getStatus()).isEqualTo("MFA_REQUIRED");
-        verify(redisSessionStore, never()).saveUserDevice(any(), any());
-
-        AuthService.LoginResult result = authService.verifyLoginOtp(VerifyLoginOtpRequest.builder()
-                .userId("USR-100001").otp("123456").deviceId("device-ipad-2").deviceName("Juan's iPad").build(),
-                "192.168.1.25", "Mozilla/5.0 (iPad)");
+        // Secondary device: no OTP (only the first/primary device is OTP-bound); waits for primary approval
+        AuthService.LoginResult result = authService.login(loginRequest, "192.168.1.25", "Mozilla/5.0 (iPad)");
+        verify(redisSessionStore, never()).storeLoginOtp(any(), any(), any());
+        assertThat(result.getResponse().getStatus()).isEqualTo("PENDING_APPROVAL");
 
         assertThat(result.getResponse().getDeviceId()).isEqualTo("device-ipad-2");
         assertThat(result.getResponse().getDeviceName()).isEqualTo("Juan's iPad");
@@ -660,18 +655,11 @@ class AuthServiceTest {
                 .build();
 
         when(redisSessionStore.getUserDevices("USR-100001")).thenReturn(List.of(primaryMobile, oldSecondary));
-        when(redisSessionStore.getLoginOtp("USR-100001")).thenReturn("123456");
-        when(userRepository.findById("USR-100001")).thenReturn(Optional.of(activeUser));
         when(jwtProvider.generateAccessToken(any(), any(), any(), any(), any())).thenReturn("mock.jwt.token");
         when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
 
-        AuthService.LoginResult challenge = authService.login(loginRequest, "192.168.1.120", "Samsung Tablet");
-        assertThat(challenge.getResponse().getStatus()).isEqualTo("MFA_REQUIRED");
-
-        AuthService.LoginResult result = authService.verifyLoginOtp(VerifyLoginOtpRequest.builder()
-                .userId("USR-100001").otp("123456").deviceId("dev-third-galaxy")
-                .deviceName("Samsung Galaxy Tab").deviceType("MOBILE").build(),
-                "192.168.1.120", "Samsung Tablet");
+        AuthService.LoginResult result = authService.login(loginRequest, "192.168.1.120", "Samsung Tablet");
+        verify(redisSessionStore, never()).storeLoginOtp(any(), any(), any());
 
         assertThat(result.getResponse().getDeviceId()).isEqualTo("dev-third-galaxy");
         assertThat(result.getResponse().getStatus()).isEqualTo("PENDING_CONFIRMATION");
@@ -963,5 +951,43 @@ class AuthServiceTest {
         assertThat(result.getResponse().getStatus()).isEqualTo("AUTHENTICATED");
         assertThat(result.getResponse().getRole()).isEqualTo("ROLE_TELLER");
         verify(redisSessionStore).clearLoginOtp("USR-TM-JM");
+    }
+
+    @Test
+    @DisplayName("Should bypass OTP and mobile push notification when staff logs in via web portal")
+    void testStaffWebAdminPortalLoginBypassesOtpAndMobileNotification() {
+        AdminUserEntity admin = AdminUserEntity.builder()
+                .adminId("USR-TM-ANGEL")
+                .email("angel@bank.com")
+                .passwordHash("$2a$10$hashedpassword")
+                .role(UserRole.TELLER)
+                .status(UserStatus.ACTIVE)
+                .maxConcurrentSessions(5)
+                .failedLoginAttempts(0)
+                .build();
+
+        LoginRequest loginRequest = LoginRequest.builder()
+                .email("angel@bank.com")
+                .password("Password123!")
+                .deviceId("dev-browser-angel")
+                .deviceName("Aura Console")
+                .deviceType("WEB")
+                .build();
+
+        when(adminUserRepository.findByEmail("angel@bank.com")).thenReturn(Optional.of(admin));
+        when(passwordEncoder.matches("Password123!", admin.getPasswordHash())).thenReturn(true);
+        when(redisSessionStore.getPrimaryDeviceId("USR-TM-ANGEL")).thenReturn("dev-primary-mobile");
+        when(jwtProvider.generateAccessToken(any(), any(), any(), any(), any())).thenReturn("mock.admin.jwt");
+        when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
+
+        AuthService.LoginResult result = authService.login(loginRequest, "192.168.1.50", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+
+        assertThat(result).isNotNull();
+        assertThat(result.getResponse().getStatus()).isEqualTo("AUTHENTICATED");
+        assertThat(result.getResponse().getIsApproved()).isTrue();
+        assertThat(result.getResponse().getRole()).isEqualTo("ROLE_TELLER");
+
+        // Verify no OTP was generated or required
+        verify(redisSessionStore, never()).storeLoginOtp(any(), any(), any());
     }
 }
