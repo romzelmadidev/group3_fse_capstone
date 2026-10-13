@@ -1,5 +1,6 @@
 import 'package:aurabank_core/navigation/aura_entry_route.dart';
 import 'package:aurabank_core/navigation/root_navigator.dart';
+import 'package:aurabank_core/services/session_guard.dart';
 import 'services/bank_service.dart';
 import 'services/device_storage.dart';
 import 'package:flutter/material.dart';
@@ -21,6 +22,7 @@ import 'theme/aura_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await DeviceStorage.init();
+  SessionGuard.start();
   await BankService().initPreferences();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(

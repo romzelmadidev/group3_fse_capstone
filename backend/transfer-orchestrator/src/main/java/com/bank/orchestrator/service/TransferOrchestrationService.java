@@ -28,6 +28,7 @@ public class TransferOrchestrationService {
     private final BiometricChallengeService biometricService;
     private final RiskClientService riskService;
     private final CbsClientService cbsService;
+    private final LimitClientService limitClient;
     private final ObjectMapper objectMapper;
 
     public TransferOrchestrationService(
@@ -36,7 +37,9 @@ public class TransferOrchestrationService {
             BiometricChallengeService biometricService,
             RiskClientService riskService,
             CbsClientService cbsService,
+            LimitClientService limitClient,
             ObjectMapper objectMapper) {
+        this.limitClient = limitClient;
         this.idempotencyService = idempotencyService;
         this.coolOffService = coolOffService;
         this.biometricService = biometricService;
@@ -88,7 +91,11 @@ public class TransferOrchestrationService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Concurrent or duplicate transfer request in progress");
         }
 
+        String limitLockToken = null;
         try {
+            // 1b. KYC tier transfer limits (fails closed; breach throws LimitExceededException)
+            limitLockToken = limitClient.evaluate(txId, request.sourceAccountId(), request.amount()).lockToken();
+
             // 2. Risk Evaluation
             RiskScoreRequest riskReq = new RiskScoreRequest(
                     txId,
@@ -197,7 +204,13 @@ public class TransferOrchestrationService {
             log.error("Transfer orchestration error for {}: {}", txId, e.getMessage(), e);
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Transfer execution failed: " + e.getMessage(), e);
         } finally {
-            idempotencyService.releaseLock(idempKey);
+            try {
+                if (limitLockToken != null) {
+                    limitClient.release(limitLockToken);
+                }
+            } finally {
+                idempotencyService.releaseLock(idempKey);
+            }
         }
     }
 }

@@ -593,36 +593,78 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
 
               const SizedBox(height: 24),
 
-              // Confirm & Send Button
-              RequireDeviceApproval(
-                actionLabel: 'Transfer confirmations',
-                child: Container(
-                  width: double.infinity,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(26),
-                    boxShadow: AuraColors.buttonShadow,
-                  ),
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: brandViolet,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
-                      elevation: 0,
-                    ),
-                    onPressed: _showConfirmationModal,
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.shield_outlined, color: Colors.white, size: 20),
-                        SizedBox(width: 10),
-                        Text(
-                          'Confirm & Transfer',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
+              // Confirm & Send Button (limit breach message and guard rebuild when BankService notifies)
+              ListenableBuilder(
+                listenable: _bankService,
+                builder: (context, _) {
+                  final breach = _bankService.limits?.check(widget.amount);
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (breach != null) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: AuraColors.debitRedBg,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AuraColors.debitRed.withValues(alpha: 0.4)),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.error_outline_rounded, size: 18, color: AuraColors.debitRed),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  breach.message,
+                                  style: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: AuraColors.debitRed,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
+                        const SizedBox(height: 12),
                       ],
-                    ),
-                  ),
-                ),
+                      RequireDeviceApproval(
+                        actionLabel: 'Transfer confirmations',
+                        child: Container(
+                          width: double.infinity,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(26),
+                            boxShadow: breach == null ? AuraColors.buttonShadow : null,
+                          ),
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: brandViolet,
+                              disabledBackgroundColor: AuraColors.textMuted,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+                              elevation: 0,
+                            ),
+                            onPressed: breach == null ? _showConfirmationModal : null,
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.shield_outlined, color: Colors.white, size: 20),
+                                SizedBox(width: 10),
+                                Text(
+                                  'Confirm & Transfer',
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
 
               const SizedBox(height: 14),
@@ -1023,6 +1065,10 @@ class _ReviewTransferScreenState extends State<ReviewTransferScreen> {
   }
 
   Future<void> _executeTransferAndNavigate() async {
+    // Null limits means no breach; the server decides (Req 8.7).
+    if (_bankService.limits?.check(widget.amount) != null) {
+      return;
+    }
     if (!RequireDeviceApproval.canTransact(context)) {
       return;
     }

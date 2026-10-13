@@ -31,6 +31,9 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
   void initState() {
     super.initState();
     _bankService.addListener(_onServiceUpdate);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _bankService.loadLimits();
+    });
   }
 
   @override
@@ -222,6 +225,19 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
 
   // --- 2. KPI METRICS ---
   Widget _buildKpiMetricsRow() {
+    final limits = _bankService.limits;
+    final restricted = limits?.restricted ?? false;
+    final isBasic = limits?.isBasic ?? true;
+    final tierLabel = limits == null
+        ? (_bankService.limitsLoading ? 'Checking...' : 'Tier Status')
+        : (restricted ? 'Restricted' : (isBasic ? 'Basic Tier' : 'Fully Verified'));
+    final limitValue = limits != null
+        ? (restricted ? 'Restricted' : _formatCurrency(limits.dailyWindow.remaining))
+        : (_bankService.limitsLoading ? 'Loading...' : 'Check Limits');
+    final trendColor = restricted
+        ? const Color(0xFFC8423B)
+        : (limits != null && !isBasic ? const Color(0xFF17805F) : const Color(0xFF7D8892));
+
     return Row(
       children: [
         Expanded(
@@ -245,6 +261,22 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
             icon: Icons.arrow_upward_rounded,
             iconBg: const Color(0xFFFDF3F2),
             iconColor: const Color(0xFFC8423B),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: InkWell(
+            onTap: () => widget.onNavigateTab?.call(5),
+            borderRadius: BorderRadius.circular(16),
+            child: _buildMetricTile(
+              title: 'Daily Limit Left',
+              value: limitValue,
+              trend: tierLabel,
+              trendColor: trendColor,
+              icon: Icons.tune_rounded,
+              iconBg: const Color(0xFFF0EDFB),
+              iconColor: AuraColors.primary,
+            ),
           ),
         ),
       ],
