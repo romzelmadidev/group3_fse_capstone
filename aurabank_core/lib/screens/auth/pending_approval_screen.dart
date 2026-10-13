@@ -56,20 +56,14 @@ class _PendingApprovalScreenState extends State<PendingApprovalScreen>
     NotificationStreamService().connect(uid);
 
     final currentDevId = AuthApiService().currentDeviceId;
-    final currentDevName = AuthApiService().currentDeviceName;
 
     // 1. Real-time SSE stream listener
     _approvalSubscription =
         NotificationStreamService().deviceApprovalStream.listen((event) {
       if (!mounted) return;
-      final targetDevId = (event['device_id'] as String? ?? '').toLowerCase().trim();
+      final targetDevId = (event['device_id'] as String? ?? event['deviceId'] as String? ?? '').toLowerCase().trim();
       final curId = currentDevId.toLowerCase().trim();
-      final curName = currentDevName.toLowerCase().trim();
-      final isForThisDevice = targetDevId.isNotEmpty &&
-          (targetDevId == curId ||
-           targetDevId == curName ||
-           (curId.isNotEmpty && (targetDevId.contains(curId) || curId.contains(targetDevId))) ||
-           (curName.isNotEmpty && (targetDevId.contains(curName) || curName.contains(targetDevId))));
+      final isForThisDevice = targetDevId.isNotEmpty && targetDevId == curId;
 
       if (isForThisDevice) {
         if (event['type'] == 'DEVICE_APPROVED') {
@@ -138,25 +132,19 @@ class _PendingApprovalScreenState extends State<PendingApprovalScreen>
       final devices = await AuthApiService().getRegisteredDevices();
       if (!mounted) return;
 
-      final currentDevId = AuthApiService().currentDeviceId.toLowerCase();
-      final currentDevName = AuthApiService().currentDeviceName.toLowerCase();
+      final currentDevId = AuthApiService().currentDeviceId.toLowerCase().trim();
 
       final current = devices.firstWhere(
         (d) {
-          final id = (d['device_id'] as String? ?? '').toLowerCase();
-          final name = (d['device_name'] as String? ?? '').toLowerCase();
-          return id == currentDevId ||
-              name == currentDevName ||
-              (currentDevId.isNotEmpty && id.contains(currentDevId)) ||
-              (currentDevName.isNotEmpty && name.contains(currentDevName)) ||
-              (currentDevId.isNotEmpty && currentDevId.contains(id));
+          final id = (d['device_id'] as String? ?? d['deviceId'] as String? ?? '').toLowerCase().trim();
+          return id.isNotEmpty && id == currentDevId;
         },
         orElse: () => <String, dynamic>{},
       );
 
       if (current.isNotEmpty && current['is_approved'] == true) {
         _handleApprovalSuccess();
-      } else if (devices.isNotEmpty && (current.isEmpty || current['status'] == 'REVOKED')) {
+      } else if (current.isNotEmpty && current['status'] == 'REVOKED') {
         _handleRevoked();
       }
     } catch (_) {}

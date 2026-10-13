@@ -201,7 +201,9 @@ public class AuthService {
         boolean isKnownApprovedDevice = existingDevice.isPresent() && existingDevice.get().isApproved();
 
         boolean isFirstTimeLogin = user.getLastLoginAt() == null;
-        boolean requiresDeviceBindingMfa = !isWeb && !isKnownApprovedDevice;
+        // OTP binds only the first (primary) mobile; later devices skip OTP and need primary-device approval.
+        boolean noPrimaryYet = primaryDeviceId == null || primaryDeviceId.isBlank();
+        boolean requiresDeviceBindingMfa = !isWeb && !isKnownApprovedDevice && noPrimaryYet;
 
         if (isFirstTimeLogin || requiresDeviceBindingMfa) {
             String otp = redisSessionStore.getLoginOtp(user.getUserId());
@@ -274,9 +276,11 @@ public class AuthService {
         boolean isKnownApprovedDevice = existingDevice.isPresent() && existingDevice.get().isApproved();
 
         boolean isFirstTimeLogin = admin.getLastLoginAt() == null;
-        boolean requiresDeviceBindingMfa = !isWeb && !isKnownApprovedDevice;
+        boolean noPrimaryYet = primaryDeviceId == null || primaryDeviceId.isBlank();
+        boolean requiresDeviceBindingMfa = !isWeb && !isKnownApprovedDevice && noPrimaryYet;
 
-        if (isFirstTimeLogin || requiresDeviceBindingMfa) {
+        // Web admin portal logins for staff/admin roles bypass OTP/MFA challenge
+        if (!isWeb && (isFirstTimeLogin || requiresDeviceBindingMfa)) {
             String otp = redisSessionStore.getLoginOtp(admin.getAdminId());
             if (otp == null || otp.isBlank()) {
                 long wait = sendAdminLoginOtp(admin);
@@ -487,14 +491,19 @@ public class AuthService {
         boolean isThirdDevice = false;
         String replacedDeviceId = null;
         String replacedDeviceName = null;
+        boolean isStaffRole = roleAuthority != null && (
+                roleAuthority.contains("ADMIN") ||
+                roleAuthority.contains("TELLER") ||
+                roleAuthority.contains("MANAGER") ||
+                roleAuthority.contains("COMPLIANCE"));
 
         if (isWeb) {
             // Configuration: 1 Web session allowed
             // A desktop/web session cannot be the primary mobile device
             isPrimary = false;
 
-            if (primaryDeviceId == null || primaryDeviceId.isBlank()) {
-                // If there is no primary mobile device registered (e.g. admin or onboarding), auto-approve
+            if (isStaffRole || primaryDeviceId == null || primaryDeviceId.isBlank()) {
+                // Staff web portal logins or accounts without a primary mobile are auto-approved without mobile push alerts
                 isApproved = true;
                 deregisterOtherWebSessions(userId, resolvedDeviceId);
             } else {
