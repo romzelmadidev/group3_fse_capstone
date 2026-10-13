@@ -152,8 +152,8 @@ All accounts are pre-seeded with the uniform password: **`password123`**.
 
 | Persona Name | Email | Password | Role | Permissions |
 | :--- | :--- | :--- | :--- | :--- |
-| **Diana Vance** | `diana.admin@bank.com` | `password123` | `ADMIN` | Full back-office oversight, Checker reversal approval, Customer 360, KYC review queue, Compliance Drive. |
-| **Crisostomo Ibarra** | `crisostomo.teller@bank.com` | `password123` | `TELLER` | Branch Operations, Maker reversal ticket filing, Funds Transfer execution. |
+| **Diana Vance** | `diana.admin@bank.com` | `Staff@Aura2026` | `ADMIN` | Full back-office oversight, Checker reversal approval, Customer 360, KYC review queue, Compliance Drive. |
+| **Crisostomo Ibarra** | `crisostomo.ibarra@eastwestbanker.com` | `Staff@Aura2026` | `TELLER` | Branch Operations, Maker reversal ticket filing, Funds Transfer execution. |
 | **Carlos Mendoza** | `carlos.teller@bank.com` | `password123` | `MANAGER` | Branch Operations + Reversal Checker authorization. |
 | **Juan Dela Cruz** | `juan.dc@email.com` | `password123` | `CUSTOMER` | Retail customer self-service, account and balance enquiry, personal transfer initiation. |
 

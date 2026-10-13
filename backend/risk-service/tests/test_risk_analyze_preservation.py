@@ -43,8 +43,8 @@ def _post_analyze(base_url, payload):
         return res.status, json.loads(res.read().decode("utf-8"))
 
 
-def test_gate0_impossible_travel_block(base_url):
-    """3.1: impossible travel stays BLOCK / 100 with the same flags."""
+def test_gate0_impossible_travel_advisory(base_url):
+    """3.1: impossible travel is an ADVISORY_WARNING / 75 with the same flags."""
     status, data = _post_analyze(
         base_url,
         {
@@ -56,23 +56,23 @@ def test_gate0_impossible_travel_block(base_url):
         },
     )
     assert status == 200
-    assert data["decision"] == "BLOCK"
-    assert data["fraud_score"] == 100
-    assert data["status"] == "BLOCKED"
+    assert data["decision"] == "ADVISORY_WARNING"
+    assert data["fraud_score"] == 75
+    assert data["status"] == "ADVISORY_PENDING"
     assert data["primary_flag"] == "IMPOSSIBLE_TRAVEL_VELOCITY"
     assert "IMPOSSIBLE_TRAVEL_VELOCITY" in data["all_flags"]
     assert data["review_enqueued"] is False
 
 
 def test_gate0_emulator_high_value_block(base_url):
-    """3.1: emulator with amount >= 50000 stays BLOCK / 100 with the same flags."""
+    """3.1: emulator with amount >= 50000 stays BLOCK / 100 (flag is now the environment-wide tamper flag)."""
     status, data = _post_analyze(base_url, {"emulator": True, "amount": 50000})
     assert status == 200
     assert data["decision"] == "BLOCK"
     assert data["fraud_score"] == 100
     assert data["status"] == "BLOCKED"
-    assert data["primary_flag"] == "CRITICAL_DEVICE_TAMPERING_HIGH_VALUE"
-    assert data["all_flags"] == ["CRITICAL_DEVICE_TAMPERING_HIGH_VALUE"]
+    assert data["primary_flag"] == "CRITICAL_DEVICE_TAMPERING_ENVIRONMENT"
+    assert data["all_flags"] == ["CRITICAL_DEVICE_TAMPERING_ENVIRONMENT"]
 
 
 class _FixedProbModel:

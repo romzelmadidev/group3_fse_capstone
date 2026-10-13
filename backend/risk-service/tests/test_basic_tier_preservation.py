@@ -297,23 +297,26 @@ BASELINE_ANALYZE = {'plain_30000': {'decision': 'ALLOW',
                                            'phone-based social engineering or coercion.'},
  'gate0_emulator_50000': {'decision': 'BLOCK',
                           'fraud_score': 100,
-                          'primary_flag': 'CRITICAL_DEVICE_TAMPERING_HIGH_VALUE',
-                          'all_flags': ['CRITICAL_DEVICE_TAMPERING_HIGH_VALUE'],
-                          'cause_of_suspicion': 'Multi-factor anomaly detected: '
-                                                'CRITICAL_DEVICE_TAMPERING_HIGH_VALUE.'},
- 'gate0_travel_30000': {'decision': 'BLOCK',
-                        'fraud_score': 100,
+                          'primary_flag': 'CRITICAL_DEVICE_TAMPERING_ENVIRONMENT',
+                          'all_flags': ['CRITICAL_DEVICE_TAMPERING_ENVIRONMENT'],
+                          'cause_of_suspicion': 'Anomalous transaction spike (20.0x baseline) '
+                                                'deviating substantially from historical '
+                                                'customer behavioral profile.'},
+ 'gate0_travel_30000': {'decision': 'ADVISORY_WARNING',
+                        'fraud_score': 75,
                         'primary_flag': 'IMPOSSIBLE_TRAVEL_VELOCITY',
                         'all_flags': ['IMPOSSIBLE_TRAVEL_VELOCITY'],
                         'cause_of_suspicion': 'Physically impossible travel velocity (<v> '
                                               'km/h), indicating remote credential abuse, proxy '
                                               'routing, or session token replay.'},
- 'gate0_2fa_30000': {'decision': 'REQUIRE_2FA',
-                     'fraud_score': 75,
-                     'primary_flag': 'ROOTED_NEW_DEVICE_ELEVATED_AMOUNT',
-                     'all_flags': ['ROOTED_NEW_DEVICE_ELEVATED_AMOUNT'],
-                     'cause_of_suspicion': 'Multi-factor anomaly detected: '
-                                           'ROOTED_NEW_DEVICE_ELEVATED_AMOUNT.'},
+ # Any rooted device is blocked by Gate 0, so this case (rooted + new payee) is a BLOCK.
+ 'gate0_2fa_30000': {'decision': 'BLOCK',
+                     'fraud_score': 100,
+                     'primary_flag': 'CRITICAL_DEVICE_TAMPERING_ENVIRONMENT',
+                     'all_flags': ['CRITICAL_DEVICE_TAMPERING_ENVIRONMENT'],
+                     'cause_of_suspicion': 'Anomalous transaction spike (12.0x baseline) '
+                                           'deviating substantially from historical '
+                                           'customer behavioral profile.'},
  's2_2fa_30000': {'decision': 'REQUIRE_2FA',
                   'fraud_score': 45,
                   'primary_flag': 'ELEVATED_S2_SCORE',
@@ -433,7 +436,7 @@ BASELINE_SCORE = {'score_30000': {'decision': 'ALLOW', 'score': 15, 'riskReason'
                   'riskReason': 'Potential high-risk payee or scam memo typology detected'},
  'score_250000': {'decision': 'REQUIRE_2FA',
                   'score': 65,
-                  'riskReason': 'High-value threshold step-up required'},
+                  'riskReason': 'High-value threshold step-up required (AMLA elevated monitoring)'},
  'score_29999': {'decision': 'ALLOW', 'score': 15, 'riskReason': 'Standard low risk transaction'},
  'score_memo_29999': {'decision': 'ADVISORY_WARNING',
                       'score': 75,
@@ -558,7 +561,7 @@ def test_basic_250000_score_stays_require_2fa(base_url, stub):
     assert BASELINE_SCORE["score_250000"]["decision"] == "REQUIRE_2FA"
     got = score_stable(base_url, dict(SCORE_CASES["score_250000"]))
     assert got["score"] == 65
-    assert got["riskReason"] == "High-value threshold step-up required"
+    assert got["riskReason"] == "High-value threshold step-up required (AMLA elevated monitoring)"
 
 
 def test_basic_score_existing_advisories_keep_their_reason(base_url, stub):

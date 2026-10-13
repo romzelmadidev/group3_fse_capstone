@@ -8,7 +8,7 @@ Validates:
 4. Blank memo + Active phone call -> ADVISORY_WARNING, auth_method=BIOMETRIC_PRIMARY, warning_dialog populated.
 5. Purpose mismatch (Bills payment to personal account) -> ADVISORY_WARNING.
 6. Impossible travel velocity -> BLOCK, auth_method=NONE_BLOCKED.
-7. Elevated tabular risk -> REQUIRE_2FA, auth_method=STEP_UP_BIOMETRIC_PLUS_MPIN (primary) or STEP_UP_PUSH_PLUS_MPIN (secondary).
+7. Elevated tabular risk (not rooted: rooted devices BLOCK) -> REQUIRE_2FA, auth_method=STEP_UP_BIOMETRIC_PLUS_MPIN (primary) or STEP_UP_PUSH_PLUS_MPIN (secondary).
 8. NanoJev direct engine evaluation with threat narrative and category.
 """
 
@@ -192,8 +192,26 @@ def test_impossible_travel_remains_hard_block():
     assert data["auth_method"] == "NONE_BLOCKED"
 
 
-def test_step_up_auth_methods_by_device_role():
-    """Elevated risk requires step-up (Biometric + MPIN on primary, Push + MPIN on secondary)."""
+class _FixedProbModel:
+    def __init__(self, p):
+        self.p = p
+
+    def predict_proba(self, _x):
+        import numpy as np
+        return np.array([[1.0 - self.p, self.p]])
+
+
+class _IdentityPipeline:
+    def transform(self, df):
+        return df
+
+
+def test_step_up_auth_methods_by_device_role(monkeypatch):
+    """Elevated tabular risk requires step-up (Biometric + MPIN on primary, Push + MPIN on secondary).
+    The S2 probability is fixed at 0.45 because a rooted device is now blocked outright."""
+    import app.main as risk_main
+    monkeypatch.setattr(risk_main, "s2_pipeline", _IdentityPipeline())
+    monkeypatch.setattr(risk_main, "s2_model", _FixedProbModel(0.45))
     # Primary device
     payload_primary = {
         "user_id": "usr-1001-cst-001",
@@ -202,7 +220,6 @@ def test_step_up_auth_methods_by_device_role():
         "amount": 25000.0,
         "latitude": 14.5995,
         "longitude": 120.9842,
-        "rooted": True,
         "new_payee": True,
         "is_primary_device": True
     }

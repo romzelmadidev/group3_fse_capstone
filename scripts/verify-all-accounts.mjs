@@ -3,13 +3,13 @@ import { execSync } from 'child_process';
 const GATEWAY = process.env.GATEWAY_URL || 'http://localhost:8080';
 
 const DEMO_ACCOUNTS = [
-  { email: 'wax@bank.com', role: 'ADMIN', name: 'Wax' },
-  { email: 'hans@bank.com', role: 'ADMIN', name: 'Hans' },
-  { email: 'jm@bank.com', role: 'TELLER', name: 'JM' },
-  { email: 'zel@bank.com', role: 'ADMIN', name: 'Zel' },
-  { email: 'jessy@bank.com', role: 'TELLER', name: 'Jessy' },
-  { email: 'maye@bank.com', role: 'ADMIN', name: 'Maye' },
-  { email: 'angel@bank.com', role: 'TELLER', name: 'Angel' },
+  { email: 'wax.staff@bank.com', role: 'ADMIN', name: 'Wax' },
+  { email: 'hans.staff@bank.com', role: 'ADMIN', name: 'Hans' },
+  { email: 'jm.staff@bank.com', role: 'TELLER', name: 'JM' },
+  { email: 'zel.staff@bank.com', role: 'ADMIN', name: 'Zel' },
+  { email: 'jessy.staff@bank.com', role: 'TELLER', name: 'Jessy' },
+  { email: 'maye.staff@bank.com', role: 'ADMIN', name: 'Maye' },
+  { email: 'angel.staff@bank.com', role: 'TELLER', name: 'Angel' },
   { email: 'diana.admin@bank.com', role: 'ADMIN', name: 'Diana Vance' },
   { email: 'carlos.mendoza@bank.com', role: 'TELLER', name: 'Carlos Mendoza' },
   { email: 'beatriz.ocampo@bank.com', role: 'TELLER', name: 'Beatriz Ocampo' },
@@ -60,7 +60,7 @@ async function testStaffAccount(account) {
     method: 'POST',
     body: JSON.stringify({
       email: account.email,
-      password: 'password123',
+      password: 'Staff@Aura2026',
       deviceType: 'WEB',
       deviceName: 'Aura Console',
     }),

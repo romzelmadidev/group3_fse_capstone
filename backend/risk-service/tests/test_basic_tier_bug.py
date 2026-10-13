@@ -140,9 +140,10 @@ def test_score_flags_basic_tier_30000(base_url):
 
 
 def test_both_paths_flag_and_agree_for_amounts_30000_to_50000(base_url):
-    """2.4: seeded loop over 30000..50000, both paths ADVISORY_WARNING and in agreement."""
+    """2.4: seeded loop over 30000..49999, both paths ADVISORY_WARNING and in agreement.
+    From 50000 /score steps up to REQUIRE_2FA (AMLA monitoring), which the Basic rule never downgrades."""
     rnd = random.Random(0)
-    amounts = [30000, 50000] + [rnd.randint(30000, 50000) for _ in range(20)]
+    amounts = [30000, 49999] + [rnd.randint(30000, 49999) for _ in range(20)]
     for amount in amounts:
         a = _analyze(base_url, amount)
         s = _score(base_url, amount)
@@ -161,7 +162,7 @@ def test_basic_29999_is_allow_on_both_paths(base_url):
     assert _score(base_url, 29999)["decision"] == "ALLOW"
 
 
-@pytest.mark.parametrize("amount", [30000, 35000, 40000, 45000, 50000])
+@pytest.mark.parametrize("amount", [30000, 35000, 40000, 45000, 49999])
 def test_analyze_and_score_return_same_decision_for_basic(base_url, amount):
     """2.4: same Basic input -> same decision on /analyze and /score, with the Basic-tier reason on /score."""
     a = _analyze(base_url, amount)
@@ -169,3 +170,10 @@ def test_analyze_and_score_return_same_decision_for_basic(base_url, amount):
     assert a["decision"] == s["decision"] == "ADVISORY_WARNING"
     assert s["score"] == 75
     assert s["riskReason"] == "Suspicious high amount for Basic tier"
+
+
+def test_score_50000_keeps_stronger_require_2fa_step_up(base_url):
+    """From 50000 /score returns REQUIRE_2FA; the Basic advisory must not downgrade it."""
+    data = _score(base_url, 50000)
+    assert data["decision"] == "REQUIRE_2FA"
+    assert data["score"] == 65
