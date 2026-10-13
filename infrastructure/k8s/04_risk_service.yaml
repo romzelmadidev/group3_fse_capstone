@@ -24,10 +24,10 @@ spec:
           resources:
             requests:
               cpu: "50m"
-              memory: "192Mi"
+              memory: "256Mi"
             limits:
-              cpu: "500m"
-              memory: "384Mi"
+              cpu: "1000m"
+              memory: "768Mi"
           readinessProbe:
             httpGet:
               path: /health
@@ -39,7 +39,7 @@ spec:
               path: /health
               port: 8084
             periodSeconds: 10
-            failureThreshold: 30
+            failureThreshold: 60
           livenessProbe:
             httpGet:
               path: /health

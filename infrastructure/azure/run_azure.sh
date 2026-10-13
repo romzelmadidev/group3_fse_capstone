@@ -359,6 +359,9 @@ deploy_workloads() {
   done
   info "In-cluster dependencies (redis, postgres, kafka, mailhog) are up."
 
+  # Only deployments that already existed need a restart to pick up a new :latest image.
+  # Restarting brand-new ones doubles the pods and starves the nodes of CPU.
+  EXISTING_DEPLOYS="$(kubectl get deploy -n banking -o name 2>/dev/null | sed 's#.*/##')"
   local f
   for f in "${K8S_DIR}"/0[1-9]*.yaml "${K8S_DIR}"/10*.yaml; do
     [ -f "$f" ] || continue
@@ -368,12 +371,14 @@ deploy_workloads() {
   # Re-pull freshly built images (tag is :latest)
   local dep
   for dep in "${BUILT[@]:-}"; do
-    [ -n "$dep" ] && kubectl rollout restart deployment/"$dep" -n banking >/dev/null 2>&1 || true
+    if [ -n "$dep" ] && grep -qx "$dep" <<<"$EXISTING_DEPLOYS"; then
+      kubectl rollout restart deployment/"$dep" -n banking >/dev/null 2>&1 || true
+    fi
   done
-  if [ "$RESET_DB" = "true" ]; then # fresh DB: let t24 (Flyway) migrate first, then the DB clients reconnect
-    kubectl rollout restart deployment/t24-mock-cbs -n banking >/dev/null 2>&1 || true
-    kubectl rollout status deployment/t24-mock-cbs -n banking --timeout=600s >/dev/null 2>&1 || true
-    kubectl rollout restart deployment/account-service deployment/notification-service -n banking >/dev/null 2>&1 || true
+  if [ "$RESET_DB" = "true" ]; then # DB was recreated: restart DB clients that were already running
+    for dep in t24-mock-cbs account-service notification-service; do
+      if grep -qx "$dep" <<<"$EXISTING_DEPLOYS"; then kubectl rollout restart deployment/"$dep" -n banking >/dev/null 2>&1 || true; fi
+    done
   fi
 }
 
