@@ -8,6 +8,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && /opt/datadog-agent/embedded/bin/python3 -m pip install --no-deps --trusted-host pypi.org --trusted-host files.pythonhosted.org xgboost
 
 COPY app ./app
+COPY data ./data
 
 ENV PYTHONPATH=/app
 EXPOSE 8084

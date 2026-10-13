@@ -20,13 +20,13 @@ spec:
           image: __ACR_NAME__.azurecr.io/banking-frontend:latest
           imagePullPolicy: Always
           ports:
-            - containerPort: 3000
+            - containerPort: 80
           resources:
             requests:
-              cpu: "50m"
+              cpu: "25m"
               memory: "64Mi"
             limits:
-              cpu: "200m"
+              cpu: "100m"
               memory: "128Mi"
 ---
 apiVersion: v1
@@ -37,9 +37,10 @@ metadata:
   labels:
     app: banking-frontend
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   ports:
-    - port: 3000
-      targetPort: 3000
+    - port: 80
+      targetPort: 80
   selector:
     app: banking-frontend
+

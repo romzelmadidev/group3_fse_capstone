@@ -33,7 +33,9 @@ fi
 JAVA_SERVICES=(
   "gateway-service"
   "account-service"
-  "ledger-mutation-engine"
+  "transfer-orchestrator"
+  "t24-mock-cbs"
+  "compliance-service"
   "notification-service"
 )
 
@@ -71,9 +73,9 @@ else
   docker push "$RISK_TAG"
 fi
 
-# 3. React Frontend SPA (Multi-stage build)
+# 3. React Staff Frontend SPA (Multi-stage build)
 echo "------------------------------------------------------------"
-echo "Building and pushing Frontend SPA: banking-frontend to $ACR_LOGIN_SERVER..."
+echo "Building and pushing Staff Frontend SPA: banking-frontend to $ACR_LOGIN_SERVER..."
 echo "------------------------------------------------------------"
 if [ "$USE_AZ_ACR_BUILD" = "true" ]; then
   az acr build \
@@ -85,6 +87,22 @@ else
   FRONTEND_TAG="${ACR_LOGIN_SERVER}/banking-frontend:latest"
   docker build -f "${ROOT_DIR}/frontend/Dockerfile" -t "$FRONTEND_TAG" "${ROOT_DIR}/frontend"
   docker push "$FRONTEND_TAG"
+fi
+
+# 4. Flutter Customer Retail Web Portal (Multi-stage build)
+echo "------------------------------------------------------------"
+echo "Building and pushing Customer Web Portal: aurabank-web to $ACR_LOGIN_SERVER..."
+echo "------------------------------------------------------------"
+if [ "$USE_AZ_ACR_BUILD" = "true" ]; then
+  az acr build \
+    --registry "$ACR_NAME" \
+    --image "aurabank-web:latest" \
+    --file "${ROOT_DIR}/aurabank_web/Dockerfile" \
+    "${ROOT_DIR}/aurabank_web"
+else
+  AURA_TAG="${ACR_LOGIN_SERVER}/aurabank-web:latest"
+  docker build -f "${ROOT_DIR}/aurabank_web/Dockerfile" -t "$AURA_TAG" "${ROOT_DIR}/aurabank_web"
+  docker push "$AURA_TAG"
 fi
 
 echo "============================================================"

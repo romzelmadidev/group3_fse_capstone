@@ -42,7 +42,13 @@ spec:
             periodSeconds: 15
           env:
             - name: JAVA_TOOL_OPTIONS
-              value: "-XX:+UseSerialGC -Xms128m -Xmx320m"
+              value: "-javaagent:/app/dd-java-agent.jar -XX:+UseSerialGC -Xms128m -Xmx320m"
+            - name: DD_AGENT_HOST
+              value: "dd-agent.banking.svc.cluster.local"
+            - name: DD_SERVICE
+              value: "account-service"
+            - name: DD_ENV
+              value: "azure"
             - name: SPRING_PROFILES_ACTIVE
               value: "azure"
             - name: AZURE_SQL_URL

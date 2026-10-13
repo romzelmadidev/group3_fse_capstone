@@ -30,4 +30,6 @@ spec:
             - "-f"
             - "-X"
             - "POST"
-            - "http://t24-mock-cbs:8085/api/v1/cbs/cob/run"
+            - "http://t24-mock-cbs.banking.svc.cluster.local:8085/api/v1/cbs/cob/run"
+
+

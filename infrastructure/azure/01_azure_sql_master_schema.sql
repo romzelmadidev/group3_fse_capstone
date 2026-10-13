@@ -422,3 +422,100 @@ VALUES
 ('acc-2002-chk-001', 8500000.0000, 0.0000),
 ('acc-2003-sav-002', 12345678.1250, 0.0000),
 ('ACC-NOSTRO-BANK-B', 5000000.0000, 0.0000);
+
+-- ==============================================================================
+-- 18. Table: auth_identity.admin_users (Bank Operations & Compliance Personnel)
+-- ==============================================================================
+IF OBJECT_ID('auth_identity.admin_users', 'U') IS NOT NULL DROP TABLE auth_identity.admin_users;
+CREATE TABLE auth_identity.admin_users (
+    admin_id                NVARCHAR(64) NOT NULL PRIMARY KEY,
+    first_name              NVARCHAR(100) NOT NULL,
+    middle_name             NVARCHAR(100),
+    last_name               NVARCHAR(100) NOT NULL,
+    email                   NVARCHAR(255) NOT NULL UNIQUE,
+    phone_number            NVARCHAR(30),
+    dob                     DATE,
+    government_id           NVARCHAR(100),
+    role                    NVARCHAR(20) NOT NULL CHECK (role IN ('ADMIN', 'TELLER', 'MANAGER', 'COMPLIANCE')),
+    department              NVARCHAR(100) DEFAULT 'Branch Operations',
+    password_hash           NVARCHAR(255) NOT NULL,
+    max_concurrent_sessions INT DEFAULT 5 NOT NULL,
+    failed_login_attempts   INT DEFAULT 0 NOT NULL,
+    status                  NVARCHAR(20) DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'LOCKED', 'SUSPENDED')),
+    last_login_at           DATETIMEOFFSET,
+    created_at              DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL,
+    updated_at              DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET() NOT NULL
+);
+
+INSERT INTO auth_identity.admin_users (
+    admin_id, first_name, middle_name, last_name, email, phone_number, dob, government_id, role, department, password_hash, max_concurrent_sessions, failed_login_attempts, status
+) VALUES
+('U0001', 'Diana', 'Marie', 'Vance', 'diana.admin@bank.com', '+639000000000', '1980-01-01', 'COMPANY-ID-EMP-001', 'ADMIN', 'Executive Board', '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', 5, 0, 'ACTIVE'),
+('U3001', 'Alex', 'James', 'Mercer', 'alex.teller@bank.com', '09201112233', '1988-11-03', 'PRC-8877-6655', 'TELLER', 'Branch Operations', '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', 5, 0, 'ACTIVE');
+
+-- ==============================================================================
+-- 19. Unified View: auth_identity.v_all_users
+-- ==============================================================================
+IF OBJECT_ID('auth_identity.v_all_users', 'V') IS NOT NULL DROP VIEW auth_identity.v_all_users;
+GO
+CREATE VIEW auth_identity.v_all_users AS
+SELECT 
+    user_id AS id,
+    first_name,
+    middle_name,
+    last_name,
+    email,
+    phone_number,
+    dob,
+    government_id,
+    role,
+    'Retail Customer' AS department,
+    password_hash,
+    pin_hash,
+    max_concurrent_sessions,
+    failed_login_attempts,
+    status,
+    last_login_at,
+    created_at,
+    updated_at,
+    'CUSTOMER' AS user_type
+FROM auth_identity.users
+UNION ALL
+SELECT 
+    admin_id AS id,
+    first_name,
+    middle_name,
+    last_name,
+    email,
+    phone_number,
+    dob,
+    government_id,
+    role,
+    department,
+    password_hash,
+    NULL AS pin_hash,
+    max_concurrent_sessions,
+    failed_login_attempts,
+    status,
+    last_login_at,
+    created_at,
+    updated_at,
+    'ADMIN' AS user_type
+FROM auth_identity.admin_users;
+GO
+
+-- ==============================================================================
+-- 20. Multi-Schema Synonyms for DBO (Account-Service Compatibility)
+-- ==============================================================================
+IF NOT EXISTS (SELECT * FROM sys.synonyms WHERE name = 'users' AND schema_id = SCHEMA_ID('dbo'))
+    CREATE SYNONYM dbo.users FOR auth_identity.users;
+IF NOT EXISTS (SELECT * FROM sys.synonyms WHERE name = 'admin_users' AND schema_id = SCHEMA_ID('dbo'))
+    CREATE SYNONYM dbo.admin_users FOR auth_identity.admin_users;
+IF NOT EXISTS (SELECT * FROM sys.synonyms WHERE name = 'accounts' AND schema_id = SCHEMA_ID('dbo'))
+    CREATE SYNONYM dbo.accounts FOR core.accounts;
+IF NOT EXISTS (SELECT * FROM sys.synonyms WHERE name = 'balance_master' AND schema_id = SCHEMA_ID('dbo'))
+    CREATE SYNONYM dbo.balance_master FOR core.balance_master;
+IF NOT EXISTS (SELECT * FROM sys.synonyms WHERE name = 'transactions' AND schema_id = SCHEMA_ID('dbo'))
+    CREATE SYNONYM dbo.transactions FOR core.transactions;
+GO
+

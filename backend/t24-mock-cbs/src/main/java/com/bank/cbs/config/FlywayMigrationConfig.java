@@ -38,6 +38,7 @@ public class FlywayMigrationConfig {
     @ConditionalOnProperty(name = "cbs.flyway.master.enabled", havingValue = "true", matchIfMissing = true)
     public Flyway masterFlyway(@Qualifier("masterDataSource") DataSource dataSource) {
         log.info("Checking Master Database connectivity for Flyway migrations...");
+        boolean isSqlServer = false;
         boolean hasExistingTables = false;
         try (Connection conn = dataSource.getConnection()) {
             String dbProduct = conn.getMetaData().getDatabaseProductName();
@@ -49,12 +50,25 @@ public class FlywayMigrationConfig {
                 return null;
             }
 
-            try (var stmt = conn.createStatement();
-                 var rs = stmt.executeQuery("SELECT COUNT(*) FROM all_tables WHERE owner = 'FSE_USER' AND table_name != 'FLYWAY_SCHEMA_HISTORY'")) {
-                if (rs.next()) {
-                    int count = rs.getInt(1);
-                    hasExistingTables = (count > 0);
-                    log.info("Detected {} existing non-Flyway tables in FSE_USER schema. hasExistingTables={}", count, hasExistingTables);
+            if (dbProduct != null && (dbProduct.contains("Microsoft") || dbProduct.contains("SQL Server"))) {
+                isSqlServer = true;
+                log.info("Master Database is Microsoft SQL Server / Azure SQL. Probing sys.tables...");
+                try (var stmt = conn.createStatement();
+                     var rs = stmt.executeQuery("SELECT COUNT(*) FROM sys.tables WHERE name != 'FLYWAY_SCHEMA_HISTORY'")) {
+                    if (rs.next()) {
+                        int count = rs.getInt(1);
+                        hasExistingTables = (count > 0);
+                        log.info("Detected {} existing non-Flyway tables in SQL Server. hasExistingTables={}", count, hasExistingTables);
+                    }
+                }
+            } else {
+                try (var stmt = conn.createStatement();
+                     var rs = stmt.executeQuery("SELECT COUNT(*) FROM all_tables WHERE owner = 'FSE_USER' AND table_name != 'FLYWAY_SCHEMA_HISTORY'")) {
+                    if (rs.next()) {
+                        int count = rs.getInt(1);
+                        hasExistingTables = (count > 0);
+                        log.info("Detected {} existing non-Flyway tables in FSE_USER schema. hasExistingTables={}", count, hasExistingTables);
+                    }
                 }
             }
         } catch (Exception e) {
@@ -62,10 +76,16 @@ public class FlywayMigrationConfig {
         }
 
         List<String> locations = new ArrayList<>();
-        locations.add("classpath:db/migration/oracle");
-        if (seedSampleData) {
-            log.info("Development sample data seeding enabled (classpath:db/seed/oracle)");
-            locations.add("classpath:db/seed/oracle");
+        if (isSqlServer) {
+            log.info("Loading SQL Server migrations from classpath:db/migration/sqlserver");
+            locations.add("classpath:db/migration/sqlserver");
+        } else {
+            log.info("Loading Oracle migrations from classpath:db/migration/oracle");
+            locations.add("classpath:db/migration/oracle");
+            if (seedSampleData) {
+                log.info("Development sample data seeding enabled (classpath:db/seed/oracle)");
+                locations.add("classpath:db/seed/oracle");
+            }
         }
 
         var config = Flyway.configure()

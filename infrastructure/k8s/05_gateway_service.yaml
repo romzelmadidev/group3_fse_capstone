@@ -42,17 +42,31 @@ spec:
             periodSeconds: 15
           env:
             - name: JAVA_TOOL_OPTIONS
-              value: "-XX:+UseSerialGC -Xms128m -Xmx320m"
+              value: "-javaagent:/app/dd-java-agent.jar -XX:+UseSerialGC -Xms128m -Xmx320m"
+            - name: DD_AGENT_HOST
+              value: "dd-agent.banking.svc.cluster.local"
+            - name: DD_SERVICE
+              value: "gateway-service"
+            - name: DD_ENV
+              value: "azure"
             - name: REDIS_HOST
               value: "redis.banking.svc.cluster.local"
             - name: REDIS_PORT
               value: "6379"
             - name: ACCOUNT_SERVICE_URI
               value: "http://account-service.banking.svc.cluster.local:8081"
-            - name: LEDGER_ENGINE_URI
-              value: "http://ledger-mutation-engine.banking.svc.cluster.local:8082"
+            - name: TRANSFER_ORCHESTRATOR_URI
+              value: "http://transfer-orchestrator.banking.svc.cluster.local:8082"
+            - name: CBS_SERVICE_URI
+              value: "http://t24-mock-cbs.banking.svc.cluster.local:8085"
+            - name: COMPLIANCE_SERVICE_URI
+              value: "http://compliance-service.banking.svc.cluster.local:8086"
             - name: NOTIFICATION_SERVICE_URI
               value: "http://notification-service.banking.svc.cluster.local:8083"
+            - name: MAILHOG_API_URI
+              value: "http://mailhog.banking.svc.cluster.local:8025"
+            - name: RISK_SERVICE_URI
+              value: "http://risk-service.banking.svc.cluster.local:8084"
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:

@@ -42,9 +42,19 @@ spec:
             periodSeconds: 15
           env:
             - name: JAVA_TOOL_OPTIONS
-              value: "-XX:+UseSerialGC -Xms128m -Xmx320m"
+              value: "-javaagent:/app/dd-java-agent.jar -XX:+UseSerialGC -Xms128m -Xmx320m"
+            - name: DD_AGENT_HOST
+              value: "dd-agent.banking.svc.cluster.local"
+            - name: DD_SERVICE
+              value: "notification-service"
+            - name: DD_ENV
+              value: "azure"
             - name: SPRING_PROFILES_ACTIVE
               value: "azure"
+            - name: SPRING_MAIL_HOST
+              value: "mailhog.banking.svc.cluster.local"
+            - name: SPRING_MAIL_PORT
+              value: "1025"
             - name: AZURE_SQL_URL
               valueFrom:
                 secretKeyRef:

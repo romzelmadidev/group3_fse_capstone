@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aurabank-customer-web
+  namespace: banking
+  labels:
+    app: aurabank-customer-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aurabank-customer-web
+  template:
+    metadata:
+      labels:
+        app: aurabank-customer-web
+    spec:
+      containers:
+        - name: aurabank-customer-web
+          image: __ACR_NAME__.azurecr.io/aurabank-web:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "25m"
+              memory: "64Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aurabank-customer-web
+  namespace: banking
+  labels:
+    app: aurabank-customer-web
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: aurabank-customer-web
