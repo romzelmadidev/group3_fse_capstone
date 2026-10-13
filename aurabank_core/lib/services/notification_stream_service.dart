@@ -652,14 +652,9 @@ class NotificationStreamService extends ChangeNotifier {
 
     final type = data['type'] as String? ?? '';
     final isApproved = type == 'DEVICE_APPROVED';
-    final targetDevId = (data['device_id'] as String? ?? '').toLowerCase().trim();
+    final targetDevId = (data['device_id'] as String? ?? data['deviceId'] as String? ?? '').toLowerCase().trim();
     final currentDevId = AuthApiService().currentDeviceId.toLowerCase().trim();
-    final currentDevName = AuthApiService().currentDeviceName.toLowerCase().trim();
-    final isForThisDevice = targetDevId.isNotEmpty &&
-        (targetDevId == currentDevId ||
-         targetDevId == currentDevName ||
-         (currentDevId.isNotEmpty && (targetDevId.contains(currentDevId) || currentDevId.contains(targetDevId))) ||
-         (currentDevName.isNotEmpty && (targetDevId.contains(currentDevName) || currentDevName.contains(targetDevId))));
+    final isForThisDevice = targetDevId.isNotEmpty && targetDevId == currentDevId;
 
     final notifId = data['notification_id'] as String? ?? 'DEV-${DateTime.now().millisecondsSinceEpoch}';
 
