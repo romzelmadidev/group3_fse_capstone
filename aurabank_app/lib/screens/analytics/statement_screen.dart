@@ -6,8 +6,9 @@ import 'statement_preview_screen.dart';
 
 class StatementScreen extends StatefulWidget {
   final VoidCallback? onBack;
+  final String? initialMonthKey;
 
-  const StatementScreen({super.key, this.onBack});
+  const StatementScreen({super.key, this.onBack, this.initialMonthKey});
 
   @override
   State<StatementScreen> createState() => _StatementScreenState();
@@ -15,7 +16,7 @@ class StatementScreen extends StatefulWidget {
 
 class _StatementScreenState extends State<StatementScreen> {
   final BankService _bankService = BankService();
-  String _selectedMonthKey = '2026-10';
+  late String _selectedMonthKey;
   bool _isMonthDropdownOpen = false;
   String _filterTab = 'All'; // 'All', 'In', 'Out'
   final TextEditingController _searchController = TextEditingController();
@@ -34,6 +35,7 @@ class _StatementScreenState extends State<StatementScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedMonthKey = widget.initialMonthKey ?? '2026-10';
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text.trim().toLowerCase();
