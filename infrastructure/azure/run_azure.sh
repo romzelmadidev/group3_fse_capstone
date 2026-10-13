@@ -404,7 +404,7 @@ deploy_workloads() {
 
 wait_until_ready() {
   log "[7/8] Waiting for every pod to be Ready (auto-adds nodes if pods are Pending)"
-  local deadline=$((SECONDS + READY_TIMEOUT)) strikes=0 notready unsched
+  local deadline=$((SECONDS + READY_TIMEOUT)) strikes=0 tick=0 notready unsched
   while (( SECONDS < deadline )); do
     notready="$(kubectl get deploy -n banking -o json | jq -r '.items[] | select(.metadata.name != "dd-agent") | select((.status.readyReplicas // 0) < (.spec.replicas // 1)) | .metadata.name' | paste -sd' ' -)"
     if [ -z "$notready" ]; then info "All deployments are Ready."; return 0; fi
@@ -420,6 +420,15 @@ wait_until_ready() {
     else
       strikes=0
       info "waiting for: ${notready}"
+      tick=$((tick + 1))
+      if (( tick % 3 == 0 )); then # once a minute: show WHY it is not ready yet
+        local d
+        for d in $notready; do
+          echo "      -- ${d}: $(kubectl get pods -n banking -l app="$d" -o jsonpath='{range .items[*]}{.status.containerStatuses[0].restartCount}{" restart(s) "}{.status.containerStatuses[0].lastState.terminated.reason}{"  "}{end}' 2>/dev/null)"
+          kubectl logs deploy/"$d" -n banking --tail=60 2>/dev/null \
+            | grep -vE 'dd\.trace|Picked up JAVA_TOOL|Sharing is only' | tail -n 3 | cut -c1-220 | sed 's/^/         /' || true
+        done
+      fi
     fi
     sleep 20
   done
