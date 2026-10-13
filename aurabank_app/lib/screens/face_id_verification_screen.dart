@@ -463,18 +463,6 @@ class _FaceIdVerificationScreenState extends State<FaceIdVerificationScreen>
             label: 'Purpose',
             value: purpose,
           ),
-
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Divider(color: Color(0xFFF1F3F4), height: 1, thickness: 1),
-          ),
-
-          // Transfer Fee
-          _buildDetailRow(
-            label: 'Transfer Fee',
-            value: widget.fee == 0.0 ? 'FREE' : 'PHP ${_formatAmount(widget.fee)}',
-            valueColor: widget.fee == 0.0 ? greenSuccess : textDark,
-          ),
         ],
       ),
     );

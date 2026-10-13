@@ -43,7 +43,7 @@ public class FailedTransactionAudit {
 
     @Column(name = "replay_status", nullable = false, length = 30)
     @Builder.Default
-    private String replayStatus = "PENDING_REPLAY"; // PENDING_REPLAY, REPLAYED, DISMISSED
+    private String replayStatus = "PENDING_REPLAY"; // PENDING_REPLAY, RESOLVED, EXPIRED_CANCELLED, MANUAL_REVIEW_REQUIRED
 
     @Column(name = "failure_timestamp", nullable = false)
     @Builder.Default

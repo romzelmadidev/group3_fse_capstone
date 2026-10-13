@@ -321,16 +321,8 @@ class _TransactionReceiptScreenState extends State<TransactionReceiptScreen> {
                         _buildSimpleRow('Transfer Amount',
                             'PHP ${_formatAmount(widget.amount)}'),
                         const SizedBox(height: 14),
-                        _buildSimpleRow(
-                          'Transfer Fee',
-                          widget.fee == 0.0
-                              ? 'FREE'
-                              : 'PHP ${_formatAmount(widget.fee)}',
-                          feeColor: widget.fee == 0.0 ? greenSuccess : textDark,
-                        ),
-                        const SizedBox(height: 14),
                         _buildSimpleRow('Total Amount',
-                            'PHP ${_formatAmount(widget.amount + widget.fee)}',
+                            'PHP ${_formatAmount(widget.amount)}',
                             isBold: true),
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 12),
