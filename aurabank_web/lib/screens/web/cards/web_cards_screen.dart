@@ -115,7 +115,28 @@ class _WebCardsScreenState extends State<WebCardsScreen> with CardDeckState<WebC
             ],
           ),
           const SizedBox(height: 28),
-          const Text('Recent card activity', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -0.3)),
+          const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Recent Transactions',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.3,
+                  color: Color(0xFF10171C),
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'Track your latest account activity',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: Color(0xFF7D8892),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
           for (final txn in bank.recentTransactions)
             Padding(padding: const EdgeInsets.only(bottom: 8), child: TransactionTile(txn: txn)),

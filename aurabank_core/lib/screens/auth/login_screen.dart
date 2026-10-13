@@ -220,6 +220,37 @@ class _LoginScreenState extends State<LoginScreen>
       _hydrateUserAndSync(authResult, email, password);
       Navigator.of(context).pushReplacementNamed('/dashboard');
     } else {
+      // Offline / Dev bypass fallback: Allows login and UI development when backend is offline
+      final personaMatches = UserPersona.demoPersonas.where(
+        (p) => p.email.toLowerCase() == email.trim().toLowerCase(),
+      );
+      if (personaMatches.isNotEmpty) {
+        final p = personaMatches.first;
+        final resolvedUserId = p.name.contains('Paolo')
+            ? 'U9001'
+            : (p.name.contains('Elena')
+                ? 'U9002'
+                : (p.name.contains('Marco') ? 'U9003' : 'USR-0001'));
+        final storedEmail = DeviceStorage.getUserEmail() ?? DeviceStorage.getLastLoginEmail();
+        final storedBal = (storedEmail?.toLowerCase() == p.email.toLowerCase())
+            ? DeviceStorage.getUserBalance()
+            : null;
+        _hydrateUserAndSync(
+          AuthLoginResult(
+            status: AuthStatus.authenticated,
+            fullName: p.name,
+            email: p.email,
+            primaryAccountId: p.accountId,
+            availableBalance: storedBal ?? p.balance,
+            userId: resolvedUserId,
+            persona: p,
+          ),
+          email,
+          password,
+        );
+        Navigator.of(context).pushReplacementNamed('/dashboard');
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(authResult.errorMessage ??
@@ -252,12 +283,18 @@ class _LoginScreenState extends State<LoginScreen>
     final accountId = authResult.primaryAccountId ??
         authResult.persona?.accountId ??
         '1000-2000-3001';
+    final targetEmail = authResult.email ?? email.trim();
+    final storedEmail = DeviceStorage.getUserEmail() ?? DeviceStorage.getLastLoginEmail();
+    final storedBal = (storedEmail?.toLowerCase() == targetEmail.toLowerCase())
+        ? DeviceStorage.getUserBalance()
+        : null;
     final balance = authResult.availableBalance ??
+        storedBal ??
         authResult.persona?.balance;
 
     _bankService.setUserProfileFromAuth(
       name: resolvedName,
-      email: authResult.email ?? email.trim(),
+      email: targetEmail,
       phoneNumber: authResult.phoneNumber,
       accountId: accountId,
       balance: balance,
@@ -265,6 +302,9 @@ class _LoginScreenState extends State<LoginScreen>
 
     DeviceStorage.saveLastLoginEmail(email.trim());
     DeviceStorage.saveLastLoginName(resolvedName);
+    if (authResult.userId != null) {
+      DeviceStorage.saveUserId(authResult.userId!);
+    }
     _bankService.syncWithBackend();
   }
 

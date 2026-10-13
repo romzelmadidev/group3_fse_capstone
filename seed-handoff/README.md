@@ -31,9 +31,9 @@ Counts in the table are real transfer counts, written as in/out.
 
 | Customer | In | Out | Net | Opened 1 Jan | Closed 31 Dec | Lowest balance |
 |---|---:|---:|---:|---:|---:|---:|
-| Paolo Reyes | 398,000 | 264,000 | 134,000 | 80,000 | 214,000 | 80,000 |
-| Elena Cruz | 278,000 | 208,500 | 69,500 | 50,000 | 119,500 | 49,850 |
-| Marco Santos | 216,000 | 311,000 | -95,000 | 400,000 | 305,000 | 305,000 |
+| Paolo Reyes | 322,500 | 204,200 | 118,300 | 80,000 | 198,300 | 80,000 |
+| Elena Cruz | 198,000 | 141,750 | 56,250 | 50,000 | 106,250 | 49,850 |
+| Marco Santos | 160,800 | 230,600 | -69,800 | 400,000 | 330,200 | 325,000 |
 
 ### Paolo Reyes
 
@@ -48,9 +48,9 @@ Counts in the table are real transfer counts, written as in/out.
 | Jul | 28,000/4,500 (1/2) | 2,000/6,200 (1/3) | 1,500/5,800 (1/2) | 1,000/5,000 (1/2) | 32,500 | 21,500 | 11,000 |
 | Aug | 28,000/4,500 (1/2) | 2,000/6,200 (1/3) | 1,500/5,800 (1/2) | 1,000/5,000 (1/2) | 32,500 | 21,500 | 11,000 |
 | Sep | 28,000/4,500 (1/2) | 2,000/6,200 (1/3) | 1,500/5,800 (1/2) | 1,000/5,000 (1/2) | 32,500 | 21,500 | 11,000 |
-| Oct | 28,000/4,500 (1/2) | 2,000/6,200 (1/3) | 1,500/5,800 (1/2) | 1,000/5,000 (1/2) | 32,500 | 21,500 | 11,000 |
-| Nov | 28,000/4,500 (1/2) | 2,000/6,200 (1/3) | 1,500/5,800 (1/2) | 1,000/5,000 (1/2) | 32,500 | 21,500 | 11,000 |
-| Dec | 28,000/4,500 (1/2) | 2,000/6,200 (1/3) | 9,500/5,800 (2/2) | 1,000/11,000 (1/4) | 40,500 | 27,500 | 13,000 |
+| Oct | 28,000/4,500 (1/2) | 2,000/6,200 (1/3) | 0/0 (0/0) | 0/0 (0/0) | 30,000 | 10,700 | 19,300 |
+| Nov | 0/0 (0/0) | 0/0 (0/0) | 0/0 (0/0) | 0/0 (0/0) | 0 | 0 | 0 |
+| Dec | 0/0 (0/0) | 0/0 (0/0) | 0/0 (0/0) | 0/0 (0/0) | 0 | 0 | 0 |
 ### Elena Cruz
 
 | Month | W1 in/out | W2 in/out | W3 in/out | W4 in/out | Month in | Month out | Net |
@@ -64,9 +64,9 @@ Counts in the table are real transfer counts, written as in/out.
 | Jul | 2,400/2,700 (1/2) | 12,000/2,700 (1/2) | 6,000/8,100 (1/4) | 3,600/4,500 (1/2) | 24,000 | 18,000 | 6,000 |
 | Aug | 2,600/2,925 (1/2) | 13,000/2,925 (1/2) | 6,500/8,775 (1/4) | 3,900/4,875 (1/2) | 26,000 | 19,500 | 6,500 |
 | Sep | 2,800/3,150 (1/2) | 14,000/3,150 (1/2) | 7,000/9,450 (1/5) | 4,200/5,250 (1/2) | 28,000 | 21,000 | 7,000 |
-| Oct | 3,000/3,375 (1/2) | 15,000/3,375 (1/2) | 7,500/10,125 (1/5) | 4,500/5,625 (1/2) | 30,000 | 22,500 | 7,500 |
-| Nov | 3,200/3,600 (1/2) | 16,000/3,600 (1/2) | 8,000/10,800 (1/5) | 4,800/6,000 (1/2) | 32,000 | 24,000 | 8,000 |
-| Dec | 3,600/4,050 (1/2) | 18,000/4,050 (1/2) | 9,000/12,150 (1/6) | 5,400/6,750 (1/2) | 36,000 | 27,000 | 9,000 |
+| Oct | 3,000/3,375 (1/2) | 15,000/3,375 (1/2) | 0/0 (0/0) | 0/0 (0/0) | 18,000 | 6,750 | 11,250 |
+| Nov | 0/0 (0/0) | 0/0 (0/0) | 0/0 (0/0) | 0/0 (0/0) | 0 | 0 | 0 |
+| Dec | 0/0 (0/0) | 0/0 (0/0) | 0/0 (0/0) | 0/0 (0/0) | 0 | 0 | 0 |
 ### Marco Santos
 
 | Month | W1 in/out | W2 in/out | W3 in/out | W4 in/out | Month in | Month out | Net |
@@ -80,9 +80,9 @@ Counts in the table are real transfer counts, written as in/out.
 | Jul | 8,000/6,300 (1/2) | 4,000/8,400 (1/3) | 4,000/10,500 (1/3) | 4,000/16,800 (1/4) | 20,000 | 42,000 | -22,000 |
 | Aug | 8,800/7,200 (1/2) | 4,400/9,600 (1/3) | 4,400/12,000 (1/3) | 4,400/19,200 (1/4) | 22,000 | 48,000 | -26,000 |
 | Sep | 6,400/2,700 (1/1) | 3,200/3,600 (1/2) | 3,200/4,500 (1/1) | 3,200/7,200 (1/2) | 16,000 | 18,000 | -2,000 |
-| Oct | 7,200/2,400 (1/1) | 3,600/3,200 (1/2) | 3,600/4,000 (1/1) | 3,600/6,400 (1/2) | 18,000 | 16,000 | 2,000 |
-| Nov | 6,400/3,300 (1/1) | 3,200/4,400 (1/2) | 3,200/5,500 (1/2) | 3,200/8,800 (1/2) | 16,000 | 22,000 | -6,000 |
-| Dec | 12,800/7,200 (1/2) | 6,400/9,600 (1/3) | 6,400/12,000 (1/3) | 6,400/19,200 (1/4) | 32,000 | 48,000 | -16,000 |
+| Oct | 7,200/2,400 (1/1) | 3,600/3,200 (1/2) | 0/0 (0/0) | 0/0 (0/0) | 10,800 | 5,600 | 5,200 |
+| Nov | 0/0 (0/0) | 0/0 (0/0) | 0/0 (0/0) | 0/0 (0/0) | 0 | 0 | 0 |
+| Dec | 0/0 (0/0) | 0/0 (0/0) | 0/0 (0/0) | 0/0 (0/0) | 0 | 0 | 0 |
 
 ## How the weeks stay consistent
 
@@ -111,6 +111,6 @@ Today for the risk profiles is 12 Oct 2026. The newest outgoing transfer used as
 2. Paste `risk_profiles.py` into `backend/risk-service/app/seed_data.py`. Register each profile under the user id, the account id, and the account number. The service will not see the SQL by itself.
 3. Point `aurabank_web/lib/screens/web/analytics/web_analytics_screen.dart` at `analytics_catalog.json` for the signed-in user. The screen still ships one hardcoded `_monthsCatalog`, so the database will not change the chart until that catalog is replaced. Month index 9 is October. Week index 3 is week 4. `net` is received minus sent.
 4. Do not insert `available_balance`. It is a generated column. `from_account_id` and `to_account_id` both reference `accounts`. Amount is greater than 0. Status is `POSTED`. Type is `TRANSFER`. `transaction_type` is `INTRA_BANK`.
-5. `balance_master.balance_amount` in the SQL is the 31 Dec 2026 close, after every row in this file.
+5. `balance_master.balance_amount` in the SQL is the 11 Oct 2026 anchor balance, matching the risk profile anchor.
 
-Transfer count: 429.
+Transfer count: 330.

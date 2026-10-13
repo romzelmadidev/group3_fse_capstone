@@ -182,7 +182,7 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
                           FilledButton.icon(
                             onPressed: () => widget.onNavigateTab?.call(1),
                             icon: const Icon(Icons.north_east_rounded, size: 18),
-                            label: const Text('Send'),
+                            label: const Text('Transfer'),
                             style: FilledButton.styleFrom(
                               backgroundColor: AuraColors.mint,
                               foregroundColor: AuraColors.ink,
@@ -348,7 +348,7 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Recent Ledger Activity',
+                      'Recent Transactions',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
@@ -357,7 +357,7 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'Real-time transaction settlement history',
+                      'Track your latest account activity',
                       style: TextStyle(
                         fontSize: 12,
                         color: Color(0xFF7D8892),

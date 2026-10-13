@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 YEAR = 2026
-AS_OF = datetime(2026, 10, 11, 23, 59)
+AS_OF = datetime(2026, 10, 13, 23, 59, 59)
 OUT = Path(__file__).resolve().parent
 
 MONTHS = [
@@ -392,6 +392,9 @@ def build() -> tuple[list[dict], dict]:
             raise SystemExit(f"duplicate timestamp {key}")
         seen.add(key)
 
+    # Filter out future transactions (late October, November, December) so real-time data stops on Oct 13
+    events = [row for row in events if row["ts"] <= AS_OF]
+
     balances = {acct: PEOPLE[acct]["opening"] for acct in PEOPLE}
     lowest = dict(balances)
     for index, row in enumerate(events, start=1):
@@ -422,6 +425,8 @@ def build() -> tuple[list[dict], dict]:
             bucket[side + 2] += 1
 
     for key, (want_in, want_out) in expected.items():
+        if key[1] > 10 or (key[1] == 10 and key[2] >= 2):
+            continue
         got_in, got_out, _, _ = actual[key]
         if (got_in, got_out) != (want_in, want_out):
             raise SystemExit(f"mismatch {key}: want {(want_in, want_out)} got {(got_in, got_out)}")
@@ -479,12 +484,12 @@ def write_sql(events: list[dict], balances: dict) -> None:
         lines.append(
             "INSERT INTO balance_master (balance_id, account_id, balance_amount, hold_amount, created_at, updated_at) VALUES ("
             f"{sql_quote('bal-' + acct)}, {sql_quote(acct)}, {balances[acct]:.4f}, 0.0000, "
-            "TIMESTAMP '2026-12-31 23:59:00 +08:00', TIMESTAMP '2026-12-31 23:59:00 +08:00');"
+            f"TIMESTAMP '{AS_OF.strftime('%Y-%m-%d %H:%M:%S')} +08:00', TIMESTAMP '{AS_OF.strftime('%Y-%m-%d %H:%M:%S')} +08:00');"
         )
     lines.append("")
-    lines.append("-- Opening balances before 2026-01-01, for audit only. balance_master above is the 2026-12-31 close.")
+    lines.append("-- Opening balances before 2026-01-01, for audit only. balance_master above is the 2026-10-13 real anchor balance.")
     for acct in order:
-        lines.append(f"-- {acct} opened at {PEOPLE[acct]['opening']:.4f} and closes at {balances[acct]:.4f}")
+        lines.append(f"-- {acct} opened at {PEOPLE[acct]['opening']:.4f} and current balance is {balances[acct]:.4f}")
     lines.append("")
     for row in events:
         sender = PEOPLE[row["from"]]
@@ -566,15 +571,15 @@ def risk_block(events: list[dict]) -> str:
     header = (
         "# Paste these keys into CUSTOMER_PROFILES in backend/risk-service/app/seed_data.py.\n"
         "# The risk service does not read Oracle. Same home GPS on every send.\n"
-        "# Anchor is the latest outgoing transfer on or before 2026-10-11.\n"
-        "# December rows stay in the ledger for the yearly chart. They are not the risk anchor.\n\n"
+        "# Anchor is the latest outgoing transfer on or before 2026-10-13.\n"
+        "# Real data ends on 2026-10-13. November and December have zero seeded transactions.\n\n"
         "CUSTOMER_PROFILES_2026 = {\n"
     )
     return header + "".join(blocks) + "}\n"
 
 
 def write_analytics(events: list[dict]) -> dict:
-    catalog = {"asOf": "2026-10-12", "year": YEAR, "weekBounds": ["1-7", "8-14", "15-21", "22-end"], "customers": []}
+    catalog = {"asOf": "2026-10-13", "year": YEAR, "weekBounds": ["1-7", "8-14", "15-21", "22-end"], "customers": []}
     for acct in CUSTOMERS:
         person = PEOPLE[acct]
         months = []
@@ -738,7 +743,7 @@ Today for the risk profiles is 12 Oct 2026. The newest outgoing transfer used as
 2. Paste `risk_profiles.py` into `backend/risk-service/app/seed_data.py`. Register each profile under the user id, the account id, and the account number. The service will not see the SQL by itself.
 3. Point `aurabank_web/lib/screens/web/analytics/web_analytics_screen.dart` at `analytics_catalog.json` for the signed-in user. The screen still ships one hardcoded `_monthsCatalog`, so the database will not change the chart until that catalog is replaced. Month index 9 is October. Week index 3 is week 4. `net` is received minus sent.
 4. Do not insert `available_balance`. It is a generated column. `from_account_id` and `to_account_id` both reference `accounts`. Amount is greater than 0. Status is `POSTED`. Type is `TRANSFER`. `transaction_type` is `INTRA_BANK`.
-5. `balance_master.balance_amount` in the SQL is the 31 Dec 2026 close, after every row in this file.
+5. `balance_master.balance_amount` in the SQL is the 11 Oct 2026 anchor balance, matching the risk profile anchor.
 
 Transfer count: {len(events)}.
 """

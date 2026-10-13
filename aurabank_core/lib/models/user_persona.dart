@@ -21,6 +21,30 @@ class UserPersona {
 
   static const List<UserPersona> demoPersonas = [
     UserPersona(
+      name: 'Paolo Reyes',
+      role: 'Customer',
+      email: 'paolo.reyes@email.com',
+      password: 'password123',
+      accountId: '1000-9000-0001',
+      balance: 198300.00,
+    ),
+    UserPersona(
+      name: 'Elena Cruz',
+      role: 'Customer',
+      email: 'elena.cruz@email.com',
+      password: 'password123',
+      accountId: '1000-9000-0002',
+      balance: 106250.00,
+    ),
+    UserPersona(
+      name: 'Marco Santos',
+      role: 'Customer',
+      email: 'marco.santos@email.com',
+      password: 'password123',
+      accountId: '1000-9000-0003',
+      balance: 330200.00,
+    ),
+    UserPersona(
       name: 'Wax',
       role: 'Customer',
       email: 'wax@bank.com',
