@@ -11,6 +11,8 @@ import java.util.Optional;
 @Repository
 public interface FailedTransactionAuditRepository extends JpaRepository<FailedTransactionAudit, String> {
     Optional<FailedTransactionAudit> findByTransactionId(String transactionId);
+    Optional<FailedTransactionAudit> findFirstByTransactionIdOrderByFailureTimestampDesc(String transactionId);
+    List<FailedTransactionAudit> findAllByTransactionIdOrderByFailureTimestampDesc(String transactionId);
     List<FailedTransactionAudit> findByReplayStatus(String replayStatus);
     List<FailedTransactionAudit> findByReplayStatusOrderByFailureTimestampDesc(String replayStatus, Pageable pageable);
     List<FailedTransactionAudit> findAllByOrderByFailureTimestampDesc(Pageable pageable);

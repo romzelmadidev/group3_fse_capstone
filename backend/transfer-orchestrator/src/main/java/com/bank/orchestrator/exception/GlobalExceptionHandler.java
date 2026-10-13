@@ -26,12 +26,34 @@ public class GlobalExceptionHandler {
                     "timestampUtc", Instant.now().toString()
             ));
         }
-        return ResponseEntity.status(ex.getStatusCode()).body(Map.of(
-                "status", ex.getStatusCode().value(),
-                "error", ex.getStatusCode().toString(),
-                "message", ex.getReason() != null ? ex.getReason() : ex.getMessage(),
-                "timestampUtc", Instant.now().toString()
-        ));
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("status", ex.getStatusCode().value());
+        body.put("error", ex.getStatusCode().toString());
+
+        String rawReason = ex.getReason() != null ? ex.getReason() : ex.getMessage();
+        String incidentId = null;
+        if (rawReason != null && rawReason.contains("incident=")) {
+            int idx = rawReason.indexOf("incident=");
+            incidentId = rawReason.substring(idx + 9).trim();
+            if (incidentId.contains(" ")) {
+                incidentId = incidentId.split("\\s+")[0];
+            }
+        }
+
+        String userFriendlyMessage;
+        if (ex.getStatusCode() == HttpStatus.SERVICE_UNAVAILABLE) {
+            userFriendlyMessage = "We're unable to complete your transfer right now. Please try again shortly.";
+        } else {
+            userFriendlyMessage = rawReason;
+        }
+
+        body.put("message", userFriendlyMessage);
+        if (incidentId != null && !incidentId.isBlank()) {
+            body.put("incidentId", incidentId);
+        }
+        body.put("timestampUtc", Instant.now().toString());
+        return ResponseEntity.status(ex.getStatusCode()).body(body);
     }
 
     @ExceptionHandler(LimitExceededException.class)
@@ -68,14 +90,8 @@ public class GlobalExceptionHandler {
         body.put("status", HttpStatus.SERVICE_UNAVAILABLE.value());
         body.put("error", "LIMIT_CHECK_UNAVAILABLE");
         body.put("code", "TX_LIMIT_UNVERIFIED");
-        String message;
-        if (ex.getIncidentId() != null || (ex.getReason() != null && ex.getReason().contains("incident="))) {
-            message = ex.getReason();
-        } else {
-            message = "We couldn't verify your transfer limits. Please try again shortly.";
-        }
-        body.put("message", message);
-        if (ex.getIncidentId() != null) {
+        body.put("message", "We couldn't verify your transfer limits. Please try again shortly.");
+        if (ex.getIncidentId() != null && !ex.getIncidentId().isBlank()) {
             body.put("incidentId", ex.getIncidentId());
         }
         body.put("timestampUtc", Instant.now().toString());

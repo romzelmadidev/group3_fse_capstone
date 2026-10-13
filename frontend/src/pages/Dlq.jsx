@@ -83,6 +83,28 @@ export default function Dlq() {
     return () => clearInterval(timer);
   }, [fetchIncidentsAndStatus]);
 
+  // Deduplicate and group incidents by unique transactionId (fallback to incidentId)
+  const uniqueIncidents = useMemo(() => {
+    if (!incidents || incidents.length === 0) return [];
+    const grouped = new Map();
+    for (const item of incidents) {
+      const key = item.transactionId?.trim() || item.incidentId?.trim() || 'UNKNOWN';
+      if (!grouped.has(key)) {
+        grouped.set(key, { ...item, attemptCount: 1 });
+      } else {
+        const existing = grouped.get(key);
+        const existingTime = new Date(existing.failureTimestamp || 0).getTime();
+        const itemTime = new Date(item.failureTimestamp || 0).getTime();
+        if (itemTime >= existingTime) {
+          grouped.set(key, { ...item, attemptCount: (existing.attemptCount || 1) + 1 });
+        } else {
+          existing.attemptCount = (existing.attemptCount || 1) + 1;
+        }
+      }
+    }
+    return Array.from(grouped.values());
+  }, [incidents]);
+
   // Counts for top tiles
   const counts = useMemo(() => {
     let pending = 0;
@@ -90,7 +112,7 @@ export default function Dlq() {
     let expired = 0;
     let resolved = 0;
 
-    for (const item of incidents) {
+    for (const item of uniqueIncidents) {
       const status = (item.replayStatus || 'PENDING_REPLAY').toUpperCase();
       if (status === 'RESOLVED' || status === 'REPLAYED') resolved++;
       else if (status === 'EXPIRED_CANCELLED' || status === 'DISMISSED') expired++;
@@ -98,12 +120,12 @@ export default function Dlq() {
       else pending++;
     }
 
-    return { pending, manual, expired, resolved, attention: pending + manual, total: incidents.length };
-  }, [incidents]);
+    return { pending, manual, expired, resolved, attention: pending + manual, total: uniqueIncidents.length };
+  }, [uniqueIncidents]);
 
   // Filtered by tab and search
   const filteredIncidents = useMemo(() => {
-    let list = incidents;
+    let list = uniqueIncidents;
 
     if (activeTab === 'attention') {
       list = list.filter((i) => {
@@ -135,7 +157,7 @@ export default function Dlq() {
         i.payloadJson?.toLowerCase().includes(needle)
       );
     });
-  }, [incidents, activeTab, searchQuery, recentlyResolvedIds]);
+  }, [uniqueIncidents, activeTab, searchQuery, recentlyResolvedIds]);
 
   // Handle Manual Replay Action
   const handleReplay = async (incident, e) => {
@@ -416,7 +438,14 @@ export default function Dlq() {
                         {incident.incidentId}
                       </td>
                       <td className="px-5 py-3.5 font-mono text-xs text-ink-600">
-                        {incident.transactionId || '-'}
+                        <div className="flex items-center gap-1.5">
+                          <span>{incident.transactionId || '-'}</span>
+                          {incident.attemptCount > 1 && (
+                            <span className="rounded bg-ink-100 px-1.5 py-0.2 text-3xs font-semibold text-ink-500" title={`${incident.attemptCount} failure events captured for this transfer`}>
+                              {incident.attemptCount}x
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-3.5">
                         <span className="font-medium text-xs text-ink max-w-[220px] truncate block" title={incident.errorType}>

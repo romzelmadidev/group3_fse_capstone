@@ -94,18 +94,43 @@ public class CbsAuditSelfConsumptionService {
             log.warn("Logging failed transfer to audit vault from DLQ: transferId={}, errorType={}",
                     event.getTransactionId(), event.getErrorType());
 
-            FailedTransactionAudit audit = FailedTransactionAudit.builder()
-                    .incidentId(event.getIncidentId() != null ? event.getIncidentId() : UUID.randomUUID().toString())
-                    .correlationId(event.getCorrelationId() != null ? event.getCorrelationId() : UUID.randomUUID().toString())
-                    .transactionId(event.getTransactionId())
-                    .errorType(event.getErrorType() != null ? event.getErrorType() : "SYSTEM_FAULT")
-                    .errorCode(event.getErrorCode() != null ? event.getErrorCode() : "TRANSFER_FAILED")
-                    .circuitBreakerState(event.getCircuitBreakerState() != null ? event.getCircuitBreakerState() : "OPEN")
-                    .payloadJson(objectMapper.writeValueAsString(event.getOriginalPayload()))
-                    .stackTrace(event.getStackTrace())
-                    .replayStatus("PENDING_REPLAY")
-                    .failureTimestamp(event.getFailureTimestampUtc() != null ? event.getFailureTimestampUtc() : Instant.now())
-                    .build();
+            String txId = event.getTransactionId();
+            if (txId == null || txId.isBlank()) {
+                txId = event.getCorrelationId();
+            }
+
+            java.util.Optional<FailedTransactionAudit> existingOpt = txId != null
+                    ? failedTransactionAuditRepository.findFirstByTransactionIdOrderByFailureTimestampDesc(txId)
+                    : java.util.Optional.empty();
+
+            FailedTransactionAudit audit;
+            if (existingOpt.isPresent()) {
+                audit = existingOpt.get();
+                log.info("Updating existing DLQ audit entry for txId={} (incidentId={}, previousStatus={})",
+                        txId, audit.getIncidentId(), audit.getReplayStatus());
+                audit.setErrorType(event.getErrorType() != null ? event.getErrorType() : audit.getErrorType());
+                audit.setErrorCode(event.getErrorCode() != null ? event.getErrorCode() : audit.getErrorCode());
+                audit.setCircuitBreakerState(event.getCircuitBreakerState() != null ? event.getCircuitBreakerState() : audit.getCircuitBreakerState());
+                audit.setPayloadJson(objectMapper.writeValueAsString(event.getOriginalPayload()));
+                audit.setStackTrace(event.getStackTrace());
+                audit.setReplayStatus("PENDING_REPLAY");
+                audit.setFailureTimestamp(event.getFailureTimestampUtc() != null ? event.getFailureTimestampUtc() : Instant.now());
+                audit.setResolvedAt(null);
+                audit.setResolvedBy(null);
+            } else {
+                audit = FailedTransactionAudit.builder()
+                        .incidentId(event.getIncidentId() != null ? event.getIncidentId() : UUID.randomUUID().toString())
+                        .correlationId(event.getCorrelationId() != null ? event.getCorrelationId() : UUID.randomUUID().toString())
+                        .transactionId(txId != null ? txId : UUID.randomUUID().toString())
+                        .errorType(event.getErrorType() != null ? event.getErrorType() : "SYSTEM_FAULT")
+                        .errorCode(event.getErrorCode() != null ? event.getErrorCode() : "TRANSFER_FAILED")
+                        .circuitBreakerState(event.getCircuitBreakerState() != null ? event.getCircuitBreakerState() : "OPEN")
+                        .payloadJson(objectMapper.writeValueAsString(event.getOriginalPayload()))
+                        .stackTrace(event.getStackTrace())
+                        .replayStatus("PENDING_REPLAY")
+                        .failureTimestamp(event.getFailureTimestampUtc() != null ? event.getFailureTimestampUtc() : Instant.now())
+                        .build();
+            }
             failedTransactionAuditRepository.save(audit);
         } catch (Exception e) {
             log.error("Failed to process DLQ event in audit worker: {}", e.getMessage(), e);

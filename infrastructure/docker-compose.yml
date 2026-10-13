@@ -272,12 +272,13 @@ services:
   # ============================================================================
   azurite-drive:
     container_name: azurite-drive
-    build:
-      context: ./azurite-drive
-      dockerfile: Dockerfile
+    image: nginx:alpine
     restart: unless-stopped
     ports:
       - "10005:80"
+    volumes:
+      - ./azurite-drive/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./azurite-drive/index.html:/usr/share/nginx/html/index.html:ro
     networks:
       - banking-net
     depends_on:

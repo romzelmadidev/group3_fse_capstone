@@ -8,8 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class CbsAuditQueryService {
@@ -73,8 +72,8 @@ public class CbsAuditQueryService {
     public List<FailedTransactionAudit> getUnresolvedFailedTransactions(int page, int size) {
         int safePage = Math.max(0, page);
         int safeSize = Math.min(Math.max(1, size), 100);
-        return failedTransactionAuditRepository.findByReplayStatusOrderByFailureTimestampDesc(
-                "PENDING_REPLAY", PageRequest.of(safePage, safeSize));
+        return deduplicateLatestByTransaction(failedTransactionAuditRepository.findByReplayStatusOrderByFailureTimestampDesc(
+                "PENDING_REPLAY", PageRequest.of(safePage, safeSize)));
     }
 
     @Transactional(value = "auditTransactionManager", readOnly = true)
@@ -86,16 +85,29 @@ public class CbsAuditQueryService {
     public List<FailedTransactionAudit> getFailedTransactionsByStatus(String replayStatus, int page, int size) {
         int safePage = Math.max(0, page);
         int safeSize = Math.min(Math.max(1, size), 100);
-        return failedTransactionAuditRepository.findByReplayStatusOrderByFailureTimestampDesc(
-                replayStatus, PageRequest.of(safePage, safeSize));
+        return deduplicateLatestByTransaction(failedTransactionAuditRepository.findByReplayStatusOrderByFailureTimestampDesc(
+                replayStatus, PageRequest.of(safePage, safeSize)));
     }
 
     @Transactional(value = "auditTransactionManager", readOnly = true)
     public List<FailedTransactionAudit> getAllFailedTransactions(int page, int size) {
         int safePage = Math.max(0, page);
         int safeSize = Math.min(Math.max(1, size), 100);
-        return failedTransactionAuditRepository.findAllByOrderByFailureTimestampDesc(
-                PageRequest.of(safePage, safeSize));
+        return deduplicateLatestByTransaction(failedTransactionAuditRepository.findAllByOrderByFailureTimestampDesc(
+                PageRequest.of(safePage, safeSize)));
+    }
+
+    private List<FailedTransactionAudit> deduplicateLatestByTransaction(List<FailedTransactionAudit> list) {
+        if (list == null || list.isEmpty()) return Collections.emptyList();
+        Map<String, FailedTransactionAudit> seen = new LinkedHashMap<>();
+        for (FailedTransactionAudit audit : list) {
+            String key = audit.getTransactionId() != null && !audit.getTransactionId().isBlank()
+                    ? audit.getTransactionId()
+                    : audit.getIncidentId();
+            // Since input list is ordered by failureTimestamp DESC, the first occurrence is latest
+            seen.putIfAbsent(key, audit);
+        }
+        return new ArrayList<>(seen.values());
     }
 
     @Transactional("auditTransactionManager")
@@ -105,20 +117,34 @@ public class CbsAuditQueryService {
 
     @Transactional("auditTransactionManager")
     public FailedTransactionAudit resolveFailedTransaction(String identifier, String resolutionNotes, String operatorId, String replayStatus) {
-        FailedTransactionAudit audit = failedTransactionAuditRepository.findByTransactionId(identifier)
-                .or(() -> failedTransactionAuditRepository.findById(identifier))
-                .or(() -> {
-                    if (identifier != null && identifier.startsWith("TX-")) {
-                        return failedTransactionAuditRepository.findByTransactionId("TXN-" + identifier.substring(3));
-                    } else if (identifier != null && identifier.startsWith("TXN-")) {
-                        return failedTransactionAuditRepository.findByTransactionId("TX-" + identifier.substring(4));
-                    }
-                    return Optional.empty();
-                })
+        String targetStatus = replayStatus != null && !replayStatus.isBlank() ? replayStatus : "RESOLVED";
+        String targetOperator = operatorId != null ? operatorId : "SYSTEM";
+        Instant now = Instant.now();
+
+        List<FailedTransactionAudit> matches = failedTransactionAuditRepository.findAllByTransactionIdOrderByFailureTimestampDesc(identifier);
+        if (matches.isEmpty() && identifier != null) {
+            if (identifier.startsWith("TX-")) {
+                matches = failedTransactionAuditRepository.findAllByTransactionIdOrderByFailureTimestampDesc("TXN-" + identifier.substring(3));
+            } else if (identifier.startsWith("TXN-")) {
+                matches = failedTransactionAuditRepository.findAllByTransactionIdOrderByFailureTimestampDesc("TX-" + identifier.substring(4));
+            }
+        }
+
+        if (!matches.isEmpty()) {
+            for (FailedTransactionAudit m : matches) {
+                m.setReplayStatus(targetStatus);
+                m.setResolvedBy(targetOperator);
+                m.setResolvedAt(now);
+            }
+            failedTransactionAuditRepository.saveAll(matches);
+            return matches.get(0);
+        }
+
+        FailedTransactionAudit audit = failedTransactionAuditRepository.findById(identifier)
                 .orElseThrow(() -> new IllegalArgumentException("Failed transaction record not found: " + identifier));
-        audit.setReplayStatus(replayStatus != null && !replayStatus.isBlank() ? replayStatus : "RESOLVED");
-        audit.setResolvedBy(operatorId != null ? operatorId : "SYSTEM");
-        audit.setResolvedAt(Instant.now());
+        audit.setReplayStatus(targetStatus);
+        audit.setResolvedBy(targetOperator);
+        audit.setResolvedAt(now);
         return failedTransactionAuditRepository.save(audit);
     }
 
