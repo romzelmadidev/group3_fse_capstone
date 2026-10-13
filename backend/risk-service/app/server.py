@@ -201,7 +201,7 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0].rstrip("/")
 
-        if path in ("/health", ""):
+        if path in ("/health", "", "/api/v1/risk/health"):
             engine_name = "Laya (ModernBERT / mmBERT)" if RISK_ENGINE_BACKEND == "laya" else "Qwen2.5-0.5B INT8 ONNX"
             self._send_json(200, {
                 "status": "UP",

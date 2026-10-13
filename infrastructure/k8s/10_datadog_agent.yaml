@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dd-agent
+  namespace: banking
+  labels:
+    app: dd-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dd-agent
+  template:
+    metadata:
+      labels:
+        app: dd-agent
+    spec:
+      containers:
+        - name: dd-agent
+          image: gcr.io/datadoghq/agent:7
+          ports:
+            - containerPort: 8126
+              name: apm
+              protocol: TCP
+            - containerPort: 8125
+              name: dogstatsd
+              protocol: UDP
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "192Mi"
+            limits:
+              cpu: "300m"
+              memory: "384Mi"
+          env:
+            - name: DD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: banking-secrets
+                  key: datadog-api-key
+            - name: DD_SITE
+              value: "datadoghq.com"
+            - name: DD_APM_ENABLED
+              value: "true"
+            - name: DD_APM_NON_LOCAL_TRAFFIC
+              value: "true"
+            - name: DD_DOGSTATSD_NON_LOCAL_TRAFFIC
+              value: "true"
+            - name: DD_LOGS_ENABLED
+              value: "true"
+            - name: DD_ENV
+              value: "azure"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dd-agent
+  namespace: banking
+  labels:
+    app: dd-agent
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8126
+      name: apm
+      targetPort: 8126
+      protocol: TCP
+    - port: 8125
+      name: dogstatsd
+      targetPort: 8125
+      protocol: UDP
+  selector:
+    app: dd-agent

@@ -30,19 +30,25 @@ spec:
               memory: "384Mi"
           readinessProbe:
             httpGet:
-              path: /api/v1/risk/health
+              path: /health
               port: 8084
             initialDelaySeconds: 15
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /api/v1/risk/health
+              path: /health
               port: 8084
             initialDelaySeconds: 25
             periodSeconds: 15
           env:
             - name: PORT
               value: "8084"
+            - name: DD_AGENT_HOST
+              value: "dd-agent.banking.svc.cluster.local"
+            - name: DD_SERVICE
+              value: "risk-service"
+            - name: DD_ENV
+              value: "azure"
 ---
 apiVersion: v1
 kind: Service
