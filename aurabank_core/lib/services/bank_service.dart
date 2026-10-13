@@ -931,7 +931,14 @@ class BankService extends ChangeNotifier {
       activeAccountId = accountId;
     }
     savingsAccountNumber = resolveDisplayAccountNumber();
-    if (balance != null) {
+    final storedEmail = DeviceStorage.getUserEmail();
+    final storedBal = DeviceStorage.getUserBalance();
+    final personaMatch = UserPersona.demoPersonas.where((p) => p.email.toLowerCase() == email.toLowerCase());
+    final isPersonaDefault = personaMatch.isNotEmpty && (personaMatch.first.balance == balance);
+
+    if (isPersonaDefault && storedEmail?.toLowerCase() == email.toLowerCase() && storedBal != null) {
+      availableBalance = storedBal;
+    } else if (balance != null) {
       availableBalance = balance;
     }
     for (final c in cards) {
@@ -945,7 +952,7 @@ class BankService extends ChangeNotifier {
       phone: phoneNumber,
       address: address,
       accountId: accountId,
-      balance: balance,
+      balance: availableBalance,
     );
     DeviceStorage.saveLastLoginEmail(email);
     DeviceStorage.saveLastLoginName(name);
@@ -1099,23 +1106,31 @@ class BankService extends ChangeNotifier {
 
       // Fetch fresh balance for active account directly if set
       if (activeAccountId.isNotEmpty) {
-        try {
-          final balRes = await http
-              .get(Uri.parse('$baseUrl/api/v1/accounts/$activeAccountId/balance'), headers: headers)
-              .timeout(const Duration(seconds: 2));
-          if (balRes.statusCode == 200) {
-            final balData = jsonDecode(balRes.body);
-            final dynamic rawBal = balData['available_balance'] ??
-                balData['availableBalance'] ??
-                balData['current_balance'] ??
-                balData['currentBalance'];
-            if (rawBal != null) {
-              availableBalance = (rawBal as num).toDouble();
-              DeviceStorage.saveUserBalance(availableBalance);
-              notifyListeners();
+        final balEndpoints = [
+          '$baseUrl/api/v1/accounts/$activeAccountId/balance',
+          'http://localhost:8081/api/v1/accounts/$activeAccountId/balance',
+          'http://127.0.0.1:8081/api/v1/accounts/$activeAccountId/balance',
+        ];
+        for (final endpoint in balEndpoints) {
+          try {
+            final balRes = await http
+                .get(Uri.parse(endpoint), headers: headers)
+                .timeout(const Duration(seconds: 2));
+            if (balRes.statusCode == 200) {
+              final balData = jsonDecode(balRes.body);
+              final dynamic rawBal = balData['available_balance'] ??
+                  balData['availableBalance'] ??
+                  balData['current_balance'] ??
+                  balData['currentBalance'];
+              if (rawBal != null) {
+                availableBalance = (rawBal as num).toDouble();
+                DeviceStorage.saveUserBalance(availableBalance);
+                notifyListeners();
+                break;
+              }
             }
-          }
-        } catch (_) {}
+          } catch (_) {}
+        }
       }
 
       final accRes = await http
@@ -1196,11 +1211,6 @@ class BankService extends ChangeNotifier {
               (effAcc == 'A9001' && tgt == '1000-9000-0001') ||
               (effAcc == 'A9002' && tgt == '1000-9000-0002') ||
               (effAcc == 'A9003' && tgt == '1000-9000-0003');
-
-          final isOutgoing = src == effAcc ||
-              (effAcc == 'A9001' && src == '1000-9000-0001') ||
-              (effAcc == 'A9002' && src == '1000-9000-0002') ||
-              (effAcc == 'A9003' && src == '1000-9000-0003');
 
           final otherId = isIncoming ? src : tgt;
           final memo = item['memo']?.toString();
@@ -1494,6 +1504,9 @@ class BankService extends ChangeNotifier {
 
     // Candidate endpoints: Gateway (:8080) and direct Ledger Engine (:8082)
     final candidateEndpoints = [
+      '$baseUrl/api/v1/transfers',
+      'http://localhost:8082/api/v1/transfers',
+      'http://127.0.0.1:8082/api/v1/transfers',
       '$baseUrl/api/v1/ledger/transfer',
       '$baseUrl/api/v1/ledger/transfers',
       '$baseUrl/api/v1/ledger/mutate',
