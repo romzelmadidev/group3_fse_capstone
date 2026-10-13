@@ -7,7 +7,7 @@ RUN /opt/datadog-agent/embedded/bin/python3 -m pip install --trusted-host pypi.o
     && /opt/datadog-agent/embedded/bin/python3 -m pip install --no-deps --trusted-host pypi.org --trusted-host files.pythonhosted.org xgboost
 
 COPY app ./app
-COPY data ./data
+RUN mkdir -p /app/data
 
 ENV PYTHONPATH=/app
 EXPOSE 8084
