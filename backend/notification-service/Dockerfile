@@ -1,11 +1,9 @@
-# syntax=docker/dockerfile:1
 FROM maven:3.9.9-eclipse-temurin-21-alpine AS builder
 WORKDIR /build
 
 COPY . .
 
-RUN --mount=type=cache,target=/root/.m2 \
-    mvn clean package -DskipTests -Dmaven.test.skip=true -pl notification-service -am \
+RUN mvn clean package -DskipTests -Dmaven.test.skip=true -pl notification-service -am \
     && cp notification-service/target/notification-service-*.jar /app.jar
 
 FROM eclipse-temurin:21-jre-alpine

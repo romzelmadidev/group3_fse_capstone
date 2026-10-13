@@ -1,11 +1,9 @@
-# syntax=docker/dockerfile:1
 FROM maven:3.9.9-eclipse-temurin-21-alpine AS builder
 WORKDIR /build
 
 COPY . .
 
-RUN --mount=type=cache,target=/root/.m2 \
-    mvn clean package -DskipTests -pl transfer-orchestrator -am \
+RUN mvn clean package -DskipTests -pl transfer-orchestrator -am \
     && cp transfer-orchestrator/target/transfer-orchestrator-*.jar /app.jar
 
 FROM eclipse-temurin:21-jre-alpine
