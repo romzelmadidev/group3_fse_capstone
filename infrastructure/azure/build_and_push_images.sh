@@ -98,10 +98,10 @@ if [ "$USE_AZ_ACR_BUILD" = "true" ]; then
     --registry "$ACR_NAME" \
     --image "aurabank-web:latest" \
     --file "${ROOT_DIR}/aurabank_web/Dockerfile" \
-    "${ROOT_DIR}/aurabank_web"
+    "${ROOT_DIR}"
 else
   AURA_TAG="${ACR_LOGIN_SERVER}/aurabank-web:latest"
-  docker build -f "${ROOT_DIR}/aurabank_web/Dockerfile" -t "$AURA_TAG" "${ROOT_DIR}/aurabank_web"
+  docker build -f "${ROOT_DIR}/aurabank_web/Dockerfile" -t "$AURA_TAG" "${ROOT_DIR}"
   docker push "$AURA_TAG"
 fi
 

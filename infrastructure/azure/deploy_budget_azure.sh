@@ -134,6 +134,8 @@ else
     --edition Basic \
     --service-objective Basic \
     --capacity 5 \
+    --backup-storage-redundancy Local \
+    --yes \
     -o table
 fi
 
