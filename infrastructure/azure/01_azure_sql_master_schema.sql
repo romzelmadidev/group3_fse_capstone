@@ -383,10 +383,6 @@ CREATE TABLE core.participant_banks (
     CONSTRAINT fk_pb_nostro_acc FOREIGN KEY (nostro_account_id) REFERENCES core.accounts(account_id)
 );
 
-INSERT INTO core.participant_banks (bank_code, bank_name, bic_swift_code, clearing_network, nostro_account_id, api_endpoint_url, api_key, is_active)
-VALUES
-    ('COOBS', 'Cooperative Overseas Banking System (CooBS)', 'COOBPHM2XXX', 'BILATERAL', 'ACC-NOSTRO-BANK-B', 'http://localhost:8082/api/v1/mock-partner/transfers', 'AURABANK-SECURE-KEY-2026', 1),
-    ('AURABANK', 'AuraBank Core Retail', 'AURAPHM1XXX', 'CORE', 'ACC-NOSTRO-BANK-B', NULL, NULL, 1);
 
 INSERT INTO core.system_dates (system_date_id, business_date, status, posting_window_open, last_cob_completed_at, updated_at)
 VALUES ('SYS-DATE-001', '2026-10-07', 'ONLINE', 1, NULL, SYSDATETIMEOFFSET());
@@ -422,6 +418,12 @@ VALUES
 ('acc-2002-chk-001', 8500000.0000, 0.0000),
 ('acc-2003-sav-002', 12345678.1250, 0.0000),
 ('ACC-NOSTRO-BANK-B', 5000000.0000, 0.0000);
+
+-- Participant banks reference ACC-NOSTRO-BANK-B, so they must be seeded AFTER core.accounts.
+INSERT INTO core.participant_banks (bank_code, bank_name, bic_swift_code, clearing_network, nostro_account_id, api_endpoint_url, api_key, is_active)
+VALUES
+    ('COOBS', 'Cooperative Overseas Banking System (CooBS)', 'COOBPHM2XXX', 'BILATERAL', 'ACC-NOSTRO-BANK-B', 'http://localhost:8082/api/v1/mock-partner/transfers', 'AURABANK-SECURE-KEY-2026', 1),
+    ('AURABANK', 'AuraBank Core Retail', 'AURAPHM1XXX', 'CORE', 'ACC-NOSTRO-BANK-B', NULL, NULL, 1);
 
 -- ==============================================================================
 -- 18. Table: auth_identity.admin_users (Bank Operations & Compliance Personnel)

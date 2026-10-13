@@ -297,16 +297,32 @@ configure_cluster() {
 # ------------------------------------------------------------------------------
 # 5. Images
 # ------------------------------------------------------------------------------
-image_exists() {
-  local tags; tags="$(az acr repository show-tags -n "$ACR" --repository "$1" -o tsv 2>/dev/null || true)"
-  [[ $'\n'"$tags"$'\n' == *$'\nlatest\n'* ]]
+image_exists() { # image_exists <image> [tag]
+  local tag="${2:-latest}" tags; tags="$(az acr repository show-tags -n "$ACR" --repository "$1" -o tsv 2>/dev/null || true)"
+  [[ $'\n'"$tags"$'\n' == *$'\n'"$tag"$'\n'* ]]
+}
+
+# Content tag of the sources an image is built from, so a git pull that changes them rebuilds the
+# image automatically (a stale ":latest" from an older commit would otherwise be reused).
+src_rev() {
+  local parts=""
+  git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  case "$1" in
+    risk-service)     parts="$(git -C "$ROOT" rev-parse HEAD:backend/risk-service HEAD:hybrid_bench 2>/dev/null || true)" ;;
+    banking-frontend) parts="$(git -C "$ROOT" rev-parse HEAD:frontend 2>/dev/null || true)" ;;
+    aurabank-web)     parts="$(git -C "$ROOT" rev-parse HEAD:aurabank_web HEAD:aurabank_core 2>/dev/null || true)" ;;
+    *)                parts="$(git -C "$ROOT" rev-parse HEAD:backend 2>/dev/null || true)" ;;
+  esac
+  if [ -n "$parts" ]; then printf 'src-%s' "$(printf '%s' "$parts" | sha1sum | cut -c1-10)"; fi
+  return 0
 }
 
 wanted_rebuild() { [ "$REBUILD" = "all" ] || [[ ",${REBUILD}," == *",$1,"* ]]; }
 
 build_one() { # runs in a subshell
-  local img="$1" df="$2" ctx="$3"
-  if az acr build --registry "$ACR" --image "${img}:latest" --file "${ROOT}/${df}" "${ROOT}/${ctx}" \
+  local img="$1" df="$2" ctx="$3" rev; rev="$(src_rev "$img")"
+  local tags=(--image "${img}:latest"); [ -z "$rev" ] || tags+=(--image "${img}:${rev}")
+  if az acr build --registry "$ACR" "${tags[@]}" --file "${ROOT}/${df}" "${ROOT}/${ctx}" \
        >"${LOG_DIR}/${img}.log" 2>&1; then
     touch "${LOG_DIR}/${img}.ok"
   fi
@@ -331,10 +347,11 @@ build_images() {
   rm -f "${LOG_DIR}"/*.ok
   ensure_dd_agent
   BUILT=()
-  local todo=() e img df ctx dep
+  local todo=() e img df ctx dep rev
   for e in "${IMAGES[@]}"; do
     IFS='|' read -r img df ctx dep <<<"$e"
-    if wanted_rebuild "$img" || ! image_exists "$img"; then todo+=("$e"); else info "up to date: $img"; fi
+    rev="$(src_rev "$img")"
+    if wanted_rebuild "$img" || ! image_exists "$img" "${rev:-latest}"; then todo+=("$e"); else info "up to date: $img"; fi
   done
   [ "${#todo[@]}" -gt 0 ] || { info "All images already in ACR."; return 0; }
 

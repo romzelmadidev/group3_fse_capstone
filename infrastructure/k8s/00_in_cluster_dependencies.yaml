@@ -68,11 +68,14 @@ spec:
           resources:
             requests:
               cpu: "100m"
-              memory: "256Mi"
+              memory: "384Mi"
             limits:
-              cpu: "500m"
-              memory: "512Mi"
+              cpu: "1000m"
+              memory: "768Mi"
           env:
+            # Kafka's default heap is 1 GiB, which exceeds the pod limit and gets it OOMKilled.
+            - name: KAFKA_HEAP_OPTS
+              value: "-Xms256m -Xmx256m"
             - name: KAFKA_NODE_ID
               value: "1"
             - name: KAFKA_PROCESS_ROLES
