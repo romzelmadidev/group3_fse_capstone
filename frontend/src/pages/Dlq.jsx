@@ -42,13 +42,14 @@ export default function Dlq() {
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [showStackTrace, setShowStackTrace] = useState(false);
   const [replayingId, setReplayingId] = useState(null);
+  const [recentlyResolvedIds, setRecentlyResolvedIds] = useState(new Set());
 
   const fetchIncidentsAndStatus = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const [incidentsRes, statusRes] = await Promise.all([
-        api.get('/compliance/dlq/incidents?page=0&size=100').catch((e) => {
+        api.get('/compliance/dlq/incidents?status=ALL&page=0&size=100').catch((e) => {
           // fallback to direct cbs audit endpoint if needed
           return api.get('/cbs/audit/failed-transactions?status=ALL&page=0&size=100');
         }),
@@ -107,7 +108,8 @@ export default function Dlq() {
     if (activeTab === 'attention') {
       list = list.filter((i) => {
         const s = (i.replayStatus || 'PENDING_REPLAY').toUpperCase();
-        return s === 'PENDING_REPLAY' || s === 'MANUAL_REVIEW_REQUIRED';
+        const isRecentlyResolved = recentlyResolvedIds.has(i.transactionId) || recentlyResolvedIds.has(i.incidentId);
+        return s === 'PENDING_REPLAY' || s === 'MANUAL_REVIEW_REQUIRED' || isRecentlyResolved;
       });
     } else if (activeTab === 'resolved') {
       list = list.filter((i) => {
@@ -133,7 +135,7 @@ export default function Dlq() {
         i.payloadJson?.toLowerCase().includes(needle)
       );
     });
-  }, [incidents, activeTab, searchQuery]);
+  }, [incidents, activeTab, searchQuery, recentlyResolvedIds]);
 
   // Handle Manual Replay Action
   const handleReplay = async (incident, e) => {
@@ -146,11 +148,38 @@ export default function Dlq() {
       if (res.data?.status === 'REPLAY_FAILED') {
         throw new Error(res.data?.error || 'Replay rejected by transfer orchestrator.');
       }
-      toast(`Transfer ${txId} replayed successfully via orchestrator!`, 'ok');
-      await fetchIncidentsAndStatus();
-      if (selectedIncident?.incidentId === incident.incidentId) {
-        setSelectedIncident((prev) => (prev ? { ...prev, replayStatus: 'RESOLVED', resolvedBy: 'COMPLIANCE_OPERATOR' } : null));
+
+      // Immediately mark as RESOLVED in UI state so it stays visible and marked as resolved
+      const nowIso = new Date().toISOString();
+      setRecentlyResolvedIds((prev) => new Set([...prev, txId, incident.incidentId, incident.transactionId].filter(Boolean)));
+      setIncidents((prev) =>
+        prev.map((item) =>
+          item.transactionId === txId || item.incidentId === txId
+            ? {
+                ...item,
+                replayStatus: 'RESOLVED',
+                resolvedBy: 'COMPLIANCE_OPERATOR',
+                resolvedAt: nowIso,
+              }
+            : item
+        )
+      );
+
+      if (selectedIncident?.incidentId === incident.incidentId || selectedIncident?.transactionId === txId) {
+        setSelectedIncident((prev) =>
+          prev
+            ? {
+                ...prev,
+                replayStatus: 'RESOLVED',
+                resolvedBy: 'COMPLIANCE_OPERATOR',
+                resolvedAt: nowIso,
+              }
+            : null
+        );
       }
+
+      toast(`Transfer ${txId} replayed successfully and marked as RESOLVED!`, 'ok');
+      await fetchIncidentsAndStatus();
     } catch (err) {
       console.error('Replay failed:', err);
       toast(`Replay failed for ${txId}: ${errorMessage(err)}`, 'error');
@@ -412,7 +441,7 @@ export default function Dlq() {
                         <Badge tone={getStatusTone(status)}>{titleCase(status)}</Badge>
                       </td>
                       <td className="px-5 py-3.5 text-right pr-6">
-                        {isPendingOrManual ? (
+                        {isPendingOrManual && !recentlyResolvedIds.has(incident.transactionId) && !recentlyResolvedIds.has(incident.incidentId) ? (
                           <Button
                             variant="primary"
                             size="sm"
@@ -422,6 +451,10 @@ export default function Dlq() {
                           >
                             Replay
                           </Button>
+                        ) : status === 'RESOLVED' || recentlyResolvedIds.has(incident.transactionId) || recentlyResolvedIds.has(incident.incidentId) ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-mint-deep">
+                            <CheckCircle2 className="size-3.5" /> Resolved
+                          </span>
                         ) : (
                           <span className="text-xs font-semibold text-ink-400 hover:text-ink">
                             Details &rarr;

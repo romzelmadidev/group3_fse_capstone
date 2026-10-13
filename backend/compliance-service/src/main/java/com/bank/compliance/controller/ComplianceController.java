@@ -188,17 +188,14 @@ public class ComplianceController {
     public ResponseEntity<List<?>> getDlqIncidents(
             @RequestParam(name = "status", required = false) String status,
             @RequestParam(name = "page", defaultValue = "0") int page,
-            @RequestParam(name = "size", defaultValue = "50") int size) {
+            @RequestParam(name = "size", defaultValue = "100") int size) {
+        String queryStatus = (status != null && !status.isBlank()) ? status : "ALL";
         List<?> incidents = cbsWebClient.get()
-                .uri(uriBuilder -> {
-                    var builder = uriBuilder.path("/api/v1/cbs/audit/failed-transactions")
-                            .queryParam("page", page)
-                            .queryParam("size", size);
-                    if (status != null && !status.isBlank()) {
-                        builder.queryParam("status", status);
-                    }
-                    return builder.build();
-                })
+                .uri(uriBuilder -> uriBuilder.path("/api/v1/cbs/audit/failed-transactions")
+                        .queryParam("status", queryStatus)
+                        .queryParam("page", page)
+                        .queryParam("size", size)
+                        .build())
                 .retrieve()
                 .bodyToMono(List.class)
                 .timeout(Duration.ofSeconds(3))
