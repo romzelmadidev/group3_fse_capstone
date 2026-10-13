@@ -61,7 +61,7 @@ IMAGES=(
   "t24-mock-cbs|backend/t24-mock-cbs/Dockerfile|backend|t24-mock-cbs"
   "compliance-service|backend/compliance-service/Dockerfile|backend|compliance-service"
   "notification-service|backend/notification-service/Dockerfile|backend|notification-service"
-  "risk-service|backend/risk-service/Dockerfile|backend/risk-service|risk-service"
+  "risk-service|backend/risk-service/Dockerfile.azure|.|risk-service"
   "banking-frontend|frontend/Dockerfile|frontend|banking-frontend"
   "aurabank-web|aurabank_web/Dockerfile|.|aurabank-customer-web"
 )
