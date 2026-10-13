@@ -8,7 +8,7 @@ import 'review_transfer_screen.dart';
 class SendMoneyScreen extends StatefulWidget {
   final VoidCallback? onBack;
   final bool initialIsAuraToAura;
-  final int initialPartnerBankIndex;
+  final int? initialPartnerBankIndex;
   final String? initialAccountNo;
   final String? initialRecipientName;
   final String? initialAmount;
@@ -17,7 +17,7 @@ class SendMoneyScreen extends StatefulWidget {
     super.key,
     this.onBack,
     this.initialIsAuraToAura = true,
-    this.initialPartnerBankIndex = 0,
+    this.initialPartnerBankIndex,
     this.initialAccountNo,
     this.initialRecipientName,
     this.initialAmount,
@@ -30,10 +30,12 @@ class SendMoneyScreen extends StatefulWidget {
 class _SendMoneyScreenState extends State<SendMoneyScreen> {
   final BankService _bankService = BankService();
   late bool _isAuraToAura;
-  late int _selectedPartnerBankIndex;
+  int? _selectedPartnerBankIndex;
 
   String _selectedSourceAccount = 'Savings';
-  String? _selectedPurpose;
+  String? _auraPurpose;
+  String? _otherBankPurpose;
+  String? get _selectedPurpose => _isAuraToAura ? _auraPurpose : _otherBankPurpose;
 
   late final TextEditingController _accountController;
   late final TextEditingController _recipientController;
@@ -119,13 +121,14 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
     _selectedPartnerBankIndex = widget.initialPartnerBankIndex;
     _bankService.addListener(_onServiceUpdate);
 
-    final recipients = _availableRecipients;
-    final initialRecipient = recipients.isNotEmpty ? recipients.first : UserPersona.transferableRecipients.first;
-
-    _selectedCustomerName = widget.initialRecipientName ?? initialRecipient['name'];
+    _selectedCustomerName = widget.initialRecipientName;
     _accountController = TextEditingController(
-      text: widget.initialAccountNo ?? initialRecipient['accountNo'],
+      text: widget.initialAccountNo ?? '',
     );
+    _recipientController = TextEditingController(
+      text: widget.initialRecipientName ?? '',
+    );
+
     _prevAccountText = _accountController.text;
     _accountController.addListener(() {
       final current = _accountController.text;
@@ -135,9 +138,6 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
       }
       _prevAccountText = current;
     });
-    _recipientController = TextEditingController(
-      text: widget.initialRecipientName ?? initialRecipient['name'],
-    );
     _amountController = TextEditingController(
       text: widget.initialAmount ?? '',
     );
@@ -219,29 +219,105 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
       return;
     }
 
+    if (!_isAuraToAura && _selectedPartnerBankIndex == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFFC8423B),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text('Please select a destination bank', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (_accountController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFFC8423B),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text('Please enter an account number', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (_recipientController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFFC8423B),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text('Please enter the recipient name', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (_selectedPurpose == null || _selectedPurpose!.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFFC8423B),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text('Please select a transfer purpose', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        ),
+      );
+      return;
+    }
+
     final destinationBank = _isAuraToAura
         ? 'Aura Bank'
-        : (_partnerBanks[_selectedPartnerBankIndex]['name'] as String);
+        : (_partnerBanks[_selectedPartnerBankIndex!]['name'] as String);
 
-    final fee = _isAuraToAura ? 0.0 : 10.0;
+    final fee = 0.0;
 
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => ReviewTransferScreen(
           senderName: _bankService.user.name,
           senderAccount: _currentSourceAccountData['accountNo'] as String,
-          recipientName: _recipientController.text.trim().isNotEmpty
-              ? _recipientController.text.trim()
-              : 'Jessie Mae Dela Paz',
-          recipientAccount: _accountController.text.trim().isNotEmpty
-              ? _accountController.text.trim()
-              : '1234568898951',
+          recipientName: _recipientController.text.trim(),
+          recipientAccount: _accountController.text.trim(),
           recipientBank: destinationBank,
           amount: enteredAmount,
           fee: fee,
           remarks: _remarksController.text.trim().isNotEmpty
               ? _remarksController.text.trim()
-              : (_selectedPurpose ?? 'Funds Transfer'),
+              : _selectedPurpose!,
           isPasted: _isAccountPasted,
         ),
       ),
@@ -446,7 +522,16 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
         children: [
           Expanded(
             child: GestureDetector(
-              onTap: () => setState(() => _isAuraToAura = true),
+              onTap: () {
+                if (!_isAuraToAura) {
+                  setState(() {
+                    _isAuraToAura = true;
+                    _selectedCustomerName = null;
+                    _accountController.clear();
+                    _recipientController.clear();
+                  });
+                }
+              },
               child: Container(
                 decoration: BoxDecoration(
                   color: _isAuraToAura ? Colors.white : Colors.transparent,
@@ -475,7 +560,17 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
           ),
           Expanded(
             child: GestureDetector(
-              onTap: () => setState(() => _isAuraToAura = false),
+              onTap: () {
+                if (_isAuraToAura) {
+                  setState(() {
+                    _isAuraToAura = false;
+                    _selectedPartnerBankIndex = null;
+                    _selectedCustomerName = null;
+                    _accountController.clear();
+                    _recipientController.clear();
+                  });
+                }
+              },
               child: Container(
                 decoration: BoxDecoration(
                   color: !_isAuraToAura ? Colors.white : Colors.transparent,
@@ -519,7 +614,9 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
   }
 
   Widget _buildAccountDetailsCard() {
-    final partnerBank = _partnerBanks[_selectedPartnerBankIndex];
+    final partnerBank = _selectedPartnerBankIndex != null
+        ? _partnerBanks[_selectedPartnerBankIndex!]
+        : null;
 
     return Container(
       width: double.infinity,
@@ -546,7 +643,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE6F6EF),
+                  color: partnerBank != null ? const Color(0xFFE6F6EF) : const Color(0xFFF1F3F4),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
@@ -555,43 +652,54 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                       width: 32,
                       height: 32,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF10171C),
+                        color: partnerBank != null ? const Color(0xFF10171C) : const Color(0xFFD5DADF),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       alignment: Alignment.center,
-                      child: Text(
-                        partnerBank['avatar'] as String,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
+                      child: partnerBank != null
+                          ? Text(
+                              partnerBank['avatar'] as String,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.account_balance_outlined,
+                              color: Colors.white,
+                              size: 18,
+                            ),
                     ),
                     const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          partnerBank['name'] as String,
-                          style: const TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.black,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            partnerBank != null
+                                ? (partnerBank['name'] as String)
+                                : 'Select Destination Bank',
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w800,
+                              color: partnerBank != null ? Colors.black : const Color(0xFF7D8892),
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                        const SizedBox(height: 1),
-                        const Text(
-                          'Partner Bank',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF7D8892),
-                            fontWeight: FontWeight.w500,
+                          const SizedBox(height: 1),
+                          Text(
+                            partnerBank != null ? 'Partner Bank' : 'Tap to choose bank',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF7D8892),
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
@@ -607,6 +715,12 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                           fontStyle: FontStyle.italic,
                         ),
                       ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: Color(0xFF10171C),
+                      size: 20,
                     ),
                   ],
                 ),
@@ -655,9 +769,10 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
               ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
-                  value: (_availableRecipients.any((c) => c['name'] == _selectedCustomerName) || _selectedCustomerName == 'CUSTOM')
+                  value: (_selectedCustomerName != null &&
+                          (_availableRecipients.any((c) => c['name'] == _selectedCustomerName) || _selectedCustomerName == 'CUSTOM'))
                       ? _selectedCustomerName
-                      : (_availableRecipients.isNotEmpty ? _availableRecipients.first['name'] : 'CUSTOM'),
+                      : null,
                   isExpanded: true,
                   hint: const Text('Choose customer...', style: TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
                   icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF38008A)),
@@ -697,6 +812,9 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                         final found = _availableRecipients.firstWhere((c) => c['name'] == val);
                         _recipientController.text = found['name']!;
                         _accountController.text = found['accountNo']!;
+                      } else {
+                        _recipientController.clear();
+                        _accountController.clear();
                       }
                     });
                   },
@@ -735,7 +853,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: EdgeInsets.zero,
-                hintText: '1234 5678 9123 4569',
+                hintText: 'Enter account number',
                 hintStyle: TextStyle(
                   color: Color(0xFF9AA3AB),
                   fontWeight: FontWeight.w800,
@@ -774,7 +892,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: EdgeInsets.zero,
-                hintText: 'Jessie Mae Dela Paz',
+                hintText: 'Enter recipient name',
                 hintStyle: TextStyle(
                   color: Color(0xFF9AA3AB),
                   fontWeight: FontWeight.w800,
@@ -857,15 +975,6 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 6),
-          const Text(
-            'Transfer Fee: PHP 10.00',
-            style: TextStyle(
-              fontSize: 10,
-              color: Color(0xFF9AA3AB),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
         ],
       ),
     );
@@ -890,13 +999,26 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Purpose',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              color: Colors.black,
-            ),
+          Row(
+            children: const [
+              Text(
+                'Purpose',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.black,
+                ),
+              ),
+              SizedBox(width: 4),
+              Text(
+                '*',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFFC8423B),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           InkWell(
@@ -1271,7 +1393,13 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                       ? const Icon(Icons.check_circle_rounded, color: Color(0xFF10171C), size: 22)
                       : null,
                   onTap: () {
-                    setState(() => _selectedPurpose = name);
+                    setState(() {
+                      if (_isAuraToAura) {
+                        _auraPurpose = name;
+                      } else {
+                        _otherBankPurpose = name;
+                      }
+                    });
                     Navigator.of(ctx).pop();
                   },
                 ),

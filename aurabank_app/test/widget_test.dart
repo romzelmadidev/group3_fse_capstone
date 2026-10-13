@@ -283,10 +283,24 @@ void main() {
     expect(find.text('From:'), findsOneWidget);
     expect(find.textContaining('Savings Account'), findsOneWidget);
     expect(find.text('Purpose'), findsOneWidget);
+    expect(find.text('*'), findsOneWidget);
     expect(find.text('Select transfer purpose'), findsOneWidget);
     expect(find.text('Remarks (Optional)'), findsOneWidget);
     expect(find.text('Send Money'), findsOneWidget);
-    expect(find.text('Bills & Utilities'), findsNothing);
+    expect(find.text('Choose customer...'), findsOneWidget);
+    expect(find.text('Enter account number'), findsOneWidget);
+    expect(find.text('Enter recipient name'), findsOneWidget);
+    expect(find.text('1234 5678 9123 4569'), findsNothing);
+    expect(find.text('Jessie Mae Dela Paz'), findsNothing);
+
+    // Switching to Other Bank clears default bank, account, and recipient
+    await tester.tap(find.text('Other Bank'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Select Destination Bank'), findsOneWidget);
+    expect(find.text('Tap to choose bank'), findsOneWidget);
+    expect(find.text('Enter account number'), findsOneWidget);
+    expect(find.text('Enter recipient name'), findsOneWidget);
   });
 
   testWidgets('OTP Verification screen renders PIN boxes, countdown, and incomplete alert',
