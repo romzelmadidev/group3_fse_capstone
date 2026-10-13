@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../../theme/aura_theme.dart';
 import 'statement_screen.dart';
 import 'annual_report_screen.dart';
+import '../../models/bank_models.dart';
+import '../../services/bank_service.dart';
 
 /// Data point model for transfer flow points
 class FlowPointData {
@@ -77,6 +79,7 @@ class AnalyticsScreen extends StatefulWidget {
 
 class _AnalyticsScreenState extends State<AnalyticsScreen>
     with SingleTickerProviderStateMixin {
+  final BankService _bankService = BankService();
   bool _isMonthly = true;
 
   // Selected indices
@@ -107,6 +110,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   @override
   void initState() {
     super.initState();
+    _bankService.addListener(_onBankServiceChanged);
 
     _animController = AnimationController(
       vsync: this,
@@ -1120,8 +1124,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
   @override
   void dispose() {
+    _bankService.removeListener(_onBankServiceChanged);
     _animController.dispose();
     super.dispose();
+  }
+
+  void _onBankServiceChanged() {
+    if (mounted) setState(() {});
   }
 
   void _animateToTarget(double targetIndex) {
@@ -1239,6 +1248,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   String get _currentMonthName => _monthsCatalog[_selectedMonthOfYear].monthName;
+
+  String get _currentMonthKey {
+    final monthNum = (_selectedMonthOfYear + 1).toString().padLeft(2, '0');
+    return '$_selectedYear-$monthNum';
+  }
 
 
   // Grand totals
@@ -1816,6 +1830,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   Widget _buildMonthlyHistorySection() {
+    final statement = _bankService.statements[_currentMonthKey];
+    final transactions = statement?.transactions ?? [];
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
@@ -1841,8 +1858,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
+                  children: [
+                    const Text(
                       'Monthly History',
                       style: TextStyle(
                         fontSize: 18,
@@ -1850,10 +1867,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                         color: Color(0xFF10171C),
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      'Transfers settled in October 2026',
-                      style: TextStyle(
+                      'Transfers settled in ${statement?.title ?? _currentMonthName}',
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: Color(0xFF1C6E5A),
@@ -1868,7 +1885,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (context) => const StatementScreen(),
+                      builder: (context) => StatementScreen(initialMonthKey: _currentMonthKey),
                     ),
                   );
                 },
@@ -1902,60 +1919,107 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
           const SizedBox(height: 18),
 
-          // Date Group 1: October 14, 2026
-          const Text(
-            'October 14, 2026',
-            style: TextStyle(
-              fontSize: 12,
-              color: Color(0xFF9AA3AB),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 10),
-          _buildTransactionItem(
-            avatarBg: const Color(0xFF220055),
-            initial: 'D',
-            name: 'Drake Montefalco',
-            time: 'Today, 2:45 pm',
-            amount: '- Php 2,500.00',
-            status: 'COMPLETED',
-            statusColor: const Color(0xFF2FA37E),
-          ),
-          const SizedBox(height: 12),
-          _buildTransactionItem(
-            avatarBg: const Color(0xFFBA68C8),
-            initial: 'K',
-            name: 'Klare Riego',
-            time: 'Today, 1:45 pm',
-            amount: '+ Php 26,500.00',
-            status: 'RECEIVED',
-            statusColor: const Color(0xFF2FA37E),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Date Group 2: October 03, 2026
-          const Text(
-            'October 03, 2026',
-            style: TextStyle(
-              fontSize: 12,
-              color: Color(0xFF9AA3AB),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 10),
-          _buildTransactionItem(
-            avatarBg: const Color(0xFF2F78A8),
-            initial: 'A',
-            name: 'Angel Lou',
-            time: 'Today, 2:45 pm',
-            amount: '- Php 2,500.00',
-            status: 'COMPLETED',
-            statusColor: const Color(0xFF2FA37E),
-          ),
+          if (transactions.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Text(
+                  'No transfers recorded for ${statement?.title ?? _currentMonthName}.',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF9AA3AB),
+                  ),
+                ),
+              ),
+            )
+          else
+            ..._buildGroupedTransactions(transactions),
         ],
       ),
     );
+  }
+
+  List<Widget> _buildGroupedTransactions(List<BankTransaction> transactions) {
+    final sortedTxns = List<BankTransaction>.from(transactions)
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+    final Map<String, List<BankTransaction>> grouped = {};
+    for (final tx in sortedTxns) {
+      final dateKey = _formatDateGroup(tx.timestamp);
+      grouped.putIfAbsent(dateKey, () => []).add(tx);
+    }
+
+    final widgets = <Widget>[];
+    int groupIndex = 0;
+    for (final entry in grouped.entries) {
+      if (groupIndex > 0) {
+        widgets.add(const SizedBox(height: 16));
+      }
+      widgets.add(
+        Text(
+          entry.key,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Color(0xFF9AA3AB),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+      widgets.add(const SizedBox(height: 10));
+
+      for (int i = 0; i < entry.value.length; i++) {
+        final tx = entry.value[i];
+        if (i > 0) {
+          widgets.add(const SizedBox(height: 12));
+        }
+        widgets.add(
+          _buildTransactionItem(
+            avatarBg: Color(tx.avatarColorValue),
+            initial: tx.initial.isNotEmpty
+                ? tx.initial
+                : (tx.counterparty.isNotEmpty ? tx.counterparty[0].toUpperCase() : 'T'),
+            name: tx.counterparty,
+            time: _formatTxTime(tx),
+            amount: '${tx.isIncoming ? '+' : '-'} Php ${_formatCurrency(tx.amount)}',
+            status: tx.isIncoming ? 'RECEIVED' : 'COMPLETED',
+            statusColor: const Color(0xFF2FA37E),
+          ),
+        );
+      }
+      groupIndex++;
+    }
+
+    return widgets;
+  }
+
+  String _formatDateGroup(DateTime dt) {
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    final m = monthNames[dt.month - 1];
+    final d = dt.day.toString().padLeft(2, '0');
+    return '$m $d, ${dt.year}';
+  }
+
+  String _formatTxTime(BankTransaction tx) {
+    if (tx.displayTime.toLowerCase().contains('today') ||
+        tx.displayTime.toLowerCase().contains('just now')) {
+      return tx.displayTime;
+    }
+    final now = DateTime.now();
+    final isToday = tx.timestamp.year == now.year &&
+        tx.timestamp.month == now.month &&
+        tx.timestamp.day == now.day;
+    final hour = tx.timestamp.hour % 12 == 0 ? 12 : tx.timestamp.hour % 12;
+    final minute = tx.timestamp.minute.toString().padLeft(2, '0');
+    final ampm = tx.timestamp.hour >= 12 ? 'pm' : 'am';
+    final timeStr = '$hour:$minute $ampm';
+    if (isToday) {
+      return 'Today, $timeStr';
+    }
+    return timeStr;
   }
 
   Widget _buildYearlySummariesSection() {
@@ -1984,8 +2048,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
+                  children: [
+                    const Text(
                       'Monthly Summaries',
                       style: TextStyle(
                         fontSize: 18,
@@ -1993,10 +2057,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                         color: Color(0xFF10171C),
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      'Quarterly disbursement (2026)',
-                      style: TextStyle(
+                      'Quarterly disbursement ($_selectedYear)',
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: Color(0xFF10171C),
@@ -2044,63 +2108,116 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           ),
 
           const SizedBox(height: 16),
-
-          // Quarter 3
-          const Text(
-            'Quarter 3',
-            style: TextStyle(
-              fontSize: 12,
-              color: Color(0xFF9AA3AB),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 10),
-
-          _buildQuarterRow(
-            initial: 'Jul',
-            monthTitle: 'July 2026',
-            transfersText: '24 transfers • ',
-            greenAmount: '+ 55,000.00',
-            gross: 'PHP 42,000.00',
-            net: '+ PHP 26.5k net',
-            avatarBg: const Color(0xFF6200EA),
-          ),
-          const SizedBox(height: 10),
-          _buildQuarterRow(
-            initial: 'Aug',
-            monthTitle: 'August 2026',
-            transfersText: '19 Transfers • ',
-            greenAmount: '+ 39,000.00',
-            gross: 'PHP 38,200.00',
-            net: '+ PHP 13.8k net',
-            avatarBg: const Color(0xFF2F78A8),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Quarter 2
-          const Text(
-            'Quarter 2',
-            style: TextStyle(
-              fontSize: 12,
-              color: Color(0xFF9AA3AB),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 10),
-
-          _buildQuarterRow(
-            initial: 'Jun',
-            monthTitle: 'June 2026',
-            transfersText: '10 Transfers • ',
-            greenAmount: '+ 32,000.00',
-            gross: 'PHP 50,000.00',
-            net: '+ PHP 15.2k net',
-            avatarBg: const Color(0xFFB388FF),
-          ),
+          ..._buildQuarterSummaries(),
         ],
       ),
     );
+  }
+
+  static const Map<int, Color> _monthAvatarColors = {
+    1: Color(0xFF1E88E5),
+    2: Color(0xFF00ACC1),
+    3: Color(0xFF00897B),
+    4: Color(0xFFB388FF),
+    5: Color(0xFF5E35B1),
+    6: Color(0xFFB388FF),
+    7: Color(0xFF6200EA),
+    8: Color(0xFF2F78A8),
+    9: Color(0xFF1C6E5A),
+    10: Color(0xFF3B0764),
+    11: Color(0xFF581C87),
+    12: Color(0xFF7E22CE),
+  };
+
+  List<Widget> _buildQuarterSummaries() {
+    final quartersDef = [
+      (quarter: 4, label: 'Quarter 4', months: [12, 11, 10]),
+      (quarter: 3, label: 'Quarter 3', months: [9, 8, 7]),
+      (quarter: 2, label: 'Quarter 2', months: [6, 5, 4]),
+      (quarter: 1, label: 'Quarter 1', months: [3, 2, 1]),
+    ];
+
+    final targetQuarters = _selectedQuarterIndex == 0
+        ? quartersDef
+        : quartersDef.where((q) => q.quarter == _selectedQuarterIndex).toList();
+
+    final widgets = <Widget>[];
+    bool isFirstQuarter = true;
+
+    for (final q in targetQuarters) {
+      final quarterMonthStatements = <MonthlyStatement>[];
+      for (final m in q.months) {
+        final key = '$_selectedYear-${m.toString().padLeft(2, '0')}';
+        final stmt = _bankService.statements[key];
+        if (stmt != null) {
+          quarterMonthStatements.add(stmt);
+        }
+      }
+
+      if (quarterMonthStatements.isEmpty) continue;
+
+      if (!isFirstQuarter) {
+        widgets.add(const SizedBox(height: 16));
+      }
+      isFirstQuarter = false;
+
+      widgets.add(
+        Text(
+          q.label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Color(0xFF9AA3AB),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+      widgets.add(const SizedBox(height: 10));
+
+      for (int i = 0; i < quarterMonthStatements.length; i++) {
+        if (i > 0) {
+          widgets.add(const SizedBox(height: 10));
+        }
+        final stmt = quarterMonthStatements[i];
+        final parts = stmt.monthKey.split('-');
+        final monthNum = int.tryParse(parts.length > 1 ? parts[1] : '1') ?? 1;
+        final initial = stmt.title.substring(0, 3);
+        final txCount = stmt.transactions.length;
+        final transfersText = '$txCount ${txCount == 1 ? 'transfer' : 'transfers'} • ';
+        final net = stmt.totalReceived - stmt.totalSent;
+
+        widgets.add(
+          _buildQuarterRow(
+            initial: initial,
+            monthTitle: stmt.title,
+            transfersText: transfersText,
+            greenAmount: '+ ${_formatCurrency(stmt.totalReceived)}',
+            gross: 'PHP ${_formatCurrency(stmt.totalSent)}',
+            net: '${net >= 0 ? '+' : '-'} PHP ${_formatCompactK(net.abs())} net',
+            avatarBg: _monthAvatarColors[monthNum] ?? const Color(0xFF2F78A8),
+          ),
+        );
+      }
+    }
+
+    if (widgets.isEmpty) {
+      return [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: Center(
+            child: Text(
+              'No quarterly summaries available for $_selectedYear.',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF9AA3AB),
+              ),
+            ),
+          ),
+        ),
+      ];
+    }
+
+    return widgets;
   }
 
   Widget _buildQuarterRow({

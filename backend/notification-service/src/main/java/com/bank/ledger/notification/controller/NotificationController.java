@@ -228,6 +228,56 @@ public class NotificationController {
         return ResponseEntity.ok(payload);
     }
 
+    /** Tells a customer's open sessions (phone and web) that staff decided their KYC review. */
+    @PostMapping("/kyc-status")
+    public ResponseEntity<Map<String, Object>> handleKycStatus(
+            @RequestBody(required = false) Map<String, Object> request) {
+        String userId = request != null && request.get("user_id") != null ? request.get("user_id").toString() : "";
+        String kycStatus = request != null && request.get("kyc_status") != null
+                ? request.get("kyc_status").toString().toUpperCase() : "";
+        String reason = request != null && request.get("reason") != null ? request.get("reason").toString() : "";
+        if (userId.isBlank() || kycStatus.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        boolean approved = "VERIFIED".equals(kycStatus) || "APPROVED".equals(kycStatus);
+        String title = approved ? "Identity Verified" : "Identity Verification Update";
+        String message = approved
+                ? "Your identity has been verified. Your transfer limits have been raised."
+                : "Your identity verification was not approved." + (reason.isBlank() ? "" : " Reason: " + reason)
+                        + " You can submit your documents again.";
+        String notificationId = "NOTIF-KYC-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        Instant now = Instant.now();
+
+        if (notificationRepository != null) {
+            try {
+                notificationRepository.save(NotificationEntity.builder()
+                        .notificationId(notificationId)
+                        .userId(userId)
+                        .type("KYC_STATUS_CHANGED")
+                        .message(message)
+                        .sentAt(now)
+                        .build());
+            } catch (Exception e) {
+                log.warn("Could not persist KYC status notification: {}", e.getMessage());
+            }
+        }
+
+        Map<String, Object> payload = Map.of(
+                "notification_id", notificationId,
+                "type", "KYC_STATUS_CHANGED",
+                "user_id", userId,
+                "kyc_status", kycStatus,
+                "title", title,
+                "message", message,
+                "timestamp", now.toString()
+        );
+        if (streamController != null) {
+            streamController.pushSecurityAlert(userId, payload);
+        }
+        return ResponseEntity.ok(payload);
+    }
+
     @PostMapping("/device-revoked")
     public ResponseEntity<Map<String, Object>> handleDeviceRevoked(
             @RequestBody(required = false) Map<String, Object> request) {

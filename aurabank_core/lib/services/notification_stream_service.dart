@@ -178,6 +178,8 @@ class NotificationStreamService extends ChangeNotifier {
                     _onSecurityAlertReceived(alert);
                   } else if (type == 'DEVICE_APPROVED' || type == 'DEVICE_REVOKED') {
                     _onDeviceApprovalEventReceived(data);
+                  } else if (type == 'KYC_STATUS_CHANGED') {
+                    _onKycStatusChanged(data);
                   } else if (type == 'TRANSACTION_ALERT' ||
                       type == 'TRANSACTION_TOAST' ||
                       type == 'TRANSFER_ALERT') {
@@ -292,6 +294,17 @@ class NotificationStreamService extends ChangeNotifier {
                     'timestamp': sentAtStr ?? DateTime.now().toIso8601String(),
                   });
                 }
+              } else if (type == 'KYC_STATUS_CHANGED' && isRecent && !_bannerShownNotificationIds.contains(id)) {
+                // SSE missed it (stream was reconnecting): apply the same update from history.
+                final msg = item['message']?.toString() ?? '';
+                _onKycStatusChanged({
+                  'type': type,
+                  'user_id': userId,
+                  'notification_id': id,
+                  'kyc_status': msg.contains('has been verified') ? 'VERIFIED' : 'REJECTED',
+                  'message': msg,
+                  'timestamp': sentAtStr ?? DateTime.now().toIso8601String(),
+                });
               } else if ((type == 'TRANSACTION_ALERT' || type == 'TRANSFER_ALERT' || type == 'TRANSACTION_TOAST') &&
                   isRecent &&
                   !_bannerShownNotificationIds.contains(id)) {
@@ -470,6 +483,10 @@ class NotificationStreamService extends ChangeNotifier {
                 cat = NotificationCategory.transfer;
                 sev = NotificationSeverity.success;
                 title = 'Transfer Alert';
+              } else if (type == 'KYC_STATUS_CHANGED') {
+                final approved = msg.contains('has been verified');
+                sev = approved ? NotificationSeverity.success : NotificationSeverity.warning;
+                title = approved ? 'Identity Verified' : 'Identity Verification Update';
               }
 
               final isRecent = sentAt != null &&
@@ -488,6 +505,12 @@ class NotificationStreamService extends ChangeNotifier {
 
               _notifications.add(notif);
               hasChanges = true;
+
+              // A decision made while this client was offline or reconnecting: re-read the
+              // KYC status (syncKycStatus also reloads limits when it changed).
+              if (type == 'KYC_STATUS_CHANGED' && isRecent) {
+                BankService().syncKycStatus(userId);
+              }
 
               if (isRecent &&
                   (type == 'SECURITY_ALERT' || type == 'DEVICE_APPROVED' || type == 'DEVICE_REVOKED') &&
@@ -539,6 +562,36 @@ class NotificationStreamService extends ChangeNotifier {
     try {
       BankService().syncWithBackend();
     } catch (_) {}
+  }
+
+  /// Staff decided this customer's KYC review: show it right away and refresh status and limits.
+  Future<void> _onKycStatusChanged(Map<String, dynamic> data) async {
+    final status = (data['kyc_status'] as String? ?? '').toUpperCase();
+    if (status.isEmpty) return;
+    final id = data['notification_id'] as String? ?? 'KYC-${DateTime.now().millisecondsSinceEpoch}';
+    if (_bannerShownNotificationIds.contains(id)) return; // SSE and poll both delivered it
+
+    final approved = status == 'VERIFIED' || status == 'APPROVED';
+    postNotification(
+      AppNotification(
+        id: id,
+        title: data['title'] as String? ?? (approved ? 'Identity Verified' : 'Identity Verification Update'),
+        message: data['message'] as String? ?? '',
+        category: NotificationCategory.security,
+        severity: approved ? NotificationSeverity.success : NotificationSeverity.warning,
+        timestamp: DateTime.tryParse(data['timestamp'] as String? ?? '') ?? DateTime.now(),
+        metadata: data,
+      ),
+      showBanner: true,
+    );
+
+    // Show the new status immediately, then confirm with the server (this also fills in the
+    // review reason) and pick up the new tier's limits.
+    final bank = BankService();
+    bank.setKycStatus(status);
+    final uid = _activeUserId;
+    if (uid != null) await bank.syncKycStatus(uid);
+    await bank.loadLimits();
   }
 
   void _onSecurityAlertReceived(SecurityAlertEvent alert) {

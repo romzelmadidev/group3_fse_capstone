@@ -28,6 +28,7 @@ public class TransferOrchestrationService {
     private final RiskClientService riskService;
     private final CbsClientService cbsService;
     private final InterbankWireClient wireClient;
+    private final LimitClientService limitClient;
     private final ObjectMapper objectMapper;
 
     @Autowired
@@ -38,6 +39,7 @@ public class TransferOrchestrationService {
             RiskClientService riskService,
             CbsClientService cbsService,
             InterbankWireClient wireClient,
+            LimitClientService limitClient,
             ObjectMapper objectMapper) {
         this.idempotencyService = idempotencyService;
         this.coolOffService = coolOffService;
@@ -45,18 +47,9 @@ public class TransferOrchestrationService {
         this.riskService = riskService;
         this.cbsService = cbsService;
         this.wireClient = wireClient;
+        this.limitClient = limitClient;
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
         this.objectMapper.findAndRegisterModules();
-    }
-
-    public TransferOrchestrationService(
-            IdempotencyLockService idempotencyService,
-            CoolOffService coolOffService,
-            BiometricChallengeService biometricService,
-            RiskClientService riskService,
-            CbsClientService cbsService,
-            ObjectMapper objectMapper) {
-        this(idempotencyService, coolOffService, biometricService, riskService, cbsService, null, objectMapper);
     }
 
     public TransferInitiationResponse initiateTransfer(TransferInitiationRequest request) {
@@ -102,7 +95,11 @@ public class TransferOrchestrationService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Concurrent or duplicate transfer request in progress");
         }
 
+        String limitLockToken = null;
         try {
+            // 1b. KYC tier transfer limits (fails closed; breach throws LimitExceededException)
+            limitLockToken = limitClient.evaluate(txId, request.sourceAccountId(), request.amount()).lockToken();
+
             // 2. Risk Evaluation
             RiskScoreRequest riskReq = new RiskScoreRequest(
                     txId,
@@ -222,7 +219,13 @@ public class TransferOrchestrationService {
             log.error("Transfer orchestration error for {}: {}", txId, e.getMessage(), e);
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Transfer execution failed: " + e.getMessage(), e);
         } finally {
-            idempotencyService.releaseLock(idempKey);
+            try {
+                if (limitLockToken != null) {
+                    limitClient.release(limitLockToken);
+                }
+            } finally {
+                idempotencyService.releaseLock(idempKey);
+            }
         }
     }
 

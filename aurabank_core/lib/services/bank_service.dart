@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -9,6 +10,41 @@ import 'device_storage.dart';
 import 'notification_stream_service.dart';
 
 enum AppEnvironment { local, prod }
+
+int _riskTier(String v) {
+  switch (v) {
+    case 'BLOCK':
+      return 3;
+    case 'REQUIRE_2FA':
+    case 'STEP_UP':
+      return 2;
+    case 'ADVISORY_WARNING':
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+/// Returns [r] with `decision` replaced by the strictest of the decision,
+/// tier fields, and (only when otherwise ALLOW) the fraud score.
+Map<String, dynamic> effectiveRiskResult(Map<String, dynamic> r) {
+  String norm(dynamic v) => v?.toString().trim().toUpperCase() ?? '';
+  var eff = norm(r['decision']);
+  for (final k in const ['advisory_tier', 'advisoryTier', 'risk_decision', 'riskDecision']) {
+    final c = norm(r[k]);
+    if (_riskTier(c) > _riskTier(eff)) eff = c;
+  }
+  if (_riskTier(eff) == 0) {
+    final s = r['fraud_score'] ?? r['fraudScore'];
+    final score = s is num ? s : num.tryParse(s?.toString() ?? '') ?? 0;
+    if (score >= 50) {
+      eff = 'BLOCK';
+    } else if (score >= 40) {
+      eff = 'REQUIRE_2FA';
+    }
+  }
+  return {...r, 'decision': eff};
+}
 
 class BankService extends ChangeNotifier {
   static final BankService _instance = BankService._internal();
@@ -1012,11 +1048,19 @@ class BankService extends ChangeNotifier {
     if (_refreshingBalance || activeAccountId.isEmpty) return;
     _refreshingBalance = true;
     try {
-      final token = DeviceStorage.getAccessToken();
-      final res = await http.get(
-        Uri.parse('$baseUrl/api/v1/accounts/$activeAccountId/balance'),
-        headers: {if (token != null) 'Authorization': 'Bearer $token'},
-      ).timeout(const Duration(seconds: 3));
+      Future<http.Response> fetch() {
+        final token = DeviceStorage.getAccessToken();
+        return http.get(
+          Uri.parse('$baseUrl/api/v1/accounts/$activeAccountId/balance'),
+          headers: {if (token != null) 'Authorization': 'Bearer $token'},
+        ).timeout(const Duration(seconds: 3));
+      }
+
+      var res = await fetch();
+      if (res.statusCode == 401) {
+        if (!await AuthApiService().recoverFromUnauthorized()) return;
+        res = await fetch();
+      }
       if (res.statusCode != 200) return;
       final d = jsonDecode(res.body);
       final dynamic raw = d['available_balance'] ??
@@ -1292,7 +1336,7 @@ class BankService extends ChangeNotifier {
       ).timeout(const Duration(seconds: 4));
 
       if (res.statusCode == 200) {
-        return jsonDecode(res.body);
+        return effectiveRiskResult(Map<String, dynamic>.from(jsonDecode(res.body) as Map));
       }
     } catch (_) {
       // 2. Fallback to local Docker PC if Cloud is unresponsive
@@ -1306,7 +1350,7 @@ class BankService extends ChangeNotifier {
 
           if (fallbackRes.statusCode == 200) {
             debugPrint('[AURA CLOUD FALLBACK] Cloud risk-service unavailable. Executed on local Docker PC.');
-            return jsonDecode(fallbackRes.body);
+            return effectiveRiskResult(Map<String, dynamic>.from(jsonDecode(fallbackRes.body) as Map));
           }
         } catch (_) {}
       }
@@ -1362,9 +1406,9 @@ class BankService extends ChangeNotifier {
     }
 
     return {
-      'decision': 'ALLOW',
-      'fraud_score': 0,
-      'primary_flag': 'NORMAL_TRANSACTION',
+      'decision': 'REQUIRE_2FA',
+      'fraud_score': 40,
+      'primary_flag': 'RISK_SERVICE_UNAVAILABLE',
       'advisory_tier': 'NONE',
     };
   }
@@ -1472,7 +1516,7 @@ class BankService extends ChangeNotifier {
         // an expired token as a network problem.
         if (response.statusCode == 401 && !triedRefresh) {
           triedRefresh = true;
-          if (await AuthApiService().refreshAccessToken()) {
+          if (await AuthApiService().recoverFromUnauthorized()) {
             headers['Authorization'] = 'Bearer ${AuthApiService().currentAccessToken}';
             response = await http.post(
               Uri.parse(endpoint),
@@ -1544,6 +1588,21 @@ class BankService extends ChangeNotifier {
               status == 'PENDING_REVIEW' ||
               coolingOff ||
               (data['risk_decision'] ?? data['riskDecision']) == 'REVIEW';
+
+          // A risk warning / 2FA challenge means no money has moved. Report it as a failure
+          // instead of debiting. A genuinely held transfer keeps the pending-review path.
+          bool isRiskStop(Object? v) {
+            final s = (v ?? '').toString().trim().toUpperCase();
+            return s == 'ADVISORY_WARNING' || s == 'REQUIRE_2FA';
+          }
+          if (isRiskStop(status) || (!isHeld && isRiskStop(data['risk_decision'] ?? data['riskDecision']))) {
+            final msg = (data['message'] ?? data['warning_message'] ?? 'Additional verification is required for this transfer.').toString();
+            return {
+              'success': false,
+              'reference': fallbackRef,
+              'failureReason': msg.replaceFirst(RegExp(r'^[A-Z_]+:\s*'), ''),
+            };
+          }
           // A held transfer has only reserved the funds. It is not settled, so it must not
           // show up as a completed debit or fire a "Fund Transfer Settled" notification.
           if (isHeld) {
@@ -1560,6 +1619,8 @@ class BankService extends ChangeNotifier {
               notifyListeners();
             }
           }
+          // Usage changed on the server; refresh the displayed limits.
+          unawaited(loadLimits());
           return {
             'success': true,
             'reference': t24Ref,
@@ -1574,9 +1635,46 @@ class BankService extends ChangeNotifier {
             'sar_draft_created': data['sar_draft_created'] ?? data['sarDraftCreated'] ?? false,
             'sar_report_id': data['sar_report_id'] ?? data['sarReportId'],
           };
-        } else if (response.statusCode == 400 || response.statusCode == 403 || response.statusCode == 422) {
+        } else if (response.statusCode == 503) {
+          // Limit check could not be verified: fail closed, never fall back offline.
+          // Any other 503 keeps the old behaviour (next candidate, then offline fallback).
+          Object? errData;
+          try {
+            errData = jsonDecode(response.body);
+          } catch (_) {}
+          if (errData is Map && errData['code'] == 'TX_LIMIT_UNVERIFIED') {
+            return {
+              'success': false,
+              'reference': fallbackRef,
+              'failureReason': (errData['message'] ?? 'We could not verify your transfer limit. Please try again.').toString(),
+            };
+          }
+        } else if (response.statusCode == 400 ||
+            response.statusCode == 402 ||
+            response.statusCode == 403 ||
+            response.statusCode == 422) {
           try {
             final errData = jsonDecode(response.body);
+            if (response.statusCode == 402 && errData['code'] == 'TX_LIMIT_EXCEEDED') {
+              final guidance = errData['upgradeGuidance'];
+              final message = (errData['message'] ?? 'Transfer limit exceeded.').toString();
+              // Usage changed or the display was stale; refresh it.
+              unawaited(loadLimits());
+              return {
+                'success': false,
+                'reference': fallbackRef,
+                'failureReason': guidance != null ? '$message $guidance' : message,
+                'limitError': {
+                  'code': errData['code'],
+                  'capKind': errData['capKind'],
+                  'capValue': errData['capValue'],
+                  'remaining': errData['remaining'],
+                  'tier': errData['tier'],
+                  'restricted': errData['restricted'],
+                  'upgradeGuidance': guidance,
+                },
+              };
+            }
             return {
               'success': false,
               'reference': fallbackRef,
@@ -1652,22 +1750,64 @@ class BankService extends ChangeNotifier {
   /// Loads the customer's KYC status from the backend so every channel shows
   /// the same state, including decisions made by staff after submission.
   Future<void> syncKycStatus(String userId) async {
-    final token = AuthApiService().currentAccessToken;
-    if (token == null || token.isEmpty) return;
+    if ((AuthApiService().currentAccessToken ?? '').isEmpty) return;
     try {
-      final res = await http
+      Future<http.Response> fetch() => http
           .get(
             Uri.parse('$baseUrl/api/v1/kyc/$userId'),
-            headers: {'Authorization': 'Bearer $token'},
+            headers: {'Authorization': 'Bearer ${AuthApiService().currentAccessToken}'},
           )
           .timeout(const Duration(seconds: 3));
+
+      var res = await fetch();
+      if (res.statusCode == 401) {
+        if (!await AuthApiService().recoverFromUnauthorized()) return;
+        res = await fetch();
+      }
       if (res.statusCode != 200) return;
       final data = jsonDecode(res.body);
       final status = data['kyc_status'] as String?;
       if (status != null && status.isNotEmpty) {
+        final changed = status != user.kycStatus;
         setKycStatus(status, reason: data['kyc_review_reason'] as String?);
+        // Tier depends on KYC status, so limits are stale only when it changes.
+        if (changed) await loadLimits();
       }
     } catch (_) {}
+  }
+
+  /// Transfer limits and usage from the backend. Null until the first successful load.
+  /// A failed reload keeps the last loaded value and sets [limitsError].
+  TransferLimits? limits;
+  bool limitsLoading = false;
+  bool limitsError = false;
+
+  Future<void> loadLimits() async {
+    limitsLoading = true;
+    limitsError = false;
+    notifyListeners();
+    try {
+      if ((AuthApiService().currentAccessToken ?? '').isEmpty) throw StateError('no token');
+      Future<http.Response> fetch() => http
+          .get(
+            Uri.parse('$baseUrl/api/v1/accounts/me/limits'),
+            headers: {'Authorization': 'Bearer ${AuthApiService().currentAccessToken}'},
+          )
+          .timeout(const Duration(seconds: 3));
+
+      var res = await fetch();
+      if (res.statusCode == 401) {
+        if (!await AuthApiService().recoverFromUnauthorized()) throw StateError('unauthorized');
+        res = await fetch();
+      }
+      if (res.statusCode != 200) throw StateError('status ${res.statusCode}');
+      limits = TransferLimits.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+    } catch (_) {
+      limitsError = true;
+    } finally {
+      limitsLoading = false;
+      notifyListeners();
+    }
   }
 
   void setKycStatus(String status, {String? reason}) {

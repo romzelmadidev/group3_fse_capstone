@@ -37,6 +37,8 @@ class InterbankTransferOrchestrationTest {
     private CbsClientService cbsService;
     @Mock
     private InterbankWireClient wireClient;
+    @Mock
+    private LimitClientService limitClient;
 
     private TransferOrchestrationService orchestrationService;
     private InterbankIngressController ingressController;
@@ -51,8 +53,11 @@ class InterbankTransferOrchestrationTest {
                 riskService,
                 cbsService,
                 wireClient,
+                limitClient,
                 objectMapper
         );
+        lenient().when(limitClient.evaluate(anyString(), any(), any()))
+                .thenReturn(new LimitClientService.LimitEvaluation("lock-token"));
         ingressController = new InterbankIngressController(cbsService, "AURABANK-SECURE-KEY-2026");
     }
 

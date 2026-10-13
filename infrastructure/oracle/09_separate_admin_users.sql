@@ -1,4 +1,4 @@
-﻿-- ==============================================================================
+-- ==============================================================================
 -- CAPSTONE FSE: Core Retail Ledger & Balance Mutation Engine
 -- Migration: 08_separate_admin_users.sql
 -- Description: Segregates retail customers (users) and bank staff (admin_users)
@@ -57,7 +57,7 @@ USING (
     SELECT 'U0001' AS admin_id, 'Diana' AS first_name, NULL AS middle_name, 'Vance' AS last_name, 
            'diana.admin@bank.com' AS email, '09191112233' AS phone_number, TO_DATE('1985-04-18', 'YYYY-MM-DD') AS dob,
            'PRC-0011-2233' AS government_id, 'ADMIN' AS role, 'Operations' AS department,
-           '.GqUn1B3BkspBIiuTkmN.1Jwf1PC' AS password_hash,
+           '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC' AS password_hash,
            5 AS max_concurrent_sessions, 0 AS failed_login_attempts, 'ACTIVE' AS status,
            CURRENT_TIMESTAMP AS created_at, CURRENT_TIMESTAMP AS updated_at FROM DUAL
 ) src
@@ -71,7 +71,7 @@ USING (
     SELECT 'U3001' AS admin_id, 'Alex' AS first_name, 'James' AS middle_name, 'Mercer' AS last_name, 
            'alex.teller@bank.com' AS email, '09201112233' AS phone_number, TO_DATE('1988-11-03', 'YYYY-MM-DD') AS dob,
            'PRC-8877-6655' AS government_id, 'TELLER' AS role, 'Branch Operations' AS department,
-           '.GqUn1B3BkspBIiuTkmN.1Jwf1PC' AS password_hash,
+           '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC' AS password_hash,
            5 AS max_concurrent_sessions, 0 AS failed_login_attempts, 'ACTIVE' AS status,
            CURRENT_TIMESTAMP AS created_at, CURRENT_TIMESTAMP AS updated_at FROM DUAL
 ) src
