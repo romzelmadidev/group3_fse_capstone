@@ -721,8 +721,11 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
                     threat_cat = "ELEVATED_RISK"
 
             # 4b. Basic-tier high-amount rule: only ever raises ALLOW / ADVISORY_WARNING.
+            # Gate 0 verdicts keep their own flags. The SAR trigger below uses the score from
+            # before this rule, so a Basic-tier advisory alone never drafts a SAR.
             basic_tier_cause = None
-            if decision in ("ALLOW", "ADVISORY_WARNING") and basic_tier_rule.applies(account_id, amount):
+            sar_fraud_score = fraud_score
+            if not gate0_action and decision in ("ALLOW", "ADVISORY_WARNING") and basic_tier_rule.applies(account_id, amount):
                 fraud_score = max(fraud_score, basic_tier_rule.SCORE)
                 all_flags.append(basic_tier_rule.FLAG)
                 if decision == "ALLOW":
@@ -767,7 +770,7 @@ class RiskRequestHandler(BaseHTTPRequestHandler):
                     "CRITICAL_DEVICE_TAMPERING_ENVIRONMENT",
                     "DEVICE_TAMPERING"
                 ]
-                or fraud_score >= 60
+                or sar_fraud_score >= 60
                 or amount >= 50000.0
                 or geo_signals.get("is_impossible_travel", False)
                 or geo_signals.get("velocity_kmh", 0.0) > 800.0

@@ -49,13 +49,21 @@ def _post_analyze(base_url, payload):
         pytest.fail(f"no HTTP 200 response from /analyze: {exc!r}")
 
 
-def test_gate0_require_2fa_returns_200(base_url):
-    """1.1: rooted + new_payee + amount >= 10000 must return 200 REQUIRE_2FA score 75."""
+def test_gate0_non_block_returns_200(base_url):
+    """1.1: a non-BLOCK Gate 0 verdict must return 200 and not crash on p_fraud.
+    Rooted devices now BLOCK, so impossible travel (ADVISORY_WARNING, score 75) is the non-BLOCK Gate 0 path."""
     status, data = _post_analyze(
-        base_url, {"rooted": True, "new_payee": True, "amount": 20000}
+        base_url,
+        {
+            "user_id": "usr-1003-cst-003",
+            "target_account_id": "acc-2001-sav-001",
+            "amount": 20000.0,
+            "latitude": 1.3521,
+            "longitude": 103.8198,
+        },
     )
     assert status == 200
-    assert data["decision"] == "REQUIRE_2FA"
+    assert data["decision"] == "ADVISORY_WARNING"
     assert data["fraud_score"] == 75
 
 
