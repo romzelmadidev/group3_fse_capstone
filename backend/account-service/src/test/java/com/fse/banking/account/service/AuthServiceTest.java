@@ -841,124 +841,133 @@ class AuthServiceTest {
         verify(redisSessionStore).blacklistToken("jti-web", 300L);
     }
 
-    @Test
-    @DisplayName("Should allow administrative (ADMIN) and teller (TELLER) accounts like jm@bank.com to log in from mobile devices")
-    void testAdministrativeAndTellerAccountsCanLoginFromMobile() {
-        UserEntity tellerUser = UserEntity.builder()
-                .userId("USR-TM-JM")
-                .email("jm@bank.com")
+    private AdminUserEntity staffAccount(String adminId, String email, UserRole role) {
+        return AdminUserEntity.builder()
+                .adminId(adminId)
+                .email(email)
                 .passwordHash("$2a$10$hashedpassword")
-                .role(UserRole.TELLER)
+                .role(role)
                 .status(UserStatus.ACTIVE)
                 .maxConcurrentSessions(5)
                 .failedLoginAttempts(0)
-                .lastLoginAt(Instant.now())
                 .build();
+    }
 
-        UserEntity adminUser = UserEntity.builder()
-                .userId("USR-ADMIN-01")
-                .email("diana.admin@bank.com")
-                .passwordHash("$2a$10$hashedpassword")
-                .role(UserRole.ADMIN)
-                .status(UserStatus.ACTIVE)
-                .maxConcurrentSessions(5)
-                .failedLoginAttempts(0)
-                .lastLoginAt(Instant.now())
-                .build();
-
-        DeviceInfoDto approvedPrimary = DeviceInfoDto.builder()
-                .deviceId("device-mobile-test")
-                .deviceName("Pixel 8")
-                .deviceType("MOBILE")
-                .isPrimary(true)
-                .isApproved(true)
-                .build();
-
-        // 1. Test Teller (jm@bank.com) on mobile
-        LoginRequest jmLogin = LoginRequest.builder()
-                .email("jm@bank.com")
+    private LoginRequest mobileLogin(String email) {
+        return LoginRequest.builder()
+                .email(email)
                 .password("Password123!")
                 .deviceId("device-mobile-test")
                 .deviceName("Pixel 8")
                 .deviceType("MOBILE")
                 .build();
-
-        when(userRepository.findByEmail("jm@bank.com")).thenReturn(Optional.of(tellerUser));
-        when(passwordEncoder.matches("Password123!", tellerUser.getPasswordHash())).thenReturn(true);
-        when(redisSessionStore.getPrimaryDeviceId("USR-TM-JM")).thenReturn("device-mobile-test");
-        when(redisSessionStore.getDevice("USR-TM-JM", "device-mobile-test")).thenReturn(Optional.of(approvedPrimary));
-        when(jwtProvider.generateAccessToken(eq("USR-TM-JM"), eq("jm@bank.com"), eq("ROLE_TELLER"), anyString(), eq("device-mobile-test")))
-                .thenReturn("mock.teller.jwt");
-        when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
-
-        AuthService.LoginResult tellerResult = authService.login(jmLogin, "192.168.1.10", "AuraBank Mobile (Android)");
-        assertThat(tellerResult).isNotNull();
-        assertThat(tellerResult.getResponse().getStatus()).isEqualTo("AUTHENTICATED");
-        assertThat(tellerResult.getResponse().getRole()).isEqualTo("ROLE_TELLER");
-
-        // 2. Test Admin on mobile
-        LoginRequest adminLogin = LoginRequest.builder()
-                .email("diana.admin@bank.com")
-                .password("Password123!")
-                .deviceId("device-mobile-test")
-                .deviceName("Pixel 8")
-                .deviceType("MOBILE")
-                .build();
-
-        when(userRepository.findByEmail("diana.admin@bank.com")).thenReturn(Optional.of(adminUser));
-        when(passwordEncoder.matches("Password123!", adminUser.getPasswordHash())).thenReturn(true);
-        when(redisSessionStore.getPrimaryDeviceId("USR-ADMIN-01")).thenReturn("device-mobile-test");
-        when(redisSessionStore.getDevice("USR-ADMIN-01", "device-mobile-test")).thenReturn(Optional.of(approvedPrimary));
-        when(jwtProvider.generateAccessToken(eq("USR-ADMIN-01"), eq("diana.admin@bank.com"), eq("ROLE_ADMIN"), anyString(), eq("device-mobile-test")))
-                .thenReturn("mock.admin.jwt");
-
-        AuthService.LoginResult adminResult = authService.login(adminLogin, "192.168.1.10", "AuraBank Mobile (Android)");
-        assertThat(adminResult).isNotNull();
-        assertThat(adminResult.getResponse().getStatus()).isEqualTo("AUTHENTICATED");
-        assertThat(adminResult.getResponse().getRole()).isEqualTo("ROLE_ADMIN");
     }
 
     @Test
-    @DisplayName("Should allow administrative and teller accounts to verify login OTP from mobile devices")
-    void testAdministrativeAndTellerAccountsCanVerifyLoginOtpFromMobile() {
-        UserEntity tellerUser = UserEntity.builder()
-                .userId("USR-TM-JM")
-                .email("jm@bank.com")
+    @DisplayName("Staff credentials are rejected on the customer app and never reach the staff table")
+    void testStaffCredentialsAreRejectedOnCustomerChannel() {
+        when(userRepository.findByEmail("angel.staff@bank.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.login(mobileLogin("angel.staff@bank.com"), "192.168.1.10", "AuraBank Mobile (Android)"))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessage("Invalid email or password.");
+
+        verify(adminUserRepository, never()).findByEmail(anyString());
+        verify(jwtProvider, never()).generateAccessToken(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("Customer credentials are rejected on the staff console and never reach the users table")
+    void testCustomerCredentialsAreRejectedOnStaffConsole() {
+        LoginRequest consoleLogin = LoginRequest.builder()
+                .email("angel@bank.com")
+                .password("Password123!")
+                .deviceId("dev-browser-angel")
+                .deviceName("Aura Console")
+                .deviceType("WEB")
+                .build();
+        when(adminUserRepository.findByEmail("angel@bank.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.login(consoleLogin, "192.168.1.50", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessage("Invalid email or password.");
+
+        verify(userRepository, never()).findByEmail(anyString());
+        verify(jwtProvider, never()).generateAccessToken(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("A staff-role row left in the users table cannot sign in on the customer app")
+    void testStaffRoleRowInUsersTableCannotLoginAsCustomer() {
+        for (UserRole staffRole : List.of(UserRole.TELLER, UserRole.ADMIN)) {
+            UserEntity legacyStaff = UserEntity.builder()
+                    .userId("USR-LEGACY-" + staffRole)
+                    .email("legacy." + staffRole.name().toLowerCase() + "@bank.com")
+                    .passwordHash("$2a$10$hashedpassword")
+                    .role(staffRole)
+                    .status(UserStatus.ACTIVE)
+                    .maxConcurrentSessions(5)
+                    .failedLoginAttempts(0)
+                    .lastLoginAt(Instant.now())
+                    .build();
+            when(userRepository.findByEmail(legacyStaff.getEmail())).thenReturn(Optional.of(legacyStaff));
+
+            assertThatThrownBy(() -> authService.login(mobileLogin(legacyStaff.getEmail()), "192.168.1.10", "AuraBank Mobile (Android)"))
+                    .isInstanceOf(UnauthorizedException.class)
+                    .hasMessage("Invalid email or password.");
+        }
+
+        verify(passwordEncoder, never()).matches(any(), any());
+        verify(jwtProvider, never()).generateAccessToken(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("A staff-role row in the users table cannot complete the customer login OTP")
+    void testStaffRoleRowInUsersTableCannotVerifyCustomerLoginOtp() {
+        UserEntity legacyTeller = UserEntity.builder()
+                .userId("USR-LEGACY-JM")
+                .email("legacy.jm@bank.com")
                 .passwordHash("$2a$10$hashedpassword")
                 .role(UserRole.TELLER)
                 .status(UserStatus.ACTIVE)
                 .maxConcurrentSessions(5)
                 .failedLoginAttempts(0)
                 .build();
-
         VerifyLoginOtpRequest verifyRequest = VerifyLoginOtpRequest.builder()
-                .userId("USR-TM-JM")
+                .userId("USR-LEGACY-JM")
                 .otp("123456")
                 .deviceId("device-mobile-test")
                 .deviceName("Pixel 8")
                 .deviceType("MOBILE")
                 .build();
+        when(adminUserRepository.findById("USR-LEGACY-JM")).thenReturn(Optional.empty());
+        when(userRepository.findById("USR-LEGACY-JM")).thenReturn(Optional.of(legacyTeller));
+        // A valid code is on file, so only the role check can stop this sign-in.
+        org.mockito.Mockito.lenient().when(redisSessionStore.getLoginOtp("USR-LEGACY-JM")).thenReturn("123456");
 
-        when(userRepository.findById("USR-TM-JM")).thenReturn(Optional.of(tellerUser));
-        when(redisSessionStore.getLoginOtp("USR-TM-JM")).thenReturn("123456");
-        when(jwtProvider.generateAccessToken(eq("USR-TM-JM"), eq("jm@bank.com"), eq("ROLE_TELLER"), anyString(), any()))
-                .thenReturn("mock.teller.otp.jwt");
-        when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
+        assertThatThrownBy(() -> authService.verifyLoginOtp(verifyRequest, "192.168.1.10", "AuraBank Mobile (Android)"))
+                .isInstanceOf(UnauthorizedException.class);
 
-        AuthService.LoginResult result = authService.verifyLoginOtp(verifyRequest, "192.168.1.10", "AuraBank Mobile (Android)");
-
-        assertThat(result).isNotNull();
-        assertThat(result.getResponse().getStatus()).isEqualTo("AUTHENTICATED");
-        assertThat(result.getResponse().getRole()).isEqualTo("ROLE_TELLER");
-        verify(redisSessionStore).clearLoginOtp("USR-TM-JM");
+        verify(jwtProvider, never()).generateAccessToken(any(), any(), any(), any(), any());
     }
 
+    @Test
+    @DisplayName("A customer cannot register with an email that belongs to a staff account")
+    void testRegistrationRejectsStaffEmail() {
+        when(userRepository.existsByEmail(registerRequest.getEmail())).thenReturn(false);
+        when(adminUserRepository.existsByEmail(registerRequest.getEmail())).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.register(registerRequest))
+                .isInstanceOf(ConflictException.class);
+
+        verify(userRepository, never()).save(any(UserEntity.class));
+    }
     @Test
     @DisplayName("Should bypass OTP and mobile push notification when staff logs in via web portal")
     void testStaffWebAdminPortalLoginBypassesOtpAndMobileNotification() {
         AdminUserEntity admin = AdminUserEntity.builder()
-                .adminId("USR-TM-ANGEL")
-                .email("angel@bank.com")
+                .adminId("ADM-TM-ANGEL")
+                .email("angel.staff@bank.com")
                 .passwordHash("$2a$10$hashedpassword")
                 .role(UserRole.TELLER)
                 .status(UserStatus.ACTIVE)
@@ -967,16 +976,16 @@ class AuthServiceTest {
                 .build();
 
         LoginRequest loginRequest = LoginRequest.builder()
-                .email("angel@bank.com")
+                .email("angel.staff@bank.com")
                 .password("Password123!")
                 .deviceId("dev-browser-angel")
                 .deviceName("Aura Console")
                 .deviceType("WEB")
                 .build();
 
-        when(adminUserRepository.findByEmail("angel@bank.com")).thenReturn(Optional.of(admin));
+        when(adminUserRepository.findByEmail("angel.staff@bank.com")).thenReturn(Optional.of(admin));
         when(passwordEncoder.matches("Password123!", admin.getPasswordHash())).thenReturn(true);
-        when(redisSessionStore.getPrimaryDeviceId("USR-TM-ANGEL")).thenReturn("dev-primary-mobile");
+        when(redisSessionStore.getPrimaryDeviceId("ADM-TM-ANGEL")).thenReturn("dev-primary-mobile");
         when(jwtProvider.generateAccessToken(any(), any(), any(), any(), any())).thenReturn("mock.admin.jwt");
         when(jwtProvider.getAccessTokenExpirationSeconds()).thenReturn(900L);
 

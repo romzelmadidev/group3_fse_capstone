@@ -5,13 +5,13 @@ import { errorMessage } from '../lib/api';
 import { Aurora, Button, ErrorNote, Logo } from '../components/ui';
 
 const DEMO = [
-  { email: 'wax@bank.com', who: 'Wax', role: 'Admin' },
-  { email: 'hans@bank.com', who: 'Hans', role: 'Admin' },
-  { email: 'jm@bank.com', who: 'JM', role: 'Teller' },
-  { email: 'zel@bank.com', who: 'Zel', role: 'Admin' },
-  { email: 'jessy@bank.com', who: 'Jessy', role: 'Teller' },
-  { email: 'maye@bank.com', who: 'Maye', role: 'Admin' },
-  { email: 'angel@bank.com', who: 'Angel', role: 'Teller' },
+  { email: 'wax.staff@bank.com', who: 'Wax', role: 'Admin' },
+  { email: 'hans.staff@bank.com', who: 'Hans', role: 'Admin' },
+  { email: 'jm.staff@bank.com', who: 'JM', role: 'Teller' },
+  { email: 'zel.staff@bank.com', who: 'Zel', role: 'Admin' },
+  { email: 'jessy.staff@bank.com', who: 'Jessy', role: 'Teller' },
+  { email: 'maye.staff@bank.com', who: 'Maye', role: 'Admin' },
+  { email: 'angel.staff@bank.com', who: 'Angel', role: 'Teller' },
   { email: 'diana.admin@bank.com', who: 'Diana Vance', role: 'Admin' },
   { email: 'carlos.mendoza@bank.com', who: 'Carlos Mendoza', role: 'Teller' },
   { email: 'beatriz.ocampo@bank.com', who: 'Beatriz Ocampo', role: 'Teller' },
