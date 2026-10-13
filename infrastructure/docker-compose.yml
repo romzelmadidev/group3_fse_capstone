@@ -219,6 +219,7 @@ services:
       - AZURE_STORAGE_CONTAINER_NAME=kyc-vault
       - AZURE_STORAGE_PUBLIC_ENDPOINT=http://localhost:10000/devstoreaccount1
       - APP_SERVICES_RISK_SERVICE_URL=http://risk-service:8084
+      - APP_SERVICES_CBS_URL=http://t24-mock-cbs:8085
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger-tracing:4318/v1/traces
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "account-service"}]'

@@ -1329,10 +1329,13 @@ class _DevicesSessionsScreenState extends State<DevicesSessionsScreen> {
                           const SizedBox(height: 14),
                           const Divider(color: Color(0xFFF1F3F4), height: 1),
                           const SizedBox(height: 10),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            runSpacing: 8,
                             children: [
                               const Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
                                     Icons.circle,

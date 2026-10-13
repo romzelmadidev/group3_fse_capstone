@@ -80,11 +80,11 @@ void main() {
   test('BankService restoreUserProfileFromStorage restores demo persona dynamically by preferred email', () {
     final bankService = BankService();
 
-    bankService.restoreUserProfileFromStorage(preferredEmail: 'juan.dc@email.com');
+    bankService.restoreUserProfileFromStorage(preferredEmail: 'jm@bank.com');
 
-    expect(bankService.user.name, 'Juan Dela Cruz');
-    expect(bankService.user.email, 'juan.dc@email.com');
-    expect(bankService.activeAccountId, '1000-2000-3001');
-    expect(bankService.cards.first.holderName, 'Juan Dela Cruz');
+    expect(bankService.user.name, 'JM');
+    expect(bankService.user.email, 'jm@bank.com');
+    expect(bankService.activeAccountId, '1000-8801-0003');
+    expect(bankService.cards.first.holderName, 'JM');
   });
 }

@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -37,6 +38,22 @@ import java.util.UUID;
 public class CbsPostingController {
 
     private static final Logger log = LoggerFactory.getLogger(CbsPostingController.class);
+
+    /** True when the failure is a lost/unobtainable DB connection, not a business or constraint error. */
+    static boolean isDatabaseDown(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause() == c ? null : c.getCause()) {
+            if (c instanceof org.springframework.transaction.CannotCreateTransactionException
+                    || c instanceof org.springframework.dao.DataAccessResourceFailureException
+                    || c instanceof org.springframework.jdbc.CannotGetJdbcConnectionException
+                    || c instanceof org.hibernate.exception.JDBCConnectionException
+                    || c instanceof java.sql.SQLTransientConnectionException
+                    || c instanceof java.sql.SQLNonTransientConnectionException
+                    || c instanceof java.sql.SQLRecoverableException) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private final CbsFundsTransferService transferService;
     private final CbsReversalService reversalService;
@@ -115,6 +132,11 @@ public class CbsPostingController {
             return ResponseEntity.ok(response.ofsResponse());
         } catch (Exception e) {
             log.error("Failed to execute OFS funds transfer: {}", e.getMessage(), e);
+            if (isDatabaseDown(e)) {
+                // Nothing was posted. 503 lets the caller fail the transfer without queueing a replay.
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                        .body(OfsMessageUtil.buildOfsResponse(false, "DB_UNAVAILABLE", "Core database is unavailable"));
+            }
             if (req != null) {
                 try {
                     transferService.recordFailedTransfer(req, e.getMessage());

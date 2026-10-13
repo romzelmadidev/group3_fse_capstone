@@ -36,6 +36,7 @@ public class CbsClientService {
 
     private static final Logger log = LoggerFactory.getLogger(CbsClientService.class);
     private static final String DLQ_TOPIC = "banking.transfers.dlq";
+    private static final String DB_DOWN_MESSAGE = "Core banking database is unavailable. Your transfer was not processed and no money moved.";
 
     private final WebClient webClient;
     private final KafkaTemplate<String, Object> kafkaTemplate;
@@ -204,6 +205,10 @@ public class CbsClientService {
                 String errMsg = fields.getOrDefault("MESSAGE", fields.getOrDefault("ERROR", ex.getMessage()));
                 throw new ResponseStatusException(ex.getStatusCode(), "Posting failed in CBS: " + errMsg);
             }
+            if (ex.getResponseBodyAsString().contains("DB_UNAVAILABLE")) {
+                // CBS answered, so nothing was posted. Fail the transfer instead of queueing a replay.
+                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, DB_DOWN_MESSAGE);
+            }
             throw ex;
         }
 
@@ -238,6 +243,11 @@ public class CbsClientService {
         ResponseStatusException clientEx = extractClientException(t);
         if (clientEx != null) {
             throw clientEx;
+        }
+        for (Throwable c = t; c != null; c = c.getCause() == c ? null : c.getCause()) {
+            if (c instanceof ResponseStatusException rse && DB_DOWN_MESSAGE.equals(rse.getReason())) {
+                throw rse;
+            }
         }
 
         log.error("CBS Circuit Breaker fallback activated for txId={}: {}", txId, t.getMessage());

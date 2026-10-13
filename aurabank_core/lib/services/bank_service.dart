@@ -1649,19 +1649,17 @@ class BankService extends ChangeNotifier {
             'sar_report_id': data['sar_report_id'] ?? data['sarReportId'],
           };
         } else if (response.statusCode == 503) {
-          // Limit check could not be verified: fail closed, never fall back offline.
-          // Any other 503 keeps the old behaviour (next candidate, then offline fallback).
+          // Limit check, core DB or CBS unavailable: fail closed, never report success.
           Object? errData;
           try {
             errData = jsonDecode(response.body);
           } catch (_) {}
-          if (errData is Map && errData['code'] == 'TX_LIMIT_UNVERIFIED') {
-            return {
-              'success': false,
-              'reference': fallbackRef,
-              'failureReason': (errData['message'] ?? 'We could not verify your transfer limit. Please try again.').toString(),
-            };
-          }
+          final unavailableMsg = errData is Map ? errData['message'] : null;
+          return {
+            'success': false,
+            'reference': fallbackRef,
+            'failureReason': (unavailableMsg ?? 'Service temporarily unavailable. Your transfer was not processed. Please try again later.').toString(),
+          };
         } else if (response.statusCode == 400 ||
             response.statusCode == 402 ||
             response.statusCode == 403 ||
@@ -1719,9 +1717,12 @@ class BankService extends ChangeNotifier {
       };
     }
 
-    // 3. Perform in-memory mutation fallback (backend unreachable)
-    _applyLocalTransfer(amount, recipientName, fallbackRef, remarks);
-    return {'success': true, 'reference': fallbackRef, 't24_reference': fallbackRef, 'amount': amount};
+    // Backend unreachable: nothing was posted, so never report success.
+    return {
+      'success': false,
+      'reference': fallbackRef,
+      'failureReason': 'We could not reach the bank. Your transfer was not processed and no money moved. Please try again.',
+    };
   }
 
   void _applyLocalTransfer(double amount, String recipientName, String ref, String? remarks) {

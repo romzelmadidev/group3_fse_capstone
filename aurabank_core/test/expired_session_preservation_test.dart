@@ -142,7 +142,7 @@ void main() {
       }
     });
 
-    test('timeout and connection errors use the offline fallback and keep the session', () async {
+    test('timeout and connection errors fail the transfer and keep the session', () async {
       final errors = <Object Function()>[
         () => TimeoutException('slow'),
         () => http.ClientException('connection refused'),
@@ -155,9 +155,9 @@ void main() {
         final log = <http.Request>[];
         final result = await _withClient((_) async => throw errors[i % errors.length](), log, _transfer);
 
-        expect(result['success'], isTrue, reason: 'offline fallback reports local success');
+        expect(result['success'], isFalse, reason: 'unreachable backend must never report success');
         expect(result['reference'], startsWith('FT'));
-        expect(result.containsKey('failureReason'), isFalse);
+        expect(result['failureReason'], isNotNull);
         _expectStillSignedIn(token);
       }
     });

@@ -92,6 +92,25 @@ class CbsClientServiceResilienceTest {
     }
 
     @Test
+    void testFallback_WithCbsDatabaseDown_Rethrows503WithoutDlq() {
+        TransferInitiationRequest request = new TransferInitiationRequest(
+                "TXN-DBDOWN-1", "1000-8801-0003", "1000-8801-0001",
+                new BigDecimal("100.00"), "PHP", "DB down test",
+                "DEV-1", "IDEMP-DBDOWN", null, false
+        );
+        // postToCbs raises this when CBS answers 503 DB_UNAVAILABLE (nothing posted).
+        ResponseStatusException dbDown = new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                "Core banking database is unavailable. Your transfer was not processed and no money moved.");
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                cbsClientService.cbsPostingFallback(request, "TXN-DBDOWN-1", false, dbDown)
+        );
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatusCode());
+        verify(kafkaTemplate, never()).send(anyString(), anyString(), any());
+    }
+
+    @Test
     void testFallback_WithInfrastructureOutage_PublishesToDlqAndThrows503() {
         TransferInitiationRequest request = new TransferInitiationRequest(
                 "TXN-OUTAGE-500", "1000-2000-3001", "1000-2000-3002",

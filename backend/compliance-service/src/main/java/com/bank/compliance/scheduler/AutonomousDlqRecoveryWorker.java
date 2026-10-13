@@ -161,7 +161,8 @@ public class AutonomousDlqRecoveryWorker {
                     .bodyToMono(String.class)
                     .timeout(Duration.ofMillis(2000))
                     .block();
-            return response != null && response.contains("\"UP\"");
+            // Overall status only: component entries also say "UP" while the DB is down.
+            return response != null && response.replaceAll("\\s", "").startsWith("{\"status\":\"UP\"");
         } catch (Exception e) {
             return false;
         }

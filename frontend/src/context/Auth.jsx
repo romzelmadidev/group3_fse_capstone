@@ -17,15 +17,6 @@ export const canOpen = (role, path) => (ACCESS[path] || STAFF_ROLES).includes(ro
 
 /** Display details for seeded staff; unknown staff fall back to their email. */
 const DIRECTORY = {
-  'usr-1004-adm-001': { name: 'Diana Vance', title: 'Admin' },
-  'usr-1006-mgr-002': { name: 'Carlos Mendoza', title: 'Teller' },
-  'usr-1005-boo-001': { name: 'Beatriz Ocampo', title: 'Teller' },
-  'usr-1007-sec-003': { name: 'Alex Rivera', title: 'Admin' },
-  'usr-1003-tel-001': { name: 'Crisostomo Ibarra', title: 'Teller' },
-  // IDs from infrastructure/oracle/03_seed_sample_data.sql, the seed the docker stack actually loads.
-  U0001: { name: 'Diana Vance', title: 'Admin' },
-  U3002: { name: 'Beatriz Ocampo', title: 'Teller' },
-  U3003: { name: 'Carlos Mendoza', title: 'Teller' },
   // Team members
   'ADM-TM-WAX': { name: 'Wax', title: 'Admin' },
   'ADM-TM-HANS': { name: 'Hans', title: 'Admin' },

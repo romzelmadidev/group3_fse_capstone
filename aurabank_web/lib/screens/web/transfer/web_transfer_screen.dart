@@ -166,9 +166,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
     return double.tryParse(clean) ?? 0.0;
   }
 
-  double get _transferFee => 0.0;
-
-  double get _totalDebit => _parsedAmount + _transferFee;
+  double get _totalDebit => _parsedAmount;
 
   void _setExactAmount(double val) {
     setState(() {
@@ -392,16 +390,6 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                           _buildModalRow(
                             'Bank',
                             _isAuraToAura ? 'Aura Bank (Direct)' : (_selectedPartnerBank ?? 'Other Bank'),
-                          ),
-                          const Divider(height: 18, color: borderLight),
-                          _buildModalRow(
-                            'Transfer Fee',
-                            _transferFee == 0
-                                ? 'FREE'
-                                : 'PHP ${_formatCurrency(_transferFee)}',
-                            color: _transferFee == 0
-                                ? const Color(0xFF17805F)
-                                : const Color(0xFF2E3A43),
                           ),
                         ],
                       ),
@@ -844,12 +832,6 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       ),
                       const Divider(height: 20, color: borderLight),
                       _buildModalRow('Transfer Amount', 'PHP ${_formatCurrency(_parsedAmount)}'),
-                      const SizedBox(height: 8),
-                      _buildModalRow(
-                        'Transfer Fee',
-                        _transferFee == 0 ? 'FREE' : 'PHP ${_formatCurrency(_transferFee)}',
-                        color: _transferFee == 0 ? const Color(0xFF17805F) : const Color(0xFF10171C),
-                      ),
                       const SizedBox(height: 8),
                       _buildModalRow(
                         'Total Amount',
@@ -1842,31 +1824,6 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: Color(0xFF10171C),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 10),
-
-          // Transfer Fee Breakdown
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Transfer Fee',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  color: Color(0xFF7D8892),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const Text(
-                'Free',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF2FA37E),
                 ),
               ),
             ],

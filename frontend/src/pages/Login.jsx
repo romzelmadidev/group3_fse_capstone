@@ -12,9 +12,6 @@ const DEMO = [
   { email: 'jessy.staff@bank.com', who: 'Jessy', role: 'Teller' },
   { email: 'maye.staff@bank.com', who: 'Maye', role: 'Admin' },
   { email: 'angel.staff@bank.com', who: 'Angel', role: 'Teller' },
-  { email: 'diana.admin@bank.com', who: 'Diana Vance', role: 'Admin' },
-  { email: 'carlos.mendoza@bank.com', who: 'Carlos Mendoza', role: 'Teller' },
-  { email: 'beatriz.ocampo@bank.com', who: 'Beatriz Ocampo', role: 'Teller' },
 ];
 
 const field =
@@ -109,7 +106,7 @@ export default function Login() {
                 {DEMO.map((d, i) => (
                   <button
                     type="button" key={d.email} style={{ animationDelay: `${120 + i * 30}ms` }}
-                    onClick={() => { setEmail(d.email); setPassword('password123'); }}
+                    onClick={() => { setEmail(d.email); setPassword('Staff@Aura2026'); }}
                     className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-white animate-rise"
                   >
                     <span className="font-medium">{d.who}</span>

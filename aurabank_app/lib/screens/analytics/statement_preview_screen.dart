@@ -81,13 +81,18 @@ class StatementPreviewScreen extends StatelessWidget {
               ),
             ),
           ),
-          Text(
-            'Aura Statement ${statement.title}',
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: textDark,
-              letterSpacing: -0.2,
+          Expanded(
+            child: Text(
+              'Aura Statement ${statement.title}',
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: textDark,
+                letterSpacing: -0.2,
+              ),
             ),
           ),
           Container(

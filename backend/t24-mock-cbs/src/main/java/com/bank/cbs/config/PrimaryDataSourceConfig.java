@@ -38,6 +38,7 @@ public class PrimaryDataSourceConfig {
 
     @Primary
     @Bean(name = "masterDataSource")
+    @ConfigurationProperties("spring.datasource.master.hikari") // without this the hikari.* settings are silently ignored
     public DataSource masterDataSource(
             @Qualifier("masterDataSourceProperties") DataSourceProperties properties) {
         return properties.initializeDataSourceBuilder().build();

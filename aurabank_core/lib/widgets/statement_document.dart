@@ -222,12 +222,17 @@ class StatementDocument extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        _formatCurrency(statement.totalReceived),
-                        style: const TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w800,
-                          color: greenCredit,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          _formatCurrency(statement.totalReceived),
+                          maxLines: 1,
+                          style: const TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w800,
+                            color: greenCredit,
+                          ),
                         ),
                       ),
                     ],
@@ -250,12 +255,17 @@ class StatementDocument extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        _formatCurrency(statement.totalSent),
-                        style: const TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w800,
-                          color: debitRed,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          _formatCurrency(statement.totalSent),
+                          maxLines: 1,
+                          style: const TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w800,
+                            color: debitRed,
+                          ),
                         ),
                       ),
                     ],
@@ -277,12 +287,17 @@ class StatementDocument extends StatelessWidget {
                   color: textMuted,
                 ),
               ),
-              Text(
-                'Total Settled Transfers (${statement.allCount})',
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: textMuted,
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  'Settled (${statement.allCount})',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: textMuted,
+                  ),
                 ),
               ),
             ],

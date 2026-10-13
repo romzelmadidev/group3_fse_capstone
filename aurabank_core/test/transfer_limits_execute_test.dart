@@ -143,12 +143,12 @@ void main() {
       }
     });
 
-    test('503 without the limit code keeps the old behaviour (offline fallback)', () async {
+    test('any 503 (core DB or CBS down) fails closed with no local debit', () async {
       final run = await _execute((_) => http.Response(jsonEncode({'message': 'down'}), 503));
-      expect(run.result['success'], true, reason: '${run.result}');
-      expect(run.balanceAfter, run.balanceBefore - 1000);
-      // Every candidate endpoint was tried before falling back.
-      expect(run.posts.length, greaterThan(1));
+      expect(run.result['success'], false, reason: '${run.result}');
+      expect(run.result['failureReason'], 'down');
+      expect(run.balanceAfter, run.balanceBefore);
+      expect(run.posts.length, 1);
     });
   });
 

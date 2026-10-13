@@ -21,30 +21,6 @@ class UserPersona {
 
   static const List<UserPersona> demoPersonas = [
     UserPersona(
-      name: 'Paolo Reyes',
-      role: 'Customer',
-      email: 'paolo.reyes@email.com',
-      password: 'password123',
-      accountId: '1000-9000-0001',
-      balance: 198300.00,
-    ),
-    UserPersona(
-      name: 'Elena Cruz',
-      role: 'Customer',
-      email: 'elena.cruz@email.com',
-      password: 'password123',
-      accountId: '1000-9000-0002',
-      balance: 106250.00,
-    ),
-    UserPersona(
-      name: 'Marco Santos',
-      role: 'Customer',
-      email: 'marco.santos@email.com',
-      password: 'password123',
-      accountId: '1000-9000-0003',
-      balance: 330200.00,
-    ),
-    UserPersona(
       name: 'Wax',
       role: 'Customer',
       email: 'wax@bank.com',
@@ -100,30 +76,6 @@ class UserPersona {
       accountId: '1000-8801-0007',
       balance: 1000000.00,
     ),
-    UserPersona(
-      name: 'Elijah Riley Montefalco',
-      role: 'Customer',
-      email: 'elijahriley.montefalco@gmail.com',
-      password: 'password123',
-      accountId: '1000-4491-0023',
-      balance: 250000.00,
-    ),
-    UserPersona(
-      name: 'Juan Dela Cruz',
-      role: 'Customer',
-      email: 'juan.dc@email.com',
-      password: 'password123',
-      accountId: '1000-2000-3001',
-      balance: 15000000.00,
-    ),
-    UserPersona(
-      name: 'Maria Clara Reyes',
-      role: 'Customer',
-      email: 'maria.reyes@email.com',
-      password: 'password123',
-      accountId: '1000-2000-3002',
-      balance: 5000000.00,
-    ),
   ];
 
   static const List<Map<String, String>> transferableRecipients = [
@@ -161,51 +113,6 @@ class UserPersona {
       'name': 'Angel',
       'accountNo': '1000-8801-0007',
       'tag': 'Team Member',
-    },
-    {
-      'name': 'Elijah Riley Montefalco',
-      'accountNo': '1000-4491-0023',
-      'tag': 'Verified Customer',
-    },
-    {
-      'name': 'Juan Dela Cruz',
-      'accountNo': '1000-2000-3001',
-      'tag': 'Verified Customer',
-    },
-    {
-      'name': 'Maria Clara Reyes',
-      'accountNo': '1000-2000-3002',
-      'tag': 'Verified Customer',
-    },
-    {
-      'name': 'Jose Protacio Rizal',
-      'accountNo': '1000-2000-3004',
-      'tag': 'Verified Customer',
-    },
-    {
-      'name': 'Andres Castro Bonifacio',
-      'accountNo': '1000-2000-3005',
-      'tag': 'Verified Customer',
-    },
-    {
-      'name': 'Gabriela Carlo Silang',
-      'accountNo': '1000-2000-3006',
-      'tag': 'Verified Customer',
-    },
-    {
-      'name': 'Emilio Dizon Jacinto',
-      'accountNo': '1000-2000-3007',
-      'tag': 'Verified Customer',
-    },
-    {
-      'name': 'Melchora Aquino Ramos',
-      'accountNo': '1000-2000-3008',
-      'tag': 'Verified Customer',
-    },
-    {
-      'name': 'Apolinario Marasigan Mabini',
-      'accountNo': '1000-2000-3009',
-      'tag': 'Verified Customer',
     },
   ];
 }

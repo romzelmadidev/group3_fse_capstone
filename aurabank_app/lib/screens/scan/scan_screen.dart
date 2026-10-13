@@ -741,7 +741,7 @@ class _GenerateQrModalState extends State<_GenerateQrModal> {
 
   String _getQrPayload() {
     final user = widget.bankService.user;
-    final buffer = StringBuffer('aurabank://transfer?account=${user.phoneNumber}&name=${Uri.encodeComponent(user.name)}');
+    final buffer = StringBuffer('aurabank://transfer?account=${widget.bankService.savingsAccountNumber}&name=${Uri.encodeComponent(user.name)}');
     if (_customAmount != null && _customAmount!.isNotEmpty) {
       buffer.write('&amount=$_customAmount');
     }

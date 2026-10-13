@@ -9,7 +9,8 @@ import lombok.*;
 import java.time.Instant;
 
 @Entity
-@Table(name = "users", schema = "auth_identity")
+// Read-only: v_all_users unions customers (users) and staff (admin_users) so staff can act as reversal maker/checker.
+@Table(name = "v_all_users")
 @Getter
 @Setter
 @NoArgsConstructor
