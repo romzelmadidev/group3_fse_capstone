@@ -53,6 +53,19 @@ public class CbsBalanceController {
                             formattedId = "TXN-" + rawId;
                         }
                     }
+                    String cpName = null;
+                    String cpAccount = null;
+                    String cpBank = null;
+                    if ("ACC-NOSTRO-BANK-B".equalsIgnoreCase(tx.getTargetAccountId())) {
+                        cpName = "Bob Martinez";
+                        cpAccount = "B-ACC-998877";
+                        cpBank = "COOBS";
+                    } else if ("ACC-NOSTRO-BANK-B".equalsIgnoreCase(tx.getSourceAccountId())) {
+                        cpName = "Bob Martinez";
+                        cpAccount = "B-ACC-998877";
+                        cpBank = "COOBS";
+                    }
+
                     return AccountTransactionDto.builder()
                             .transactionId(formattedId)
                             .sourceAccountId(tx.getSourceAccountId())
@@ -66,6 +79,9 @@ public class CbsBalanceController {
                             .createdAt(tx.getCreatedAt())
                             .beforeBalance(tx.getBeforeBalance())
                             .afterBalance(tx.getAfterBalance())
+                            .counterpartyName(cpName)
+                            .counterpartyAccount(cpAccount)
+                            .counterpartyBank(cpBank)
                             .build();
                 })
                 .toList();

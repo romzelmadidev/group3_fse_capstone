@@ -7,7 +7,9 @@ import com.fse.banking.account.dto.RegisterRequest;
 import com.fse.banking.account.dto.RegisterResponse;
 import com.fse.banking.account.dto.VerifyLoginOtpRequest;
 import com.fse.banking.account.exception.TooManyRequestsException;
+import com.fse.banking.account.model.AdminUserEntity;
 import com.fse.banking.account.model.UserEntity;
+import com.fse.banking.account.repository.AdminUserRepository;
 import com.fse.banking.account.repository.UserRepository;
 import com.fse.banking.account.repository.AccountRepository;
 import com.fse.banking.account.repository.BalanceMasterRepository;
@@ -45,6 +47,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final AdminUserRepository adminUserRepository;
     private final AccountRepository accountRepository;
     private final BalanceMasterRepository balanceMasterRepository;
     private final PasswordEncoder passwordEncoder;
@@ -132,9 +135,32 @@ public class AuthService {
             throw new DeviceCompromisedException("Access Denied: Your device failed security integrity checks (" + reasons + ").");
         }
 
-        UserEntity user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new UnauthorizedException("Invalid email or password."));
+        boolean isConsoleRequest = (request.getDeviceName() != null && request.getDeviceName().toLowerCase().contains("console"))
+                || "Aura Console".equalsIgnoreCase(request.getDeviceName());
 
+        if (isConsoleRequest && adminUserRepository != null) {
+            Optional<AdminUserEntity> adminOpt = adminUserRepository.findByEmail(request.getEmail());
+            if (adminOpt.isPresent()) {
+                return loginAdmin(adminOpt.get(), request, clientIp, userAgent);
+            }
+        }
+
+        Optional<UserEntity> userOpt = userRepository.findByEmail(request.getEmail());
+        if (userOpt.isPresent()) {
+            return loginCustomer(userOpt.get(), request, clientIp, userAgent);
+        }
+
+        if (adminUserRepository != null) {
+            Optional<AdminUserEntity> adminOpt = adminUserRepository.findByEmail(request.getEmail());
+            if (adminOpt.isPresent()) {
+                return loginAdmin(adminOpt.get(), request, clientIp, userAgent);
+            }
+        }
+
+        throw new UnauthorizedException("Invalid email or password.");
+    }
+
+    private LoginResult loginCustomer(UserEntity user, LoginRequest request, String clientIp, String userAgent) {
         if (user.getStatus() == UserStatus.LOCKED) {
             throw new LockedUserException("User account is locked due to security policy. Contact customer support.");
         }
@@ -142,7 +168,6 @@ public class AuthService {
             throw new ForbiddenException("User account is suspended. Contact customer support.");
         }
 
-        // Temporary lockout after repeated wrong passwords. It lives in Redis and ends on its own.
         long lockedSeconds = redisSessionStore.getLoginLockSeconds(user.getUserId());
         if (lockedSeconds > 0) {
             long minutes = (lockedSeconds + 59) / 60;
@@ -160,7 +185,6 @@ public class AuthService {
             throw new UnauthorizedException("Invalid email or password.");
         }
 
-        // Reset failed login counters on success
         redisSessionStore.clearFailedLogins(user.getUserId());
         if (user.getFailedLoginAttempts() > 0) {
             user.setFailedLoginAttempts(0);
@@ -172,14 +196,10 @@ public class AuthService {
         String resolvedDeviceType = resolveDeviceType(request.getDeviceType(), resolvedDeviceId, resolvedDeviceName, userAgent);
         boolean isWeb = "WEB".equalsIgnoreCase(resolvedDeviceType);
 
-        // Check device trust status for this user
         String primaryDeviceId = redisSessionStore.getPrimaryDeviceId(user.getUserId());
         Optional<DeviceInfoDto> existingDevice = redisSessionStore.getDevice(user.getUserId(), resolvedDeviceId);
         boolean isKnownApprovedDevice = existingDevice.isPresent() && existingDevice.get().isApproved();
 
-        // Enforce MFA for:
-        // 1. First-time login onboarding (user.getLastLoginAt() == null)
-        // 2. Initial primary mobile device binding or any unapproved/revoked mobile device
         boolean isFirstTimeLogin = user.getLastLoginAt() == null;
         boolean requiresDeviceBindingMfa = !isWeb && !isKnownApprovedDevice;
 
@@ -188,7 +208,6 @@ public class AuthService {
             if (otp == null || otp.isBlank()) {
                 long wait = sendLoginOtp(user);
                 if (wait > 0) {
-                    // No code went out and none is pending: say so instead of showing an OTP screen that can never succeed.
                     throw new TooManyRequestsException("Please wait " + wait + " seconds before requesting a new code.");
                 }
             }
@@ -214,9 +233,97 @@ public class AuthService {
         return createAuthenticatedSession(user, clientIp, userAgent, request.getDeviceId(), request.getDeviceName(), request.getDeviceType());
     }
 
+    private LoginResult loginAdmin(AdminUserEntity admin, LoginRequest request, String clientIp, String userAgent) {
+        if (admin.getStatus() == UserStatus.LOCKED) {
+            throw new LockedUserException("User account is locked due to security policy. Contact customer support.");
+        }
+        if (admin.getStatus() == UserStatus.SUSPENDED) {
+            throw new ForbiddenException("User account is suspended. Contact customer support.");
+        }
+
+        long lockedSeconds = redisSessionStore.getLoginLockSeconds(admin.getAdminId());
+        if (lockedSeconds > 0) {
+            long minutes = (lockedSeconds + 59) / 60;
+            throw new LockedUserException("Too many failed sign-in attempts. Try again in " + minutes
+                    + (minutes == 1 ? " minute." : " minutes."));
+        }
+
+        if (!passwordEncoder.matches(request.getPassword(), admin.getPasswordHash())) {
+            long attempts = redisSessionStore.recordFailedLogin(admin.getAdminId(), LOCKOUT_DURATION);
+            if (attempts >= MAX_FAILED_ATTEMPTS) {
+                redisSessionStore.lockLogin(admin.getAdminId(), LOCKOUT_DURATION);
+                log.warn("Admin account {} temporarily locked for {} after {} consecutive failed login attempts",
+                        admin.getAdminId(), LOCKOUT_DURATION, attempts);
+            }
+            throw new UnauthorizedException("Invalid email or password.");
+        }
+
+        redisSessionStore.clearFailedLogins(admin.getAdminId());
+        if (admin.getFailedLoginAttempts() > 0) {
+            admin.setFailedLoginAttempts(0);
+            adminUserRepository.save(admin);
+        }
+
+        String resolvedDeviceId = resolveDeviceId(request.getDeviceId(), clientIp, userAgent);
+        String resolvedDeviceName = resolveDeviceName(request.getDeviceName(), userAgent);
+        String resolvedDeviceType = resolveDeviceType(request.getDeviceType(), resolvedDeviceId, resolvedDeviceName, userAgent);
+        boolean isWeb = "WEB".equalsIgnoreCase(resolvedDeviceType);
+
+        String primaryDeviceId = redisSessionStore.getPrimaryDeviceId(admin.getAdminId());
+        Optional<DeviceInfoDto> existingDevice = redisSessionStore.getDevice(admin.getAdminId(), resolvedDeviceId);
+        boolean isKnownApprovedDevice = existingDevice.isPresent() && existingDevice.get().isApproved();
+
+        boolean isFirstTimeLogin = admin.getLastLoginAt() == null;
+        boolean requiresDeviceBindingMfa = !isWeb && !isKnownApprovedDevice;
+
+        if (isFirstTimeLogin || requiresDeviceBindingMfa) {
+            String otp = redisSessionStore.getLoginOtp(admin.getAdminId());
+            if (otp == null || otp.isBlank()) {
+                long wait = sendAdminLoginOtp(admin);
+                if (wait > 0) {
+                    throw new TooManyRequestsException("Please wait " + wait + " seconds before requesting a new code.");
+                }
+            }
+
+            String fullName = (admin.getFirstName() + " " + (admin.getLastName() != null ? admin.getLastName() : "")).trim();
+            LoginResponse mfaChallenge = LoginResponse.builder()
+                    .status("MFA_REQUIRED")
+                    .userId(admin.getAdminId())
+                    .maskedEmail(maskEmail(admin.getEmail()))
+                    .role(admin.getRole().name())
+                    .fullName(fullName)
+                    .email(admin.getEmail())
+                    .phoneNumber(admin.getPhoneNumber())
+                    .deviceType(resolvedDeviceType)
+                    .build();
+
+            return LoginResult.builder()
+                    .response(mfaChallenge)
+                    .refreshTokenId(null)
+                    .build();
+        }
+
+        return createAuthenticatedAdminSession(admin, clientIp, userAgent, request.getDeviceId(), request.getDeviceName(), request.getDeviceType());
+    }
+
+
     @Transactional
     public LoginResult verifyLoginOtp(VerifyLoginOtpRequest request, String clientIp, String userAgent) {
         log.info("Processing login OTP verification for userId: {}", request.getUserId());
+
+        if (adminUserRepository != null) {
+            Optional<AdminUserEntity> adminOpt = adminUserRepository.findById(request.getUserId());
+            if (adminOpt.isPresent()) {
+                AdminUserEntity admin = adminOpt.get();
+                if (admin.getStatus() == UserStatus.LOCKED || admin.getStatus() == UserStatus.SUSPENDED) {
+                    throw new UnauthorizedException("Account is inactive.");
+                }
+                validateOtpCode(admin.getAdminId(), request.getOtp());
+                admin.setLastLoginAt(Instant.now());
+                adminUserRepository.save(admin);
+                return createAuthenticatedAdminSession(admin, clientIp, userAgent, request.getDeviceId(), request.getDeviceName(), request.getDeviceType());
+            }
+        }
 
         UserEntity user = userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new UnauthorizedException("User account not found."));
@@ -225,25 +332,7 @@ public class AuthService {
             throw new UnauthorizedException("Account is inactive.");
         }
 
-
-        String cachedOtp = redisSessionStore.getLoginOtp(user.getUserId());
-        if (cachedOtp == null) {
-            throw new UnauthorizedException("Verification code has expired. Request a new code.");
-        }
-        if (!cachedOtp.equals(request.getOtp().trim())) {
-            long attempts = redisSessionStore.incrementLoginOtpAttempts(user.getUserId(), OTP_TTL);
-            if (attempts >= MAX_OTP_ATTEMPTS) {
-                redisSessionStore.clearLoginOtp(user.getUserId());
-                throw new TooManyRequestsException("Too many incorrect codes. Request a new code.");
-            }
-            long left = MAX_OTP_ATTEMPTS - attempts;
-            throw new UnauthorizedException("Incorrect verification code. " + left + (left == 1 ? " attempt" : " attempts") + " left.");
-        }
-
-        // Invalidate OTP immediately to prevent replay attacks
-        redisSessionStore.clearLoginOtp(user.getUserId());
-        // A verified code must not leave a cooldown that blocks the next device's challenge.
-        redisSessionStore.clearLoginOtpCooldown(user.getUserId());
+        validateOtpCode(user.getUserId(), request.getOtp());
 
         // Mark first-time login as complete
         user.setLastLoginAt(Instant.now());
@@ -252,8 +341,47 @@ public class AuthService {
         return createAuthenticatedSession(user, clientIp, userAgent, request.getDeviceId(), request.getDeviceName(), request.getDeviceType());
     }
 
+    private void validateOtpCode(String userId, String rawOtp) {
+        String cachedOtp = redisSessionStore.getLoginOtp(userId);
+        if (cachedOtp == null) {
+            throw new UnauthorizedException("Verification code has expired. Request a new code.");
+        }
+        if (!cachedOtp.equals(rawOtp != null ? rawOtp.trim() : "")) {
+            long attempts = redisSessionStore.incrementLoginOtpAttempts(userId, OTP_TTL);
+            if (attempts >= MAX_OTP_ATTEMPTS) {
+                redisSessionStore.clearLoginOtp(userId);
+                throw new TooManyRequestsException("Too many incorrect codes. Request a new code.");
+            }
+            long left = MAX_OTP_ATTEMPTS - attempts;
+            throw new UnauthorizedException("Incorrect verification code. " + left + (left == 1 ? " attempt" : " attempts") + " left.");
+        }
+
+        // Invalidate OTP immediately to prevent replay attacks
+        redisSessionStore.clearLoginOtp(userId);
+        // A verified code must not leave a cooldown that blocks the next device's challenge.
+        redisSessionStore.clearLoginOtpCooldown(userId);
+    }
+
     /** Emails a new code to an account that has not verified its email yet or is in an active login MFA challenge. Returns the masked address. */
     public String resendLoginOtp(String userId) {
+        if (adminUserRepository != null) {
+            Optional<AdminUserEntity> adminOpt = adminUserRepository.findById(userId);
+            if (adminOpt.isPresent()) {
+                AdminUserEntity admin = adminOpt.get();
+                if (admin.getLastLoginAt() != null) {
+                    String pendingOtp = redisSessionStore.getLoginOtp(admin.getAdminId());
+                    if (pendingOtp == null || pendingOtp.isBlank()) {
+                        throw new ConflictException("This email is already verified. Sign in with your password.");
+                    }
+                }
+                long wait = sendAdminLoginOtp(admin);
+                if (wait > 0) {
+                    throw new TooManyRequestsException("Please wait " + wait + " seconds before requesting a new code.");
+                }
+                return maskEmail(admin.getEmail());
+            }
+        }
+
         UserEntity user = userRepository.findById(userId)
                 .orElseThrow(() -> new UnauthorizedException("User account not found."));
         if (user.getLastLoginAt() != null) {
@@ -281,6 +409,18 @@ public class AuthService {
         return 0;
     }
 
+    private long sendAdminLoginOtp(AdminUserEntity admin) {
+        long wait = redisSessionStore.startLoginOtpCooldown(admin.getAdminId(), OTP_RESEND_COOLDOWN);
+        if (wait > 0) {
+            return wait;
+        }
+        String otp = String.format("%06d", OTP_RANDOM.nextInt(1_000_000));
+        redisSessionStore.storeLoginOtp(admin.getAdminId(), otp, OTP_TTL);
+        dispatchOtpEmail(admin.getEmail(), admin.getFirstName() + " " + admin.getLastName(), otp);
+        return 0;
+    }
+
+
     public LoginResult createAuthenticatedSession(UserEntity user, String clientIp, String userAgent) {
         return createAuthenticatedSession(user, clientIp, userAgent, null, null, null);
     }
@@ -290,12 +430,58 @@ public class AuthService {
     }
 
     public LoginResult createAuthenticatedSession(UserEntity user, String clientIp, String userAgent, String rawDeviceId, String rawDeviceName, String rawDeviceType) {
+        return createAuthenticatedSession(
+                user.getUserId(),
+                user.getEmail(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getPhoneNumber(),
+                user.getRole().getAuthority(),
+                user.getMaxConcurrentSessions(),
+                clientIp,
+                userAgent,
+                rawDeviceId,
+                rawDeviceName,
+                rawDeviceType
+        );
+    }
+
+    public LoginResult createAuthenticatedAdminSession(AdminUserEntity admin, String clientIp, String userAgent, String rawDeviceId, String rawDeviceName, String rawDeviceType) {
+        return createAuthenticatedSession(
+                admin.getAdminId(),
+                admin.getEmail(),
+                admin.getFirstName(),
+                admin.getLastName(),
+                admin.getPhoneNumber(),
+                admin.getRole().getAuthority(),
+                admin.getMaxConcurrentSessions(),
+                clientIp,
+                userAgent,
+                rawDeviceId,
+                rawDeviceName,
+                rawDeviceType
+        );
+    }
+
+    public LoginResult createAuthenticatedSession(
+            String userId,
+            String email,
+            String firstName,
+            String lastName,
+            String phoneNumber,
+            String roleAuthority,
+            int maxConcurrentSessions,
+            String clientIp,
+            String userAgent,
+            String rawDeviceId,
+            String rawDeviceName,
+            String rawDeviceType) {
         String resolvedDeviceId = resolveDeviceId(rawDeviceId, clientIp, userAgent);
         String resolvedDeviceName = resolveDeviceName(rawDeviceName, userAgent);
         String resolvedDeviceType = resolveDeviceType(rawDeviceType, resolvedDeviceId, resolvedDeviceName, userAgent);
         boolean isWeb = "WEB".equalsIgnoreCase(resolvedDeviceType);
 
-        String primaryDeviceId = redisSessionStore.getPrimaryDeviceId(user.getUserId());
+        String primaryDeviceId = redisSessionStore.getPrimaryDeviceId(userId);
         boolean isPrimary = false;
         boolean isApproved = false;
         boolean isThirdDevice = false;
@@ -310,25 +496,25 @@ public class AuthService {
             if (primaryDeviceId == null || primaryDeviceId.isBlank()) {
                 // If there is no primary mobile device registered (e.g. admin or onboarding), auto-approve
                 isApproved = true;
-                deregisterOtherWebSessions(user.getUserId(), resolvedDeviceId);
+                deregisterOtherWebSessions(userId, resolvedDeviceId);
             } else {
-                Optional<DeviceInfoDto> existingWeb = redisSessionStore.getDevice(user.getUserId(), resolvedDeviceId);
+                Optional<DeviceInfoDto> existingWeb = redisSessionStore.getDevice(userId, resolvedDeviceId);
                 if (existingWeb.isPresent() && existingWeb.get().isApproved()) {
                     isApproved = true;
-                    deregisterOtherWebSessions(user.getUserId(), resolvedDeviceId);
+                    deregisterOtherWebSessions(userId, resolvedDeviceId);
                 } else {
                     isApproved = false;
-                    dispatchDesktopSessionAlert(user.getUserId(), resolvedDeviceName, clientIp, primaryDeviceId, resolvedDeviceId);
+                    dispatchDesktopSessionAlert(userId, resolvedDeviceName, clientIp, primaryDeviceId, resolvedDeviceId);
                 }
             }
         } else {
             // Mobile device: 2 Mobiles allowed (1 Primary Mobile + 1 Secondary Mobile)
             if (primaryDeviceId == null || primaryDeviceId.isBlank()) {
-                redisSessionStore.setPrimaryDeviceId(user.getUserId(), resolvedDeviceId);
+                redisSessionStore.setPrimaryDeviceId(userId, resolvedDeviceId);
                 primaryDeviceId = resolvedDeviceId;
                 isPrimary = true;
                 isApproved = true;
-                log.info("Registered initial primary mobile device {} for user {}", resolvedDeviceId, user.getUserId());
+                log.info("Registered initial primary mobile device {} for user {}", resolvedDeviceId, userId);
             } else {
                 isPrimary = resolvedDeviceId.equals(primaryDeviceId);
             }
@@ -337,7 +523,7 @@ public class AuthService {
             if (isPrimary) {
                 isApproved = true;
             } else {
-                List<DeviceInfoDto> allDevices = redisSessionStore.getUserDevices(user.getUserId());
+                List<DeviceInfoDto> allDevices = redisSessionStore.getUserDevices(userId);
                 List<DeviceInfoDto> existingMobileSecondaries = allDevices.stream()
                         .filter(d -> !"WEB".equalsIgnoreCase(d.getDeviceType()))
                         .filter(d -> !d.getDeviceId().equals(effectivePrimaryDeviceId) && !d.getDeviceId().equals(resolvedDeviceId))
@@ -348,13 +534,10 @@ public class AuthService {
                     replacedDeviceId = existingMobileSecondaries.get(0).getDeviceId();
                     replacedDeviceName = existingMobileSecondaries.get(0).getDeviceName();
                     log.info("User {} attempting login from 3rd mobile device {}. Existing secondary mobile is {} ({}) — will be replaced only upon approval",
-                            user.getUserId(), resolvedDeviceId, replacedDeviceId, replacedDeviceName);
-                    // NOTE: The 2nd device is NOT revoked here.
-                    // It will only be removed when the primary device APPROVES this 3rd device.
-                    // See approveDevice() which removes other secondaries at approval time.
+                            userId, resolvedDeviceId, replacedDeviceId, replacedDeviceName);
                 }
 
-                Optional<DeviceInfoDto> existing = redisSessionStore.getDevice(user.getUserId(), resolvedDeviceId);
+                Optional<DeviceInfoDto> existing = redisSessionStore.getDevice(userId, resolvedDeviceId);
                 if (existing.isPresent() && existing.get().isApproved() && !isThirdDevice) {
                     isApproved = true;
                 } else {
@@ -364,7 +547,7 @@ public class AuthService {
 
             if (!isPrimary && !isApproved) {
                 dispatchSecondaryDeviceLoginAlert(
-                        user.getUserId(),
+                        userId,
                         resolvedDeviceName,
                         clientIp,
                         effectivePrimaryDeviceId,
@@ -389,24 +572,23 @@ public class AuthService {
                 .registeredAt(Instant.now())
                 .lastLoginAt(Instant.now())
                 .build();
-        redisSessionStore.saveUserDevice(user.getUserId(), deviceInfoDto);
+        redisSessionStore.saveUserDevice(userId, deviceInfoDto);
 
         String jti = UUID.randomUUID().toString();
-        String roleAuthority = user.getRole().getAuthority();
-        String accessToken = jwtProvider.generateAccessToken(user.getUserId(), user.getEmail(), roleAuthority, jti, resolvedDeviceId);
+        String accessToken = jwtProvider.generateAccessToken(userId, email, roleAuthority, jti, resolvedDeviceId);
 
         String sessionId = "SESS-" + UUID.randomUUID();
 
         // Enforce max concurrent sessions in Redis (evicts the oldest live session, never a random one)
-        redisSessionStore.registerSessionToken(user.getUserId(), sessionId, jti,
+        redisSessionStore.registerSessionToken(userId, sessionId, jti,
                 Instant.now().getEpochSecond() + jwtProvider.getAccessTokenExpirationSeconds(),
-                user.getMaxConcurrentSessions());
+                maxConcurrentSessions);
 
         String refreshTokenId = "rt_" + UUID.randomUUID().toString().replace("-", "");
 
         SessionMetadata sessionMetadata = SessionMetadata.builder()
                 .sessionId(sessionId)
-                .userId(user.getUserId())
+                .userId(userId)
                 .activeRefreshTokenId(refreshTokenId)
                 .clientIp(clientIp)
                 .userAgent(userAgent)
@@ -414,11 +596,11 @@ public class AuthService {
                 .deviceName(resolvedDeviceName)
                 .createdAt(Instant.now())
                 .build();
-        redisSessionStore.saveSession(user.getUserId(), sessionId, sessionMetadata, REFRESH_TOKEN_TTL);
+        redisSessionStore.saveSession(userId, sessionId, sessionMetadata, REFRESH_TOKEN_TTL);
 
         RefreshTokenMetadata tokenMetadata = RefreshTokenMetadata.builder()
                 .tokenId(refreshTokenId)
-                .userId(user.getUserId())
+                .userId(userId)
                 .sessionId(sessionId)
                 .deviceId(resolvedDeviceId)
                 .role(roleAuthority)
@@ -430,14 +612,14 @@ public class AuthService {
         redisSessionStore.saveRefreshToken(tokenMetadata, REFRESH_TOKEN_TTL);
         redisSessionStore.addToTokenFamily(sessionId, refreshTokenId);
 
-        String fullName = (user.getFirstName() + " " + (user.getLastName() != null ? user.getLastName() : "")).trim();
+        String fullName = (firstName + " " + (lastName != null ? lastName : "")).trim();
         String primaryAccId = null;
         String primaryAccNum = null;
         java.math.BigDecimal availBalance = java.math.BigDecimal.ZERO;
         String currency = "PHP";
 
         try {
-            List<com.fse.banking.account.model.AccountEntity> userAccounts = accountRepository.findByUserId(user.getUserId());
+            List<com.fse.banking.account.model.AccountEntity> userAccounts = accountRepository.findByUserId(userId);
             if (userAccounts != null && !userAccounts.isEmpty()) {
                 com.fse.banking.account.model.AccountEntity acc = userAccounts.get(0);
                 primaryAccId = acc.getAccountId();
@@ -449,7 +631,7 @@ public class AuthService {
                 }
             }
         } catch (Exception ex) {
-            log.warn("Could not query account/balance for user {}: {}", user.getUserId(), ex.getMessage());
+            log.warn("Could not query account/balance for user {}: {}", userId, ex.getMessage());
         }
 
         LoginResponse loginResponse = LoginResponse.builder()
@@ -458,12 +640,12 @@ public class AuthService {
                 .tokenType("Bearer")
                 .expiresInSeconds(jwtProvider.getAccessTokenExpirationSeconds())
                 .role(roleAuthority)
-                .userId(user.getUserId())
+                .userId(userId)
                 .fullName(fullName)
-                .firstName(user.getFirstName())
-                .lastName(user.getLastName())
-                .email(user.getEmail())
-                .phoneNumber(user.getPhoneNumber())
+                .firstName(firstName)
+                .lastName(lastName)
+                .email(email)
+                .phoneNumber(phoneNumber)
                 .primaryAccountId(primaryAccId)
                 .accountNumber(primaryAccNum)
                 .availableBalance(availBalance)

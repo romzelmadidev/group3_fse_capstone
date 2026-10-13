@@ -97,6 +97,39 @@ WARNING_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "recommended_action": "CANCEL_TRANSFER",
         "mandatory_read_delay_seconds": 3
     },
+    "LOCATION_ANOMALY": {
+        "title": "Location Anomaly Detected",
+        "threat_category": "LOCATION_ANOMALY",
+        "body_message": (
+            "Our security risk engine detected an impossible travel anomaly. Your session is currently reporting "
+            "from an unrecognized overseas location which deviates significantly from your baseline profile in Manila, Philippines."
+        ),
+        "checkbox_acknowledgment_text": "I verify that this location change is legitimate and I authorize this funds transfer.",
+        "recommended_action": "VERIFY_LOCATION",
+        "mandatory_read_delay_seconds": 3
+    },
+    "IMPOSSIBLE_TRAVEL": {
+        "title": "Location Anomaly Detected",
+        "threat_category": "IMPOSSIBLE_TRAVEL",
+        "body_message": (
+            "Our security risk engine detected an impossible travel anomaly. Your session is currently reporting "
+            "from an unrecognized overseas location which deviates significantly from your baseline profile in Manila, Philippines."
+        ),
+        "checkbox_acknowledgment_text": "I verify that this location change is legitimate and I authorize this funds transfer.",
+        "recommended_action": "VERIFY_LOCATION",
+        "mandatory_read_delay_seconds": 3
+    },
+    "ROOTED_DEVICE_EMULATOR": {
+        "title": "High-Risk Device Environment",
+        "threat_category": "ROOTED_DEVICE_EMULATOR",
+        "body_message": (
+            "This device environment has been identified as modified, rooted, or running inside an emulator. "
+            "Transfers from tampered environments are restricted to protect account integrity."
+        ),
+        "checkbox_acknowledgment_text": "I acknowledge this device integrity alert.",
+        "recommended_action": "USE_TRUSTED_DEVICE",
+        "mandatory_read_delay_seconds": 3
+    },
     "GENERAL_ADVISORY": {
         "title": "Security Verification Required",
         "threat_category": "GENERAL_ADVISORY",

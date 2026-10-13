@@ -5,7 +5,7 @@ WORKDIR /build
 COPY . .
 
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn clean package -DskipTests -pl gateway-service -am \
+    mvn clean package -DskipTests -Dmaven.test.skip=true -pl gateway-service -am \
     && cp gateway-service/target/gateway-service-*.jar /app.jar
 
 FROM eclipse-temurin:21-jre-alpine

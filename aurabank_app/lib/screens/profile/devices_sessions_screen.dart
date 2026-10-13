@@ -84,7 +84,7 @@ class _DevicesSessionsScreenState extends State<DevicesSessionsScreen> {
       final currentName = AuthApiService().currentDeviceName.isNotEmpty
           ? AuthApiService().currentDeviceName
           : DeviceIdentity().name;
-      final isRunningOnWeb = kIsWeb || currentType.toUpperCase() == 'WEB';
+      final isRunningOnWeb = !AuthApiService().isPrimaryDevice && (kIsWeb || currentType.toUpperCase() == 'WEB');
       final hasUserAuth = AuthApiService().currentUserId != null ||
           DeviceStorage.getUserId() != null ||
           AuthApiService().currentAccessToken != null;
@@ -182,8 +182,7 @@ class _DevicesSessionsScreenState extends State<DevicesSessionsScreen> {
     final currentType = AuthApiService().currentDeviceType.isNotEmpty
         ? AuthApiService().currentDeviceType
         : DeviceIdentity().type;
-    final isWeb = kIsWeb || currentType.toUpperCase() == 'WEB';
-    if (isWeb) return false;
+    if (currentType.toUpperCase() == 'WEB') return false;
 
     // Must be primary according to AuthApiService
     if (!AuthApiService().isPrimaryDevice) return false;
@@ -199,7 +198,6 @@ class _DevicesSessionsScreenState extends State<DevicesSessionsScreen> {
       if (matchingDev != null) {
         return matchingDev['isPrimary'] == true;
       }
-      // If another device is explicitly primary in the list, this caller is definitely NOT primary
       final hasPrimary = _trustedDevices.any((d) => d['isPrimary'] == true);
       if (hasPrimary) return false;
     }
@@ -209,7 +207,6 @@ class _DevicesSessionsScreenState extends State<DevicesSessionsScreen> {
       return true;
     }
 
-    // STRICT: Secondary or unconfirmed devices must NEVER be treated as primary
     return false;
   }
 

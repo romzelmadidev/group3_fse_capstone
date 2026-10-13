@@ -58,67 +58,67 @@ INSERT INTO users (
     TIMESTAMP '2024-01-15 10:00:00 UTC', TIMESTAMP '2024-01-15 10:00:00 UTC'
 );
 
+-- ------------------------------------------------------------------------------
+-- 1B. SEED ADMIN USERS (Bank Staff & Console)
+-- ------------------------------------------------------------------------------
 -- Bank Staff 1: Teller Alex Mercer
-INSERT INTO users (
-    user_id, first_name, middle_name, last_name, email, phone_number,
-    dob, government_id, role, password_hash, pin_hash,
+INSERT INTO admin_users (
+    admin_id, first_name, middle_name, last_name, email, phone_number,
+    dob, government_id, role, department, password_hash,
     max_concurrent_sessions, failed_login_attempts, status,
     created_at, updated_at
 ) VALUES (
     'U3001', 'Alex', 'James', 'Mercer', 'alex.teller@bank.com', '09201112233',
-    TO_DATE('1988-11-03', 'YYYY-MM-DD'), 'PRC-8877-6655', 'TELLER',
+    TO_DATE('1988-11-03', 'YYYY-MM-DD'), 'PRC-8877-6655', 'TELLER', 'Branch Operations',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC',
-    NULL,
-    3, 0, 'ACTIVE',
+    5, 0, 'ACTIVE',
     TIMESTAMP '2023-11-01 08:30:00 UTC', TIMESTAMP '2023-11-01 08:30:00 UTC'
 );
 
 -- Bank Staff 2: Branch Operations Officer (Teller) Beatriz Ocampo
-INSERT INTO users (
-    user_id, first_name, middle_name, last_name, email, phone_number,
-    dob, government_id, role, password_hash, pin_hash,
+INSERT INTO admin_users (
+    admin_id, first_name, middle_name, last_name, email, phone_number,
+    dob, government_id, role, department, password_hash,
     max_concurrent_sessions, failed_login_attempts, status,
     created_at, updated_at
 ) VALUES (
     'U3002', 'Beatriz', 'Santos', 'Ocampo', 'beatriz.manager@bank.com', '09204445566',
-    TO_DATE('1984-07-19', 'YYYY-MM-DD'), 'PRC-9988-7711', 'TELLER',
+    TO_DATE('1984-07-19', 'YYYY-MM-DD'), 'PRC-9988-7711', 'TELLER', 'Branch Operations',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC',
-    NULL,
-    3, 0, 'ACTIVE',
+    5, 0, 'ACTIVE',
     TIMESTAMP '2023-10-01 08:30:00 UTC', TIMESTAMP '2023-10-01 08:30:00 UTC'
 );
 
 -- Bank Staff 3: Operations (Teller) Carlos Mendoza
-INSERT INTO users (
-    user_id, first_name, middle_name, last_name, email, phone_number,
-    dob, government_id, role, password_hash, pin_hash,
+INSERT INTO admin_users (
+    admin_id, first_name, middle_name, last_name, email, phone_number,
+    dob, government_id, role, department, password_hash,
     max_concurrent_sessions, failed_login_attempts, status,
     created_at, updated_at
 ) VALUES (
     'U3003', 'Carlos', 'Eduardo', 'Mendoza', 'carlos.branchhead@bank.com', '09171122334',
-    TO_DATE('1982-11-05', 'YYYY-MM-DD'), 'PRC-5544-3322', 'TELLER',
+    TO_DATE('1982-11-05', 'YYYY-MM-DD'), 'PRC-5544-3322', 'TELLER', 'Branch Operations',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC',
-    NULL,
-    3, 0, 'ACTIVE',
+    5, 0, 'ACTIVE',
     TIMESTAMP '2023-09-15 08:30:00 UTC', TIMESTAMP '2023-09-15 08:30:00 UTC'
 );
 
--- Bank Staff 3: Admin / IT Super User Diana Vance
-INSERT INTO users (
-    user_id, first_name, middle_name, last_name, email, phone_number,
-    dob, government_id, role, password_hash, pin_hash,
+-- Bank Staff 4: Admin / IT Super User Diana Vance
+INSERT INTO admin_users (
+    admin_id, first_name, middle_name, last_name, email, phone_number,
+    dob, government_id, role, department, password_hash,
     max_concurrent_sessions, failed_login_attempts, status,
     created_at, updated_at
 ) VALUES (
     'U0001', 'Diana', 'Marie', 'Vance', 'diana.admin@bank.com', '09190001122',
-    TO_DATE('1985-03-12', 'YYYY-MM-DD'), 'GOV-1122-3344', 'ADMIN',
+    TO_DATE('1985-03-12', 'YYYY-MM-DD'), 'GOV-1122-3344', 'ADMIN', 'Operations',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC',
-    NULL,
     5, 0, 'ACTIVE',
     TIMESTAMP '2023-01-15 08:00:00 UTC', TIMESTAMP '2023-01-15 08:00:00 UTC'
 );
 
--- Team Member 1: Wax (Admin in Console)
+
+-- Team Member Customer Profiles (Account holders for demo accounts 1000-8801-0001 to 0007)
 INSERT INTO users (
     user_id, first_name, middle_name, last_name, email, phone_number,
     dob, government_id, role, password_hash, pin_hash,
@@ -126,13 +126,12 @@ INSERT INTO users (
     created_at, updated_at
 ) VALUES (
     'USR-TM-WAX', 'Wax', 'Aura', 'Team', 'wax@bank.com', '09990001001',
-    TO_DATE('1995-01-01', 'YYYY-MM-DD'), 'PSA-TM-WAX01', 'ADMIN',
+    TO_DATE('1995-01-01', 'YYYY-MM-DD'), 'PSA-TM-WAX01', 'CUSTOMER',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', NULL,
     5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC',
     TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC'
 );
 
--- Team Member 2: Hans (Admin in Console)
 INSERT INTO users (
     user_id, first_name, middle_name, last_name, email, phone_number,
     dob, government_id, role, password_hash, pin_hash,
@@ -140,13 +139,12 @@ INSERT INTO users (
     created_at, updated_at
 ) VALUES (
     'USR-TM-HANS', 'Hans', 'Aura', 'Team', 'hans@bank.com', '09990001002',
-    TO_DATE('1995-01-02', 'YYYY-MM-DD'), 'PSA-TM-HANS02', 'ADMIN',
+    TO_DATE('1995-01-02', 'YYYY-MM-DD'), 'PSA-TM-HANS02', 'CUSTOMER',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', NULL,
     5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC',
     TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC'
 );
 
--- Team Member 3: JM (Teller in Console)
 INSERT INTO users (
     user_id, first_name, middle_name, last_name, email, phone_number,
     dob, government_id, role, password_hash, pin_hash,
@@ -154,13 +152,12 @@ INSERT INTO users (
     created_at, updated_at
 ) VALUES (
     'USR-TM-JM', 'JM', 'Aura', 'Team', 'jm@bank.com', '09990001003',
-    TO_DATE('1995-01-03', 'YYYY-MM-DD'), 'PSA-TM-JM03', 'TELLER',
+    TO_DATE('1995-01-03', 'YYYY-MM-DD'), 'PSA-TM-JM03', 'CUSTOMER',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', NULL,
     5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC',
     TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC'
 );
 
--- Team Member 4: Zel (Admin in Console)
 INSERT INTO users (
     user_id, first_name, middle_name, last_name, email, phone_number,
     dob, government_id, role, password_hash, pin_hash,
@@ -168,13 +165,12 @@ INSERT INTO users (
     created_at, updated_at
 ) VALUES (
     'USR-TM-ZEL', 'Zel', 'Aura', 'Team', 'zel@bank.com', '09990001004',
-    TO_DATE('1995-01-04', 'YYYY-MM-DD'), 'PSA-TM-ZEL04', 'ADMIN',
+    TO_DATE('1995-01-04', 'YYYY-MM-DD'), 'PSA-TM-ZEL04', 'CUSTOMER',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', NULL,
     5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC',
     TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC'
 );
 
--- Team Member 5: Jessy (Teller in Console)
 INSERT INTO users (
     user_id, first_name, middle_name, last_name, email, phone_number,
     dob, government_id, role, password_hash, pin_hash,
@@ -182,13 +178,12 @@ INSERT INTO users (
     created_at, updated_at
 ) VALUES (
     'USR-TM-JESSY', 'Jessy', 'Aura', 'Team', 'jessy@bank.com', '09990001005',
-    TO_DATE('1995-01-05', 'YYYY-MM-DD'), 'PSA-TM-JESSY05', 'TELLER',
+    TO_DATE('1995-01-05', 'YYYY-MM-DD'), 'PSA-TM-JESSY05', 'CUSTOMER',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', NULL,
     5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC',
     TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC'
 );
 
--- Team Member 6: Maye (Admin in Console)
 INSERT INTO users (
     user_id, first_name, middle_name, last_name, email, phone_number,
     dob, government_id, role, password_hash, pin_hash,
@@ -196,13 +191,12 @@ INSERT INTO users (
     created_at, updated_at
 ) VALUES (
     'USR-TM-MAYE', 'Maye', 'Aura', 'Team', 'maye@bank.com', '09990001006',
-    TO_DATE('1995-01-06', 'YYYY-MM-DD'), 'PSA-TM-MAYE06', 'ADMIN',
+    TO_DATE('1995-01-06', 'YYYY-MM-DD'), 'PSA-TM-MAYE06', 'CUSTOMER',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', NULL,
     5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC',
     TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC'
 );
 
--- Team Member 7: Angel (Teller in Console)
 INSERT INTO users (
     user_id, first_name, middle_name, last_name, email, phone_number,
     dob, government_id, role, password_hash, pin_hash,
@@ -210,11 +204,34 @@ INSERT INTO users (
     created_at, updated_at
 ) VALUES (
     'USR-TM-ANGEL', 'Angel', 'Aura', 'Team', 'angel@bank.com', '09990001007',
-    TO_DATE('1995-01-07', 'YYYY-MM-DD'), 'PSA-TM-ANGEL07', 'TELLER',
+    TO_DATE('1995-01-07', 'YYYY-MM-DD'), 'PSA-TM-ANGEL07', 'CUSTOMER',
     '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', NULL,
     5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC',
     TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC'
 );
+
+-- Team Member Staff Profiles in admin_users
+INSERT INTO admin_users (admin_id, first_name, middle_name, last_name, email, phone_number, dob, government_id, role, department, password_hash, max_concurrent_sessions, failed_login_attempts, status, created_at, updated_at)
+VALUES ('USR-TM-WAX', 'Wax', 'Aura', 'Team', 'wax@bank.com', '09990001001', TO_DATE('1995-01-01', 'YYYY-MM-DD'), 'PSA-TM-WAX01', 'ADMIN', 'Executive Board', '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', 5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC');
+
+INSERT INTO admin_users (admin_id, first_name, middle_name, last_name, email, phone_number, dob, government_id, role, department, password_hash, max_concurrent_sessions, failed_login_attempts, status, created_at, updated_at)
+VALUES ('USR-TM-HANS', 'Hans', 'Aura', 'Team', 'hans@bank.com', '09990001002', TO_DATE('1995-01-02', 'YYYY-MM-DD'), 'PSA-TM-HANS02', 'ADMIN', 'Executive Board', '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', 5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC');
+
+INSERT INTO admin_users (admin_id, first_name, middle_name, last_name, email, phone_number, dob, government_id, role, department, password_hash, max_concurrent_sessions, failed_login_attempts, status, created_at, updated_at)
+VALUES ('USR-TM-JM', 'JM', 'Aura', 'Team', 'jm@bank.com', '09990001003', TO_DATE('1995-01-03', 'YYYY-MM-DD'), 'PSA-TM-JM03', 'TELLER', 'Branch Operations', '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', 5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC');
+
+INSERT INTO admin_users (admin_id, first_name, middle_name, last_name, email, phone_number, dob, government_id, role, department, password_hash, max_concurrent_sessions, failed_login_attempts, status, created_at, updated_at)
+VALUES ('USR-TM-ZEL', 'Zel', 'Aura', 'Team', 'zel@bank.com', '09990001004', TO_DATE('1995-01-04', 'YYYY-MM-DD'), 'PSA-TM-ZEL04', 'ADMIN', 'Executive Board', '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', 5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC');
+
+INSERT INTO admin_users (admin_id, first_name, middle_name, last_name, email, phone_number, dob, government_id, role, department, password_hash, max_concurrent_sessions, failed_login_attempts, status, created_at, updated_at)
+VALUES ('USR-TM-JESSY', 'Jessy', 'Aura', 'Team', 'jessy@bank.com', '09990001005', TO_DATE('1995-01-05', 'YYYY-MM-DD'), 'PSA-TM-JESSY05', 'TELLER', 'Branch Operations', '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', 5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC');
+
+INSERT INTO admin_users (admin_id, first_name, middle_name, last_name, email, phone_number, dob, government_id, role, department, password_hash, max_concurrent_sessions, failed_login_attempts, status, created_at, updated_at)
+VALUES ('USR-TM-MAYE', 'Maye', 'Aura', 'Team', 'maye@bank.com', '09990001006', TO_DATE('1995-01-06', 'YYYY-MM-DD'), 'PSA-TM-MAYE06', 'ADMIN', 'Executive Board', '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', 5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC');
+
+INSERT INTO admin_users (admin_id, first_name, middle_name, last_name, email, phone_number, dob, government_id, role, department, password_hash, max_concurrent_sessions, failed_login_attempts, status, created_at, updated_at)
+VALUES ('USR-TM-ANGEL', 'Angel', 'Aura', 'Team', 'angel@bank.com', '09990001007', TO_DATE('1995-01-07', 'YYYY-MM-DD'), 'PSA-TM-ANGEL07', 'TELLER', 'Branch Operations', '$2a$10$Yc8Pb5dWtINUdZYHEQ72fOX0g.GqUn1B3BkspBIiuTkmN.1Jwf1PC', 5, 0, 'ACTIVE', TIMESTAMP '2024-01-01 00:00:00 UTC', TIMESTAMP '2024-01-01 00:00:00 UTC');
+
 
 
 -- ------------------------------------------------------------------------------

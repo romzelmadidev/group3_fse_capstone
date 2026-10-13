@@ -5,7 +5,7 @@ WORKDIR /build
 COPY . .
 
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn clean package -DskipTests -pl notification-service -am \
+    mvn clean package -DskipTests -Dmaven.test.skip=true -pl notification-service -am \
     && cp notification-service/target/notification-service-*.jar /app.jar
 
 FROM eclipse-temurin:21-jre-alpine

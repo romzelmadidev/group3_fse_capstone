@@ -82,6 +82,18 @@ public class AccountTransactionDto {
     @JsonAlias({"afterBalance", "after_balance"})
     private BigDecimal afterBalance;
 
+    @JsonProperty("counterparty_name")
+    @JsonAlias({"counterpartyName"})
+    private String counterpartyName;
+
+    @JsonProperty("counterparty_account")
+    @JsonAlias({"counterpartyAccount"})
+    private String counterpartyAccount;
+
+    @JsonProperty("counterparty_bank")
+    @JsonAlias({"counterpartyBank"})
+    private String counterpartyBank;
+
     public AccountTransactionDto(
             String transactionId,
             String sourceAccountId,

@@ -22,6 +22,8 @@ RUN mkdir -p /usr/local/oracle && \
     unzip -q -d /usr/local/oracle /tmp/basic_lite.zip && \
     rm -f /tmp/basic_lite.zip && \
     ln -s /usr/lib/libaio.so.1 /usr/local/oracle/instantclient_21_7/libaio.so.1 || true && \
+    ln -s /lib/ld-musl-x86_64.so.1 /usr/local/oracle/instantclient_21_7/libresolv.so.2 || true && \
+    ln -s /lib/ld-musl-x86_64.so.1 /usr/local/oracle/instantclient_21_7/ld-linux-x86-64.so.2 || true && \
     docker-php-ext-enable oci8 && \
     echo '/lib:/usr/local/lib:/usr/lib:/usr/local/oracle/instantclient_21_7:/lib64' > /etc/ld-musl-x86_64.path
 

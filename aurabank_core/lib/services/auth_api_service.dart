@@ -15,7 +15,7 @@ class BackendConfig {
   BackendConfig._internal();
 
   /// Laptop's local Wi-Fi IP address for cross-device connectivity through the laptop
-  static const String defaultLanIp = '192.168.18.110';
+  static const String defaultLanIp = '10.91.102.224';
 
   static String _resolveInitialHost() {
     if (kIsWeb) {
@@ -215,10 +215,12 @@ class AuthApiService {
   String? currentAccessToken;
 
   bool get isDeviceApproved => currentIsApproved ?? (currentIsPrimaryDevice == true);
-  bool get isPrimaryDevice =>
-      !kIsWeb &&
-      currentDeviceType.toUpperCase() != 'WEB' &&
-      (currentIsPrimaryDevice ?? DeviceStorage.getIsPrimaryDevice() ?? false);
+  bool get isPrimaryDevice {
+    if (kIsWeb) return false;
+    final type = (currentDeviceType.isNotEmpty ? currentDeviceType : DeviceIdentity().type).toUpperCase();
+    if (type == 'WEB') return false;
+    return currentIsPrimaryDevice ?? DeviceStorage.getIsPrimaryDevice() ?? false;
+  }
   String? get _accessToken {
     if (currentAccessToken != null && currentAccessToken!.isNotEmpty) return currentAccessToken;
     final stored = DeviceStorage.getAccessToken();

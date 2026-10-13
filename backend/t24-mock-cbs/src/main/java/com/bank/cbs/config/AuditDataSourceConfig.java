@@ -1,5 +1,7 @@
 package com.bank.cbs.config;
 
+import org.flywaydb.core.Flyway;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -39,16 +41,23 @@ public class AuditDataSourceConfig {
     @Bean(name = "auditEntityManagerFactory")
     public LocalContainerEntityManagerFactoryBean auditEntityManagerFactory(
             EntityManagerFactoryBuilder builder,
-            @Qualifier("auditDataSource") DataSource dataSource) {
-        Map<String, Object> properties = new HashMap<>();
-        properties.put("hibernate.hbm2ddl.auto", "none");
-        properties.put("hibernate.format_sql", "false");
+            @Qualifier("auditDataSource") DataSource dataSource,
+            @Qualifier("auditDataSourceProperties") DataSourceProperties properties,
+            @Autowired(required = false) @Qualifier("auditFlyway") Flyway auditFlyway) {
+        Map<String, Object> jpaProperties = new HashMap<>();
+        jpaProperties.put("hibernate.hbm2ddl.auto", "none");
+        jpaProperties.put("hibernate.format_sql", "false");
+
+        String dialect = resolveDialect(properties.getUrl());
+        if (dialect != null) {
+            jpaProperties.put("hibernate.dialect", dialect);
+        }
 
         return builder
                 .dataSource(dataSource)
                 .packages("com.bank.cbs.entity.audit")
                 .persistenceUnit("auditPU")
-                .properties(properties)
+                .properties(jpaProperties)
                 .build();
     }
 
@@ -56,5 +65,14 @@ public class AuditDataSourceConfig {
     public PlatformTransactionManager auditTransactionManager(
             @Qualifier("auditEntityManagerFactory") EntityManagerFactory entityManagerFactory) {
         return new JpaTransactionManager(entityManagerFactory);
+    }
+
+    private String resolveDialect(String url) {
+        if (url == null) return null;
+        if (url.contains(":postgresql:")) return "org.hibernate.dialect.PostgreSQLDialect";
+        if (url.contains(":oracle:")) return "org.hibernate.dialect.OracleDialect";
+        if (url.contains(":sqlserver:")) return "org.hibernate.dialect.SQLServerDialect";
+        if (url.contains(":h2:")) return "org.hibernate.dialect.H2Dialect";
+        return null;
     }
 }

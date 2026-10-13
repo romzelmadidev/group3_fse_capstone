@@ -84,8 +84,14 @@ public class CbsPostingController {
 
             BigDecimal amount = new BigDecimal(amountStr.trim());
             String currency = fields.getOrDefault("CURRENCY", "PHP");
-            String desc = fields.getOrDefault("DESCRIPTION", fields.getOrDefault("PAYMENT.DETAILS", "T24 Funds Transfer"));
+            String desc = fields.getOrDefault("PAYMENT.DETAILS", fields.getOrDefault("DESCRIPTION", "T24 Funds Transfer"));
             String idempotencyKey = fields.getOrDefault("IDEMPOTENCY.KEY", txId);
+            String transactionType = fields.getOrDefault("TRANSACTION.TYPE", fields.get("TYPE"));
+            String orderingCust = fields.get("ORDERING.CUST");
+            String benCust = fields.get("BEN.CUSTOMER");
+            String benAcct = fields.get("BEN.ACCT.NO");
+            String counterpartyBank = fields.getOrDefault("BK.TO.BK.OUT", fields.get("BEN.BANK"));
+            String chargeBearer = fields.getOrDefault("BEN.OUR.CHARGES", "SHA");
 
             req = new TransferRequestDto(
                     txId,
@@ -95,7 +101,14 @@ public class CbsPostingController {
                     currency,
                     desc,
                     "T24_OFS_POSTING",
-                    idempotencyKey
+                    idempotencyKey,
+                    false,
+                    transactionType,
+                    orderingCust,
+                    benCust,
+                    benAcct,
+                    counterpartyBank,
+                    chargeBearer
             );
 
             TransferResponseDto response = transferService.executeTransfer(req);

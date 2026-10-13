@@ -13,6 +13,7 @@ import 'screens/analytics/annual_report_screen.dart';
 import 'screens/transfer/send_money_screen.dart';
 import 'screens/cards/cards_screen.dart';
 import 'screens/profile/settings_screen.dart';
+import 'models/user_persona.dart';
 import 'screens/auth/otp_verification_screen.dart';
 import 'screens/profile/devices_sessions_screen.dart';
 import 'screens/auth/security_gate_screen.dart';
@@ -22,6 +23,7 @@ import 'theme/aura_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await DeviceStorage.init();
+  DeviceIdentity.enableMobileSimulation(deviceName: 'AuraBank Mobile (Phone)');
   SessionGuard.start();
   await BankService().initPreferences();
   SystemChrome.setSystemUIOverlayStyle(

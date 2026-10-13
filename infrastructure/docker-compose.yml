@@ -49,7 +49,6 @@ services:
       - POSTGRES_USER=audit_user
       - POSTGRES_PASSWORD=audit_password
     volumes:
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - postgres_data:/var/lib/postgresql/data
     networks:
       - banking-net
@@ -201,6 +200,7 @@ services:
     volumes:
       - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
     environment:
+      - SERVER_PORT=8081
       - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
       - DD_AGENT_HOST=dd-agent
       - DD_TRACE_AGENT_PORT=8126
@@ -219,16 +219,26 @@ services:
       - AZURE_STORAGE_CONTAINER_NAME=kyc-vault
       - AZURE_STORAGE_PUBLIC_ENDPOINT=http://localhost:10000/devstoreaccount1
       - APP_SERVICES_RISK_SERVICE_URL=http://risk-service:8084
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger-tracing:4318/v1/traces
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "account-service"}]'
     networks:
       - banking-net
     depends_on:
-      - oracle-xe-master
-      - redis-cache
-      - azurite
-      - risk-service
-      - dd-agent
+      oracle-xe-master:
+        condition: service_healthy
+      t24-mock-cbs:
+        condition: service_healthy
+      redis-cache:
+        condition: service_started
+      azurite:
+        condition: service_started
+      risk-service:
+        condition: service_healthy
+      dd-agent:
+        condition: service_started
+      jaeger-tracing:
+        condition: service_started
 
   # ============================================================================
   # ============================================================================
@@ -284,11 +294,8 @@ services:
       dockerfile: t24-mock-cbs/Dockerfile
     restart: unless-stopped
     ports:
-      - "8085:8085"
-    volumes:
-      - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
+      - "8087:8085"
     environment:
-      - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
       - DD_AGENT_HOST=dd-agent
       - DD_TRACE_AGENT_PORT=8126
       - DD_SERVICE=t24-mock-cbs
@@ -320,11 +327,16 @@ services:
     networks:
       - banking-net
     depends_on:
-      - oracle-xe-master
-      - postgres-audit-vault
-      - redis-cache
-      - kafka-broker
-      - dd-agent
+      oracle-xe-master:
+        condition: service_healthy
+      postgres-audit-vault:
+        condition: service_healthy
+      redis-cache:
+        condition: service_started
+      kafka-broker:
+        condition: service_started
+      dd-agent:
+        condition: service_started
 
   # ============================================================================
   # 9b. Stateless Transfer Orchestrator (Spring Boot :8082)
@@ -339,10 +351,7 @@ services:
     restart: unless-stopped
     ports:
       - "8082:8082"
-    volumes:
-      - ./datadog/dd-java-agent.jar:/app/dd-java-agent.jar:ro
     environment:
-      - JAVA_TOOL_OPTIONS=-javaagent:/app/dd-java-agent.jar
       - DD_AGENT_HOST=dd-agent
       - DD_TRACE_AGENT_PORT=8126
       - DD_SERVICE=transfer-orchestrator
@@ -356,10 +365,15 @@ services:
       - CBS_SERVICE_URL=http://t24-mock-cbs:8085
       - RISK_SERVICE_URL=http://risk-service:8084
       - ACCOUNT_SERVICE_URL=http://account-service:8081
+      # Interbank Partner routing override (Group B / CooBS URL configuration)
+      - PARTNER_BANK_URL=${PARTNER_BANK_URL:-http://transfer-orchestrator:8082/api/v1/mock-partner/transfers}
     labels:
       com.datadoghq.ad.logs: '[{"source": "java", "service": "transfer-orchestrator"}]'
     networks:
-      - banking-net
+      banking-net:
+        aliases:
+          - transfer-orchestrator
+          - ledger-mutation-engine
     depends_on:
       redis-cache:
         condition: service_started
@@ -491,11 +505,16 @@ services:
     networks:
       - banking-net
     depends_on:
-      - oracle-xe-master
-      - redis-cache
-      - mailhog
-      - kafka-broker
-      - dd-agent
+      oracle-xe-master:
+        condition: service_healthy
+      redis-cache:
+        condition: service_started
+      mailhog:
+        condition: service_started
+      kafka-broker:
+        condition: service_started
+      dd-agent:
+        condition: service_started
 
   # ============================================================================
   # 11. API Gateway Service (Spring Cloud Gateway :8080)
@@ -637,14 +656,12 @@ services:
   # Live metrics, APM request traces, waterfall spans, and container logs
   # ============================================================================
   dd-agent:
-    container_name: datadog-agent
-    image: datadog/agent:latest
+    container_name: dd-agent
+    image: registry.datadoghq.com/agent:7
     restart: unless-stopped
     ports:
       - "8126:8126" # APM trace receiver
       - "8125:8125/udp" # DogStatsD metrics
-      - "4318:4318" # OTLP HTTP trace intake
-      - "4317:4317" # OTLP gRPC trace intake
     environment:
       - DD_API_KEY=a65a6c84cbe468582ca3cc16c8b8cf81
       - DD_SITE=datadoghq.com

@@ -98,6 +98,7 @@ class BankService extends ChangeNotifier {
       baseUrl,
       'http://127.0.0.1:8080',
       'http://localhost:8080',
+      'http://10.91.102.224:8080',
       'http://192.168.18.110:8080',
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
         'http://10.0.2.2:8080',
@@ -153,8 +154,78 @@ class BankService extends ChangeNotifier {
 
   // Available Balance (defaults to ₱50,000,000 as seen in UI, or real backend balance)
   double availableBalance = 50000000.0;
-  final String savingsAccountNumber = '123456789123';
+  String savingsAccountNumber = '1000-9000-0001';
   String activeAccountId = '1000-2000-3001';
+  List<BankTransaction> recentLedgerTransactions = [];
+  double monthlyInflow = 0.0;
+  double monthlyOutflow = 0.0;
+
+  String resolveEffectiveAccountId() {
+    final acc = activeAccountId.trim();
+    final userEmail = user.email.toLowerCase();
+    final userName = user.name.toLowerCase();
+    final userId = AuthApiService().currentUserId ?? DeviceStorage.getUserId() ?? '';
+
+    if (userId == 'U9001' || acc == '1000-9000-0001' || acc == 'A9001' || userEmail.contains('paolo') || userName.contains('paolo')) {
+      return 'A9001';
+    }
+    if (userId == 'U9002' || acc == '1000-9000-0002' || acc == 'A9002' || userEmail.contains('elena') || userName.contains('elena')) {
+      return 'A9002';
+    }
+    if (userId == 'U9003' || acc == '1000-9000-0003' || acc == 'A9003' || userEmail.contains('marco') || userName.contains('marco')) {
+      return 'A9003';
+    }
+    if (acc.isNotEmpty) {
+      if (acc == '1000-9000-0001') return 'A9001';
+      if (acc == '1000-9000-0002') return 'A9002';
+      if (acc == '1000-9000-0003') return 'A9003';
+      return acc;
+    }
+    return 'A9001';
+  }
+
+  String resolveDisplayAccountNumber() {
+    final eff = resolveEffectiveAccountId();
+    if (eff == 'A9001') return '1000-9000-0001';
+    if (eff == 'A9002') return '1000-9000-0002';
+    if (eff == 'A9003') return '1000-9000-0003';
+    if (activeAccountId.isNotEmpty) return activeAccountId;
+    return savingsAccountNumber;
+  }
+
+  String resolveCounterpartyName(String otherId, bool isIncoming) {
+    switch (otherId) {
+      case 'A9001':
+      case '1000-9000-0001':
+        return 'Paolo Reyes';
+      case 'A9002':
+      case '1000-9000-0002':
+        return 'Elena Cruz';
+      case 'A9003':
+      case '1000-9000-0003':
+        return 'Marco Santos';
+      case 'A8001':
+        return 'Enterprise Payroll';
+      case 'A8002':
+        return 'Northwind Studio';
+      case 'A8003':
+        return 'Cebu Trade Co';
+      case 'A8004':
+        return 'City Utilities';
+      default:
+        return isIncoming ? 'Counterparty Deposit' : 'Transfer Settlement';
+    }
+  }
+
+  String _formatTxnDisplayTime(DateTime dt) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final m = months[dt.month - 1];
+    final d = dt.day.toString().padLeft(2, '0');
+    final hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final ampm = dt.hour >= 12 ? 'pm' : 'am';
+    return '$m $d, $hour12:$minute $ampm';
+  }
 
   // Debit cards on the savings account
   final List<BankCard> cards = [
@@ -859,6 +930,7 @@ class BankService extends ChangeNotifier {
     if (accountId != null && accountId.isNotEmpty) {
       activeAccountId = accountId;
     }
+    savingsAccountNumber = resolveDisplayAccountNumber();
     if (balance != null) {
       availableBalance = balance;
     }
@@ -1012,6 +1084,12 @@ class BankService extends ChangeNotifier {
   // Fetch live accounts & transactions from backend database if running
   Future<void> syncWithBackend() async {
     try {
+      final token = AuthApiService().currentAccessToken ?? DeviceStorage.getAccessToken();
+      final headers = <String, String>{
+        'Accept': 'application/json',
+        if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+      };
+
       // 1. Fetch Accounts for active user from Oracle / Account Service
       final effectiveUserId = AuthApiService().currentUserId ??
           DeviceStorage.getUserId() ??
@@ -1023,7 +1101,7 @@ class BankService extends ChangeNotifier {
       if (activeAccountId.isNotEmpty) {
         try {
           final balRes = await http
-              .get(Uri.parse('$baseUrl/api/v1/accounts/$activeAccountId/balance'))
+              .get(Uri.parse('$baseUrl/api/v1/accounts/$activeAccountId/balance'), headers: headers)
               .timeout(const Duration(seconds: 2));
           if (balRes.statusCode == 200) {
             final balData = jsonDecode(balRes.body);
@@ -1041,7 +1119,7 @@ class BankService extends ChangeNotifier {
       }
 
       final accRes = await http
-          .get(Uri.parse('$baseUrl/api/v1/accounts?userId=$effectiveUserId'))
+          .get(Uri.parse('$baseUrl/api/v1/accounts?userId=$effectiveUserId'), headers: headers)
           .timeout(const Duration(seconds: 2));
 
       if (accRes.statusCode == 200) {
@@ -1074,35 +1152,104 @@ class BankService extends ChangeNotifier {
         }
       }
 
-      // 2. Fetch Immutable Audit Records from PostgreSQL Ledger Engine
-      final auditRes = await http
-          .get(Uri.parse('$baseUrl/api/v1/ledger/audit'))
-          .timeout(const Duration(seconds: 2));
+      // 2. Fetch Live CBS Past Transactions for Active Account
+      final effAcc = resolveEffectiveAccountId();
+      savingsAccountNumber = resolveDisplayAccountNumber();
 
-      if (auditRes.statusCode == 200) {
-        final List<dynamic> auditList = jsonDecode(auditRes.body);
-        if (auditList.isNotEmpty) {
+      final candidateBases = [
+        baseUrl,
+        'http://localhost:8080',
+        'http://127.0.0.1:8080',
+        'http://localhost:8082',
+        'http://127.0.0.1:8082',
+      ];
+
+      List<dynamic> fetchedTxns = [];
+      for (final base in candidateBases) {
+        try {
+          final uri = Uri.parse('$base/api/v1/transfers/accounts/$effAcc/transactions?page=0&size=50');
+          final res = await http.get(uri, headers: headers).timeout(const Duration(seconds: 4));
+          if (res.statusCode == 200) {
+            final decoded = jsonDecode(res.body);
+            if (decoded is List && decoded.isNotEmpty) {
+              fetchedTxns = decoded;
+              break;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (fetchedTxns.isNotEmpty) {
+        final List<BankTransaction> mapped = [];
+        double calculatedInflow = 0.0;
+        double calculatedOutflow = 0.0;
+        final now = DateTime.now();
+
+        for (final item in fetchedTxns) {
+          if (item is! Map) continue;
+          final txnId = (item['transaction_id'] ?? item['reference'] ?? '').toString();
+          final amount = ((item['amount'] ?? 0) as num).toDouble();
+          final src = (item['source_account_id'] ?? item['from_account_id'] ?? item['fromAccountId'])?.toString() ?? '';
+          final tgt = (item['target_account_id'] ?? item['to_account_id'] ?? item['toAccountId'])?.toString() ?? '';
+
+          final isIncoming = tgt == effAcc ||
+              (effAcc == 'A9001' && tgt == '1000-9000-0001') ||
+              (effAcc == 'A9002' && tgt == '1000-9000-0002') ||
+              (effAcc == 'A9003' && tgt == '1000-9000-0003');
+
+          final isOutgoing = src == effAcc ||
+              (effAcc == 'A9001' && src == '1000-9000-0001') ||
+              (effAcc == 'A9002' && src == '1000-9000-0002') ||
+              (effAcc == 'A9003' && src == '1000-9000-0003');
+
+          final otherId = isIncoming ? src : tgt;
+          final memo = item['memo']?.toString();
+          final counterparty = (memo != null && memo.isNotEmpty)
+              ? memo
+              : resolveCounterpartyName(otherId, isIncoming);
+
+          DateTime dt = now;
+          final createdAtStr = (item['created_at'] ?? item['createdAt'])?.toString();
+          if (createdAtStr != null) {
+            final parsed = DateTime.tryParse(createdAtStr);
+            if (parsed != null) dt = parsed.toLocal();
+          }
+
+          if (isIncoming) {
+            calculatedInflow += amount;
+          } else {
+            calculatedOutflow += amount;
+          }
+
+          mapped.add(
+            BankTransaction(
+              id: txnId.isNotEmpty ? txnId : 'TXN-${dt.millisecondsSinceEpoch}',
+              reference: txnId,
+              counterparty: counterparty,
+              type: isIncoming ? TransactionType.incoming : TransactionType.outgoing,
+              amount: amount,
+              timestamp: dt,
+              displayTime: _formatTxnDisplayTime(dt),
+              status: TransactionStatus.settled,
+              remarks: memo,
+              channel: 'Same Bank',
+              initial: counterparty.isNotEmpty ? counterparty[0].toUpperCase() : 'T',
+              avatarColorValue: isIncoming ? 0xFF17805F : 0xFF10171C,
+            ),
+          );
+        }
+
+        if (mapped.isNotEmpty) {
+          recentLedgerTransactions = mapped;
+          monthlyInflow = calculatedInflow;
+          monthlyOutflow = calculatedOutflow;
+
           final octStatement = statements['2026-10'];
           if (octStatement != null) {
-            for (final record in auditList) {
-              final txnId = record['transactionId'] ?? 'AUR-${DateTime.now().millisecondsSinceEpoch}';
-              final alreadyExists = octStatement.transactions.any((t) => t.reference == txnId);
+            for (final t in mapped.take(15).toList().reversed) {
+              final alreadyExists = octStatement.transactions.any((existing) => existing.reference == t.reference);
               if (!alreadyExists) {
-                octStatement.transactions.insert(
-                  0,
-                  BankTransaction(
-                    id: 'DB-$txnId',
-                    reference: txnId,
-                    counterparty: record['targetAccountId'] ?? 'Transfer Settlement',
-                    type: TransactionType.outgoing,
-                    amount: (record['amount'] as num?)?.toDouble() ?? 0.0,
-                    timestamp: DateTime.now(),
-                    displayTime: 'Live DB Sync',
-                    status: TransactionStatus.settled,
-                    initial: 'A',
-                    avatarColorValue: 0xFF10171C,
-                  ),
-                );
+                octStatement.transactions.insert(0, t);
               }
             }
           }
@@ -1134,6 +1281,8 @@ class BankService extends ChangeNotifier {
     bool? isPrimaryDevice,
     bool? isOnCall,
     bool? isPasted,
+    double? latitude,
+    double? longitude,
   }) async {
     final effectiveRemote = remoteAppActive ?? isScreenSharing;
     final effectiveCall = isOnCall ?? activeCall ?? (callState != null && callState != 'IDLE');
@@ -1146,6 +1295,8 @@ class BankService extends ChangeNotifier {
       'memo': memo ?? '',
       'user_id': AuthApiService().currentUserId ?? DeviceStorage.getUserId() ?? 'U1001',
       'emulator': isEmulator,
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
       if (deviceId != null) 'device_id': deviceId,
       if (isPrimaryDevice != null) 'is_primary_device': isPrimaryDevice,
       'is_on_call': effectiveCall,
@@ -1564,22 +1715,26 @@ class BankService extends ChangeNotifier {
     availableBalance -= amount;
     DeviceStorage.saveUserBalance(availableBalance);
 
+    final newTxn = BankTransaction(
+      id: 'TXN-${DateTime.now().millisecondsSinceEpoch}',
+      reference: ref,
+      counterparty: recipientName,
+      type: TransactionType.outgoing,
+      amount: amount,
+      timestamp: DateTime.now(),
+      displayTime: 'Today, Just now',
+      status: TransactionStatus.settled,
+      remarks: remarks,
+      channel: 'Same Bank',
+      initial: recipientName.isNotEmpty ? recipientName[0].toUpperCase() : 'A',
+      avatarColorValue: 0xFF8B1538,
+    );
+    recentLedgerTransactions.insert(0, newTxn);
+    monthlyOutflow += amount;
+
     // Add to October statement
     final octStatement = statements['2026-10'];
     if (octStatement != null) {
-      final newTxn = BankTransaction(
-        id: 'TXN-${DateTime.now().millisecondsSinceEpoch}',
-        reference: ref,
-        counterparty: recipientName,
-        type: TransactionType.outgoing,
-        amount: amount,
-        timestamp: DateTime.now(),
-        displayTime: 'Today, Just now',
-        status: TransactionStatus.settled,
-        remarks: remarks,
-        initial: recipientName.isNotEmpty ? recipientName[0].toUpperCase() : 'A',
-        avatarColorValue: 0xFF8B1538,
-      );
       octStatement.transactions.insert(0, newTxn);
     }
     NotificationStreamService().notifyTransfer(
