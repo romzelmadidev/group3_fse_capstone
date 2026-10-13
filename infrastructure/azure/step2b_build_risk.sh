@@ -1,24 +1,26 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # STEP 2B: Build & Push Python Risk Service (Runtime: ~2-3 mins)
-# Idempotent: Builds risk-service with Datadog agent base and XGBoost
+# Session-Independent: Resolves ACR across any session / tab automatically.
 # ==============================================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-ENV_FILE="${SCRIPT_DIR}/azure_deployment_env.sh"
-if [ ! -f "$ENV_FILE" ]; then
-  echo "Error: $ENV_FILE not found. Please run 'bash infrastructure/azure/step1_infra_provision.sh' first."
+# Load environment dynamically across any session
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/load_azure_env.sh"
+
+if [ -z "${ACR_NAME:-}" ]; then
+  echo "Error: Azure Container Registry (ACR) could not be detected in Resource Group '$RESOURCE_GROUP'."
+  echo "Please run 'bash infrastructure/azure/step1_infra_provision.sh' first or export ACR_NAME=<your_acr>."
   exit 1
 fi
 
-# shellcheck source=/dev/null
-source "$ENV_FILE"
-
 echo "===================================================================="
 echo " STEP 2B: BUILD & PUSH PYTHON RISK SERVICE ($ACR_NAME.azurecr.io)"
+echo " Resource Group: $RESOURCE_GROUP"
 echo "===================================================================="
 
 ACR_LOGIN_SERVER="${ACR_NAME}.azurecr.io"

@@ -26,18 +26,23 @@ Azure Cloud Shell provides a browser-based Bash terminal pre-authenticated with 
    chmod +x infrastructure/azure/*.sh
    ```
 
-### Timeout-Proof Modular Cloud Shell Execution:
-Azure Cloud Shell terminates sessions after 20 minutes of inactivity. To prevent timeouts, we have split the deployment into fast, independent 2-5 minute steps that save state to `azure_deployment_env.sh`:
+### Fully Session-Independent Cloud Shell Execution:
+Azure Cloud Shell terminates sessions after 20 minutes of inactivity. To make deployment completely timeout-proof and session-resilient:
+- **Session-Agnostic Resolution**: Every script uses `load_azure_env.sh` to auto-discover your Azure resources (Resource Group, ACR, AKS, SQL, Secrets) directly via Azure CLI. **You DO NOT need a single persistent session**. If a session times out, simply reopen Cloud Shell and run the next step.
+- **Concurrent Multi-Tab Execution**: You can open multiple Cloud Shell browser tabs to run build steps in parallel (e.g., Tab 1 for `step2a_build_backend.sh`, Tab 2 for `step2b_build_risk.sh`, Tab 3 for `step2c_build_frontends.sh`).
+- **Selective Single-Service Builds**: If you modify or need to rebuild a single service, you don't need to rebuild everything:
+  - `bash infrastructure/azure/step2a_build_backend.sh gateway-service` (or `account-service`, `transfer-orchestrator`, etc.)
+  - `bash infrastructure/azure/step2c_build_frontends.sh banking-frontend` (or `aurabank-web`)
 
 - **Interactive Menu Runner**:
   ```bash
   bash infrastructure/azure/deploy_step_by_step.sh
   ```
-- **Or Run the Scripts One-by-One**:
+- **Or Run the Scripts One-by-One in Any Session**:
   - `bash infrastructure/azure/step1_infra_provision.sh` (~3-5m: SQL, Storage, ACR, AKS)
-  - `bash infrastructure/azure/step2a_build_backend.sh` (~4-6m: 6 Java microservices)
+  - `bash infrastructure/azure/step2a_build_backend.sh [service-name]` (~4-6m: 6 Java microservices, or single target)
   - `bash infrastructure/azure/step2b_build_risk.sh` (~2-3m: Python risk-service)
-  - `bash infrastructure/azure/step2c_build_frontends.sh` (~3-5m: React & Flutter Web)
+  - `bash infrastructure/azure/step2c_build_frontends.sh [target]` (~3-5m: React & Flutter Web)
   - `bash infrastructure/azure/step3_k8s_deploy.sh` (~2m: Secrets, pods, and deployments)
   - `bash infrastructure/azure/step4_check_endpoints.sh` (~10s: Live public URLs)
 

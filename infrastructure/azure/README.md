@@ -48,16 +48,17 @@ az login
 
 | Script / File | Purpose |
 | :--- | :--- |
-| **`deploy_step_by_step.sh`** | Interactive menu runner for Azure Cloud Shell. |
+| **`load_azure_env.sh`** | **Dynamic Environment Resolver**. Automatically queries and resolves Azure resources across any session, terminal tab, or reconnect without requiring a persistent state file. |
+| **`deploy_step_by_step.sh`** | Interactive menu runner for Azure Cloud Shell (session-independent). |
 | **`step1_infra_provision.sh`** | Provisions Azure SQL (Basic 5 DTU, LRS), Storage Account (`compliance-vault`), ACR, and AKS (`Standard_B2s` candidate loop). Generates `azure_deployment_env.sh`. |
-| **`step2a_build_backend.sh`** | Builds and pushes 6 Java microservices (`gateway`, `account`, `transfer-orchestrator`, `t24`, `compliance`, `notification`). |
+| **`step2a_build_backend.sh`** | Builds and pushes 6 Java microservices (`gateway`, `account`, `transfer-orchestrator`, `t24`, `compliance`, `notification`). Supports building a single target service (e.g. `bash step2a_build_backend.sh gateway-service`). |
 | **`step2b_build_risk.sh`** | Builds and pushes Python `risk-service` with Datadog agent base and XGBoost. |
-| **`step2c_build_frontends.sh`** | Builds and pushes Staff React Console (`banking-frontend`) and Customer Portal (`aurabank-web`). |
+| **`step2c_build_frontends.sh`** | Builds and pushes Staff React Console (`banking-frontend`) and Customer Portal (`aurabank-web`). Supports single target (`banking-frontend` or `aurabank-web`). |
 | **`step3_k8s_deploy.sh`** | Configures `kubectl`, injects `banking-secrets` into AKS, deploys in-cluster dependencies, and initiates rolling rollout. |
 | **`step4_check_endpoints.sh`** | Inspects pod health and displays live public LoadBalancer IP endpoints. |
 | **`deploy_all_azure.ps1`** | Single-command automated runner for local Windows PowerShell. |
-| **`pause_budget_azure.ps1` / `.sh`** | Stops AKS cluster nodes when not in use to preserve the \$10 budget (~$0.21/day). |
-| **`resume_budget_azure.ps1` / `.sh`** | Resumes AKS cluster compute before demos or testing (~2 minutes). |
+| **`pause_budget_azure.ps1` / `.sh`** | Stops AKS cluster nodes when not in use to preserve the \$10 budget (~$0.21/day). Auto-detects sandbox. |
+| **`resume_budget_azure.ps1` / `.sh`** | Resumes AKS cluster compute before demos or testing (~2 minutes). Auto-detects sandbox. |
 | **`01_azure_sql_master_schema.sql`** | Full T-SQL master relational schema with `admin_users`, views, and `dbo.*` synonyms. |
 | **`02_azure_postgres_audit_schema.sql`**| Append-only PostgreSQL audit vault schema with immutability triggers. |
 

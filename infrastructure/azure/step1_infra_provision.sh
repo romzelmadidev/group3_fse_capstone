@@ -12,13 +12,9 @@ echo "===================================================================="
 echo " STEP 1: PROVISION AZURE CLOUD INFRASTRUCTURE"
 echo "===================================================================="
 
-# Load existing environment if previously generated
-ENV_FILE="${SCRIPT_DIR}/azure_deployment_env.sh"
-if [ -f "$ENV_FILE" ]; then
-  echo "Loading existing configuration from $ENV_FILE..."
-  # shellcheck source=/dev/null
-  source "$ENV_FILE"
-fi
+# Load existing environment if previously generated or auto-discover
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/load_azure_env.sh" 2>/dev/null || true
 
 LOCATION="${LOCATION:-${AZURE_LOCATION:-southeastasia}}"
 TS=$(date +%s)
