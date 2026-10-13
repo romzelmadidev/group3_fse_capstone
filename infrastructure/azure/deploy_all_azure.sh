@@ -31,8 +31,8 @@ if [ -z "$ACCOUNT_INFO" ]; then
   exit 1
 fi
 
-SUB_NAME=$(echo "$ACCOUNT_INFO" | jq -r '.name // empty')
-SUB_ID=$(echo "$ACCOUNT_INFO" | jq -r '.id // empty')
+SUB_NAME=$(az account show --query name -o tsv 2>/dev/null || true)
+SUB_ID=$(az account show --query id -o tsv 2>/dev/null || true)
 echo "Active Subscription: $SUB_NAME ($SUB_ID)"
 
 # 2. Infrastructure Provisioning & Secret Synchronization
