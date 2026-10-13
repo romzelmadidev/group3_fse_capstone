@@ -23,8 +23,8 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
   String _selectedTxnFilter = 'All';
 
   // Quick Send Form Controllers
-  final TextEditingController _recipientController = TextEditingController(text: 'Angel Lou F. Yabut');
-  final TextEditingController _amountController = TextEditingController(text: '1500');
+  final TextEditingController _recipientController = TextEditingController();
+  final TextEditingController _amountController = TextEditingController();
   String _selectedBank = 'Aura Bank';
 
   @override
@@ -633,6 +633,8 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
             controller: _recipientController,
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             decoration: InputDecoration(
+              hintText: 'Enter account or recipient name',
+              hintStyle: const TextStyle(color: Color(0xFF9AA3AB), fontSize: 13, fontWeight: FontWeight.w400),
               filled: true,
               fillColor: const Color(0xFFF7F7F7),
               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -655,6 +657,8 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
             keyboardType: TextInputType.number,
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
             decoration: InputDecoration(
+              hintText: '0.00',
+              hintStyle: const TextStyle(color: Color(0xFF9AA3AB), fontSize: 16, fontWeight: FontWeight.w600),
               filled: true,
               fillColor: const Color(0xFFF7F7F7),
               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),

@@ -34,8 +34,8 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
   // Form State
   final String _selectedSourceAccount = 'Savings';
   bool _isAuraToAura = true;
-  String _selectedPartnerBank = 'MeyBank';
-  String _selectedPurpose = 'Remittance';
+  String? _selectedPartnerBank;
+  String? _selectedPurpose;
 
   List<Map<String, String>> get _availableRecipients {
     final currentAcc = _bankService.savingsAccountNumber;
@@ -52,7 +52,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
   late final TextEditingController _accountController;
   late final TextEditingController _recipientController;
   final TextEditingController _amountController =
-      TextEditingController(text: '5000');
+      TextEditingController();
   final TextEditingController _remarksController =
       TextEditingController();
 
@@ -97,11 +97,9 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
   @override
   void initState() {
     super.initState();
-    final recipients = _availableRecipients;
-    final initialRecipient = recipients.isNotEmpty ? recipients.first : UserPersona.transferableRecipients.first;
-    _selectedCustomerName = initialRecipient['name'];
-    _accountController = TextEditingController(text: initialRecipient['accountNo'] ?? '');
-    _recipientController = TextEditingController(text: initialRecipient['name'] ?? '');
+    _selectedCustomerName = null;
+    _accountController = TextEditingController();
+    _recipientController = TextEditingController();
 
     _bankService.addListener(_onServiceUpdate);
     final draft = widget.draft;
@@ -125,8 +123,13 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
   }
 
   void _applyDraft(QuickTransferDraft draft) {
-    _accountController.text = draft.accountNumber.trim();
-    _amountController.text = draft.amount.replaceAll(',', '').replaceAll('₱', '').trim();
+    if (draft.accountNumber.trim().isNotEmpty) {
+      _accountController.text = draft.accountNumber.trim();
+    }
+    final cleanAmount = draft.amount.replaceAll(',', '').replaceAll('₱', '').trim();
+    if (cleanAmount.isNotEmpty) {
+      _amountController.text = cleanAmount;
+    }
     final isAura = draft.bank == 'Aura Bank';
     _isAuraToAura = isAura;
     if (!isAura && draft.bank.isNotEmpty) {
@@ -196,6 +199,11 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
       return;
     }
 
+    if (!_isAuraToAura && (_selectedPartnerBank == null || _selectedPartnerBank!.trim().isEmpty)) {
+      _showWarningSnackBar('Please select a destination bank.');
+      return;
+    }
+
     if (_accountController.text.trim().isEmpty) {
       _showWarningSnackBar('Please enter the recipient account number.');
       return;
@@ -203,6 +211,11 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
 
     if (_recipientController.text.trim().isEmpty) {
       _showWarningSnackBar('Please enter the recipient name.');
+      return;
+    }
+
+    if (_selectedPurpose == null || _selectedPurpose!.trim().isEmpty) {
+      _showWarningSnackBar('Please select a purpose for the transfer.');
       return;
     }
 
@@ -350,7 +363,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                               Text(
                                 _remarksController.text.trim().isNotEmpty
                                     ? _remarksController.text.trim()
-                                    : _selectedPurpose,
+                                    : (_selectedPurpose ?? 'Transfer'),
                                 style: const TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
@@ -378,7 +391,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                           const SizedBox(height: 8),
                           _buildModalRow(
                             'Bank',
-                            _isAuraToAura ? 'Aura Bank (Direct)' : _selectedPartnerBank,
+                            _isAuraToAura ? 'Aura Bank (Direct)' : (_selectedPartnerBank ?? 'Other Bank'),
                           ),
                           const Divider(height: 18, color: borderLight),
                           _buildModalRow(
@@ -613,10 +626,10 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                                   amount: _parsedAmount,
                                   destinationBank: _isAuraToAura
                                       ? 'Aura Bank Direct'
-                                      : _selectedPartnerBank,
+                                      : (_selectedPartnerBank ?? 'Other Bank'),
                                   remarks: _remarksController.text.trim().isNotEmpty
                                       ? _remarksController.text.trim()
-                                      : _selectedPurpose,
+                                      : (_selectedPurpose ?? 'Transfer'),
                                 );
 
                                 setModalState(() => _isSubmitting = false);
@@ -1039,7 +1052,16 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
               children: [
                 Expanded(
                   child: InkWell(
-                    onTap: () => setState(() => _isAuraToAura = true),
+                    onTap: () {
+                      if (_isAuraToAura) return;
+                      setState(() {
+                        _isAuraToAura = true;
+                        _selectedPartnerBank = null;
+                        _selectedCustomerName = null;
+                        _accountController.clear();
+                        _recipientController.clear();
+                      });
+                    },
                     borderRadius: BorderRadius.circular(9),
                     child: Container(
                       decoration: BoxDecoration(
@@ -1080,7 +1102,15 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: InkWell(
-                    onTap: () => setState(() => _isAuraToAura = false),
+                    onTap: () {
+                      if (!_isAuraToAura) return;
+                      setState(() {
+                        _isAuraToAura = false;
+                        _selectedCustomerName = null;
+                        _accountController.clear();
+                        _recipientController.clear();
+                      });
+                    },
                     borderRadius: BorderRadius.circular(9),
                     child: Container(
                       decoration: BoxDecoration(
@@ -1144,6 +1174,14 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
                   value: _selectedPartnerBank,
+                  hint: const Text(
+                    'Select destination bank...',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF7D8892),
+                    ),
+                  ),
                   isExpanded: true,
                   icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: Color(0xFF7D8892)),
                   items: const [
@@ -1181,7 +1219,21 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                 child: DropdownButton<String>(
                   value: (_availableRecipients.any((c) => c['name'] == _selectedCustomerName) || _selectedCustomerName == 'CUSTOM')
                       ? _selectedCustomerName
-                      : (_availableRecipients.isNotEmpty ? _availableRecipients.first['name'] : 'CUSTOM'),
+                      : null,
+                  hint: const Row(
+                    children: [
+                      Icon(Icons.person_outline_rounded, size: 18, color: Color(0xFF7D8892)),
+                      SizedBox(width: 8),
+                      Text(
+                        'Select recipient or custom account...',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF7D8892),
+                        ),
+                      ),
+                    ],
+                  ),
                   isExpanded: true,
                   icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: Color(0xFF6B7280)),
                   items: [
@@ -1381,7 +1433,7 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Purpose',
+                      'Purpose *',
                       style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
@@ -1399,6 +1451,20 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           value: _selectedPurpose,
+                          hint: const Row(
+                            children: [
+                              Icon(Icons.assignment_outlined, size: 18, color: Color(0xFF7D8892)),
+                              SizedBox(width: 8),
+                              Text(
+                                'Select transfer purpose *',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF7D8892),
+                                ),
+                              ),
+                            ],
+                          ),
                           isExpanded: true,
                           itemHeight: 64,
                           icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: Color(0xFF7D8892)),
@@ -1579,10 +1645,8 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
   Widget _buildTransferSummaryCard() {
     final recipientName = _recipientController.text.trim().isNotEmpty
         ? _recipientController.text.trim()
-        : 'Jessie Mae Dela Paz';
-    final accountNum = _accountController.text.trim().isNotEmpty
-        ? _accountController.text.trim()
-        : '1234568898951';
+        : 'Select or enter recipient';
+    final accountNum = _accountController.text.trim();
     final last5 = accountNum.length >= 5
         ? accountNum.substring(accountNum.length - 5)
         : accountNum;
@@ -1711,27 +1775,37 @@ class _WebTransferScreenState extends State<WebTransferScreen> {
                               Flexible(
                                 child: Text(
                                   recipientName,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
-                                    color: Color(0xFF10171C),
+                                    color: _recipientController.text.trim().isNotEmpty
+                                        ? const Color(0xFF10171C)
+                                        : const Color(0xFF7D8892),
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              const Icon(
-                                Icons.check_circle,
-                                size: 13,
-                                color: Color(0xFF2FA37E),
-                              ),
+                              if (_recipientController.text.trim().isNotEmpty) ...[
+                                const SizedBox(width: 8),
+                                const Icon(
+                                  Icons.check_circle,
+                                  size: 13,
+                                  color: Color(0xFF2FA37E),
+                                ),
+                              ],
                             ],
                           ),
                           const SizedBox(height: 1),
                           Text(
                             _isAuraToAura
-                                ? 'Aura Bank Direct ••••• $last5'
-                                : '$_selectedPartnerBank ••••• $last5',
+                                ? (accountNum.isNotEmpty
+                                    ? 'Aura Bank Direct ••••• $last5'
+                                    : 'Aura Bank Direct')
+                                : (_selectedPartnerBank != null
+                                    ? (accountNum.isNotEmpty
+                                        ? '$_selectedPartnerBank ••••• $last5'
+                                        : _selectedPartnerBank!)
+                                    : 'Select destination bank'),
                             style: const TextStyle(
                               fontSize: 11,
                               color: Color(0xFF7D8892),
