@@ -85,8 +85,9 @@ az login
 | Variable | Default Value | Description |
 | :--- | :--- | :--- |
 | `DATADOG_API_KEY` | `00000000...` *(dummy)* | Set to your live Datadog API key to send traces to your Datadog dashboard. |
-| `PARTNER_BANK_URL` | In-cluster mock URL | Target endpoint for outward inter-bank transfers. Can point to another team's API. |
-| `PARTNER_BANK_API_KEY`| `AURABANK-SECURE-KEY-2026` | Shared secret header sent during interbank transfers. |
+| `DATADOG_SITE` | `datadoghq.com` | Datadog intake site (e.g. `datadoghq.eu`, `us3.datadoghq.com`, `us5.datadoghq.com`). |
+| `INTERBANK_API_KEY` | `AURABANK-SECURE-KEY-2026` | Shared secret header (`X-Interbank-API-Key`) sent and verified during interbank transfers (alias: `PARTNER_BANK_API_KEY`). |
+| `PARTNER_BANK_URL` | In-cluster mock URL | Target endpoint for outward inter-bank transfers (e.g., `http://transfer-orchestrator.banking.svc.cluster.local:8082/api/v1/mock-partner/transfers` or another team's live URL). |
 | `RESOURCE_GROUP` | Auto-detected / `rg-banking-budget-$LOCATION` | Name of your Azure Resource Group (auto-detects student sandboxes). |
 | `AKS_VM_SIZE` | `Standard_B2s` | Memory-optimized budget VM size allowed in student sandboxes. |
 | `CBS_COB_SCHEDULER_ENABLED` | `false` | Disables in-app Spring cron in AKS so only the Kubernetes CronJob runs COB cutoff at 21:00 PHT. |

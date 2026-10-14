@@ -26,7 +26,11 @@
 #   REBUILD          "all" or comma list, e.g. "gateway-service,account-service"
 #   RESET_DB         "true" deletes + recreates the Azure SQL database (DELETES ALL DATA);
 #                    use it once if a previous attempt left half-created tables
-#   DATADOG_API_KEY  real key to enable Datadog (default: dummy)
+#   DATADOG_API_KEY  real key to enable Datadog (default: dummy 00000000000000000000000000000000)
+#   DATADOG_SITE     Datadog intake site (default: datadoghq.com)
+#   INTERBANK_API_KEY shared verification key for interbank transfers (default: AURABANK-SECURE-KEY-2026)
+#   PARTNER_BANK_URL target endpoint URL for outward interbank transfers
+#                    (default: http://transfer-orchestrator.banking.svc.cluster.local:8082/api/v1/mock-partner/transfers)
 # ==============================================================================
 set -Eeuo pipefail
 trap 'echo "[ERROR] line $LINENO: command failed: $BASH_COMMAND" >&2' ERR
@@ -44,7 +48,10 @@ REBUILD="${REBUILD:-}"
 RESET_DB="${RESET_DB:-false}"
 BUILD_PARALLEL="${BUILD_PARALLEL:-3}"
 READY_TIMEOUT="${READY_TIMEOUT:-1500}"
-DATADOG_API_KEY="${DATADOG_API_KEY:-00000000000000000000000000000000}"
+DATADOG_API_KEY="${DATADOG_API_KEY:-}"
+DATADOG_SITE="${DATADOG_SITE:-datadoghq.com}"
+INTERBANK_API_KEY="${INTERBANK_API_KEY:-${PARTNER_BANK_API_KEY:-}}"
+PARTNER_BANK_URL="${PARTNER_BANK_URL:-}"
 JWT_SECRET="${JWT_SECRET:-c3VwZXItc2VjcmV0LWtleS1mb3ItZnNlLWNhcHN0b25lLWJhbmtpbmctcGxhdGZvcm0tMjAyNi0xMjM0NTY3ODkwMTI=}"
 
 SQL_DB_NAME="sqldb-master"
@@ -276,6 +283,9 @@ configure_cluster() {
     --from-literal=azure-storage-connection-string="$STORAGE_CONN" \
     --from-literal=jwt-secret="$JWT_SECRET" \
     --from-literal=datadog-api-key="$DATADOG_API_KEY" \
+    --from-literal=datadog-site="$DATADOG_SITE" \
+    --from-literal=interbank-api-key="$INTERBANK_API_KEY" \
+    --from-literal=partner-bank-url="$PARTNER_BANK_URL" \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   info "banking-secrets and acr-secret applied."
 }
@@ -503,8 +513,20 @@ main() {
   if [ -z "$PG_ADMIN_PASS" ] && [ -n "$AKS" ]; then
     PG_ADMIN_PASS="$(kubectl get secret banking-secrets -n banking -o jsonpath='{.data.azure-postgres-password}' --request-timeout=15s 2>/dev/null | base64 -d 2>/dev/null || true)"
   fi
+  if [ -z "$DATADOG_API_KEY" ] && [ -n "$AKS" ]; then
+    DATADOG_API_KEY="$(kubectl get secret banking-secrets -n banking -o jsonpath='{.data.datadog-api-key}' --request-timeout=15s 2>/dev/null | base64 -d 2>/dev/null || true)"
+  fi
+  if [ -z "$INTERBANK_API_KEY" ] && [ -n "$AKS" ]; then
+    INTERBANK_API_KEY="$(kubectl get secret banking-secrets -n banking -o jsonpath='{.data.interbank-api-key}' --request-timeout=15s 2>/dev/null | base64 -d 2>/dev/null || true)"
+  fi
+  if [ -z "$PARTNER_BANK_URL" ] && [ -n "$AKS" ]; then
+    PARTNER_BANK_URL="$(kubectl get secret banking-secrets -n banking -o jsonpath='{.data.partner-bank-url}' --request-timeout=15s 2>/dev/null | base64 -d 2>/dev/null || true)"
+  fi
   SQL_ADMIN_PASS="${SQL_ADMIN_PASS:-$(gen_pass)}"
   PG_ADMIN_PASS="${PG_ADMIN_PASS:-$(gen_pass)}"
+  DATADOG_API_KEY="${DATADOG_API_KEY:-00000000000000000000000000000000}"
+  INTERBANK_API_KEY="${INTERBANK_API_KEY:-AURABANK-SECURE-KEY-2026}"
+  PARTNER_BANK_URL="${PARTNER_BANK_URL:-http://transfer-orchestrator.banking.svc.cluster.local:8082/api/v1/mock-partner/transfers}"
 
   ensure_sql
   ensure_storage

@@ -345,6 +345,9 @@ kubectl create secret generic banking-secrets \
   --from-literal=azure-storage-connection-string="$STORAGE_CONN_STR" \
   --from-literal=jwt-secret="$JWT_SECRET" \
   --from-literal=datadog-api-key="$DATADOG_API_KEY" \
+  --from-literal=datadog-site="${DATADOG_SITE:-datadoghq.com}" \
+  --from-literal=interbank-api-key="${INTERBANK_API_KEY:-${PARTNER_BANK_API_KEY:-AURABANK-SECURE-KEY-2026}}" \
+  --from-literal=partner-bank-url="${PARTNER_BANK_URL:-http://transfer-orchestrator.banking.svc.cluster.local:8082/api/v1/mock-partner/transfers}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 

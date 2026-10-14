@@ -68,9 +68,20 @@ spec:
             - name: CBS_SERVICE_URL
               value: "http://t24-mock-cbs.banking.svc.cluster.local:8085"
             - name: PARTNER_BANK_URL
-              value: "http://transfer-orchestrator.banking.svc.cluster.local:8082/api/v1/mock-partner/transfers"
+              valueFrom:
+                secretKeyRef:
+                  name: banking-secrets
+                  key: partner-bank-url
             - name: PARTNER_BANK_API_KEY
-              value: "AURABANK-SECURE-KEY-2026"
+              valueFrom:
+                secretKeyRef:
+                  name: banking-secrets
+                  key: interbank-api-key
+            - name: INTERBANK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: banking-secrets
+                  key: interbank-api-key
 ---
 apiVersion: v1
 kind: Service

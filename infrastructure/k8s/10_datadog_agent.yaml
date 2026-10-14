@@ -39,7 +39,10 @@ spec:
                   name: banking-secrets
                   key: datadog-api-key
             - name: DD_SITE
-              value: "datadoghq.com"
+              valueFrom:
+                secretKeyRef:
+                  name: banking-secrets
+                  key: datadog-site
             - name: DD_APM_ENABLED
               value: "true"
             - name: DD_APM_NON_LOCAL_TRAFFIC

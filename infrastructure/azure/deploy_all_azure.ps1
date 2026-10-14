@@ -18,6 +18,9 @@ param(
     [string]$ResourceGroup = "",
     [string]$Location = "southeastasia",
     [string]$DatadogApiKey = "00000000000000000000000000000000",
+    [string]$DatadogSite = "datadoghq.com",
+    [string]$InterbankApiKey = "AURABANK-SECURE-KEY-2026",
+    [string]$PartnerBankUrl = "http://transfer-orchestrator.banking.svc.cluster.local:8082/api/v1/mock-partner/transfers",
     [string]$AksVmSize = "Standard_B2s",
     [bool]$UseManagedPostgres = $false
 )
@@ -300,6 +303,9 @@ kubectl create secret generic banking-secrets `
     --from-literal=azure-storage-connection-string="$StorageConnStr" `
     --from-literal=jwt-secret="$JwtSecret" `
     --from-literal=datadog-api-key="$DatadogApiKey" `
+    --from-literal=datadog-site="$DatadogSite" `
+    --from-literal=interbank-api-key="$InterbankApiKey" `
+    --from-literal=partner-bank-url="$PartnerBankUrl" `
     --dry-run=client -o yaml | kubectl apply -f -
 
 # Apply all manifests with ACR substitution

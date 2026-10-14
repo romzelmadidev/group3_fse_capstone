@@ -99,6 +99,9 @@ export PG_DB_NAME="${PG_DB_NAME:-aurabank_audit}"
 export PG_JDBC_URL="${PG_JDBC_URL:-jdbc:postgresql://postgres-audit-vault.banking.svc.cluster.local:5432/${PG_DB_NAME}?sslmode=disable}"
 export JWT_SECRET="${JWT_SECRET:-dGhpcy1pcy1hLXZlcnktc2VjdXJlLWFuZC1sb25nLXNlY3JldC1rZXktZm9yLWF1cmFiYW5rLTIwMjYtY2Fwc3RvbmU=}"
 export DATADOG_API_KEY="${DATADOG_API_KEY:-00000000000000000000000000000000}"
+export DATADOG_SITE="${DATADOG_SITE:-datadoghq.com}"
+export INTERBANK_API_KEY="${INTERBANK_API_KEY:-${PARTNER_BANK_API_KEY:-AURABANK-SECURE-KEY-2026}}"
+export PARTNER_BANK_URL="${PARTNER_BANK_URL:-http://transfer-orchestrator.banking.svc.cluster.local:8082/api/v1/mock-partner/transfers}"
 
 # 3. Cache discovered state to disk for lightning-fast future loads
 mkdir -p "${_RESOLVER_DIR}"
@@ -121,6 +124,9 @@ export PG_DB_NAME="${PG_DB_NAME:-}"
 export PG_JDBC_URL="${PG_JDBC_URL:-}"
 export JWT_SECRET="${JWT_SECRET:-}"
 export DATADOG_API_KEY="${DATADOG_API_KEY:-}"
+export DATADOG_SITE="${DATADOG_SITE:-}"
+export INTERBANK_API_KEY="${INTERBANK_API_KEY:-}"
+export PARTNER_BANK_URL="${PARTNER_BANK_URL:-}"
 EOF
 
 # Also persist in Cloud Shell home directory if available
