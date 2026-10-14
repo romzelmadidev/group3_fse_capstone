@@ -381,6 +381,17 @@ build_images() {
 # ------------------------------------------------------------------------------
 # 6/7. Deploy + self-heal
 # ------------------------------------------------------------------------------
+# kubectl apply that survives races ("AlreadyExists" when another apply creates the object first).
+kapply() { # kapply <manifest>
+  local f="$1" i err="${LOG_DIR}/kapply.err"
+  for i in 1 2 3 4; do
+    if sed "s/__ACR_NAME__/${ACR}/g" "$f" | kubectl apply -f - >/dev/null 2>"$err"; then return 0; fi
+    if grep -q "AlreadyExists" "$err"; then sleep 3; continue; fi
+    cat "$err" >&2; return 1
+  done
+  cat "$err" >&2; return 1
+}
+
 deploy_workloads() {
   log "[6/8] Deploying workloads"
   kubectl apply -f "${K8S_DIR}/00_namespace.yaml" >/dev/null
@@ -402,7 +413,7 @@ deploy_workloads() {
       info "skipped $(basename "$f") (no DATADOG_API_KEY set; services run fine without it)"
       continue
     fi
-    sed "s/__ACR_NAME__/${ACR}/g" "$f" | kubectl apply -f - >/dev/null
+    kapply "$f"
     info "applied $(basename "$f")"
   done
   # Re-pull freshly built images (tag is :latest)
@@ -538,6 +549,10 @@ print_summary() {
 # main
 # ------------------------------------------------------------------------------
 main() {
+  if [ "$MODE" != "status" ] && command -v flock >/dev/null 2>&1; then
+    exec 9>"${TMPDIR:-/tmp}/aurabank-run.lock"
+    flock -n 9 || die "Another run_azure.sh is already running in this Cloud Shell (check your other tabs). Wait for it, or press Ctrl+C there first."
+  fi
   preflight
   log "[2/8] Azure infrastructure"
   pick_resource_group

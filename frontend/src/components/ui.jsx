@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Loader2, X, AlertTriangle, CheckCircle2, Search } from 'lucide-react';
+import { uuid } from '../lib/uuid';
 
 export const cn = (...c) => c.filter(Boolean).join(' ');
 
@@ -227,7 +228,7 @@ export const useToast = () => useContext(ToastContext);
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
   const push = useCallback((message, tone = 'ok') => {
-    const id = crypto.randomUUID();
+    const id = uuid();
     setToasts((t) => [...t, { id, message, tone }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000);
   }, []);
