@@ -549,9 +549,16 @@ print_summary() {
 # main
 # ------------------------------------------------------------------------------
 main() {
-  if [ "$MODE" != "status" ] && command -v flock >/dev/null 2>&1; then
-    exec 9>"${TMPDIR:-/tmp}/aurabank-run.lock"
-    flock -n 9 || die "Another run_azure.sh is already running in this Cloud Shell (check your other tabs). Wait for it, or press Ctrl+C there first."
+  if [ "$MODE" != "status" ]; then
+    # PID lock (not flock: background az/kubectl children would inherit an flock fd and keep it held).
+    local other=""; RUN_LOCK="${TMPDIR:-/tmp}/aurabank-run.pid"
+    [ -f "$RUN_LOCK" ] && other="$(cat "$RUN_LOCK" 2>/dev/null || true)"
+    if [ -n "$other" ] && [ "$other" != "$$" ] && kill -0 "$other" 2>/dev/null \
+       && tr '\0' ' ' <"/proc/${other}/cmdline" 2>/dev/null | grep -q "run_azure.sh"; then
+      die "Another run_azure.sh (PID ${other}) is already running in this Cloud Shell. Wait for it, or stop it with: kill ${other}"
+    fi
+    echo "$$" >"$RUN_LOCK"
+    trap 'rm -f "$RUN_LOCK"' EXIT
   fi
   preflight
   log "[2/8] Azure infrastructure"
