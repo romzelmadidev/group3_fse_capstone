@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { randomUUID } from './uuid';
 
 /**
  * One client for the console. Every request goes through the gateway at
@@ -18,7 +19,7 @@ api.interceptors.request.use((config) => {
   const token = tokenStore.get();
   if (token) config.headers.Authorization = `Bearer ${token}`;
   if (['post', 'put', 'patch'].includes(config.method)) {
-    config.headers['X-Idempotency-Key'] = crypto.randomUUID();
+    config.headers['X-Idempotency-Key'] = randomUUID();
   }
   return config;
 });
