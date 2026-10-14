@@ -19,6 +19,7 @@
 # Optional environment variables:
 #   RESOURCE_GROUP   use this RG (default: auto-detect, else create rg-aurabank-<id>)
 #   LOCATION         region for a NEW RG (default: southeastasia)
+#   SQL_SERVER       custom Azure SQL server name (default: auto-detect, else sql-aurabank-<suffix>)
 #   SQL_LOCATION     region for Azure SQL if your subscription blocks LOCATION
 #   NODE_COUNT       AKS nodes to start with            (default: 2)
 #   MAX_NODES        upper bound for self-healing scale (default: 4)
@@ -139,12 +140,26 @@ load_existing_secret() { # reuse DB password already stored in the cluster, if r
 }
 
 ensure_sql() {
-  SQL_SERVER="$(first_name sql server list)"; SQL_SERVER="${SQL_SERVER:-sql-aurabank-${SUFFIX}}"
+  SQL_SERVER="${SQL_SERVER:-${SQL_SERVER_NAME:-$(first_name sql server list)}}"
+  SQL_SERVER="${SQL_SERVER:-sql-aurabank-${SUFFIX}}"
   SQL_FQDN="${SQL_SERVER}.database.windows.net"
   if az sql server show -n "$SQL_SERVER" -g "$RG" >/dev/null 2>&1; then
     info "Azure SQL server exists: $SQL_SERVER"
     SQL_ADMIN_USER="$(az sql server show -n "$SQL_SERVER" -g "$RG" --query administratorLogin -o tsv)"
-    az sql server update -n "$SQL_SERVER" -g "$RG" --admin-password "$SQL_ADMIN_PASS" -o none
+    local update_attempt=0 update_err="${LOG_DIR}/sql-update.err"
+    while :; do
+      if az sql server update -n "$SQL_SERVER" -g "$RG" --admin-password "$SQL_ADMIN_PASS" -o none 2>"$update_err"; then
+        break
+      fi
+      if grep -qi "UpsertLogicalServerRequestAlreadyInProgress" "$update_err" && [ "$update_attempt" -lt 6 ]; then
+        update_attempt=$((update_attempt + 1))
+        info "An operation is currently in progress on $SQL_SERVER. Waiting for Azure to complete it (attempt ${update_attempt}/6, 20s)..."
+        sleep 20
+      else
+        cat "$update_err" >&2
+        die "Failed to update Azure SQL server $SQL_SERVER."
+      fi
+    done
   else
     local attempt=0 err="${LOG_DIR}/sql-create.err"
     while :; do
@@ -157,6 +172,9 @@ ensure_sql() {
       if grep -q "NameAlreadyExists" "$err" && [ "$attempt" -lt 4 ]; then
         SQL_SERVER="sql-aurabank-${SUFFIX}-$((RANDOM % 900 + 100))"
         warn "SQL server name is taken (names are global in Azure). Retrying as $SQL_SERVER"
+      elif grep -qi "UpsertLogicalServerRequestAlreadyInProgress" "$err" && [ "$attempt" -lt 6 ]; then
+        info "An operation is already in progress on $SQL_SERVER. Waiting 20s for Azure to finish..."
+        sleep 20
       else
         cat "$err" >&2; die "Could not create the Azure SQL server. If the region is blocked, set SQL_LOCATION=<region>."
       fi
