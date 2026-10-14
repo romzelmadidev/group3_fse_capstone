@@ -55,6 +55,14 @@ spec:
               value: "risk-service"
             - name: DD_ENV
               value: "azure"
+            # KYC: the evaluator downloads the ID/selfie blobs. Without this it falls back to
+            # azurite-storage:10000 (does not exist in AKS) and the Azure SDK retries past the
+            # 15 s read timeout of account-service -> "Unable to reach identity verification service".
+            - name: AZURE_STORAGE_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: banking-secrets
+                  key: azure-storage-connection-string
 ---
 apiVersion: v1
 kind: Service

@@ -78,6 +78,20 @@ spec:
               value: "6379"
             - name: AZURE_REDIS_SSL
               value: "false"
+            # KYC: without these the service falls back to local Azurite / localhost and uploads fail.
+            - name: AZURE_STORAGE_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: banking-secrets
+                  key: azure-storage-connection-string
+            - name: AZURE_STORAGE_CONTAINER_NAME
+              value: "kyc-vault"
+            - name: APP_SERVICES_RISK_SERVICE_URL
+              value: "http://risk-service.banking.svc.cluster.local:8084"
+            - name: APP_SERVICES_CBS_URL
+              value: "http://t24-mock-cbs.banking.svc.cluster.local:8085"
+            - name: NOTIFICATION_SERVICE_URL
+              value: "http://notification-service.banking.svc.cluster.local:8083"
 ---
 apiVersion: v1
 kind: Service
