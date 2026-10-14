@@ -1,0 +1,110 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Application & Business Flow: Retail Banking Fund Transfer Process",
+    "subtitle": "From customer login to committed settlement, including the high-value 2FA path",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "full-flow",
+        "label": "Complete Business Flow",
+        "focus": ["login", "view_balance", "send_money", "check_solvency", "risk_decision", "path_a_stp", "apply_hold", "email_otp", "enter_otp", "otp_valid", "release_hold_settle", "committed_settlement"],
+        "note": "End-to-end retail fund transfer workflow covering solvency validation, STP processing, 2FA soft hold saga, and committed ledger settlement."
+      },
+      {
+        "id": "path-a-standard",
+        "label": "Path A: Standard Transfer (<= 50k PHP)",
+        "focus": ["login", "view_balance", "send_money", "check_solvency", "risk_decision", "path_a_stp", "committed_settlement"],
+        "note": "Straight-through processing under 85ms SLA with immediate debit/credit posting in master ledger."
+      },
+      {
+        "id": "path-b-2fa",
+        "label": "Path B: High-Value 2FA Transfer (> 50k PHP)",
+        "focus": ["send_money", "check_solvency", "risk_decision", "apply_hold", "email_otp", "enter_otp", "otp_valid", "release_hold_settle", "committed_settlement"],
+        "note": "Two-factor verification challenge: soft hold applied, 6-digit OTP dispatched via MailHog, Redis 5-min TTL validation, hold released and settled upon code verification."
+      }
+    ],
+    "output": "business_flow.html"
+  },
+  "lanes": [
+    { "id": "access", "label": "1 - Customer access & dashboard" },
+    { "id": "initiation", "label": "2 - Transfer initiation & solvency check" },
+    { "id": "risk", "label": "3 - Risk threshold decision" },
+    { "id": "path_a", "label": "Path A - Standard transfer (<= 50k PHP)" },
+    { "id": "path_b", "label": "Path B - High-value 2FA transfer (> 50k PHP)" },
+    { "id": "settlement", "label": "4 - Final settlement & customer advice" }
+  ],
+  "nodes": [
+    { "id": "login", "lane": "access", "type": "frontend", "label": "Customer logs in", "sublabel": "(Email + Password)", "tag": "Auth :8081" },
+    { "id": "view_balance", "lane": "access", "type": "frontend", "label": "View savings & live balances", "sublabel": "Daily Savings: ₱292,500.00", "tag": "Balances" },
+    { "id": "send_money", "lane": "initiation", "type": "frontend", "label": "Click 'Send Money'", "sublabel": "Select account, recipient & amount", "tag": "Intake :8082" },
+    { "id": "check_solvency", "lane": "initiation", "type": "security", "label": "Check solvency:", "sublabel": "Available balance enough to cover amount?", "tag": "Solvency Check" },
+    { "id": "tx_aborted", "lane": "initiation", "type": "external", "label": "Transaction aborted", "sublabel": "'Insufficient Available Balance'", "tag": "Aborted (422)" },
+    { "id": "risk_decision", "lane": "risk", "type": "security", "label": "Is transfer amount greater than ₱50,000?", "sublabel": "Threshold policy check", "tag": "Policy Rule" },
+    { "id": "path_a_stp", "lane": "path_a", "type": "backend", "label": "Instant straight-through processing", "sublabel": "Debits sender, credits recipient (<85ms)", "tag": "Path A (<= 50k)" },
+    { "id": "apply_hold", "lane": "path_b", "type": "database", "label": "Apply 'soft hold'", "sublabel": "Funds temporarily frozen • PENDING_VERIFICATION", "tag": "Soft Hold" },
+    { "id": "email_otp", "lane": "path_b", "type": "database", "label": "Bank emails 6-digit OTP", "sublabel": "to customer's inbox (MailHog :8025)", "tag": "MailHog OTP" },
+    { "id": "enter_otp", "lane": "path_b", "type": "database", "label": "Customer enters 6-digit code", "sublabel": "in banking portal modal (5-min TTL)", "tag": "OTP Modal" },
+    { "id": "otp_valid", "lane": "path_b", "type": "security", "label": "Is OTP valid & within 5 minutes?", "sublabel": "Redis token verify (max 3 attempts)", "tag": "OTP Decision" },
+    { "id": "release_hold_failed", "lane": "path_b", "type": "external", "label": "Release hold", "sublabel": "Funds returned to spendable • Status: FAILED", "tag": "Hold Released" },
+    { "id": "release_hold_settle", "lane": "path_b", "type": "database", "label": "Release hold & settle", "sublabel": "Deducts from sender • Credits recipient", "tag": "Settling Hold" },
+    { "id": "committed_settlement", "lane": "settlement", "type": "backend", "label": "Transaction status: COMMITTED", "sublabel": "Dashboard balance updated • Receipt emailed • Audit logged", "tag": "COMMITTED" }
+  ],
+  "edges": [
+    { "id": "e-login-view", "from": "login", "to": "view_balance", "label": "authenticates", "variant": "default" },
+    { "id": "e-view-send", "from": "view_balance", "to": "send_money", "label": "initiates", "variant": "default" },
+    { "id": "e-send-solvency", "from": "send_money", "to": "check_solvency", "label": "solvency query", "variant": "emphasis" },
+    { "id": "e-solvency-abort", "from": "check_solvency", "to": "tx_aborted", "label": "No - Insufficient funds", "variant": "security", "role": "exception" },
+    { "id": "e-solvency-risk", "from": "check_solvency", "to": "risk_decision", "label": "Yes", "variant": "emphasis" },
+    { "id": "e-risk-path-a", "from": "risk_decision", "to": "path_a_stp", "label": "No", "variant": "emphasis" },
+    { "id": "e-risk-path-b", "from": "risk_decision", "to": "apply_hold", "label": "Yes", "variant": "security" },
+    { "id": "e-path-a-commit", "from": "path_a_stp", "to": "committed_settlement", "label": "settled (<85ms)", "variant": "emphasis" },
+    { "id": "e-hold-email", "from": "apply_hold", "to": "email_otp", "label": "dispatches OTP", "variant": "emphasis" },
+    { "id": "e-email-enter", "from": "email_otp", "to": "enter_otp", "label": "code delivered", "variant": "dashed" },
+    { "id": "e-enter-valid", "from": "enter_otp", "to": "otp_valid", "label": "submits code", "variant": "security" },
+    { "id": "e-otp-retry", "from": "otp_valid", "to": "enter_otp", "label": "Invalid (Attempts < 3)", "variant": "dashed", "role": "return" },
+    { "id": "e-otp-abort", "from": "otp_valid", "to": "release_hold_failed", "label": "Invalid (3 failed attempts) or expired", "variant": "security", "role": "exception" },
+    { "id": "e-otp-success", "from": "otp_valid", "to": "release_hold_settle", "label": "Code verified", "variant": "emphasis" },
+    { "id": "e-settle-commit", "from": "release_hold_settle", "to": "committed_settlement", "label": "settles ledger", "variant": "emphasis" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Application & Business Flow Overview",
+      "items": [
+        "End-to-End Fund Transfer Lifecycle: Visualizes the complete operational journey from initial customer authentication to final double-entry ledger settlement.",
+        "Solvency Gatekeeping: Verifies that the customer's available spendable balance (>= transfer amount) before any soft holds are created or 2FA challenges dispatched.",
+        "Dual-Path Risk Architecture: Automatically routes low-risk everyday retail transfers (<= ₱50,000) straight through, while high-value transfers (> ₱50,000) enter an asynchronous 2FA soft hold saga."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Path A vs Path B Risk Threshold Engine",
+      "items": [
+        "Path A (Standard <= ₱50k): Instant straight-through processing (STP) executed within sub-85 millisecond latency with direct sender debit and recipient credit.",
+        "Path B (High-Value > ₱50k): Core Mutation Engine places an atomic 'soft hold' on spendable balance, transitioning the record to PENDING_VERIFICATION.",
+        "Out-of-Band 2FA Challenge: Notification Service streams a customer.otp Kafka event; dispatches a 6-digit numeric OTP via MailHog SMTP (:8025 / :1025) backed by a 5-minute Redis token TTL."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Failure Isolation & Compensation",
+      "items": [
+        "Solvency Rejection: If balance is insufficient, transaction is aborted immediately with HTTP 422 ('Insufficient Available Balance'); zero funds locked or fees charged.",
+        "OTP Verification Loop: Customers have up to 3 entry attempts; invalid entries return a retry prompt directly within the portal modal.",
+        "Failed / Expired 2FA: After 3 failed attempts or 5-minute TTL expiry, soft hold is released immediately, spendable balance restored, and status marked FAILED."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Committed Settlement & Audit Trail",
+      "items": [
+        "Master Ledger Commit: Both Path A and verified Path B converge into COMMITTED status in the master core banking ledger.",
+        "Real-Time Customer Advice: Web and Mobile dashboard balances update immediately over Server-Sent Events (SSE) / WebSocket.",
+        "Permanent Audit Record: Official HTML transaction receipt delivered to customer inbox via MailHog; immutable cryptographic records persisted into PostgreSQL audit vault & Temenos T24 CBS."
+      ]
+    }
+  ]
+}
