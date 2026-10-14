@@ -1,0 +1,363 @@
+{
+    "schema_version":  1,
+    "diagram_type":  "architecture",
+    "meta":  {
+                 "title":  "AuraBank Core Banking Platform",
+                 "output":  ".archify/architecture-aurabank-core-20261013-133901/aurabank-core.html",
+                 "quality_profile":  "showcase"
+             },
+    "components":  [
+                       {
+                           "id":  "clients",
+                           "type":  "frontend",
+                           "label":  "AuraBank Clients",
+                           "sublabel":  "Flutter + React :3000",
+                           "tag":  "Customer \u0026 admin",
+                           "pos":  [
+                                       40,
+                                       240
+                                   ],
+                           "size":  [
+                                        150,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "gateway",
+                           "type":  "security",
+                           "label":  "Gateway Service",
+                           "sublabel":  "Spring Cloud Gateway :8080",
+                           "brand":  "spring",
+                           "tag":  "JWT + rate limit",
+                           "pos":  [
+                                       280,
+                                       240
+                                   ],
+                           "size":  [
+                                        150,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "redis",
+                           "type":  "database",
+                           "label":  "Redis Cache",
+                           "sublabel":  "Redis 7 :6379",
+                           "brand":  "redis",
+                           "tag":  "Tokens, locks, OTP",
+                           "pos":  [
+                                       520,
+                                       100
+                                   ],
+                           "size":  [
+                                        150,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "orchestrator",
+                           "type":  "backend",
+                           "label":  "Transfer Orchestrator",
+                           "sublabel":  "Spring Boot :8082",
+                           "brand":  "spring",
+                           "tag":  "Validation, 2FA, saga",
+                           "pos":  [
+                                       520,
+                                       240
+                                   ],
+                           "size":  [
+                                        150,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "risk",
+                           "type":  "backend",
+                           "label":  "Risk Service",
+                           "sublabel":  "FastAPI + ONNX :8084",
+                           "brand":  "fastapi",
+                           "tag":  "ALLOW / 2FA / BLOCK",
+                           "pos":  [
+                                       520,
+                                       380
+                                   ],
+                           "size":  [
+                                        150,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "account",
+                           "type":  "backend",
+                           "label":  "Account Service",
+                           "sublabel":  "Spring Boot :8081",
+                           "brand":  "spring",
+                           "tag":  "KYC, auth, Oracle JPA",
+                           "pos":  [
+                                       280,
+                                       380
+                                   ],
+                           "size":  [
+                                        150,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "cbs",
+                           "type":  "backend",
+                           "label":  "T24 Mock CBS",
+                           "sublabel":  "Spring Boot :8085",
+                           "brand":  "spring",
+                           "tag":  "Ledger, holds, EOD",
+                           "pos":  [
+                                       760,
+                                       240
+                                   ],
+                           "size":  [
+                                        150,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "oracle",
+                           "type":  "database",
+                           "label":  "Master Ledger DB",
+                           "sublabel":  "Oracle XE :1521",
+                           "tag":  "Balances, outbox",
+                           "pos":  [
+                                       760,
+                                       100
+                                   ],
+                           "size":  [
+                                        150,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "kafka",
+                           "type":  "messagebus",
+                           "label":  "Kafka Event Bus",
+                           "sublabel":  "KRaft broker :9092",
+                           "brand":  "apache-kafka",
+                           "tag":  "Transfer events, DLQ",
+                           "pos":  [
+                                       760,
+                                       380
+                                   ],
+                           "size":  [
+                                        150,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "compliance",
+                           "type":  "backend",
+                           "label":  "Compliance Service",
+                           "sublabel":  "Spring Boot :8086",
+                           "brand":  "spring",
+                           "tag":  "Reports, Azurite",
+                           "pos":  [
+                                       1000,
+                                       240
+                                   ],
+                           "size":  [
+                                        150,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "audit",
+                           "type":  "database",
+                           "label":  "Immutable Audit Vault",
+                           "sublabel":  "PostgreSQL 16 :5432",
+                           "brand":  "postgresql",
+                           "tag":  "Append-only trail",
+                           "pos":  [
+                                       1000,
+                                       100
+                                   ],
+                           "size":  [
+                                        150,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "notification",
+                           "type":  "backend",
+                           "label":  "Notification Service",
+                           "sublabel":  "Spring Boot :8083",
+                           "brand":  "spring",
+                           "tag":  "Receipts, OTP mail",
+                           "pos":  [
+                                       1000,
+                                       380
+                                   ],
+                           "size":  [
+                                        150,
+                                        64
+                                    ]
+                       }
+                   ],
+    "boundaries":  [
+                       {
+                           "kind":  "region",
+                           "label":  "Docker network: banking-net",
+                           "wraps":  [
+                                         "gateway",
+                                         "redis",
+                                         "orchestrator",
+                                         "risk",
+                                         "account",
+                                         "cbs",
+                                         "oracle",
+                                         "kafka",
+                                         "compliance",
+                                         "audit",
+                                         "notification"
+                                     ]
+                       },
+                       {
+                           "kind":  "security-group",
+                           "label":  "Core ledger enclave",
+                           "wraps":  [
+                                         "cbs",
+                                         "oracle"
+                                     ]
+                       }
+                   ],
+    "connections":  [
+                        {
+                            "id":  "clients-to-gateway",
+                            "from":  "clients",
+                            "to":  "gateway",
+                            "label":  "HTTPS + JWT",
+                            "variant":  "emphasis",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "gateway-to-redis",
+                            "from":  "gateway",
+                            "to":  "redis",
+                            "label":  "blacklist, rate limit",
+                            "variant":  "security",
+                            "fromSide":  "top",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "gateway-to-account",
+                            "from":  "gateway",
+                            "to":  "account",
+                            "label":  "/auth, /accounts, /kyc",
+                            "fromSide":  "bottom",
+                            "toSide":  "top",
+                            "labelDy":  48
+                        },
+                        {
+                            "id":  "gateway-to-orchestrator",
+                            "from":  "gateway",
+                            "to":  "orchestrator",
+                            "label":  "/transfers",
+                            "variant":  "emphasis",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "orchestrator-to-redis",
+                            "from":  "orchestrator",
+                            "to":  "redis",
+                            "label":  "idempotency",
+                            "fromSide":  "top",
+                            "toSide":  "bottom"
+                        },
+                        {
+                            "id":  "orchestrator-to-risk",
+                            "from":  "orchestrator",
+                            "to":  "risk",
+                            "label":  "risk score",
+                            "fromSide":  "bottom",
+                            "toSide":  "top",
+                            "labelDy":  48
+                        },
+                        {
+                            "id":  "orchestrator-to-cbs",
+                            "from":  "orchestrator",
+                            "to":  "cbs",
+                            "label":  "OFS transfer",
+                            "variant":  "emphasis",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "cbs-to-oracle",
+                            "from":  "cbs",
+                            "to":  "oracle",
+                            "label":  "row locks",
+                            "variant":  "emphasis",
+                            "fromSide":  "top",
+                            "toSide":  "bottom"
+                        },
+                        {
+                            "id":  "cbs-to-kafka",
+                            "from":  "cbs",
+                            "to":  "kafka",
+                            "label":  "outbox events",
+                            "fromSide":  "bottom",
+                            "toSide":  "top",
+                            "labelDy":  48
+                        },
+                        {
+                            "id":  "kafka-to-compliance",
+                            "from":  "kafka",
+                            "to":  "compliance",
+                            "label":  "audit stream",
+                            "variant":  "dashed",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "compliance-to-audit",
+                            "from":  "compliance",
+                            "to":  "audit",
+                            "label":  "append-only",
+                            "variant":  "dashed",
+                            "fromSide":  "top",
+                            "toSide":  "bottom"
+                        },
+                        {
+                            "id":  "kafka-to-notification",
+                            "from":  "kafka",
+                            "to":  "notification",
+                            "label":  "receipts, OTP",
+                            "variant":  "dashed",
+                            "fromSide":  "right",
+                            "toSide":  "left",
+                            "labelDy":  48
+                        }
+                    ],
+    "cards":  [
+                  {
+                      "dot":  "emerald",
+                      "title":  "Ledger and audit separation",
+                      "items":  [
+                                    "T24 Mock CBS owns the master ledger in Oracle XE and writes balance changes with row locks.",
+                                    "Compliance Service consumes Kafka events into a Postgres audit vault that blocks updates and deletes."
+                                ]
+                  },
+                  {
+                      "dot":  "amber",
+                      "title":  "Transfer path",
+                      "items":  [
+                                    "The orchestrator checks idempotency in Redis, asks Risk Service for a verdict, then calls the CBS.",
+                                    "A 2FA verdict or a high amount triggers an OTP through Notification Service before funds move."
+                                ]
+                  },
+                  {
+                      "dot":  "cyan",
+                      "title":  "Observability",
+                      "items":  [
+                                    "Every service ships traces and logs to a Datadog agent on banking-net (not drawn to keep the map readable)."
+                                ]
+                  }
+              ]
+}

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Breaking Point · AuraBank on Azure</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h4l3-9 4 12 3-7h4" /></svg>
+    <div><h1>Breaking Point</h1><p>AuraBank on Azure · discrete-event load lab, Breakscale method</p></div>
+  </div>
+  <div class="seg" role="tablist" aria-label="Architecture">
+    <button role="tab" data-arch="actual" aria-selected="true">Actual <span>as deployed</span></button>
+    <button role="tab" data-arch="ideal" aria-selected="false">Ideal <span>BFF target</span></button>
+  </div>
+  <div class="transport">
+    <button id="play" class="btn icon" aria-label="Pause simulation"><svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg></button>
+    <label class="speed">Speed
+      <select id="speed"><option value="1">1×</option><option value="2" selected>2×</option><option value="5">5×</option><option value="10">10×</option></select>
+    </label>
+    <button id="reset" class="btn">Reset</button>
+    <button id="sweep" class="btn primary">Run capacity sweep</button>
+  </div>
+</header>
+
+<main class="grid">
+  <aside class="panel controls" aria-label="Load and failure controls">
+    <section>
+      <h2>Scenario</h2>
+      <div id="scenarios" class="scenarios"></div>
+    </section>
+    <section>
+      <h2>Load</h2>
+      <div class="field"><label for="rps">Transfers / s</label><output id="rpsOut"></output>
+        <input id="rps" type="range" min="1" max="800" step="1"></div>
+      <div class="field"><label for="readRps">Dashboard reads / s</label><output id="readRpsOut"></output>
+        <input id="readRps" type="range" min="0" max="800" step="1"></div>
+      <div class="field"><label for="hotMerchantPct">Paying one QR merchant</label><output id="hotMerchantPctOut"></output>
+        <input id="hotMerchantPct" type="range" min="0" max="80" step="5"></div>
+    </section>
+    <section>
+      <h2>Failure injection</h2>
+      <div class="field"><label for="riskExtraMs">Risk service slowdown</label><output id="riskExtraMsOut"></output>
+        <input id="riskExtraMs" type="range" min="0" max="3000" step="50"></div>
+    </section>
+    <section id="fixes">
+      <h2>What-if fixes <small>actual only</small></h2>
+      <label class="check"><input type="checkbox" data-fix="fixRateKeyByUser"> Rate-limit by user, not node IP</label>
+      <label class="check"><input type="checkbox" data-fix="fixRiskOutsideTx"> Score risk before taking locks</label>
+      <label class="check"><input type="checkbox" data-fix="fixRiskReplicas"> 3 risk replicas at 1 vCPU</label>
+      <label class="check"><input type="checkbox" data-fix="fixSqlS3"> Azure SQL Basic → Standard S3</label>
+    </section>
+  </aside>
+
+  <section class="stage" aria-label="Architecture under load">
+    <div class="stage-head">
+      <h2 id="archTitle">Actual Azure deployment</h2>
+      <p id="archSub"></p>
+      <div class="legend"><span class="ok">healthy</span><span class="warn">&gt; 70% busy</span><span class="hot">saturated</span></div>
+    </div>
+    <svg id="topo" viewBox="0 0 1000 520" role="img" aria-labelledby="archTitle"></svg>
+    <div class="charts">
+      <figure><figcaption>Outcomes per second <span id="mixLegend" class="mini-legend"></span></figcaption><canvas id="cMix"></canvas></figure>
+      <figure><figcaption>Transfer latency, ms (log)</figcaption><canvas id="cLat"></canvas></figure>
+      <figure><figcaption>Saturation of the binding resources</figcaption><canvas id="cSat"></canvas></figure>
+    </div>
+  </section>
+
+  <aside class="panel insights" aria-label="Measured results">
+    <div class="kpis" id="kpis"></div>
+    <h2>Where it breaks, and why</h2>
+    <ol id="findings" class="findings" aria-live="polite"></ol>
+  </aside>
+</main>
+
+<section id="sweepBox" class="panel sweep" aria-labelledby="sweepTitle" hidden>
+  <div class="sweep-head"><h2 id="sweepTitle">Capacity sweep: offered load vs. what actually settles</h2>
+    <p id="sweepNote" class="note"></p></div>
+  <canvas id="cSweep"></canvas>
+</section>
+<script src="engine.js"></script>
+<script src="findings.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

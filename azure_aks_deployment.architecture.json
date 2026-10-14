@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "AuraBank on Azure: run_azure.sh Deployment (AKS + Azure SQL + Blob + ACR)",
+    "output": "azure_aks_deployment.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "shell", "type": "cloud", "label": "Azure Cloud Shell", "sublabel": "bash run_azure.sh", "pos": [30, 30], "size": [140, 56], "tag": "az + kubectl, idempotent" },
+    { "id": "acr", "type": "cloud", "label": "Container Registry", "sublabel": "acraurabank<id> Basic", "brand": "docker", "pos": [30, 135], "size": [140, 56], "tag": "9 images, :latest + src tag" },
+
+    { "id": "staffbrowser", "type": "external", "label": "Staff Browser", "sublabel": "Admin console", "pos": [30, 215], "size": [140, 62], "tag": "Bank ops" },
+    { "id": "mobile", "type": "frontend", "label": "Mobile App", "sublabel": "Flutter, Azure Cloud mode", "pos": [30, 405], "size": [140, 62], "tag": "gateway IP pasted in app" },
+    { "id": "custbrowser", "type": "external", "label": "Customer Browser", "sublabel": "Web portal", "pos": [30, 595], "size": [140, 62], "tag": "Retail customer" },
+
+    { "id": "aks", "type": "cloud", "label": "AKS aks-aurabank", "sublabel": "2 x Standard_B2s, max 4", "brand": "kubernetes", "pos": [265, 40], "size": [160, 62], "tag": "namespace banking" },
+    { "id": "staff", "type": "frontend", "label": "Staff Console", "sublabel": "banking-frontend LB :80", "brand": "react", "pos": [265, 215], "size": [160, 62], "tag": "public IP" },
+    { "id": "gateway", "type": "security", "label": "API Gateway", "sublabel": "gateway-service LB :8080", "brand": "spring", "pos": [265, 405], "size": [160, 62], "tag": "public IP, JWT" },
+    { "id": "web", "type": "frontend", "label": "Customer Web Portal", "sublabel": "aurabank-web LB :80", "pos": [265, 595], "size": [160, 62], "tag": "public IP" },
+
+    { "id": "cron", "type": "backend", "label": "COB CronJob", "sublabel": "curl, 0 21 * * *", "pos": [755, 40], "size": [160, 56], "tag": "cbs-cob-batch-trigger" },
+    { "id": "cbs", "type": "backend", "label": "T24 Mock CBS", "sublabel": "ClusterIP :8085", "brand": "spring", "pos": [505, 215], "size": [165, 62], "tag": "Flyway builds SQL tables" },
+    { "id": "notif", "type": "backend", "label": "Notification Service", "sublabel": "ClusterIP :8083", "brand": "spring", "pos": [505, 310], "size": [165, 62], "tag": "OTP + receipts" },
+    { "id": "account", "type": "backend", "label": "Account Service", "sublabel": "ClusterIP :8081", "brand": "spring", "pos": [505, 405], "size": [165, 62], "tag": "auth, KYC, accounts" },
+    { "id": "compliance", "type": "backend", "label": "Compliance Service", "sublabel": "ClusterIP :8086", "brand": "spring", "pos": [505, 500], "size": [165, 62], "tag": "reports, DLQ replay" },
+    { "id": "risk", "type": "backend", "label": "Risk Service", "sublabel": "ClusterIP :8084", "brand": "python", "pos": [505, 595], "size": [165, 62], "tag": "fraud + KYC checks" },
+    { "id": "orch", "type": "backend", "label": "Transfer Orchestrator", "sublabel": "ClusterIP :8082", "brand": "spring", "pos": [505, 690], "size": [165, 62], "tag": "saga, mock partner" },
+    { "id": "ddagent", "type": "cloud", "label": "Datadog Agent", "sublabel": "APM :8126", "brand": "datadog", "pos": [755, 690], "size": [160, 62], "tag": "only if real key set" },
+
+    { "id": "redis", "type": "database", "label": "Redis", "sublabel": "redis:7.2 :6379", "brand": "redis", "pos": [265, 810], "size": [130, 62], "tag": "in-cluster" },
+    { "id": "kafka", "type": "messagebus", "label": "Kafka", "sublabel": "KRaft :9092", "brand": "apache-kafka", "pos": [425, 810], "size": [130, 62], "tag": "in-cluster, 1 broker" },
+    { "id": "pg", "type": "database", "label": "Audit Vault", "sublabel": "Postgres 16 :5432", "brand": "postgresql", "pos": [585, 810], "size": [130, 62], "tag": "in-cluster, append-only" },
+    { "id": "mailhog", "type": "cloud", "label": "MailHog", "sublabel": "SMTP :1025 UI :8025", "pos": [745, 810], "size": [130, 62], "tag": "optional public, no auth" },
+
+    { "id": "sql", "type": "database", "label": "Azure SQL Database", "sublabel": "sqldb-master, tier S1", "pos": [995, 215], "size": [160, 252], "tag": "master ledger + users" },
+    { "id": "storage", "type": "cloud", "label": "Storage Account", "sublabel": "compliance-vault", "pos": [995, 500], "size": [160, 157], "tag": "Standard_LRS blob" },
+    { "id": "datadog", "type": "cloud", "label": "Datadog SaaS", "sublabel": "datadoghq.com", "brand": "datadog", "pos": [995, 690], "size": [160, 62], "tag": "external" }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "AKS cluster aks-aurabank / namespace banking",
+      "wraps": ["aks", "staff", "gateway", "web", "cron", "cbs", "notif", "account", "compliance", "risk", "orch", "ddagent", "redis", "kafka", "pg", "mailhog"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Azure managed data services",
+      "wraps": ["sql", "storage"]
+    }
+  ],
+  "connections": [
+    { "id": "shell-acr", "from": "shell", "to": "acr", "label": "acr build", "fromSide": "bottom", "toSide": "top" },
+    { "id": "shell-aks", "from": "shell", "to": "aks", "label": "kubectl", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "id": "acr-aks", "from": "acr", "to": "aks", "label": "image pull", "variant": "dashed", "fromSide": "right", "toSide": "bottom" },
+
+    { "id": "staffbrowser-staff", "from": "staffbrowser", "to": "staff", "label": "HTTP :80", "fromSide": "right", "toSide": "left" },
+    { "id": "mobile-gw", "from": "mobile", "to": "gateway", "label": "HTTP :8080", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "id": "custbrowser-web", "from": "custbrowser", "to": "web", "label": "HTTP :80", "fromSide": "right", "toSide": "left" },
+    { "id": "staff-gw", "from": "staff", "to": "gateway", "label": "/api proxy", "fromSide": "bottom", "toSide": "top" },
+    { "id": "web-gw", "from": "web", "to": "gateway", "label": "/api proxy", "fromSide": "top", "toSide": "bottom" },
+
+    { "id": "gw-notif", "from": "gateway", "to": "notif", "fromSide": "right", "toSide": "left" },
+    { "id": "gw-account", "from": "gateway", "to": "account", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "id": "gw-compliance", "from": "gateway", "to": "compliance", "fromSide": "right", "toSide": "left" },
+    { "id": "gw-orch", "from": "gateway", "to": "orch", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+
+    { "id": "cron-cbs", "from": "cron", "to": "cbs", "label": "daily COB", "variant": "dashed", "fromSide": "left", "toSide": "top" },
+    { "id": "cbs-sql", "from": "cbs", "to": "sql", "label": "ledger, Flyway DDL", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "id": "notif-sql", "from": "notif", "to": "sql", "label": "notifications", "fromSide": "right", "toSide": "left" },
+    { "id": "account-sql", "from": "account", "to": "sql", "label": "users, accounts", "fromSide": "right", "toSide": "left" },
+    { "id": "compliance-storage", "from": "compliance", "to": "storage", "label": "reports", "variant": "dashed", "fromSide": "right", "toSide": "left" },
+    { "id": "risk-storage", "from": "risk", "to": "storage", "label": "documents", "variant": "dashed", "fromSide": "right", "toSide": "left" },
+    { "id": "dd-datadog", "from": "ddagent", "to": "datadog", "label": "APM, logs", "variant": "dashed", "fromSide": "right", "toSide": "left" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "What run_azure.sh does",
+      "items": [
+        "Run from Cloud Shell. Every step is idempotent: 1 pre-flight (tools, login, resource providers), 2 infra (resource group, Azure SQL, storage, ACR, AKS), 3 cluster (start a paused AKS, scale nodes, secrets, ACR pull access).",
+        "4 database tables come from Flyway inside t24-mock-cbs, 5 az acr build for only the missing images (3 in parallel), 6 deploy dependencies then services, 7 self-heal by adding a node when a pod is Pending (up to MAX_NODES=4), 8 smoke test the gateway, login path and web apps."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Azure resources it creates or reuses",
+      "items": [
+        "Resource group (auto-detected, else rg-aurabank-<id> in southeastasia). Azure SQL server with sqldb-master at S1 and a 0.0.0.0 rule that allows Azure services. Storage account with a compliance-vault container. ACR Basic with admin enabled. AKS tries several VM sizes: Standard_B2s, D2s_v3, B2ms, D4s_v3, D2as_v5.",
+        "Names for SQL, ACR and storage carry a suffix hashed from subscription and resource group so teammates sharing a subscription do not collide.",
+        "banking-secrets holds the SQL, Postgres, storage, JWT and Datadog values; acr-secret is attached to the default service account."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Exposure to review",
+      "items": [
+        "Gateway, staff console and customer web each get a public LoadBalancer IP, and all traffic is plain HTTP. The mobile app is pointed at http://<gateway-ip>:8080.",
+        "MailHog is public with no authentication by default (EXPOSE_MAILHOG=true), so anyone with the IP can read OTP emails. Set EXPOSE_MAILHOG=false for anything beyond testing.",
+        "Redis, Postgres, Kafka and MailHog run as single in-cluster pods, not Azure PaaS. Gateway also routes to CBS and risk; services use Redis and Kafka as in the C2 diagram."
+      ]
+    }
+  ]
+}

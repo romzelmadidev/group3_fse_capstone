@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "C1 System Context: Retail Banking Platform & Dual-Endpoint T24 CBS",
+    "title": "C1 System Context: AuraBank Retail Banking Platform",
     "output": "c1_system_context.html",
     "quality_profile": "showcase"
   },
@@ -11,66 +11,132 @@
       "id": "customer",
       "type": "external",
       "label": "Retail Banking Customer",
-      "sublabel": "Flutter Mobile & Web Banking",
-      "pos": [60, 140],
-      "size": [180, 70],
-      "tag": "Transfers & 2FA OTP"
+      "sublabel": "Flutter mobile + web app",
+      "pos": [
+        20,
+        60
+      ],
+      "size": [
+        190,
+        70
+      ],
+      "tag": "Transfers, KYC, OTP"
     },
     {
-      "id": "admin",
+      "id": "staff",
       "type": "external",
       "label": "Bank Ops & Compliance",
-      "sublabel": "React Web Admin Portal",
-      "pos": [60, 320],
-      "size": [180, 70],
-      "tag": "Auditing & KYC"
+      "sublabel": "React Admin Console :3000",
+      "brand": "react",
+      "pos": [
+        20,
+        200
+      ],
+      "size": [
+        190,
+        70
+      ],
+      "tag": "KYC review, reversals"
     },
     {
-      "id": "banking_platform",
-      "type": "backend",
-      "label": "Retail Banking Platform",
-      "sublabel": "API Gateway & Microservices",
-      "brand": "spring",
-      "pos": [360, 210],
-      "size": [220, 96],
-      "tag": "Saga & Orchestration"
-    },
-    {
-      "id": "t24_cbs",
-      "type": "external",
-      "label": "Temenos T24 CBS",
-      "sublabel": "Core Banking System :9100",
-      "pos": [700, 130],
-      "size": [230, 84],
-      "tag": "1: Transfer | 2: Reversal"
-    },
-    {
-      "id": "notif_gateway",
+      "id": "blob",
       "type": "cloud",
-      "label": "Notification Gateway",
-      "sublabel": "SMTP / MailHog :1025",
-      "pos": [700, 310],
-      "size": [230, 80],
-      "tag": "Email Receipts & OTP"
+      "label": "Azure Blob Storage",
+      "sublabel": "Azurite :10000 locally",
+      "pos": [
+        60,
+        350
+      ],
+      "size": [
+        200,
+        60
+      ],
+      "tag": "KYC docs, filings"
     },
     {
-      "id": "telemetry_cloud",
+      "id": "platform",
+      "type": "backend",
+      "label": "AuraBank Banking Platform",
+      "sublabel": "Gateway :8080 + 6 services",
+      "brand": "spring",
+      "pos": [
+        350,
+        170
+      ],
+      "size": [
+        240,
+        110
+      ],
+      "tag": "Auth, saga, risk, audit"
+    },
+    {
+      "id": "telemetry",
       "type": "cloud",
       "label": "Datadog Monitoring",
-      "sublabel": "APM & Trace Ingest :8126",
+      "sublabel": "APM :8126 / OTLP :4318",
       "brand": "datadog",
-      "pos": [360, 420],
-      "size": [220, 68],
-      "tag": "W3C Distributed Tracing"
+      "pos": [
+        355,
+        350
+      ],
+      "size": [
+        230,
+        60
+      ],
+      "tag": "Traces, logs, metrics"
+    },
+    {
+      "id": "t24",
+      "type": "external",
+      "label": "Temenos T24 CBS",
+      "sublabel": "t24-mock-cbs :8085",
+      "pos": [
+        740,
+        190
+      ],
+      "size": [
+        210,
+        70
+      ],
+      "tag": "EP1 transfer | EP2 reversal"
+    },
+    {
+      "id": "partner",
+      "type": "external",
+      "label": "Partner Bank (CooBS)",
+      "sublabel": "Interbank wire API",
+      "pos": [
+        355,
+        20
+      ],
+      "size": [
+        230,
+        70
+      ],
+      "tag": "Nostro / Vostro"
+    },
+    {
+      "id": "smtp",
+      "type": "cloud",
+      "label": "Email Gateway",
+      "sublabel": "MailHog SMTP :1025",
+      "pos": [
+        740,
+        330
+      ],
+      "size": [
+        210,
+        70
+      ],
+      "tag": "OTP + receipts"
     }
   ],
   "boundaries": [
     {
       "kind": "region",
-      "label": "Enterprise Perimeter & External Boundary",
+      "label": "AuraBank trust boundary",
       "wraps": [
-        "banking_platform",
-        "telemetry_cloud"
+        "platform"
       ]
     }
   ],
@@ -78,65 +144,89 @@
     {
       "id": "cust-to-platform",
       "from": "customer",
-      "to": "banking_platform",
-      "label": "HTTPS :443 / REST",
+      "to": "platform",
+      "label": "HTTPS + JWT",
       "variant": "emphasis",
       "fromSide": "right",
       "toSide": "left"
     },
     {
-      "id": "admin-to-platform",
-      "from": "admin",
-      "to": "banking_platform",
-      "label": "mTLS Audit & KYC",
+      "id": "staff-to-platform",
+      "from": "staff",
+      "to": "platform",
+      "label": "admin API",
       "fromSide": "right",
       "toSide": "left"
     },
     {
-      "id": "platform-to-t24-transfer",
-      "from": "banking_platform",
-      "to": "t24_cbs",
-      "label": "EP1: Funds Transfer",
-      "variant": "emphasis",
-      "fromSide": "right",
-      "toSide": "left"
-    },
-    {
-      "id": "platform-to-t24-reversal",
-      "from": "banking_platform",
-      "to": "t24_cbs",
-      "label": "EP2: Reversal",
-      "variant": "security",
-      "fromSide": "top",
-      "toSide": "top"
-    },
-    {
-      "id": "platform-to-notif",
-      "from": "banking_platform",
-      "to": "notif_gateway",
-      "label": "dispatch OTP & receipts",
-      "variant": "dashed",
-      "fromSide": "right",
-      "toSide": "left"
-    },
-    {
-      "id": "platform-to-telemetry",
-      "from": "banking_platform",
-      "to": "telemetry_cloud",
-      "label": "W3C APM metrics",
+      "id": "platform-to-blob",
+      "from": "platform",
+      "to": "blob",
+      "label": "KYC + reports",
       "variant": "dashed",
       "fromSide": "bottom",
       "toSide": "top"
+    },
+    {
+      "id": "platform-to-telemetry",
+      "from": "platform",
+      "to": "telemetry",
+      "label": "APM traces",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "platform-to-t24-transfer",
+      "from": "platform",
+      "to": "t24",
+      "label": "OFS EP1 + EP2",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "platform-to-partner",
+      "from": "platform",
+      "to": "partner",
+      "label": "wire out / in",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "platform-to-smtp",
+      "from": "platform",
+      "to": "smtp",
+      "label": "OTP + receipts",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "C1 System Context Overview",
+      "title": "People and channels",
       "items": [
-        "Omnichannel Presentation: Mobile Online Banking (Flutter iOS/Android), Web Online Banking (Flutter Web), and Web Admin Portal (React) interact with the Retail Banking Platform over secure HTTPS/TLS with JWT authentication.",
-        "Temenos T24 CBS Dual Ingress: Platform communicates with Temenos T24 via 2 explicit endpoints (Endpoint 1: Real-time Funds Transfer settlement; Endpoint 2: Compensating Reversal).",
-        "Separation of Concerns: The Retail Banking Platform manages customer authentication, transfer orchestration, and saga compensation, offloading master double-entry bookkeeping to T24."
+        "Customers use the Flutter mobile app and the Flutter web portal; both call the platform through the API gateway with a JWT.",
+        "Bank staff use the React admin console (Nginx, :3000) for KYC maker-checker review, reversal approvals and compliance reports."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "External systems",
+      "items": [
+        "Temenos T24 CBS (t24-mock-cbs) is the ledger of record. The orchestrator calls EP1 /funds-transfer to post and EP2 /reversal to compensate, both as OFS text.",
+        "Interbank transfers debit the sender into a Nostro account on CBS, then send the wire to the partner bank. A failed wire triggers a compensating reversal."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Supporting services",
+      "items": [
+        "Email gateway: notification-service sends OTP and receipt mail through SMTP (MailHog in dev and on the AKS test deploy).",
+        "Azure Blob Storage holds KYC documents and generated compliance filings (Azurite locally, a storage account on Azure).",
+        "Datadog receives APM traces, logs and metrics from every service through the Datadog agent."
       ]
     }
   ]

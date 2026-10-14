@@ -2,38 +2,72 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "C2 Container: Retail Banking Platform with Dual-Endpoint T24 CBS",
+    "title": "C2 Container: AuraBank Platform Services and Data Stores",
     "output": "c2_container.html",
     "quality_profile": "showcase"
   },
   "components": [
     {
-      "id": "client_mobile",
+      "id": "mobile",
       "type": "frontend",
-      "label": "Mobile Online Banking",
-      "sublabel": "Flutter (Android/iOS)",
-      "pos": [40, 130],
-      "size": [160, 60],
-      "tag": "Biometrics & Push"
+      "label": "Mobile Banking App",
+      "sublabel": "Flutter Android/iOS",
+      "pos": [
+        38,
+        175
+      ],
+      "size": [
+        140,
+        58
+      ],
+      "tag": "Biometrics, QR scan"
     },
     {
-      "id": "client_web",
+      "id": "web",
       "type": "frontend",
-      "label": "Web Online Banking",
-      "sublabel": "Flutter Web :3000",
-      "pos": [40, 225],
-      "size": [160, 60],
-      "tag": "Customer Web Portal"
+      "label": "Customer Web Portal",
+      "sublabel": "Flutter Web + Nginx",
+      "pos": [
+        38,
+        275
+      ],
+      "size": [
+        140,
+        58
+      ],
+      "tag": "aurabank-customer-web"
     },
     {
-      "id": "client_admin",
+      "id": "admin",
       "type": "frontend",
-      "label": "Web Admin Portal",
-      "sublabel": "React 18 + Vite :3001",
+      "label": "Web Admin Console",
+      "sublabel": "React + Vite :3000",
       "brand": "react",
-      "pos": [40, 320],
-      "size": [160, 60],
-      "tag": "Back-Office Ops"
+      "pos": [
+        38,
+        375
+      ],
+      "size": [
+        140,
+        58
+      ],
+      "tag": "Staff KYC, reversals"
+    },
+    {
+      "id": "datadog",
+      "type": "cloud",
+      "label": "Datadog Agent",
+      "sublabel": "APM :8126 OTLP :4318",
+      "brand": "datadog",
+      "pos": [
+        250,
+        125
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "Traces, logs, metrics"
     },
     {
       "id": "gateway",
@@ -41,239 +75,513 @@
       "label": "API Gateway",
       "sublabel": "Spring Cloud :8080",
       "brand": "spring",
-      "pos": [260, 210],
-      "size": [160, 64],
-      "tag": "JWT & Rate Limiter"
+      "pos": [
+        250,
+        260
+      ],
+      "size": [
+        150,
+        90
+      ],
+      "tag": "JWT, rate limit"
     },
     {
-      "id": "redis_cache",
+      "id": "redis",
       "type": "database",
       "label": "Redis Cache",
-      "sublabel": "Redis 7 Alpine :6379",
+      "sublabel": "Redis 7.2 :6379",
       "brand": "redis",
-      "pos": [260, 370],
-      "size": [160, 60],
-      "tag": "Token Blacklist & OTP"
+      "pos": [
+        250,
+        425
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "tag": "Sessions, idempotency"
     },
     {
-      "id": "acc_svc",
+      "id": "insight",
+      "type": "external",
+      "label": "Redis Insight",
+      "sublabel": "GUI :5540",
+      "pos": [
+        250,
+        545
+      ],
+      "size": [
+        150,
+        50
+      ],
+      "tag": "dev tool"
+    },
+    {
+      "id": "account",
       "type": "backend",
-      "label": "Account & Auth Svc",
+      "label": "Account Service",
       "sublabel": "Spring Boot :8081",
       "brand": "spring",
-      "pos": [520, 150],
-      "size": [170, 64],
-      "tag": "KYC & User Profiles"
+      "pos": [
+        500,
+        135
+      ],
+      "size": [
+        165,
+        62
+      ],
+      "tag": "/auth /kyc /accounts"
     },
     {
-      "id": "tx_orchestrator",
+      "id": "orch",
       "type": "backend",
       "label": "Transfer Orchestrator",
       "sublabel": "Spring Boot :8082",
       "brand": "spring",
-      "pos": [520, 280],
-      "size": [170, 68],
-      "tag": "Saga & T24 Dispatcher"
+      "pos": [
+        500,
+        255
+      ],
+      "size": [
+        165,
+        62
+      ],
+      "tag": "/transfers /reversals"
     },
     {
-      "id": "kafka_bus",
-      "type": "messagebus",
-      "label": "Kafka Event Bus",
-      "sublabel": "KRaft Broker :9092",
-      "brand": "apache-kafka",
-      "pos": [780, 200],
-      "size": [170, 64],
-      "tag": "Command & Event Topics"
-    },
-    {
-      "id": "notif_svc",
+      "id": "compliance",
       "type": "backend",
-      "label": "Notification Svc",
+      "label": "Compliance Service",
+      "sublabel": "Spring Boot :8086",
+      "brand": "spring",
+      "pos": [
+        500,
+        385
+      ],
+      "size": [
+        165,
+        62
+      ],
+      "tag": "PDF/Excel, CTR, DLQ"
+    },
+    {
+      "id": "notif",
+      "type": "backend",
+      "label": "Notification Service",
       "sublabel": "Spring Boot :8083",
       "brand": "spring",
-      "pos": [780, 360],
-      "size": [170, 64],
-      "tag": "Email 2FA & Alerts"
+      "pos": [
+        500,
+        505
+      ],
+      "size": [
+        165,
+        62
+      ],
+      "tag": "OTP mail, SSE stream"
     },
     {
-      "id": "cbs_master_db",
-      "type": "database",
-      "label": "CBS Master Ledger DB",
-      "sublabel": "Azure SQL :1433",
-      "pos": [1050, 140],
-      "size": [180, 60],
-      "tag": "Double-Entry Master"
+      "id": "mailhog",
+      "type": "cloud",
+      "label": "MailHog",
+      "sublabel": "SMTP :1025 UI :8025",
+      "pos": [
+        500,
+        610
+      ],
+      "size": [
+        165,
+        56
+      ],
+      "tag": "Mock mail server"
     },
     {
-      "id": "t24_cbs",
+      "id": "drive",
+      "type": "external",
+      "label": "Azurite Drive",
+      "sublabel": "Nginx GUI :10005",
+      "pos": [
+        770,
+        50
+      ],
+      "size": [
+        150,
+        50
+      ],
+      "tag": "dev tool"
+    },
+    {
+      "id": "azurite",
+      "type": "cloud",
+      "label": "Azurite Blob",
+      "sublabel": "Blob :10000",
+      "pos": [
+        770,
+        136
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "tag": "KYC vault, reports"
+    },
+    {
+      "id": "risk",
       "type": "backend",
-      "label": "Temenos T24 CBS",
-      "sublabel": "Core Engine :9100",
-      "pos": [1050, 260],
-      "size": [180, 68],
-      "tag": "EP1: Transfer | EP2: Reverse"
+      "label": "Risk Service",
+      "sublabel": "FastAPI :8084",
+      "brand": "python",
+      "pos": [
+        770,
+        220
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "tag": "NanoJev, KYC OCR"
     },
     {
-      "id": "audit_db",
+      "id": "cbs",
+      "type": "backend",
+      "label": "T24 Mock CBS",
+      "sublabel": "Spring Boot :8085",
+      "brand": "spring",
+      "pos": [
+        770,
+        325
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "Ledger, COB, Flyway"
+    },
+    {
+      "id": "kafka",
+      "type": "messagebus",
+      "label": "Kafka Broker",
+      "sublabel": "KRaft :9092",
+      "brand": "apache-kafka",
+      "pos": [
+        770,
+        465
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "tag": "banking.* topics"
+    },
+    {
+      "id": "kafkaui",
+      "type": "external",
+      "label": "Kafka UI",
+      "sublabel": "GUI :8089",
+      "pos": [
+        770,
+        570
+      ],
+      "size": [
+        150,
+        50
+      ],
+      "tag": "dev tool"
+    },
+    {
+      "id": "oracle",
       "type": "database",
-      "label": "Immutable Audit Vault",
-      "sublabel": "PostgreSQL 16 :5432",
+      "label": "Master Ledger DB",
+      "sublabel": "Oracle XE :1521",
+      "pos": [
+        1010,
+        125
+      ],
+      "size": [
+        160,
+        280
+      ],
+      "tag": "Azure SQL on AKS"
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "Audit Vault",
+      "sublabel": "PostgreSQL 16 :5433",
       "brand": "postgresql",
-      "pos": [1050, 390],
-      "size": [180, 64],
-      "tag": "Append-Only Trail"
+      "pos": [
+        1010,
+        445
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "tag": "Merkle-anchored audit"
+    },
+    {
+      "id": "adminer",
+      "type": "external",
+      "label": "Adminer",
+      "sublabel": "DB GUI :8088",
+      "pos": [
+        1010,
+        570
+      ],
+      "size": [
+        160,
+        50
+      ],
+      "tag": "dev tool"
     }
   ],
   "boundaries": [
     {
       "kind": "region",
-      "label": "Client Presentation Tier",
+      "label": "Client presentation tier",
       "wraps": [
-        "client_mobile",
-        "client_web",
-        "client_admin"
+        "mobile",
+        "web",
+        "admin"
       ]
     },
     {
       "kind": "region",
-      "label": "Core Banking Microservice & Persistence Tier (banking-net)",
+      "label": "banking-net (Docker bridge) / AKS namespace banking",
       "wraps": [
+        "datadog",
         "gateway",
-        "redis_cache",
-        "acc_svc",
-        "tx_orchestrator",
-        "kafka_bus",
-        "notif_svc",
-        "t24_cbs",
-        "cbs_master_db",
-        "audit_db"
-      ]
-    },
-    {
-      "kind": "security-group",
-      "label": "Temenos Core Banking Subsystem",
-      "wraps": [
-        "t24_cbs",
-        "cbs_master_db"
+        "redis",
+        "insight",
+        "account",
+        "orch",
+        "compliance",
+        "notif",
+        "mailhog",
+        "drive",
+        "azurite",
+        "risk",
+        "cbs",
+        "kafka",
+        "kafkaui",
+        "oracle",
+        "postgres",
+        "adminer"
       ]
     }
   ],
   "connections": [
     {
-      "id": "mobile-to-gateway",
-      "from": "client_mobile",
+      "id": "mobile-gw",
+      "from": "mobile",
       "to": "gateway",
-      "label": "HTTPS :443",
       "fromSide": "right",
       "toSide": "left"
     },
     {
-      "id": "web-to-gateway",
-      "from": "client_web",
+      "id": "web-gw",
+      "from": "web",
       "to": "gateway",
-      "label": "HTTPS :443",
       "fromSide": "right",
       "toSide": "left"
     },
     {
-      "id": "admin-to-gateway",
-      "from": "client_admin",
+      "id": "admin-gw",
+      "from": "admin",
       "to": "gateway",
-      "label": "HTTPS :443",
       "fromSide": "right",
       "toSide": "left"
     },
     {
-      "id": "gateway-to-redis",
+      "id": "gw-datadog",
       "from": "gateway",
-      "to": "redis_cache",
-      "label": "rate limits",
-      "fromSide": "bottom",
-      "toSide": "top"
-    },
-    {
-      "id": "gateway-to-acc",
-      "from": "gateway",
-      "to": "acc_svc",
-      "label": "route /auth/*",
-      "fromSide": "right",
-      "toSide": "left"
-    },
-    {
-      "id": "gateway-to-tx",
-      "from": "gateway",
-      "to": "tx_orchestrator",
-      "label": "route /tx/*",
-      "variant": "emphasis",
-      "fromSide": "right",
-      "toSide": "left"
-    },
-    {
-      "id": "acc-to-redis",
-      "from": "acc_svc",
-      "to": "redis_cache",
-      "label": "token family",
-      "variant": "security",
-      "fromSide": "bottom",
-      "toSide": "right"
-    },
-    {
-      "id": "tx-to-redis",
-      "from": "tx_orchestrator",
-      "to": "redis_cache",
-      "label": "idempotency",
-      "fromSide": "bottom",
-      "toSide": "right"
-    },
-    {
-      "id": "tx-to-t24-transfer",
-      "from": "tx_orchestrator",
-      "to": "t24_cbs",
-      "label": "EP1: /funds-transfer",
-      "variant": "emphasis",
-      "fromSide": "right",
-      "toSide": "left"
-    },
-    {
-      "id": "tx-to-t24-reversal",
-      "from": "tx_orchestrator",
-      "to": "t24_cbs",
-      "label": "EP2: /reversal",
-      "variant": "security",
-      "fromSide": "top",
-      "toSide": "top"
-    },
-    {
-      "id": "t24-to-cbs-db",
-      "from": "t24_cbs",
-      "to": "cbs_master_db",
-      "label": "ledger row lock",
-      "variant": "emphasis",
+      "to": "datadog",
+      "label": "traces from every service",
+      "variant": "dashed",
       "fromSide": "top",
       "toSide": "bottom"
     },
     {
-      "id": "tx-to-kafka",
-      "from": "tx_orchestrator",
-      "to": "kafka_bus",
-      "label": "outbox events",
+      "id": "gw-redis",
+      "from": "gateway",
+      "to": "redis",
+      "label": "rate limit, blacklist",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "insight-redis",
+      "from": "insight",
+      "to": "redis",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "gw-account",
+      "from": "gateway",
+      "to": "account",
+      "variant": "emphasis",
       "fromSide": "right",
       "toSide": "left"
     },
     {
-      "id": "kafka-to-audit",
-      "from": "kafka_bus",
-      "to": "audit_db",
-      "label": "audit stream",
+      "id": "gw-orch",
+      "from": "gateway",
+      "to": "orch",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "gw-compliance",
+      "from": "gateway",
+      "to": "compliance",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "gw-notif",
+      "from": "gateway",
+      "to": "notif",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "account-azurite",
+      "from": "account",
+      "to": "azurite",
+      "label": "KYC docs",
       "variant": "dashed",
       "fromSide": "right",
       "toSide": "left"
     },
     {
-      "id": "kafka-to-notif",
-      "from": "kafka_bus",
-      "to": "notif_svc",
-      "label": "customer.otp",
+      "id": "drive-azurite",
+      "from": "drive",
+      "to": "azurite",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "account-risk",
+      "from": "account",
+      "to": "risk",
+      "label": "KYC eval",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "orch-risk",
+      "from": "orch",
+      "to": "risk",
+      "label": "score",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "orch-cbs",
+      "from": "orch",
+      "to": "cbs",
+      "label": "OFS EP1/EP2",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "compliance-cbs",
+      "from": "compliance",
+      "to": "cbs",
+      "label": "report data",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "account-oracle",
+      "from": "account",
+      "to": "oracle",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "top",
+      "via": [
+        [
+          582.5,
+          40
+        ],
+        [
+          1090,
+          40
+        ]
+      ]
+    },
+    {
+      "id": "cbs-oracle",
+      "from": "cbs",
+      "to": "oracle",
+      "label": "ledger",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "cbs-postgres",
+      "from": "cbs",
+      "to": "postgres",
+      "label": "audit",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "adminer-postgres",
+      "from": "adminer",
+      "to": "postgres",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "cbs-kafka",
+      "from": "cbs",
+      "to": "kafka",
+      "label": "outbox events",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "kafka-compliance",
+      "from": "kafka",
+      "to": "compliance",
+      "label": "consume",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "kafka-notif",
+      "from": "kafka",
+      "to": "notif",
+      "label": "consume",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "kafkaui-kafka",
+      "from": "kafkaui",
+      "to": "kafka",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "notif-mailhog",
+      "from": "notif",
+      "to": "mailhog",
+      "label": "SMTP",
       "variant": "dashed",
       "fromSide": "bottom",
       "toSide": "top"
@@ -281,19 +589,29 @@
   ],
   "cards": [
     {
-      "dot": "emerald",
-      "title": "Dual-Storage Ledger & Audit Vault Architecture",
+      "dot": "cyan",
+      "title": "Edge and routing",
       "items": [
-        "Master Operational DB (Azure SQL :1433): Dedicated to Temenos T24 CBS for double-entry financial journals and row-level pessimistic balance locks (UPDLOCK, ROWLOCK).",
-        "Immutable Regulatory Vault (PostgreSQL 16 :5432): Asynchronously streams events from Kafka, enforcing an append-only audit trail with DB triggers blocking UPDATE and DELETE."
+        "Clients reach one entry point: the Spring Cloud Gateway on :8080. It verifies the JWT, checks the Redis token blacklist and applies per-user Redis rate limits.",
+        "Routes: account (auth, kyc, accounts, users), orchestrator (transfers, reversals, interbank), compliance, notification (REST + /ws), plus pass-through routes to CBS /api/v1/cbs, risk /api/v1/risk and the MailHog API."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Dependencies not drawn as arrows",
+      "items": [
+        "Redis is also used by account (sessions, OTP), orchestrator (idempotency lock, biometric challenge, cool-off), CBS, notification and compliance (ShedLock).",
+        "Oracle XE is shared by account, notification and CBS in dev; on AKS the same schemas live in Azure SQL. Notification also persists to it.",
+        "Compliance writes generated reports to Azurite. Orchestrator calls account for limits and publishes failed transfers to banking.transfers.dlq. Every JVM and Python service sends traces to the Datadog agent."
       ]
     },
     {
       "dot": "amber",
-      "title": "Temenos T24 CBS Dual-Endpoint Architecture",
+      "title": "Ledger and audit path",
       "items": [
-        "Endpoint 1 (/api/v1/t24/funds-transfer): Ingests validated transfer commands and executes atomic debit/credit balance mutations in Azure SQL Master DB (:1433).",
-        "Endpoint 2 (/api/v1/t24/reversal): Executes compensating financial reversals if downstream notifications, network timeouts, or OTP verifications abort the transaction saga."
+        "CBS posts OFS transfers and reversals on the master DB with pessimistic row locks, then writes an outbox row and publishes to banking.transfers.events.",
+        "CBS also consumes that topic (group cbs-audit-workers) and appends Merkle-hashed rows to the PostgreSQL audit vault. Notification and compliance consume the same topic.",
+        "Dev tools (Redis Insight, Kafka UI, Adminer, Azurite Drive) exist only in the local compose stack."
       ]
     }
   ]

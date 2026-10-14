@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AuraBank Breakscale Simulator | Systems Bottleneck & Concurrency Lab</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --surface: #111827;
+      --surface-elevated: #1f2937;
+      --border: #374151;
+      --border-accent: #4f46e5;
+      --text: #f9fafb;
+      --text-muted: #9ca3af;
+      --text-dim: #6b7280;
+      --green: #10b981;
+      --yellow: #f59e0b;
+      --red: #ef4444;
+      --blue: #3b82f6;
+      --purple: #8b5cf6;
+      --cyan: #06b6d4;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Header */
+    header {
+      height: 56px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      flex-shrink: 0;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-badge {
+      background: linear-gradient(135deg, #4f46e5, #06b6d4);
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+    }
+    .brand-title {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .sim-toggle-btn {
+      background: var(--green);
+      color: #052e16;
+      font-weight: 600;
+      font-size: 13px;
+      padding: 6px 16px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+    .sim-toggle-btn:hover { filter: brightness(1.1); }
+    .sim-toggle-btn.paused { background: var(--yellow); color: #451a03; }
+
+    /* Main Layout */
+    .app-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* Left Sidebar: Controls & Presets */
+    .sidebar {
+      width: 320px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-dim);
+      padding: 14px 16px 8px;
+    }
+    .preset-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 0 12px 12px;
+    }
+    .preset-btn {
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .preset-btn:hover {
+      border-color: var(--border-accent);
+      background: #283347;
+    }
+    .preset-btn.active {
+      border-color: var(--border-accent);
+      background: rgba(79, 70, 229, 0.15);
+    }
+    .preset-btn small {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    /* Parameter Controls */
+    .control-group {
+      padding: 0 16px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .control-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .control-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .control-val {
+      font-family: var(--font-mono);
+      color: var(--cyan);
+      font-weight: 600;
+    }
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--border-accent);
+      height: 4px;
+      background: var(--surface-elevated);
+      border-radius: 2px;
+      cursor: pointer;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px 0;
+    }
+
+    /* Center: Topology Canvas */
+    .canvas-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: #060911;
+      position: relative;
+      overflow: hidden;
+    }
+    .canvas-container {
+      flex: 1;
+      position: relative;
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Bottom: Live Diagnostic HUD & Telemetry */
+    .hud-panel {
+      height: 180px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-shrink: 0;
+    }
+    .metrics-col {
+      width: 320px;
+      border-right: 1px solid var(--border);
+      padding: 12px 16px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .metric-card {
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .metric-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-dim);
+    }
+    .metric-value {
+      font-family: var(--font-mono);
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text);
+      margin-top: 2px;
+    }
+    .metric-value.good { color: var(--green); }
+    .metric-value.warn { color: var(--yellow); }
+    .metric-value.bad { color: var(--red); }
+
+    .diagnostic-col {
+      flex: 1;
+      padding: 12px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      overflow-y: auto;
+    }
+    .diagnostic-badge {
+      align-self: flex-start;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+    }
+    .diagnostic-badge.normal { background: rgba(16, 185, 129, 0.2); color: var(--green); }
+    .diagnostic-badge.bottleneck { background: rgba(239, 68, 68, 0.2); color: var(--red); }
+    .diagnostic-badge.warning { background: rgba(245, 158, 11, 0.2); color: var(--yellow); }
+
+    .diagnostic-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .diagnostic-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .diagnostic-remedy {
+      font-size: 12px;
+      color: var(--cyan);
+      font-family: var(--font-mono);
+      margin-top: 2px;
+    }
+
+    /* Node info tooltip */
+    .node-legend {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: rgba(17, 24, 39, 0.85);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 14px;
+      pointer-events: none;
+      backdrop-filter: blur(4px);
+    }
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot-green { background: var(--green); }
+    .dot-yellow { background: var(--yellow); }
+    .dot-red { background: var(--red); }
+  </style>
+</head>
+<body>
+
+  <!-- Top Bar -->
+  <header>
+    <div class="brand">
+      <div class="brand-badge">BREAKSCALE SIMULATOR</div>
+      <div class="brand-title">AuraBank Core Banking: Distributed Bottleneck & Concurrency Engine</div>
+    </div>
+    <div class="header-actions">
+      <button id="simToggleBtn" class="sim-toggle-btn">
+        <span id="simToggleIcon">⏸</span> <span id="simToggleText">Pause Simulation</span>
+      </button>
+      <button id="resetSimBtn" class="preset-btn" style="padding: 6px 12px; font-size: 12px;">Reset</button>
+    </div>
+  </header>
+
+  <div class="app-container">
+    <!-- Left Sidebar: Controls & Bottleneck Scenarios -->
+    <aside class="sidebar">
+      <div class="section-title">Pre-Configured Failure Scenarios</div>
+      <div class="preset-group">
+        <button class="preset-btn active" onclick="loadPreset('baseline')">
+          <strong>1. Healthy Baseline Load</strong>
+          <small>8 RPS, sub-50ms SLA, zero drops, green across all tiers</small>
+        </button>
+        <button class="preset-btn" onclick="loadPreset('row_lock')">
+          <strong>2. Hot Account Row Lock (UPDLOCK)</strong>
+          <small>85 RPS, 280ms lock wait, HikariCP pool 100% starved</small>
+        </button>
+        <button class="preset-btn" onclick="loadPreset('nlp_stall')">
+          <strong>3. Risk Engine NLP Stall + Retry Storm</strong>
+          <small>Stage B transformer slows to 450ms, clients retry, thread pool collapse</small>
+        </button>
+        <button class="preset-btn" onclick="loadPreset('gateway_429')">
+          <strong>4. Gateway Rate Limiter Throttling</strong>
+          <small>60 RPS burst against Redis token bucket (10 RPS limit), perimeter 429 drops</small>
+        </button>
+        <button class="preset-btn" onclick="loadPreset('circuit_breaker')">
+          <strong>5. Partner Bank Timeout + DLQ Cascade</strong>
+          <small>External bank 504 errors trip Resilience4j, traffic offloaded to Kafka DLQ</small>
+        </button>
+      </div>
+
+      <div class="section-title">Live Injection Parameters</div>
+      <div class="control-group">
+        <div class="control-item">
+          <div class="control-header">
+            <span>Client Offered Load</span>
+            <span id="valTrafficRps" class="control-val">8 RPS</span>
+          </div>
+          <input type="range" id="sliderTrafficRps" min="1" max="150" value="8" oninput="updateParam('trafficRps', this.value)">
+        </div>
+
+        <div class="control-item">
+          <div class="control-header">
+            <span>Gateway Rate Limit</span>
+            <span id="valGatewayLimit" class="control-val">10 req/s</span>
+          </div>
+          <input type="range" id="sliderGatewayLimit" min="5" max="100" value="10" oninput="updateParam('gatewayReplenish', this.value)">
+        </div>
+
+        <div class="control-item">
+          <div class="control-header">
+            <span>Risk Engine NLP Latency</span>
+            <span id="valRiskLatency" class="control-val">25 ms</span>
+          </div>
+          <input type="range" id="sliderRiskLatency" min="5" max="800" value="25" oninput="updateParam('riskLatency', this.value)">
+        </div>
+
+        <div class="control-item">
+          <div class="control-header">
+            <span>Azure SQL Pool Size (HikariCP)</span>
+            <span id="valHikariPool" class="control-val">20 conns</span>
+          </div>
+          <input type="range" id="sliderHikariPool" min="5" max="50" value="20" oninput="updateParam('hikariPool', this.value)">
+        </div>
+
+        <div class="control-item">
+          <div class="control-header">
+            <span>Hot Account Lock Penalty (UPDLOCK)</span>
+            <span id="valLockPenalty" class="control-val">0 ms</span>
+          </div>
+          <input type="range" id="sliderLockPenalty" min="0" max="400" value="0" oninput="updateParam('lockPenalty', this.value)">
+        </div>
+
+        <div class="control-item">
+          <div class="control-header">
+            <span>Partner Bank Latency / Error</span>
+            <span id="valPartnerLatency" class="control-val">180 ms</span>
+          </div>
+          <input type="range" id="sliderPartnerLatency" min="100" max="2500" value="180" oninput="updateParam('partnerLatency', this.value)">
+        </div>
+
+        <label class="toggle-row">
+          <span>Client Retry Storm Mode</span>
+          <input type="checkbox" id="chkRetryStorm" onchange="updateParam('retryStorm', this.checked)">
+        </label>
+      </div>
+    </aside>
+
+    <!-- Canvas Panel -->
+    <main class="canvas-panel">
+      <div class="node-legend">
+        <div class="legend-item"><div class="legend-dot dot-green"></div> Optimal (< 50%)</div>
+        <div class="legend-item"><div class="legend-dot dot-yellow"></div> Loaded (50–80%)</div>
+        <div class="legend-item"><div class="legend-dot dot-red"></div> Saturated (> 80% / Queue Full)</div>
+      </div>
+      <div class="canvas-container" id="canvasContainer">
+        <canvas id="simCanvas"></canvas>
+      </div>
+
+      <!-- Bottom HUD -->
+      <div class="hud-panel">
+        <div class="metrics-col">
+          <div class="metric-card">
+            <div class="metric-label">Ingress / Completed</div>
+            <div id="hudRps" class="metric-value">0 / 0 rps</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Success Rate</div>
+            <div id="hudSuccessRate" class="metric-value good">100.0%</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Latency (p50 / p99)</div>
+            <div id="hudLatency" class="metric-value">35 / 55 ms</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Dropped Requests</div>
+            <div id="hudDropped" class="metric-value good">0 (0.0%)</div>
+          </div>
+        </div>
+
+        <div class="diagnostic-col">
+          <div id="diagBadge" class="diagnostic-badge normal">System Healthy</div>
+          <div id="diagTitle" class="diagnostic-title">All Microservices Operating Within 200 ms SLA</div>
+          <div id="diagDesc" class="diagnostic-desc">
+            Traffic is evenly distributed. Gateway token-bucket is absorbing ingress without drops. Database connection pool utilization is low, and downstream message queues are draining without lag.
+          </div>
+          <div id="diagRemedy" class="diagnostic-remedy">Capacity headroom available. Zero architectural action required.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // ------------------------------------------------------------------------
+    // BREAKSCALE DISCRETE-EVENT SIMULATION ENGINE (STANDALONE JS)
+    // ------------------------------------------------------------------------
+
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const container = document.getElementById('canvasContainer');
+
+    function resizeCanvas() {
+      canvas.width = container.clientWidth;
+      canvas.height = container.clientHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Simulation Config State
+    const simConfig = {
+      trafficRps: 8,
+      gatewayReplenish: 10,
+      gatewayBurst: 20,
+      riskLatency: 25,
+      hikariPool: 20,
+      lockPenalty: 0,
+      partnerLatency: 180,
+      partnerFailureRate: 0.0,
+      retryStorm: false,
+      interbankRatio: 0.15,
+      isPaused: false
+    };
+
+    // Architecture Topology Nodes
+    const nodes = {
+      clients: { id: 'clients', name: 'Flutter Clients', sub: 'Mobile / Web App', x: 0.08, y: 0.45, w: 120, h: 56, type: 'source', queue: 0, slots: 0, maxSlots: 100, color: '#38bdf8' },
+      gateway: { id: 'gateway', name: 'API Gateway :8080', sub: 'Token Bucket (10 RPS)', x: 0.24, y: 0.45, w: 130, h: 56, type: 'gateway', queue: 0, slots: 0, maxSlots: 50, color: '#818cf8', tokens: 20 },
+      redis: { id: 'redis', name: 'Redis Cache :6379', sub: 'Idempotency & Sessions', x: 0.24, y: 0.18, w: 130, h: 52, type: 'cache', queue: 0, slots: 0, maxSlots: 500, color: '#ef4444' },
+      orchestrator: { id: 'orchestrator', name: 'Orchestrator :8082', sub: 'Transfer WebClient', x: 0.43, y: 0.45, w: 135, h: 56, type: 'worker', queue: 0, slots: 0, maxSlots: 40, color: '#fbbf24' },
+      riskEngine: { id: 'riskEngine', name: 'Risk Engine :8084', sub: 'XGBoost + Laya NLP', x: 0.43, y: 0.18, w: 135, h: 52, type: 'worker', queue: 0, slots: 0, maxSlots: 12, color: '#a855f7' },
+      circuitBreaker: { id: 'circuitBreaker', name: 'Resilience4j', sub: 'Sliding Window (10)', x: 0.62, y: 0.18, w: 130, h: 52, type: 'cb', state: 'CLOSED', window: [], color: '#10b981' },
+      partnerBank: { id: 'partnerBank', name: 'Partner Bank API', sub: 'Bilateral Nostro Wire', x: 0.82, y: 0.18, w: 130, h: 52, type: 'external', queue: 0, slots: 0, maxSlots: 30, color: '#ec4899' },
+      t24Cbs: { id: 't24Cbs', name: 'T24 Mock CBS :8085', sub: 'Authoritative Enclave', x: 0.62, y: 0.45, w: 130, h: 56, type: 'worker', queue: 0, slots: 0, maxSlots: 25, color: '#34d399' },
+      azureSql: { id: 'azureSql', name: 'Azure SQL Master :1433', sub: 'UPDLOCK / HikariCP', x: 0.82, y: 0.45, w: 140, h: 56, type: 'db', queue: 0, slots: 0, maxSlots: 20, color: '#06b6d4' },
+      kafka: { id: 'kafka', name: 'Kafka Outbox :9092', sub: 'transfers / dlq topics', x: 0.62, y: 0.75, w: 130, h: 52, type: 'queue', queue: 0, slots: 0, maxSlots: 5000, color: '#f97316' },
+      compliance: { id: 'compliance', name: 'Compliance & Audit', sub: 'Postgres Vault :5432', x: 0.82, y: 0.75, w: 140, h: 52, type: 'worker', queue: 0, slots: 0, maxSlots: 50, color: '#6366f1' }
+    };
+
+    // Edges
+    const edges = [
+      { from: 'clients', to: 'gateway' },
+      { from: 'gateway', to: 'redis' },
+      { from: 'gateway', to: 'orchestrator' },
+      { from: 'orchestrator', to: 'riskEngine' },
+      { from: 'orchestrator', to: 'circuitBreaker', condition: 'interbank' },
+      { from: 'circuitBreaker', to: 'partnerBank' },
+      { from: 'orchestrator', to: 't24Cbs' },
+      { from: 't24Cbs', to: 'azureSql' },
+      { from: 't24Cbs', to: 'kafka' },
+      { from: 'kafka', to: 'compliance' }
+    ];
+
+    // Flying packets
+    let packets = [];
+    let metrics = {
+      submittedWindow: 0,
+      completedWindow: 0,
+      droppedWindow: 0,
+      latencies: [],
+      dropReasons: {},
+      lastMetricsTick: performance.now()
+    };
+
+    // PRNG (Mulberry32)
+    let seed = 42;
+    function rand() {
+      seed = (seed + 0x6d2b79f5) >>> 0;
+      let t = seed;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+
+    // Packet creation
+    let lastClientGen = 0;
+    function spawnPackets(now) {
+      if (simConfig.isPaused) return;
+      const interval = 1000 / simConfig.trafficRps;
+      if (now - lastClientGen >= interval) {
+        lastClientGen = now;
+        metrics.submittedWindow++;
+
+        const isInterbank = rand() < simConfig.interbankRatio;
+        packets.push({
+          id: Math.random(),
+          from: 'clients',
+          to: 'gateway',
+          progress: 0,
+          speed: 0.025,
+          isInterbank,
+          startTime: now,
+          status: 'ok'
+        });
+      }
+    }
+
+    // Update Simulation State
+    function updateSimulation(dt) {
+      if (simConfig.isPaused) return;
+
+      // Replenish Gateway Token Bucket
+      nodes.gateway.tokens = Math.min(simConfig.gatewayBurst, nodes.gateway.tokens + (dt / 1000) * simConfig.gatewayReplenish);
+
+      // Advance Packets
+      for (let i = packets.length - 1; i >= 0; i--) {
+        const p = packets[i];
+        p.progress += p.speed;
+
+        if (p.progress >= 1.0) {
+          // Packet arrived at destination
+          packets.splice(i, 1);
+          handleArrival(p);
+        }
+      }
+
+      // Decay / process active slots
+      for (const key of Object.keys(nodes)) {
+        const node = nodes[key];
+        if (node.slots > 0) {
+          node.slots = Math.max(0, node.slots - 0.2);
+        }
+        if (node.queue > 0 && node.slots < node.maxSlots) {
+          const drain = Math.min(node.queue, 1);
+          node.queue -= drain;
+          node.slots += drain;
+        }
+      }
+    }
+
+    function handleArrival(p) {
+      const now = performance.now();
+      const target = nodes[p.to];
+
+      if (p.to === 'gateway') {
+        if (nodes.gateway.tokens < 1.0) {
+          // Dropped at edge!
+          recordDrop('GATEWAY_429');
+          return;
+        }
+        nodes.gateway.tokens -= 1.0;
+        nodes.gateway.slots++;
+
+        // Route to Orchestrator via Redis
+        sendPacket('gateway', 'orchestrator', p.isInterbank, p.startTime);
+      }
+      else if (p.to === 'orchestrator') {
+        if (nodes.orchestrator.slots >= nodes.orchestrator.maxSlots) {
+          if (nodes.orchestrator.queue >= 50) {
+            recordDrop('ORCHESTRATOR_QUEUE_FULL');
+            return;
+          }
+          nodes.orchestrator.queue++;
+        } else {
+          nodes.orchestrator.slots++;
+        }
+
+        // Check timeout
+        if (now - p.startTime > 1500) {
+          recordDrop('TIMEOUT_1500MS');
+          return;
+        }
+
+        // Call Risk Engine
+        sendPacket('orchestrator', 'riskEngine', p.isInterbank, p.startTime);
+      }
+      else if (p.to === 'riskEngine') {
+        nodes.riskEngine.slots++;
+        if (simConfig.riskLatency > 150) {
+          nodes.riskEngine.queue += 0.5;
+        }
+
+        // Simulate Risk Engine Duration then route
+        setTimeout(() => {
+          if (p.isInterbank) {
+            sendPacket('orchestrator', 'circuitBreaker', true, p.startTime);
+          } else {
+            sendPacket('orchestrator', 't24Cbs', false, p.startTime);
+          }
+        }, Math.min(simConfig.riskLatency, 300));
+      }
+      else if (p.to === 'circuitBreaker') {
+        if (nodes.circuitBreaker.state === 'OPEN') {
+          recordDrop('CIRCUIT_OPEN_FAST_FAIL');
+          sendPacket('circuitBreaker', 'kafka', true, p.startTime); // to DLQ
+          return;
+        }
+        sendPacket('circuitBreaker', 'partnerBank', true, p.startTime);
+      }
+      else if (p.to === 'partnerBank') {
+        nodes.partnerBank.slots++;
+        const fail = simConfig.partnerLatency > 1000 || rand() < simConfig.partnerFailureRate;
+        nodes.circuitBreaker.window.push(fail ? 1 : 0);
+        if (nodes.circuitBreaker.window.length > 10) nodes.circuitBreaker.window.shift();
+
+        const failRate = nodes.circuitBreaker.window.reduce((a, b) => a + b, 0) / nodes.circuitBreaker.window.length;
+        if (failRate >= 0.5 && nodes.circuitBreaker.window.length >= 6) {
+          nodes.circuitBreaker.state = 'OPEN';
+        }
+
+        if (fail) {
+          recordDrop('PARTNER_504_TIMEOUT');
+          sendPacket('circuitBreaker', 'kafka', true, p.startTime); // DLQ + Saga rollback
+        } else {
+          recordSuccess(now - p.startTime);
+        }
+      }
+      else if (p.to === 't24Cbs') {
+        nodes.t24Cbs.slots++;
+        sendPacket('t24Cbs', 'azureSql', false, p.startTime);
+      }
+      else if (p.to === 'azureSql') {
+        nodes.azureSql.maxSlots = simConfig.hikariPool;
+
+        if (nodes.azureSql.slots >= nodes.azureSql.maxSlots) {
+          nodes.azureSql.queue++;
+          if (nodes.azureSql.queue > 40) {
+            recordDrop('HIKARI_POOL_EXHAUSTED');
+            return;
+          }
+        } else {
+          nodes.azureSql.slots++;
+        }
+
+        if (simConfig.lockPenalty > 50) {
+          nodes.azureSql.queue += 0.8;
+        }
+
+        // Outbox event to Kafka
+        sendPacket('azureSql', 'kafka', false, p.startTime);
+        recordSuccess(now - p.startTime);
+      }
+      else if (p.to === 'kafka') {
+        nodes.kafka.queue = Math.min(5000, nodes.kafka.queue + 1);
+        sendPacket('kafka', 'compliance', false, p.startTime);
+      }
+      else if (p.to === 'compliance') {
+        nodes.compliance.slots = Math.min(50, nodes.compliance.slots + 1);
+        nodes.kafka.queue = Math.max(0, nodes.kafka.queue - 1);
+      }
+    }
+
+    function sendPacket(from, to, isInterbank, startTime) {
+      packets.push({
+        id: Math.random(),
+        from,
+        to,
+        progress: 0,
+        speed: 0.035,
+        isInterbank,
+        startTime,
+        status: 'ok'
+      });
+    }
+
+    function recordSuccess(lat) {
+      metrics.completedWindow++;
+      metrics.latencies.push(lat);
+      if (metrics.latencies.length > 50) metrics.latencies.shift();
+    }
+
+    function recordDrop(reason) {
+      metrics.droppedWindow++;
+      metrics.dropReasons[reason] = (metrics.dropReasons[reason] || 0) + 1;
+    }
+
+    // ------------------------------------------------------------------------
+    // CANVAS RENDERING
+    // ------------------------------------------------------------------------
+
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw subtle grid
+      ctx.strokeStyle = '#111827';
+      ctx.lineWidth = 1;
+      const gridSize = 40;
+      for (let x = 0; x < canvas.width; x += gridSize) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+      }
+      for (let y = 0; y < canvas.height; y += gridSize) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+      }
+
+      // Draw Edges
+      edges.forEach(e => {
+        const from = nodes[e.from];
+        const to = nodes[e.to];
+        const fx = from.x * canvas.width;
+        const fy = from.y * canvas.height;
+        const tx = to.x * canvas.width;
+        const ty = to.y * canvas.height;
+
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        if (e.condition === 'interbank') {
+          ctx.strokeStyle = '#334155';
+          ctx.setLineDash([4, 4]);
+        }
+        ctx.beginPath();
+        ctx.moveTo(fx, fy);
+        ctx.lineTo(tx, ty);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      });
+
+      // Draw Packets
+      packets.forEach(p => {
+        const from = nodes[p.from];
+        const to = nodes[p.to];
+        const fx = from.x * canvas.width;
+        const fy = from.y * canvas.height;
+        const tx = to.x * canvas.width;
+        const ty = to.y * canvas.height;
+
+        const px = fx + (tx - fx) * p.progress;
+        const py = fy + (ty - fy) * p.progress;
+
+        ctx.fillStyle = p.isInterbank ? '#ec4899' : '#06b6d4';
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(px, py, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      });
+
+      // Draw Nodes
+      Object.keys(nodes).forEach(key => {
+        const n = nodes[key];
+        const nx = n.x * canvas.width;
+        const ny = n.y * canvas.height;
+        const nw = n.w;
+        const nh = n.h;
+
+        // Calculate saturation
+        const util = n.maxSlots ? Math.min(1.0, (n.slots + (n.queue || 0)) / n.maxSlots) : 0;
+        let borderColor = '#374151';
+        let glowColor = 'transparent';
+
+        if (n.id === 'circuitBreaker' && n.state === 'OPEN') {
+          borderColor = '#ef4444';
+          glowColor = 'rgba(239, 68, 68, 0.3)';
+        } else if (util >= 0.85 || (n.queue && n.queue > 15)) {
+          borderColor = '#ef4444';
+          glowColor = 'rgba(239, 68, 68, 0.4)';
+        } else if (util >= 0.5) {
+          borderColor = '#f59e0b';
+          glowColor = 'rgba(245, 158, 11, 0.2)';
+        }
+
+        // Card background
+        ctx.fillStyle = '#111827';
+        if (glowColor !== 'transparent') {
+          ctx.shadowColor = glowColor;
+          ctx.shadowBlur = 12;
+        }
+        ctx.strokeStyle = borderColor;
+        ctx.lineWidth = 1.5;
+        roundRect(ctx, nx - nw / 2, ny - nh / 2, nw, nh, 6, true, true);
+        ctx.shadowBlur = 0;
+
+        // Type bar accent
+        ctx.fillStyle = n.color;
+        roundRect(ctx, nx - nw / 2, ny - nh / 2, nw, 3, { tl: 6, tr: 6, bl: 0, br: 0 }, true, false);
+
+        // Text
+        ctx.fillStyle = '#f9fafb';
+        ctx.font = '600 11px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(n.name, nx, ny - 6);
+
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = '400 9.5px -apple-system, sans-serif';
+        ctx.fillText(n.sub, nx, ny + 8);
+
+        // Utilization / Queue badge
+        if (n.maxSlots && n.type !== 'source') {
+          const pct = Math.round(util * 100);
+          ctx.fillStyle = util > 0.85 ? '#ef4444' : util > 0.5 ? '#f59e0b' : '#10b981';
+          ctx.font = '700 9px monospace';
+          const queueText = n.queue > 0 ? `Q:${Math.round(n.queue)} ` : '';
+          ctx.fillText(`${queueText}${pct}%`, nx, ny + 20);
+        } else if (n.id === 'circuitBreaker') {
+          ctx.fillStyle = n.state === 'OPEN' ? '#ef4444' : '#10b981';
+          ctx.font = '700 9px monospace';
+          ctx.fillText(`STATE: ${n.state}`, nx, ny + 20);
+        }
+      });
+    }
+
+    function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+      if (typeof radius === 'number') {
+        radius = { tl: radius, tr: radius, br: radius, bl: radius };
+      }
+      ctx.beginPath();
+      ctx.moveTo(x + radius.tl, y);
+      ctx.lineTo(x + width - radius.tr, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius.tr);
+      ctx.lineTo(x + width, y + height - radius.br);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius.br, y + height);
+      ctx.lineTo(x + radius.bl, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius.bl);
+      ctx.lineTo(x, y + radius.tl);
+      ctx.quadraticCurveTo(x, y, x + radius.tl, y);
+      ctx.closePath();
+      if (fill) ctx.fill();
+      if (stroke) ctx.stroke();
+    }
+
+    // ------------------------------------------------------------------------
+    // TELEMETRY & DIAGNOSTICS REFRESH
+    // ------------------------------------------------------------------------
+
+    function refreshHUD() {
+      const now = performance.now();
+      if (now - metrics.lastMetricsTick >= 1000) {
+        const sub = metrics.submittedWindow;
+        const comp = metrics.completedWindow;
+        const drop = metrics.droppedWindow;
+
+        document.getElementById('hudRps').innerText = `${sub} / ${comp} rps`;
+
+        const total = comp + drop;
+        const rate = total > 0 ? ((comp / total) * 100).toFixed(1) : '100.0';
+        const rateEl = document.getElementById('hudSuccessRate');
+        rateEl.innerText = `${rate}%`;
+        rateEl.className = rate > 90 ? 'metric-value good' : rate > 60 ? 'metric-value warn' : 'metric-value bad';
+
+        // Latencies
+        const lats = [...metrics.latencies].sort((a, b) => a - b);
+        const p50 = lats.length ? Math.round(lats[Math.floor(lats.length * 0.5)]) : 35;
+        const p99 = lats.length ? Math.round(lats[Math.floor(lats.length * 0.99)]) : 55;
+        document.getElementById('hudLatency').innerText = `${p50} / ${p99} ms`;
+
+        // Drops
+        const dropEl = document.getElementById('hudDropped');
+        dropEl.innerText = `${drop} (${total > 0 ? ((drop / total) * 100).toFixed(1) : 0}%)`;
+        dropEl.className = drop === 0 ? 'metric-value good' : 'metric-value bad';
+
+        // Update Diagnostics
+        updateDiagnosticPanel();
+
+        // Reset 1s window counters
+        metrics.submittedWindow = 0;
+        metrics.completedWindow = 0;
+        metrics.droppedWindow = 0;
+        metrics.lastMetricsTick = now;
+      }
+    }
+
+    function updateDiagnosticPanel() {
+      const badge = document.getElementById('diagBadge');
+      const title = document.getElementById('diagTitle');
+      const desc = document.getElementById('diagDesc');
+      const remedy = document.getElementById('diagRemedy');
+
+      // Check current bottleneck conditions
+      if (nodes.azureSql.queue > 10 || (simConfig.lockPenalty > 150 && simConfig.trafficRps > 30)) {
+        badge.className = 'diagnostic-badge bottleneck';
+        badge.innerText = 'BOTTLENECK: DATABASE ROW LOCK SERIALIZATION';
+        title.innerText = 'Azure SQL Pessimistic Lock (UPDLOCK) & HikariCP Starvation';
+        desc.innerText = 'Concurrent balance updates against hot accounts serialize at the page leaf level. Threads holding UPDLOCK exhaust the HikariCP connection pool, forcing incoming transactions into a queue backup that triggers upstream timeouts.';
+        remedy.innerText = 'Architectural Fix: Implement Redis balance reservation caches or partition hot accounts into credit/debit transaction slots before batch settlement.';
+      }
+      else if (simConfig.riskLatency > 300 || nodes.riskEngine.queue > 10) {
+        badge.className = 'diagnostic-badge bottleneck';
+        badge.innerText = 'BOTTLENECK: SYNCHRONOUS INFERENCE STALL';
+        title.innerText = 'Risk Engine Laya Transformer Slowdown & Ingress Thread Saturation';
+        desc.innerText = 'Synchronous NLP memo analysis is tying up worker threads in the Transfer Orchestrator. When responses exceed client timeouts, unjittered retries form a severe Retry Storm that overwhelms gateway buffers.';
+        remedy.innerText = 'Architectural Fix: Decouple Stage B NLP threat checks into asynchronous post-settlement review, keeping synchronous Stage A tabular scoring under 30ms.';
+      }
+      else if (simConfig.trafficRps > simConfig.gatewayReplenish * 2) {
+        badge.className = 'diagnostic-badge warning';
+        badge.innerText = 'BOTTLENECK: EDGE RATE LIMIT SHEDDING';
+        title.innerText = 'Spring Cloud Gateway Token-Bucket Filter Throttling (HTTP 429)';
+        desc.innerText = `Ingress volume (${simConfig.trafficRps} RPS) exceeds the perimeter Redis token bucket (${simConfig.gatewayReplenish} req/s). Requests are shedding at the edge while downstream Core Banking and Database remain underutilized.`;
+        remedy.innerText = 'Architectural Fix: Autoscale gateway instances or configure tiered rate limiting by customer verification level.';
+      }
+      else if (nodes.circuitBreaker.state === 'OPEN') {
+        badge.className = 'diagnostic-badge bottleneck';
+        badge.innerText = 'BOTTLENECK: DOWNSTREAM PARTNER CIRCUIT OPEN';
+        title.innerText = 'Resilience4j Tripped: Outward Interbank Transfers Dropping to DLQ';
+        desc.innerText = 'External partner bank latency or 5xx errors crossed the 50% threshold over the 10-call sliding window. The circuit breaker is fast-failing calls with 503 to protect core resources and dispatching compensating Saga rollbacks.';
+        remedy.innerText = 'Architectural Fix: Rely on ShedLock background recovery daemon to replay failed transactions from Kafka banking.transfers.dlq once circuit resets.';
+      }
+      else {
+        badge.className = 'diagnostic-badge normal';
+        badge.innerText = 'SYSTEM HEALTHY';
+        title.innerText = 'All Microservices Operating Within 200 ms SLA';
+        desc.innerText = 'Traffic is evenly distributed. Gateway token-bucket is absorbing ingress without drops. Database connection pool utilization is low, and downstream message queues are draining without lag.';
+        remedy.innerText = 'Capacity headroom available. Zero architectural action required.';
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // PRESET SCENARIO HANDLERS
+    // ------------------------------------------------------------------------
+
+    function loadPreset(name) {
+      document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+      event.currentTarget.classList.add('active');
+
+      if (name === 'baseline') {
+        applyConfig({
+          trafficRps: 8,
+          gatewayReplenish: 10,
+          gatewayBurst: 20,
+          riskLatency: 25,
+          hikariPool: 20,
+          lockPenalty: 0,
+          partnerLatency: 180,
+          partnerFailureRate: 0.0,
+          retryStorm: false
+        });
+      }
+      else if (name === 'row_lock') {
+        applyConfig({
+          trafficRps: 85,
+          gatewayReplenish: 90,
+          gatewayBurst: 120,
+          riskLatency: 20,
+          hikariPool: 15,
+          lockPenalty: 280,
+          partnerLatency: 180,
+          partnerFailureRate: 0.0,
+          retryStorm: false
+        });
+      }
+      else if (name === 'nlp_stall') {
+        applyConfig({
+          trafficRps: 50,
+          gatewayReplenish: 80,
+          gatewayBurst: 100,
+          riskLatency: 450,
+          hikariPool: 20,
+          lockPenalty: 0,
+          partnerLatency: 180,
+          partnerFailureRate: 0.0,
+          retryStorm: true
+        });
+      }
+      else if (name === 'gateway_429') {
+        applyConfig({
+          trafficRps: 65,
+          gatewayReplenish: 10,
+          gatewayBurst: 20,
+          riskLatency: 20,
+          hikariPool: 20,
+          lockPenalty: 0,
+          partnerLatency: 180,
+          partnerFailureRate: 0.0,
+          retryStorm: false
+        });
+      }
+      else if (name === 'circuit_breaker') {
+        applyConfig({
+          trafficRps: 30,
+          gatewayReplenish: 50,
+          gatewayBurst: 80,
+          riskLatency: 20,
+          hikariPool: 20,
+          lockPenalty: 0,
+          partnerLatency: 1800,
+          partnerFailureRate: 0.60,
+          retryStorm: false
+        });
+      }
+    }
+
+    function applyConfig(cfg) {
+      Object.assign(simConfig, cfg);
+      document.getElementById('sliderTrafficRps').value = cfg.trafficRps;
+      document.getElementById('valTrafficRps').innerText = `${cfg.trafficRps} RPS`;
+
+      document.getElementById('sliderGatewayLimit').value = cfg.gatewayReplenish;
+      document.getElementById('valGatewayLimit').innerText = `${cfg.gatewayReplenish} req/s`;
+
+      document.getElementById('sliderRiskLatency').value = cfg.riskLatency;
+      document.getElementById('valRiskLatency').innerText = `${cfg.riskLatency} ms`;
+
+      document.getElementById('sliderHikariPool').value = cfg.hikariPool;
+      document.getElementById('valHikariPool').innerText = `${cfg.hikariPool} conns`;
+
+      document.getElementById('sliderLockPenalty').value = cfg.lockPenalty;
+      document.getElementById('valLockPenalty').innerText = `${cfg.lockPenalty} ms`;
+
+      document.getElementById('sliderPartnerLatency').value = cfg.partnerLatency;
+      document.getElementById('valPartnerLatency').innerText = `${cfg.partnerLatency} ms`;
+
+      document.getElementById('chkRetryStorm').checked = cfg.retryStorm;
+
+      // Reset circuit breaker window
+      nodes.circuitBreaker.state = 'CLOSED';
+      nodes.circuitBreaker.window = [];
+    }
+
+    function updateParam(key, val) {
+      if (key === 'trafficRps') {
+        simConfig.trafficRps = parseInt(val, 10);
+        document.getElementById('valTrafficRps').innerText = `${val} RPS`;
+      } else if (key === 'gatewayReplenish') {
+        simConfig.gatewayReplenish = parseInt(val, 10);
+        document.getElementById('valGatewayLimit').innerText = `${val} req/s`;
+      } else if (key === 'riskLatency') {
+        simConfig.riskLatency = parseInt(val, 10);
+        document.getElementById('valRiskLatency').innerText = `${val} ms`;
+      } else if (key === 'hikariPool') {
+        simConfig.hikariPool = parseInt(val, 10);
+        document.getElementById('valHikariPool').innerText = `${val} conns`;
+      } else if (key === 'lockPenalty') {
+        simConfig.lockPenalty = parseInt(val, 10);
+        document.getElementById('valLockPenalty').innerText = `${val} ms`;
+      } else if (key === 'partnerLatency') {
+        simConfig.partnerLatency = parseInt(val, 10);
+        document.getElementById('valPartnerLatency').innerText = `${val} ms`;
+        simConfig.partnerFailureRate = simConfig.partnerLatency > 1000 ? 0.6 : 0.0;
+      } else if (key === 'retryStorm') {
+        simConfig.retryStorm = !!val;
+      }
+    }
+
+    // Toggle simulation pause/play
+    const toggleBtn = document.getElementById('simToggleBtn');
+    toggleBtn.addEventListener('click', () => {
+      simConfig.isPaused = !simConfig.isPaused;
+      if (simConfig.isPaused) {
+        toggleBtn.classList.add('paused');
+        document.getElementById('simToggleIcon').innerText = '▶';
+        document.getElementById('simToggleText').innerText = 'Resume Simulation';
+      } else {
+        toggleBtn.classList.remove('paused');
+        document.getElementById('simToggleIcon').innerText = '⏸';
+        document.getElementById('simToggleText').innerText = 'Pause Simulation';
+      }
+    });
+
+    // Reset button
+    document.getElementById('resetSimBtn').addEventListener('click', () => {
+      packets = [];
+      metrics.latencies = [];
+      metrics.dropReasons = {};
+      Object.keys(nodes).forEach(k => {
+        nodes[k].slots = 0;
+        nodes[k].queue = 0;
+      });
+      nodes.circuitBreaker.state = 'CLOSED';
+      nodes.circuitBreaker.window = [];
+    });
+
+    // Main animation loop
+    let lastFrame = performance.now();
+    function loop(now) {
+      const dt = now - lastFrame;
+      lastFrame = now;
+
+      spawnPackets(now);
+      updateSimulation(dt);
+      render();
+      refreshHUD();
+
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>

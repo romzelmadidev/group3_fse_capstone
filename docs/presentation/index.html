@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AuraBank: how a transfer is protected</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<link rel="stylesheet" href="deck.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<main class="stage" id="stage">
+
+<section class="slide" aria-label="Title"><div class="title">
+  <div>
+    <div class="wordmark r" style="--i:0"><i></i>AuraBank</div>
+    <h1 class="r" style="--i:1">Every peso is checked <span class="hl">before it moves.</span></h1>
+    <p class="lede r" style="--i:2">How our risk engine, security layers and KYC tiers protect a transfer, from tap to ledger.</p>
+  </div>
+  <div class="gates r" style="--i:3" aria-hidden="true">
+    <div class="track"></div>
+    <div class="gate" style="top:0;--gd:-.5s"><b><i class="ph ph-shield-check"></i></b><span>Gate 0<small>Hard rules on device and travel</small></span></div>
+    <div class="gate" style="top:176px;--gd:.8s"><b><i class="ph ph-tree-structure"></i></b><span>XGBoost<small>48 signals, one probability</small></span></div>
+    <div class="gate" style="top:352px;--gd:2.1s"><b><i class="ph ph-chat-text"></i></b><span>Laya<small>Reads memo and device context</small></span></div>
+    <div class="gate" style="top:528px;--gd:3.5s"><b><i class="ph ph-check"></i></b><span>Posted<small>Core banking ledger</small></span></div>
+    <div class="packet"></div>
+  </div>
+</div></section>
+
+<section class="slide" aria-label="Platform">
+  <h2 class="r" style="--i:0">Seven services, one path for money.</h2>
+  <div class="arch">
+    <div class="col r" style="--i:1"><h3>Clients</h3>
+      <div class="node"><strong>Mobile app</strong><span>Flutter, shared aurabank_core</span></div>
+      <div class="node"><strong>Admin console</strong><span>React, for staff and KYC review</span></div></div>
+    <div class="link r" style="--i:2"><svg><line x1="4" y1="10" x2="52" y2="10"/></svg></div>
+    <div class="col r" style="--i:2"><h3>Edge</h3>
+      <div class="node key"><strong>API Gateway</strong><span class="m">:8080</span><span>JWT check, token blacklist, Redis rate limits, idempotency keys</span></div></div>
+    <div class="link r" style="--i:3"><svg><line x1="4" y1="10" x2="52" y2="10"/></svg></div>
+    <div class="col r" style="--i:3"><h3>Services</h3><div class="svc">
+      <div class="node"><strong>Account</strong><span class="m">:8081</span><span>Auth, OTP, KYC, limits</span></div>
+      <div class="node"><strong>Transfer orchestrator</strong><span class="m">:8082</span><span>Runs every transfer check in order</span></div>
+      <div class="node"><strong>Notification</strong><span class="m">:8083</span><span>Kafka consumer, email, live events</span></div>
+      <div class="node key"><strong>Risk engine</strong><span class="m">:8084</span><span>Python. Gate 0, XGBoost, Laya</span></div>
+      <div class="node"><strong>T24 core banking</strong><span class="m">:8085</span><span>Ledger of record, OFS messages</span></div>
+      <div class="node"><strong>Compliance</strong><span class="m">:8086</span><span>Reports, SAR drafts, DLQ replay</span></div></div></div>
+    <div class="link r" style="--i:4"><svg><line x1="4" y1="10" x2="52" y2="10"/></svg></div>
+    <div class="col r" style="--i:4"><h3>Data and messaging</h3>
+      <div class="node"><strong>Oracle XE 21c</strong><span>Master ledger. Azure SQL in cloud</span></div>
+      <div class="node"><strong>PostgreSQL 16</strong><span>Separate audit vault</span></div>
+      <div class="node"><strong>Redis 7.2</strong><span>Sessions, OTP, locks, limits</span></div>
+      <div class="node"><strong>Kafka 3.7</strong><span>KRaft. Events and DLQ topics</span></div></div>
+  </div>
+</section>
+
+<section class="slide" aria-label="Life of a transfer">
+  <h2 class="r" style="--i:0">A transfer clears six checkpoints, in this order.</h2>
+  <div class="rail r" style="--i:1">
+    <div class="line"></div><div class="fill"></div>
+    <div class="step" style="--n:0"><div class="dot"><i class="ph ph-lock-key"></i></div><h4>Idempotency lock</h4><p>Redis lock for <span class="m">60 s</span>, replay cache for <span class="m">24 h</span>.</p><p>A duplicate tap returns <span class="m">409</span>, never a second debit.</p></div>
+    <div class="step" style="--n:1"><div class="dot"><i class="ph ph-identification-card"></i></div><h4>KYC limit</h4><p>Checks the tier's per-transfer, daily and monthly caps.</p><p>Fails closed with <span class="m">402</span> or <span class="m">503</span>.</p></div>
+    <div class="step" style="--n:2"><div class="dot"><i class="ph ph-gauge"></i></div><h4>Risk engine</h4><p><span class="m">BLOCK</span> returns <span class="m">403</span>.</p><p>An advisory waits for the customer to acknowledge it.</p></div>
+    <div class="step" style="--n:3"><div class="dot"><i class="ph ph-fingerprint"></i></div><h4>Biometric</h4><p>At <span class="m">₱50,000</span> or risk score <span class="m">60</span>.</p><p>Signed challenge, valid <span class="m">5 min</span>.</p></div>
+    <div class="step" style="--n:4"><div class="dot"><i class="ph ph-hourglass"></i></div><h4>Cooling-off</h4><p>At <span class="m">₱250,000</span> funds are reserved for <span class="m">10 min</span>.</p><p>Time to cancel a coerced payment.</p></div>
+    <div class="step" style="--n:5"><div class="dot"><i class="ph ph-bank"></i></div><h4>Post to core</h4><p>Intrabank goes to T24. Interbank goes out as a wire.</p><p>A failed wire leg triggers a reversal.</p></div>
+  </div>
+  <div class="dlq r" style="--i:3"><i class="ph ph-arrow-u-down-left"></i><p>A transient failure lands in <span class="m">banking.transfers.dlq</span> on Kafka. The compliance service replays it automatically, so nothing is silently lost.</p></div>
+</section>
+
+<section class="slide" aria-label="Risk engine">
+  <h2 class="r" style="--i:0">Four layers. Each one can only make the verdict stricter.</h2>
+  <div class="risk">
+    <div class="layers">
+      <div class="layer r" style="--i:1"><div class="ic"><i class="ph ph-shield-check"></i></div><div><strong>Gate 0</strong><span>Deterministic rules for tampered devices and impossible travel</span></div><span class="v v-block">can block</span></div>
+      <div class="layer r" style="--i:2"><div class="ic"><i class="ph ph-tree-structure"></i></div><div><strong>XGBoost S2 model</strong><span>Fraud probability from 48 transaction, device and location signals</span></div><span class="v v-2fa">scores 0-100</span></div>
+      <div class="layer r" style="--i:3"><div class="ic"><i class="ph ph-chat-text"></i></div><div><strong>Laya</strong><span>Scam typology in the memo, plus remote access and live-call context</span></div><span class="v v-adv">escalates</span></div>
+      <div class="layer r" style="--i:4"><div class="ic"><i class="ph ph-identification-badge"></i></div><div><strong>Tier rule</strong><span>Basic accounts sending ₱30,000 or more get an advisory</span></div><span class="v v-adv">escalates</span></div>
+      <div class="layer out r" style="--i:5"><div class="ic"><i class="ph ph-file-text"></i></div><div><strong>Verdict, cause of suspicion, SAR draft</strong><span>Laya writes the reason in plain language. Suspicious cases draft an AMLC report in the background.</span></div></div>
+    </div>
+    <div class="r" style="--i:3">
+      <div class="ladder">
+        <div class="rung v-allow" style="height:28%;--n:0"><b>Allow</b>ALLOW</div>
+        <div class="rung v-adv" style="height:52%;--n:1"><b>Warn</b>ADVISORY</div>
+        <div class="rung v-2fa" style="height:76%;--n:2"><b>Step up</b>REQUIRE_2FA</div>
+        <div class="rung v-block" style="height:100%;--n:3"><b>Stop</b>BLOCK</div>
+      </div>
+      <p class="ladder-cap">Verdicts only move up this ladder. No later layer can turn a step-up back into an approval.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" aria-label="Gate 0">
+  <h2 class="r" style="--i:0">Gate 0 stops what no model should have to judge.</h2>
+  <div class="g0">
+    <div>
+      <div class="rule r" style="--i:1"><strong>Rooted phone or emulator</strong><p>The app environment can't be trusted, so nothing it reports can be either.</p><span class="v v-block">BLOCK, 100</span></div>
+      <div class="rule r" style="--i:2"><strong>Impossible travel</strong><p>Faster than <span class="m">1,000 km/h</span> between this transfer and the last one.</p><span class="v v-adv">ADVISORY, 75</span></div>
+      <div class="rule r" style="--i:3"><strong>Rooted, new payee, ₱10,000+</strong><p>The account-takeover pattern: compromised device, fresh mule account.</p><span class="v v-2fa">REQUIRE_2FA, 75</span></div>
+      <p class="note r" style="--i:4;margin-top:22px">When Gate 0 fires, the model is skipped. The answer is already certain.</p>
+    </div>
+    <div class="travel r" style="--i:2">
+      <svg viewBox="0 0 500 260" role="img" aria-label="Impossible travel example: Manila to Dubai in 25 minutes">
+        <circle cx="430" cy="190" r="7" fill="#A7E8D1"/><circle cx="70" cy="120" r="7" fill="#F0857A"/>
+        <path class="arc" d="M430 190 Q 250 -30 70 120"/>
+        <text class="city" x="400" y="226">Manila</text><text class="city" x="46" y="156">Dubai</text>
+        <text x="250" y="40" text-anchor="middle" fill="#8E9AA4" font-family="JetBrains Mono, monospace" font-size="14">6,920 km in 25 min</text>
+      </svg>
+      <div class="speed">
+        <div><div class="note">Implied speed</div><div class="big m" id="kmh">0 km/h</div></div>
+        <div class="lim">Gate 0 limit<br><span class="m" style="color:var(--paper)">1,000 km/h</span><br>Illustrative case</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" aria-label="XGBoost">
+  <h2 class="r" style="--i:0">XGBoost turns 48 signals into one probability.</h2>
+  <div class="xgb">
+    <div class="feats r" style="--i:1">
+      <div class="fg"><h5>Money</h5><div class="chips"><span class="chip">amount_php</span><span class="chip">balance_drain_ratio</span><span class="chip">spike_ratio</span><span class="chip">amount_sum_24h</span><span class="chip">transactions_7d</span></div></div>
+      <div class="fg"><h5>Payee</h5><div class="chips"><span class="chip">new_payee</span><span class="chip">payee_age_days</span><span class="chip">payees_24h</span><span class="chip">senders_to_payee_24h</span><span class="chip">payee_pasted</span></div></div>
+      <div class="fg"><h5>Device</h5><div class="chips"><span class="chip">rooted</span><span class="chip">hooking</span><span class="chip">emulator</span><span class="chip">attestation_verdict</span><span class="chip">os_patch_age_days</span><span class="chip">accounts_per_device</span></div></div>
+      <div class="fg"><h5>Session</h5><div class="chips"><span class="chip">seconds_since_login</span><span class="chip">failed_logins_1h</span><span class="chip">credential_change_hours_ago</span><span class="chip">form_seconds</span></div></div>
+      <div class="fg"><h5>Location</h5><div class="chips"><span class="chip">distance_from_home_km</span><span class="chip">velocity_kmh</span><span class="chip">is_vpn</span><span class="chip">ip_gps_mismatch</span></div></div>
+      <p class="note">A sample of the 48 inputs to s2_xgb_model, after the feature pipeline.</p>
+    </div>
+    <div class="dial r" style="--i:2">
+      <label for="p">Drag the model's fraud probability: <span class="m" id="pv">0.12</span></label>
+      <div class="readout"><div class="score m" id="sv">12<small> / 100</small></div><span class="v v-allow" id="dv">ALLOW</span></div>
+      <div class="zones" aria-hidden="true"><i style="width:40%;background:rgba(167,232,209,.55)"></i><i style="width:10%;background:rgba(151,207,243,.75)"></i><i style="width:50%;background:rgba(240,133,122,.6)"></i></div>
+      <input type="range" id="p" min="0" max="100" value="12">
+      <div class="ticks" aria-hidden="true"><span style="left:0;transform:none">0</span><span style="left:40%">2FA 0.40</span><span style="left:50%;top:28px">BLOCK 0.50</span><span style="left:auto;right:0;transform:none">1.0</span></div>
+      <p class="why" id="wv"></p>
+      <p class="fb">Thresholds come from TAU_2FA and TAU_BLOCK. If the model can't load, the service falls back to a spike-ratio rule instead of going dark.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" aria-label="Laya">
+  <h2 class="r" style="--i:0">Laya reads what the numbers miss.</h2>
+  <div class="laya">
+    <div class="demo r" style="--i:1">
+      <label for="memo">Type a transfer memo</label>
+      <textarea id="memo" spellcheck="false">Bail for my son, the police officer said it is urgent</textarea>
+      <div class="toggles">
+        <button class="tg" aria-pressed="false" data-t="remote"><i class="ph ph-desktop"></i>Remote access app open</button>
+        <button class="tg" aria-pressed="false" data-t="call"><i class="ph ph-phone-call"></i>On a live call</button>
+      </div>
+      <div class="verdict">
+        <div class="flow"><span class="v v-allow">ALLOW</span><i class="ph ph-arrow-right"></i><span class="v" id="lv">ALLOW</span></div>
+        <span class="note">XGBoost said allow</span>
+      </div>
+      <div class="found" id="lf" aria-live="polite"></div>
+    </div>
+    <div class="points">
+      <div class="pt r" style="--i:2"><strong>Scam typology from the memo</strong><p>Police impersonation, investment, task and prize scams. The patterns local customers are actually hit with.</p></div>
+      <div class="pt r" style="--i:3"><strong>Coercion signals from the device</strong><p>A remote access app or an active voice call during a transfer is how social engineering looks from the inside.</p></div>
+      <div class="pt r" style="--i:4"><strong>The customer decides, informed</strong><p>An advisory pauses the transfer until they choose.</p><div class="modal-opts"><span class="v v-block">Cancel</span><span class="v v-2fa">Hold 10 min</span><span class="v v-allow">Proceed</span></div></div>
+      <p class="note r" style="--i:5">The demo runs the production memo keyword rules in your browser.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" aria-label="Simulator">
+  <h2 class="r" style="--i:0">Run a transfer through the engine.</h2>
+  <div class="sim">
+    <div class="scen r" style="--i:1" id="scen"></div>
+    <div class="r" style="--i:2">
+      <div class="pipe" id="pipe"></div>
+      <div class="result" id="res" aria-live="polite"><span class="v" id="rv"></span><strong id="rt"></strong><p id="rp"></p></div>
+      <p class="note sim-note">Model probabilities are illustrative. Rules, caps and thresholds are taken from the services' code and config.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" aria-label="Fail-safe">
+  <h2 class="r" style="--i:0">When something is down, we fail toward caution.</h2>
+  <div class="fail">
+    <div class="fr r" style="--i:1"><h4><i class="ph ph-plugs"></i>Risk engine unreachable</h4><p>The orchestrator waits <span class="m">2 s</span>, then scores by amount.</p><div class="tiers"><span class="v v-adv">₱250,000+ advisory</span><span class="v v-2fa">₱10,000+ step-up</span><span class="v v-allow">below that, allow</span></div></div>
+    <div class="fr r" style="--i:2"><h4><i class="ph ph-device-mobile"></i>App can't reach risk</h4><p>The mobile app treats silence as <span class="m">REQUIRE_2FA</span>, score <span class="m">40</span>. A dead link never reads as a clean bill.</p></div>
+    <div class="fr r" style="--i:3"><h4><i class="ph ph-database"></i>Limit check unavailable</h4><p>Returns <span class="m">503 TX_LIMIT_UNVERIFIED</span> and parks the transfer in the DLQ for safe replay. No limit check, no money movement.</p></div>
+    <div class="fr r" style="--i:4"><h4><i class="ph ph-warning-octagon"></i>Device signals but no score</h4><p>The ledger client's fallback steps up any transfer showing remote access, screen sharing, a call, a paste or a rooted device.</p></div>
+    <div class="fr r" style="--i:5"><h4><i class="ph ph-arrows-clockwise"></i>Event publish fails</h4><p>The transactional outbox polls every <span class="m">2 s</span>, sends <span class="m">50</span> at a time, waits for the Kafka ack and retries <span class="m">3</span> times before flagging.</p></div>
+    <div class="fr r" style="--i:6"><h4><i class="ph ph-copy"></i>Customer taps twice</h4><p>Idempotency at the gateway (<span class="m">10 min</span> key) and the orchestrator (<span class="m">24 h</span> replay). One tap, one debit.</p></div>
+  </div>
+</section>
+
+<section class="slide" aria-label="Security">
+  <h2 class="r" style="--i:0">Five layers between a stolen phone and an account.</h2>
+  <div class="sec">
+    <div class="rings r" style="--i:1" aria-hidden="true">
+      <div class="ring act" data-l="0" style="inset:0"><span>Edge</span></div>
+      <div class="ring" data-l="1" style="inset:46px"><span>Identity</span></div>
+      <div class="ring" data-l="2" style="inset:92px"><span>Device</span></div>
+      <div class="ring" data-l="3" style="inset:138px"><span>Transaction</span></div>
+      <div class="ring" data-l="4" style="inset:184px"><span>Data</span></div>
+      <div class="core">Customer<br>funds</div>
+    </div>
+    <div class="r" style="--i:2">
+      <div class="tabs" role="tablist" aria-label="Security layers">
+        <button class="tab" role="tab" aria-selected="true" data-l="0">Edge</button><button class="tab" role="tab" aria-selected="false" data-l="1">Identity</button><button class="tab" role="tab" aria-selected="false" data-l="2">Device</button><button class="tab" role="tab" aria-selected="false" data-l="3">Transaction</button><button class="tab" role="tab" aria-selected="false" data-l="4">Data</button>
+      </div>
+      <div class="panel act" role="tabpanel" data-l="0"><h3>API Gateway on :8080</h3><ul>
+        <li><i class="ph ph-key"></i><span>Verifies the JWT signature, then checks the token id against a <b>Redis blacklist</b>, so a logged-out token stops working at once.</span></li>
+        <li><i class="ph ph-speedometer"></i><span>Per-user rate limits: <b class="m">10/s</b>, burst 20, on auth and accounts. <b class="m">20/s</b>, burst 40, on transfers and risk. Over the line gets <b class="m">429</b>.</span></li>
+        <li><i class="ph ph-copy"></i><span>An <b>Idempotency-Key</b> is held for 10 minutes, so retries over patchy mobile data can't double-post.</span></li></ul></div>
+      <div class="panel" role="tabpanel" data-l="1"><h3>Who is signing in</h3><ul>
+        <li><i class="ph ph-timer"></i><span>Access tokens live <b class="m">15 min</b>. Refresh tokens live <b class="m">7 days</b> and rotate on every use.</span></li>
+        <li><i class="ph ph-cookie"></i><span>The refresh cookie is <b>SameSite=Strict</b> and scoped to <b class="m">/api/v1/auth</b>.</span></li>
+        <li><i class="ph ph-lock"></i><span><b>5 wrong passwords</b> lock the account for 15 minutes.</span></li>
+        <li><i class="ph ph-envelope-simple"></i><span>Email OTP: 5 min lifetime, 60 s resend cooldown, 5 attempts, generated with SecureRandom.</span></li>
+        <li><i class="ph ph-sign-out"></i><span>An expired session gets one silent refresh, then a clean return to login. Checked every 30 s and on app resume.</span></li></ul></div>
+      <div class="panel" role="tabpanel" data-l="2"><h3>Which phone is asking</h3><ul>
+        <li><i class="ph ph-device-mobile"></i><span>The first phone is <b>bound with OTP</b> and becomes the primary device.</span></li>
+        <li><i class="ph ph-check-square"></i><span>A new phone needs <b>approval from the primary</b> before it can sign in.</span></li>
+        <li><i class="ph ph-prohibit"></i><span>Sign-in is refused on rooted phones, unlocked bootloaders and developer mode.</span></li>
+        <li><i class="ph ph-eye"></i><span>Runtime signals feed the risk engine: hooking, emulator, screen sharing, remote access apps, active calls.</span></li></ul></div>
+      <div class="panel" role="tabpanel" data-l="3"><h3>What is being sent</h3><ul>
+        <li><i class="ph ph-gauge"></i><span>Every transfer is scored by the <b>risk engine</b> before core banking sees it.</span></li>
+        <li><i class="ph ph-fingerprint"></i><span><b>Biometric challenge</b> at ₱50,000 or score 60. The amount is re-checked when the signature comes back.</span></li>
+        <li><i class="ph ph-hourglass"></i><span><b>10-minute cooling-off</b> at ₱250,000, with funds reserved, not sent.</span></li>
+        <li><i class="ph ph-warning"></i><span>Scam advisories must be <b>acknowledged</b> before the transfer continues.</span></li></ul></div>
+      <div class="panel" role="tabpanel" data-l="4"><h3>Where it is kept</h3><ul>
+        <li><i class="ph ph-hash"></i><span>Passwords and PINs are stored <b>only as hashes</b>.</span></li>
+        <li><i class="ph ph-vault"></i><span>KYC images sit in a private <b>kyc-vault</b> container, reachable only through 5-minute signed links.</span></li>
+        <li><i class="ph ph-scroll"></i><span>A separate <b>PostgreSQL audit vault</b> keeps the mutation journal apart from the ledger.</span></li>
+        <li><i class="ph ph-chart-line"></i><span>Datadog APM and OpenTelemetry trace <b>100%</b> of requests across services.</span></li></ul></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" aria-label="KYC verification">
+  <h2 class="r" style="--i:0">Verification is machine-checked and human-approved.</h2>
+  <div class="kyc">
+    <div class="r" style="--i:1">
+      <div class="idcard" aria-hidden="true">
+        <div class="hd">Government ID</div>
+        <div class="pic"><i class="ph ph-user"></i></div>
+        <div class="fld" style="top:84px;width:210px;--fd:.9s"></div><div class="fld" style="top:112px;width:150px;--fd:1.3s"></div>
+        <div class="fld" style="top:156px;width:250px;--fd:1.7s"></div><div class="fld" style="top:184px;width:120px;--fd:2.1s"></div>
+        <div class="fld" style="top:228px;width:180px;--fd:2.5s"></div>
+        <div class="scan"></div>
+      </div>
+      <div class="scores">
+        <div class="sco"><span>Name match</span><b>0.85</b><small>OCR, 0.65 is partial</small></div>
+        <div class="sco"><span>Face match</span><b>0.85</b><small>512-dim embedding</small></div>
+        <div class="sco"><span>Liveness</span><b>0.80</b><small>Selfie is a live person</small></div>
+      </div>
+    </div>
+    <div>
+      <div class="fs r" style="--i:2"><div class="n"><i class="ph ph-camera"></i></div><div><strong>Capture</strong><p>ID and selfie upload straight to the private KYC vault through a signed link that expires in 5 minutes.</p></div></div>
+      <div class="fs r" style="--i:3"><div class="n"><i class="ph ph-scan"></i></div><div><strong>Laya Vision scores it</strong><p>Reads name, birth date and expiry, matches the face, checks liveness, then recommends a band.</p><div class="tiers"><span class="v v-allow">A: approve, 90%+</span><span class="v v-adv">B: review, 70-90%</span><span class="v v-block">C: reject, under 70%</span></div></div></div>
+      <div class="fs r" style="--i:4"><div class="n"><i class="ph ph-user-check"></i></div><div><strong>Maker recommends</strong><p>A staff member reviews Laya's summary in the admin console and makes a call.</p></div></div>
+      <div class="fs r" style="--i:5"><div class="n"><i class="ph ph-users"></i></div><div><strong>Checker confirms</strong><p>A <span class="hl">different</span> staff member approves or sends it back. Four eyes on every upgrade. Laya never approves on its own.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" aria-label="KYC tiers">
+  <h2 class="r" style="--i:0">Limits grow with verification.</h2>
+  <div class="tier r" style="--i:1">
+    <span class="lbl">Per transfer</span>
+    <div class="bars"><div class="br"><i class="basic" style="--w:200px;--bd:.5s"></i><span class="m">₱10,000</span></div><div class="br"><i class="full" style="--w:1000px;--bd:.6s"></i><span class="m">₱50,000</span></div></div>
+    <span class="lbl">Daily</span>
+    <div class="bars"><div class="br"><i class="basic" style="--w:100px;--bd:.7s"></i><span class="m">₱10,000</span></div><div class="br"><i class="full" style="--w:1000px;--bd:.8s"></i><span class="m">₱100,000</span></div></div>
+    <span class="lbl">Monthly</span>
+    <div class="bars"><div class="br"><i class="basic" style="--w:100px;--bd:.9s"></i><span class="m">₱50,000</span></div><div class="br"><i class="full" style="--w:1000px;--bd:1s"></i><span class="m">₱500,000</span></div></div>
+  </div>
+  <div class="legend r" style="--i:2"><span><i style="background:var(--line-2)"></i>Basic: signed up, not yet verified</span><span><i style="background:var(--mint)"></i>Fully verified: KYC approved by maker and checker</span><span class="note">Bars scaled per row</span></div>
+  <div class="enf r" style="--i:3">
+    <div><strong>One lock per customer</strong><p>A Redis lock stops two parallel transfers from both squeezing under the cap.</p></div>
+    <div><strong>Usage from the ledger</strong><p>Spend is read from core banking for the Manila calendar day and month.</p></div>
+    <div><strong>Clear refusal</strong><p><span class="m">402 TX_LIMIT_EXCEEDED</span> names the cap that was hit and tells Basic users how to raise it.</p></div>
+    <div><strong>Server decides</strong><p>The app pre-checks for a smooth UI. Locked or suspended accounts get a cap of zero.</p></div>
+  </div>
+</section>
+
+<section class="slide" aria-label="Close"><div class="close">
+  <h1 class="r" style="--i:0">Rules where we're certain. Models where we're not. <span class="hl">People where it matters.</span></h1>
+  <div class="recap r" style="--i:1"><b>Gate 0</b><i class="ph ph-arrow-right"></i><b>XGBoost</b><i class="ph ph-arrow-right"></i><b>Laya</b><i class="ph ph-arrow-right"></i><b>Maker and checker</b></div>
+  <p class="lede r" style="--i:2">Thank you. Questions welcome.</p>
+</div></section>
+
+</main>
+<nav class="bar" aria-label="Slide controls">
+  <div class="brand"><i></i>AuraBank</div>
+  <span>Arrow keys to move, F for full screen</span>
+  <div class="nav"><button id="prev" aria-label="Previous slide"><i class="ph ph-caret-left"></i></button><span class="count m" id="count" aria-live="polite">1 / 13</span><button id="next" aria-label="Next slide"><i class="ph ph-caret-right"></i></button><button id="fs" aria-label="Toggle full screen"><i class="ph ph-arrows-out"></i></button></div>
+</nav>
+<script src="deck.js"></script>
+</body>
+</html>

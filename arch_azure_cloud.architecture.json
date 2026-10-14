@@ -1,0 +1,561 @@
+{
+    "schema_version":  1,
+    "diagram_type":  "architecture",
+    "meta":  {
+                 "title":  "AuraBank â€” Azure AKS Cloud Architecture",
+                 "output":  "arch_azure_cloud.html",
+                 "quality_profile":  "showcase",
+                 "views":  [
+                               {
+                                   "id":  "cicd-edge",
+                                   "label":  "CI/CD \u0026 Edge Ingress",
+                                   "focus":  [
+                                                 "cicd",
+                                                 "acr",
+                                                 "clients",
+                                                 "app_gateway",
+                                                 "gateway_pod"
+                                             ],
+                                   "note":  "GitHub Actions Trivy-scans and pushes images to ACR. Flutter/React clients route via App Gateway v2 WAF to AKS Gateway HPA pods."
+                               },
+                               {
+                                   "id":  "auth-rtr",
+                                   "label":  "Identity \u0026 Token Rotation",
+                                   "focus":  [
+                                                 "gateway_pod",
+                                                 "account_pod",
+                                                 "azure_redis"
+                                             ],
+                                   "note":  "Account pods issue 15-min JWTs and manage Refresh Token Rotation families in Azure Redis. Breach detection purges the entire token family."
+                               },
+                               {
+                                   "id":  "risk-ledger",
+                                   "label":  "Risk Screening \u0026 Core Ledger",
+                                   "focus":  [
+                                                 "gateway_pod",
+                                                 "orchestrator_pod",
+                                                 "risk_pod",
+                                                 "azure_sql",
+                                                 "azure_event_hubs"
+                                             ],
+                                   "note":  "Orchestrator pods call Risk Engine (\u003c=200ms, tau=0.40), acquire Azure SQL row locks, stream outbox events to Event Hubs Kafka endpoint."
+                               },
+                               {
+                                   "id":  "compliance-fanout",
+                                   "label":  "Compliance Fan-Out \u0026 Audit",
+                                   "focus":  [
+                                                 "azure_event_hubs",
+                                                 "compliance_pod",
+                                                 "notification_pod",
+                                                 "azure_blob",
+                                                 "azure_postgres"
+                                             ],
+                                   "note":  "Event Hubs delivers to three groups: compliance stores PDFs to Blob, audit appends to PostgreSQL, notifications dispatch OTP and receipts."
+                               },
+                               {
+                                   "id":  "telemetry",
+                                   "label":  "Datadog APM \u0026 Cluster Telemetry",
+                                   "focus":  [
+                                                 "gateway_pod",
+                                                 "orchestrator_pod",
+                                                 "datadog_ds",
+                                                 "azure_sql"
+                                             ],
+                                   "note":  "Datadog DaemonSet on every AKS node collects W3C traces, pod metrics, and container logs into the Datadog cloud platform."
+                               }
+                           ]
+             },
+    "components":  [
+                       {
+                           "id":  "cicd",
+                           "type":  "cloud",
+                           "label":  "GitHub Actions",
+                           "sublabel":  "CI/CD + Trivy scanning",
+                           "tag":  "Build \u0026 push pipeline",
+                           "pos":  [
+                                       38,
+                                       120
+                                   ],
+                           "size":  [
+                                        138,
+                                        60
+                                    ]
+                       },
+                       {
+                           "id":  "clients",
+                           "type":  "frontend",
+                           "label":  "AuraBank Clients",
+                           "sublabel":  "Flutter Mobile + Aurabank Web",
+                           "tag":  "KeyStore \u0026 SWA",
+                           "pos":  [
+                                       38,
+                                       300
+                                   ],
+                           "size":  [
+                                        138,
+                                        60
+                                    ]
+                       },
+                       {
+                           "id":  "acr",
+                           "type":  "cloud",
+                           "label":  "Azure Container Registry",
+                           "sublabel":  "OCI image store",
+                           "brand":  "docker",
+                           "tag":  "Geo-replicated",
+                           "pos":  [
+                                       256,
+                                       120
+                                   ],
+                           "size":  [
+                                        144,
+                                        60
+                                    ]
+                       },
+                       {
+                           "id":  "app_gateway",
+                           "type":  "security",
+                           "label":  "App Gateway v2 + WAF",
+                           "sublabel":  "Azure AGIC Ingress",
+                           "tag":  "SSL offload, OWASP",
+                           "pos":  [
+                                       256,
+                                       300
+                                   ],
+                           "size":  [
+                                        144,
+                                        60
+                                    ]
+                       },
+                       {
+                           "id":  "gateway_pod",
+                           "type":  "security",
+                           "label":  "Gateway Pods",
+                           "sublabel":  "Spring Cloud :8080",
+                           "brand":  "spring",
+                           "tag":  "HPA: 2â€“10 replicas",
+                           "pos":  [
+                                       486,
+                                       300
+                                   ],
+                           "size":  [
+                                        148,
+                                        60
+                                    ]
+                       },
+                       {
+                           "id":  "account_pod",
+                           "type":  "backend",
+                           "label":  "Account Pods",
+                           "sublabel":  "Spring Boot :8081",
+                           "brand":  "spring",
+                           "tag":  "HPA: 2â€“8 | JWT + RTR",
+                           "pos":  [
+                                       486,
+                                       140
+                                   ],
+                           "size":  [
+                                        148,
+                                        60
+                                    ]
+                       },
+                       {
+                           "id":  "orchestrator_pod",
+                           "type":  "backend",
+                           "label":  "Orchestrator Pods",
+                           "sublabel":  "Spring Boot :8082",
+                           "brand":  "spring",
+                           "tag":  "HPA: 2â€“8 | Saga",
+                           "pos":  [
+                                       486,
+                                       460
+                                   ],
+                           "size":  [
+                                        148,
+                                        60
+                                    ]
+                       },
+                       {
+                           "id":  "risk_pod",
+                           "type":  "backend",
+                           "label":  "Risk Engine Pod",
+                           "sublabel":  "Python asyncio :8084",
+                           "brand":  "python",
+                           "tag":  "SLA â‰¤200ms | Ï„=0.40/0.50",
+                           "pos":  [
+                                       486,
+                                       580
+                                   ],
+                           "size":  [
+                                        148,
+                                        60
+                                    ]
+                       },
+                       {
+                           "id":  "notification_pod",
+                           "type":  "backend",
+                           "label":  "Notification Pods",
+                           "sublabel":  "Spring Boot :8083",
+                           "brand":  "spring",
+                           "tag":  "KEDA: 2â€“6 replicas",
+                           "pos":  [
+                                       720,
+                                       580
+                                   ],
+                           "size":  [
+                                        148,
+                                        60
+                                    ]
+                       },
+                       {
+                           "id":  "compliance_pod",
+                           "type":  "backend",
+                           "label":  "Compliance Pods",
+                           "sublabel":  "Spring Boot :8086",
+                           "brand":  "spring",
+                           "tag":  "KEDA: 2â€“6 | PDF/CTR",
+                           "pos":  [
+                                       720,
+                                       460
+                                   ],
+                           "size":  [
+                                        148,
+                                        60
+                                    ]
+                       },
+                       {
+                           "id":  "datadog_ds",
+                           "type":  "cloud",
+                           "label":  "Datadog DaemonSet",
+                           "sublabel":  "APM :8126 / OTLP :4318",
+                           "brand":  "datadog",
+                           "tag":  "Every AKS node",
+                           "pos":  [
+                                       720,
+                                       300
+                                   ],
+                           "size":  [
+                                        148,
+                                        60
+                                    ]
+                       },
+                       {
+                           "id":  "azure_redis",
+                           "type":  "database",
+                           "label":  "Azure Cache for Redis",
+                           "sublabel":  "RTR families + OTP :6380",
+                           "brand":  "redis",
+                           "tag":  "5-min OTP, blacklist",
+                           "pos":  [
+                                       955,
+                                       120
+                                   ],
+                           "size":  [
+                                        154,
+                                        60
+                                    ]
+                       },
+                       {
+                           "id":  "azure_sql",
+                           "type":  "database",
+                           "label":  "Azure SQL Database",
+                           "sublabel":  "Ledger tables + ACID",
+                           "tag":  "Row lock, Ledger tables",
+                           "pos":  [
+                                       955,
+                                       300
+                                   ],
+                           "size":  [
+                                        154,
+                                        60
+                                    ]
+                       },
+                       {
+                           "id":  "azure_event_hubs",
+                           "type":  "messagebus",
+                           "label":  "Azure Event Hubs",
+                           "sublabel":  "Kafka protocol :9093",
+                           "brand":  "apache-kafka",
+                           "tag":  "6 partitions, outbox",
+                           "pos":  [
+                                       955,
+                                       460
+                                   ],
+                           "size":  [
+                                        154,
+                                        60
+                                    ]
+                       },
+                       {
+                           "id":  "azure_postgres",
+                           "type":  "database",
+                           "label":  "Azure PostgreSQL",
+                           "sublabel":  "Flexible Server :5432",
+                           "brand":  "postgresql",
+                           "tag":  "Append-only audit vault",
+                           "pos":  [
+                                       955,
+                                       580
+                                   ],
+                           "size":  [
+                                        154,
+                                        60
+                                    ]
+                       },
+                       {
+                           "id":  "azure_blob",
+                           "type":  "cloud",
+                           "label":  "Azure Blob Storage",
+                           "sublabel":  "Hot tier container",
+                           "tag":  "KYC vault, PDF reports",
+                           "pos":  [
+                                       720,
+                                       140
+                                   ],
+                           "size":  [
+                                        148,
+                                        60
+                                    ]
+                       }
+                   ],
+    "boundaries":  [
+                       {
+                           "kind":  "region",
+                           "label":  "Developer Machines \u0026 CI",
+                           "wraps":  [
+                                         "cicd",
+                                         "clients"
+                                     ],
+                           "pad":  14
+                       },
+                       {
+                           "kind":  "region",
+                           "label":  "Azure Virtual Network (VNet 10.0.0.0/16) â€” Southeast Asia",
+                           "wraps":  [
+                                         "acr",
+                                         "app_gateway",
+                                         "gateway_pod",
+                                         "account_pod",
+                                         "orchestrator_pod",
+                                         "risk_pod",
+                                         "notification_pod",
+                                         "compliance_pod",
+                                         "datadog_ds",
+                                         "azure_redis",
+                                         "azure_sql",
+                                         "azure_event_hubs",
+                                         "azure_postgres",
+                                         "azure_blob"
+                                     ],
+                           "pad":  20
+                       },
+                       {
+                           "kind":  "security-group",
+                           "label":  "Edge DMZ (Subnet 10.0.0.0/24)",
+                           "wraps":  [
+                                         "acr",
+                                         "app_gateway"
+                                     ],
+                           "pad":  12
+                       },
+                       {
+                           "kind":  "security-group",
+                           "label":  "AKS Cluster â€” System + Application Node Pools",
+                           "wraps":  [
+                                         "gateway_pod",
+                                         "account_pod",
+                                         "orchestrator_pod",
+                                         "risk_pod",
+                                         "notification_pod",
+                                         "compliance_pod",
+                                         "datadog_ds"
+                                     ],
+                           "pad":  12
+                       },
+                       {
+                           "kind":  "security-group",
+                           "label":  "Azure Managed PaaS (Private Endpoints)",
+                           "wraps":  [
+                                         "azure_redis",
+                                         "azure_sql",
+                                         "azure_event_hubs",
+                                         "azure_postgres",
+                                         "azure_blob"
+                                     ],
+                           "pad":  12
+                       }
+                   ],
+    "connections":  [
+                        {
+                            "id":  "cicd-to-acr",
+                            "from":  "cicd",
+                            "to":  "acr",
+                            "label":  "docker push",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "acr-to-gateway",
+                            "from":  "acr",
+                            "to":  "gateway_pod",
+                            "label":  "image pull",
+                            "variant":  "dashed",
+                            "fromSide":  "right",
+                            "toSide":  "top"
+                        },
+                        {
+                            "id":  "clients-to-appgw",
+                            "from":  "clients",
+                            "to":  "app_gateway",
+                            "label":  "HTTPS :443",
+                            "variant":  "emphasis",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "appgw-to-gateway",
+                            "from":  "app_gateway",
+                            "to":  "gateway_pod",
+                            "label":  "AGIC ingress",
+                            "variant":  "emphasis",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "gateway-to-account",
+                            "from":  "gateway_pod",
+                            "to":  "account_pod",
+                            "label":  "/api/auth/*",
+                            "fromSide":  "top",
+                            "toSide":  "bottom"
+                        },
+                        {
+                            "id":  "gateway-to-orchestrator",
+                            "from":  "gateway_pod",
+                            "to":  "orchestrator_pod",
+                            "label":  "/api/transfers/*",
+                            "variant":  "emphasis",
+                            "fromSide":  "bottom",
+                            "toSide":  "top"
+                        },
+                        {
+                            "id":  "gateway-to-datadog",
+                            "from":  "gateway_pod",
+                            "to":  "datadog_ds",
+                            "label":  "W3C traces",
+                            "variant":  "dashed",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "account-to-redis",
+                            "from":  "account_pod",
+                            "to":  "azure_redis",
+                            "label":  "RTR + OTP",
+                            "variant":  "security",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "account-to-blob",
+                            "from":  "account_pod",
+                            "to":  "azure_blob",
+                            "label":  "KYC docs",
+                            "variant":  "dashed",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "orchestrator-to-risk",
+                            "from":  "orchestrator_pod",
+                            "to":  "risk_pod",
+                            "label":  "score â‰¤200ms",
+                            "variant":  "security",
+                            "fromSide":  "bottom",
+                            "toSide":  "top"
+                        },
+                        {
+                            "id":  "orchestrator-to-sql",
+                            "from":  "orchestrator_pod",
+                            "to":  "azure_sql",
+                            "label":  "row lock + ledger",
+                            "variant":  "emphasis",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "orchestrator-to-events",
+                            "from":  "orchestrator_pod",
+                            "to":  "azure_event_hubs",
+                            "label":  "outbox stream",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "events-to-compliance",
+                            "from":  "azure_event_hubs",
+                            "to":  "compliance_pod",
+                            "label":  "audit stream",
+                            "variant":  "dashed",
+                            "fromSide":  "left",
+                            "toSide":  "right"
+                        },
+                        {
+                            "id":  "events-to-notification",
+                            "from":  "azure_event_hubs",
+                            "to":  "notification_pod",
+                            "label":  "receipts, OTP",
+                            "variant":  "dashed",
+                            "fromSide":  "left",
+                            "toSide":  "right"
+                        },
+                        {
+                            "id":  "compliance-to-blob",
+                            "from":  "compliance_pod",
+                            "to":  "azure_blob",
+                            "label":  "PDF / CTR upload",
+                            "variant":  "dashed",
+                            "fromSide":  "top",
+                            "toSide":  "bottom"
+                        },
+                        {
+                            "id":  "events-to-postgres",
+                            "from":  "azure_event_hubs",
+                            "to":  "azure_postgres",
+                            "label":  "audit projection",
+                            "variant":  "dashed",
+                            "fromSide":  "bottom",
+                            "toSide":  "top"
+                        }
+                    ],
+    "cards":  [
+                  {
+                      "dot":  "amber",
+                      "title":  "AKS cluster \u0026 CI/CD pipeline",
+                      "items":  [
+                                    "GitHub Actions: lint, unit tests, Trivy container scanning, multi-arch image build, and push to Azure Container Registry.",
+                                    "App Gateway v2 WAF terminates SSL and routes traffic to AKS via the AGIC ingress controller.",
+                                    "Gateway and Orchestrator pods autoscale via HPA (CPU + RPS). Notification and Compliance pods scale via KEDA on Event Hubs consumer lag."
+                                ]
+                  },
+                  {
+                      "dot":  "violet",
+                      "title":  "Azure managed data services",
+                      "items":  [
+                                    "Azure SQL Database with Ledger tables replaces Oracle XE in cloud: cryptographically verifiable append-only audit trails plus ACID row locks.",
+                                    "Azure PostgreSQL Flexible Server maintains the independent compliance audit vault with append-only triggers.",
+                                    "Azure Cache for Redis manages Refresh Token Rotation families, 5-min OTP tokens, and sub-5ms token blacklist checks.",
+                                    "Azure Blob Storage (hot tier, private endpoint) stores KYC identity documents and compliance PDF/Excel filings."
+                                ]
+                  },
+                  {
+                      "dot":  "cyan",
+                      "title":  "Observability \u0026 security posture",
+                      "items":  [
+                                    "Datadog DaemonSet on every AKS node collects OTLP traces, container metrics, and pod logs into the Datadog cloud platform.",
+                                    "All Azure managed services connect via Private Endpoints â€” no public internet exposure to databases or event streaming.",
+                                    "Azure Event Hubs Kafka endpoint provides Kafka-compatible API at port 9093 with 6-partition ordering by source_account_id."
+                                ]
+                  }
+              ]
+}

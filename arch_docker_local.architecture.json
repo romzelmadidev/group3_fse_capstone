@@ -1,0 +1,558 @@
+{
+    "schema_version":  1,
+    "diagram_type":  "architecture",
+    "meta":  {
+                 "title":  "AuraBank â€” Docker Local Development Architecture",
+                 "output":  "arch_docker_local.html",
+                 "quality_profile":  "showcase",
+                 "views":  [
+                               {
+                                   "id":  "perimeter-ingress",
+                                   "label":  "Perimeter \u0026 Client Ingress",
+                                   "focus":  [
+                                                 "clients",
+                                                 "web_admin",
+                                                 "gateway",
+                                                 "redis"
+                                             ],
+                                   "note":  "Flutter mobile and React admin connect via Spring Cloud Gateway :8080. JWT verification and Redis rate limiting guard every inbound request."
+                               },
+                               {
+                                   "id":  "transfer-path",
+                                   "label":  "Transfer Orchestration Path",
+                                   "focus":  [
+                                                 "gateway",
+                                                 "orchestrator",
+                                                 "risk",
+                                                 "cbs",
+                                                 "oracle",
+                                                 "kafka"
+                                             ],
+                                   "note":  "Orchestrator locks idempotency in Redis, calls Risk Engine (200ms), dispatches OFS to T24 CBS that row-locks Oracle XE and emits events."
+                               },
+                               {
+                                   "id":  "event-fanout",
+                                   "label":  "Kafka Fan-Out \u0026 Compliance",
+                                   "focus":  [
+                                                 "kafka",
+                                                 "compliance",
+                                                 "notification",
+                                                 "audit",
+                                                 "azurite"
+                                             ],
+                                   "note":  "Kafka routes to three groups: audit writes to PostgreSQL, notifications send OTP via MailHog, compliance stores PDFs in Azurite."
+                               },
+                               {
+                                   "id":  "observability",
+                                   "label":  "Datadog APM \u0026 Observability",
+                                   "focus":  [
+                                                 "gateway",
+                                                 "orchestrator",
+                                                 "account",
+                                                 "cbs",
+                                                 "risk",
+                                                 "notification",
+                                                 "compliance",
+                                                 "datadog"
+                                             ],
+                                   "note":  "Datadog Agent collects OTLP traces (:4318/:4317), DogStatsD metrics (:8125), and tail-scrapes container logs via dd-java-agent.jar sidecars."
+                               }
+                           ]
+             },
+    "components":  [
+                       {
+                           "id":  "clients",
+                           "type":  "frontend",
+                           "label":  "AuraBank Clients",
+                           "sublabel":  "Flutter Mobile + Aurabank Web",
+                           "tag":  "Customer \u0026 Admin",
+                           "pos":  [
+                                       38,
+                                       300
+                                   ],
+                           "size":  [
+                                        148,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "web_admin",
+                           "type":  "frontend",
+                           "label":  "Web Admin Console",
+                           "sublabel":  "React 18 / Nginx :3000",
+                           "tag":  "KYC Maker-Checker",
+                           "pos":  [
+                                       38,
+                                       160
+                                   ],
+                           "size":  [
+                                        148,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "gateway",
+                           "type":  "security",
+                           "label":  "Gateway Service",
+                           "sublabel":  "Spring Cloud Gateway :8080",
+                           "brand":  "spring",
+                           "tag":  "JWT + rate limit",
+                           "pos":  [
+                                       270,
+                                       230
+                                   ],
+                           "size":  [
+                                        152,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "redis",
+                           "type":  "database",
+                           "label":  "Redis Cache",
+                           "sublabel":  "Redis 7 Alpine :6379",
+                           "brand":  "redis",
+                           "tag":  "Tokens, OTP, idempotency",
+                           "pos":  [
+                                       500,
+                                       100
+                                   ],
+                           "size":  [
+                                        152,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "account",
+                           "type":  "backend",
+                           "label":  "Account Service",
+                           "sublabel":  "Spring Boot :8081",
+                           "brand":  "spring",
+                           "tag":  "KYC, auth, RTR",
+                           "pos":  [
+                                       500,
+                                       230
+                                   ],
+                           "size":  [
+                                        152,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "orchestrator",
+                           "type":  "backend",
+                           "label":  "Transfer Orchestrator",
+                           "sublabel":  "Spring Boot :8082",
+                           "brand":  "spring",
+                           "tag":  "Saga, 2FA, OFS dispatch",
+                           "pos":  [
+                                       500,
+                                       380
+                                   ],
+                           "size":  [
+                                        152,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "risk",
+                           "type":  "backend",
+                           "label":  "Risk Engine",
+                           "sublabel":  "FastAPI + ONNX :8084",
+                           "brand":  "fastapi",
+                           "tag":  "ALLOW / 2FA / BLOCK",
+                           "pos":  [
+                                       500,
+                                       520
+                                   ],
+                           "size":  [
+                                        152,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "cbs",
+                           "type":  "backend",
+                           "label":  "T24 Mock CBS",
+                           "sublabel":  "Spring Boot :8085",
+                           "brand":  "spring",
+                           "tag":  "OFS ledger, EOD batch",
+                           "pos":  [
+                                       740,
+                                       380
+                                   ],
+                           "size":  [
+                                        152,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "oracle",
+                           "type":  "database",
+                           "label":  "Oracle XE Master",
+                           "sublabel":  "Oracle 21c :1521",
+                           "tag":  "Balances, row locks",
+                           "pos":  [
+                                       740,
+                                       230
+                                   ],
+                           "size":  [
+                                        152,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "kafka",
+                           "type":  "messagebus",
+                           "label":  "Kafka Broker",
+                           "sublabel":  "KRaft mode :9092",
+                           "brand":  "apache-kafka",
+                           "tag":  "transfers.events, DLQ",
+                           "pos":  [
+                                       740,
+                                       520
+                                   ],
+                           "size":  [
+                                        152,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "notification",
+                           "type":  "backend",
+                           "label":  "Notification Service",
+                           "sublabel":  "Spring Boot :8083",
+                           "brand":  "spring",
+                           "tag":  "OTP, receipts",
+                           "pos":  [
+                                       980,
+                                       380
+                                   ],
+                           "size":  [
+                                        152,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "compliance",
+                           "type":  "backend",
+                           "label":  "Compliance Service",
+                           "sublabel":  "Spring Boot :8086",
+                           "brand":  "spring",
+                           "tag":  "PDF/Excel, DLQ replay",
+                           "pos":  [
+                                       980,
+                                       230
+                                   ],
+                           "size":  [
+                                        152,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "audit",
+                           "type":  "database",
+                           "label":  "Audit Vault",
+                           "sublabel":  "PostgreSQL 16 :5433",
+                           "brand":  "postgresql",
+                           "tag":  "Append-only, trigger guard",
+                           "pos":  [
+                                       980,
+                                       100
+                                   ],
+                           "size":  [
+                                        152,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "azurite",
+                           "type":  "cloud",
+                           "label":  "Azurite Blob Storage",
+                           "sublabel":  "Azure Storage Emulator :10000",
+                           "tag":  "KYC vault, reports",
+                           "pos":  [
+                                       980,
+                                       520
+                                   ],
+                           "size":  [
+                                        152,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "mailhog",
+                           "type":  "external",
+                           "label":  "MailHog SMTP",
+                           "sublabel":  "Mock email :1025 / :8025",
+                           "tag":  "OTP + receipts",
+                           "pos":  [
+                                       1210,
+                                       380
+                                   ],
+                           "size":  [
+                                        148,
+                                        64
+                                    ]
+                       },
+                       {
+                           "id":  "datadog",
+                           "type":  "cloud",
+                           "label":  "Datadog Agent",
+                           "sublabel":  "APM :8126 / OTLP :4318",
+                           "brand":  "datadog",
+                           "tag":  "APM, metrics, logs",
+                           "pos":  [
+                                       270,
+                                       520
+                                   ],
+                           "size":  [
+                                        152,
+                                        64
+                                    ]
+                       }
+                   ],
+    "boundaries":  [
+                       {
+                           "kind":  "region",
+                           "label":  "Docker Bridge Network â€” banking-net",
+                           "wraps":  [
+                                         "gateway",
+                                         "redis",
+                                         "account",
+                                         "orchestrator",
+                                         "risk",
+                                         "cbs",
+                                         "oracle",
+                                         "kafka",
+                                         "notification",
+                                         "compliance",
+                                         "audit",
+                                         "azurite",
+                                         "mailhog",
+                                         "datadog",
+                                         "web_admin"
+                                     ],
+                           "pad":  20
+                       },
+                       {
+                           "kind":  "security-group",
+                           "label":  "Core Ledger Enclave",
+                           "wraps":  [
+                                         "cbs",
+                                         "oracle"
+                                     ],
+                           "pad":  12
+                       },
+                       {
+                           "kind":  "security-group",
+                           "label":  "Event \u0026 Compliance Rail",
+                           "wraps":  [
+                                         "kafka",
+                                         "compliance",
+                                         "notification",
+                                         "audit",
+                                         "azurite"
+                                     ],
+                           "pad":  12
+                       }
+                   ],
+    "connections":  [
+                        {
+                            "id":  "clients-to-gateway",
+                            "from":  "clients",
+                            "to":  "gateway",
+                            "label":  "HTTPS + JWT",
+                            "variant":  "emphasis",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "webadmin-to-gateway",
+                            "from":  "web_admin",
+                            "to":  "gateway",
+                            "label":  "/api/*",
+                            "variant":  "dashed",
+                            "fromSide":  "right",
+                            "toSide":  "top"
+                        },
+                        {
+                            "id":  "gateway-to-redis",
+                            "from":  "gateway",
+                            "to":  "redis",
+                            "label":  "blacklist, rate limit",
+                            "variant":  "security",
+                            "fromSide":  "top",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "gateway-to-account",
+                            "from":  "gateway",
+                            "to":  "account",
+                            "label":  "/auth, /accounts, /kyc",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "gateway-to-orchestrator",
+                            "from":  "gateway",
+                            "to":  "orchestrator",
+                            "label":  "/transfers, /ledger",
+                            "variant":  "emphasis",
+                            "fromSide":  "bottom",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "gateway-to-datadog",
+                            "from":  "gateway",
+                            "to":  "datadog",
+                            "label":  "OTLP traces",
+                            "variant":  "dashed",
+                            "fromSide":  "bottom",
+                            "toSide":  "top"
+                        },
+                        {
+                            "id":  "account-to-redis",
+                            "from":  "account",
+                            "to":  "redis",
+                            "label":  "RTR families, OTP",
+                            "variant":  "security",
+                            "fromSide":  "top",
+                            "toSide":  "bottom"
+                        },
+                        {
+                            "id":  "account-to-oracle",
+                            "from":  "account",
+                            "to":  "oracle",
+                            "label":  "users, KYC, accounts",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "orchestrator-to-redis",
+                            "from":  "orchestrator",
+                            "to":  "redis",
+                            "label":  "idempotency lock",
+                            "fromSide":  "top",
+                            "toSide":  "bottom",
+                            "labelDy":  24
+                        },
+                        {
+                            "id":  "orchestrator-to-risk",
+                            "from":  "orchestrator",
+                            "to":  "risk",
+                            "label":  "risk score â‰¤200ms",
+                            "variant":  "security",
+                            "fromSide":  "bottom",
+                            "toSide":  "top"
+                        },
+                        {
+                            "id":  "orchestrator-to-cbs",
+                            "from":  "orchestrator",
+                            "to":  "cbs",
+                            "label":  "OFS transfer",
+                            "variant":  "emphasis",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "cbs-to-oracle",
+                            "from":  "cbs",
+                            "to":  "oracle",
+                            "label":  "row lock, ACID",
+                            "variant":  "emphasis",
+                            "fromSide":  "top",
+                            "toSide":  "bottom"
+                        },
+                        {
+                            "id":  "cbs-to-kafka",
+                            "from":  "cbs",
+                            "to":  "kafka",
+                            "label":  "outbox events",
+                            "fromSide":  "bottom",
+                            "toSide":  "top"
+                        },
+                        {
+                            "id":  "kafka-to-compliance",
+                            "from":  "kafka",
+                            "to":  "compliance",
+                            "label":  "audit stream",
+                            "variant":  "dashed",
+                            "fromSide":  "right",
+                            "toSide":  "bottom"
+                        },
+                        {
+                            "id":  "kafka-to-notification",
+                            "from":  "kafka",
+                            "to":  "notification",
+                            "label":  "receipts, OTP",
+                            "variant":  "dashed",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "compliance-to-audit",
+                            "from":  "compliance",
+                            "to":  "audit",
+                            "label":  "append-only",
+                            "variant":  "dashed",
+                            "fromSide":  "top",
+                            "toSide":  "bottom"
+                        },
+                        {
+                            "id":  "compliance-to-azurite",
+                            "from":  "compliance",
+                            "to":  "azurite",
+                            "label":  "PDF / Excel upload",
+                            "variant":  "dashed",
+                            "fromSide":  "bottom",
+                            "toSide":  "top"
+                        },
+                        {
+                            "id":  "notification-to-mailhog",
+                            "from":  "notification",
+                            "to":  "mailhog",
+                            "label":  "SMTP :1025",
+                            "fromSide":  "right",
+                            "toSide":  "left"
+                        },
+                        {
+                            "id":  "orchestrator-to-datadog",
+                            "from":  "orchestrator",
+                            "to":  "datadog",
+                            "label":  "OTLP traces",
+                            "variant":  "dashed",
+                            "fromSide":  "left",
+                            "toSide":  "right"
+                        }
+                    ],
+    "cards":  [
+                  {
+                      "dot":  "amber",
+                      "title":  "Transfer path \u0026 saga compensation",
+                      "items":  [
+                                    "Orchestrator checks Redis idempotency (SET NX EX 60), calls Risk Engine (â‰¤200ms SLA), then dispatches OFS command to T24 Mock CBS.",
+                                    "CBS acquires pessimistic row locks in Oracle XE, commits the debit/credit mutation, and publishes outbox events to Kafka.",
+                                    "On timeout or risk BLOCK, Orchestrator issues a compensating OFS reversal command (EP2) to immediately restore debited balances."
+                                ]
+                  },
+                  {
+                      "dot":  "violet",
+                      "title":  "Dual-storage persistence",
+                      "items":  [
+                                    "Oracle XE 21c is the exclusive operational master: balances, accounts, GL entries, and EOD batch records.",
+                                    "PostgreSQL 16 audit vault is append-only; a native trigger rejects all UPDATE and DELETE commands, satisfying BSP non-repudiation requirements.",
+                                    "Azurite emulates Azure Blob for compliance PDF/Excel report storage and KYC document vault during local development."
+                                ]
+                  },
+                  {
+                      "dot":  "cyan",
+                      "title":  "Observability \u0026 dev tooling",
+                      "items":  [
+                                    "Datadog Agent collects distributed APM traces (OTLP :4318 / :4317), DogStatsD metrics (:8125 UDP), and tail-scrapes all container logs.",
+                                    "MailHog (:8025 UI, :1025 SMTP) captures every outbound OTP and receipt email locally without real mail relay.",
+                                    "Redis Insight (:5540), Adminer (:8088), and Kafka-UI (:8089) provide live in-browser inspection of all datastores."
+                                ]
+                  }
+              ]
+}
