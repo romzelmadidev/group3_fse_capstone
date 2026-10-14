@@ -25,6 +25,7 @@
 #   MAX_NODES        upper bound for self-healing scale (default: 4)
 #   AKS_VM_SIZE      force a VM size, e.g. Standard_D2s_v3 (default: try several)
 #   REBUILD          "all" or comma list, e.g. "gateway-service,account-service"
+#   SQL_TIER         Azure SQL tier: S1 (default, ~$1/day, fast) | S0 | S2 | Basic (cheapest, very slow)
 #   RESET_DB         "true" deletes + recreates the Azure SQL database (DELETES ALL DATA);
 #                    use it once if a previous attempt left half-created tables
 #   DATADOG_API_KEY  real key to enable Datadog (default: dummy 00000000000000000000000000000000)
@@ -56,6 +57,7 @@ PARTNER_BANK_URL="${PARTNER_BANK_URL:-}"
 JWT_SECRET="${JWT_SECRET:-c3VwZXItc2VjcmV0LWtleS1mb3ItZnNlLWNhcHN0b25lLWJhbmtpbmctcGxhdGZvcm0tMjAyNi0xMjM0NTY3ODkwMTI=}"
 
 SQL_DB_NAME="sqldb-master"
+SQL_TIER="${SQL_TIER:-S1}"
 SQL_ADMIN_USER="sqladminuser"
 PG_DB_NAME="banking_audit"
 PG_ADMIN_USER="audit_admin"
@@ -69,7 +71,7 @@ IMAGES=(
   "t24-mock-cbs|backend/t24-mock-cbs/Dockerfile|backend|t24-mock-cbs"
   "compliance-service|backend/compliance-service/Dockerfile|backend|compliance-service"
   "notification-service|backend/notification-service/Dockerfile|backend|notification-service"
-  "risk-service|backend/risk-service/Dockerfile|backend/risk-service|risk-service"
+  "risk-service|backend/risk-service/Dockerfile.azure|.|risk-service"
   "banking-frontend|frontend/Dockerfile|frontend|banking-frontend"
   "aurabank-web|aurabank_web/Dockerfile|.|aurabank-customer-web"
 )
@@ -187,10 +189,22 @@ ensure_sql() {
     warn "RESET_DB=true: deleting database $SQL_DB_NAME so t24-mock-cbs (Flyway) can rebuild it from scratch"
     az sql db delete --server "$SQL_SERVER" -g "$RG" -n "$SQL_DB_NAME" --yes -o none
   fi
+  # Basic (5 DTU) is far too slow for Flyway DDL and for the app under load. Default to S1 (20 DTU).
+  local edition="Standard" want="$SQL_TIER" cur
+  [ "$SQL_TIER" = "Basic" ] && edition="Basic"
   if ! az sql db show --server "$SQL_SERVER" -g "$RG" -n "$SQL_DB_NAME" >/dev/null 2>&1; then
-    info "Creating database $SQL_DB_NAME (Basic, 5 DTU)"
+    info "Creating database $SQL_DB_NAME ($want)"
     az sql db create --server "$SQL_SERVER" -g "$RG" -n "$SQL_DB_NAME" \
-      --edition Basic --service-objective Basic --capacity 5 --backup-storage-redundancy Local --yes -o none
+      --edition "$edition" --service-objective "$want" --backup-storage-redundancy Local --yes -o none
+  else
+    cur="$(az sql db show --server "$SQL_SERVER" -g "$RG" -n "$SQL_DB_NAME" --query currentServiceObjectiveName -o tsv)"
+    if [ "$cur" != "$want" ]; then
+      info "Changing database tier ${cur} -> ${want} (online, ~1-3 min)"
+      az sql db update --server "$SQL_SERVER" -g "$RG" -n "$SQL_DB_NAME" \
+        --edition "$edition" --service-objective "$want" -o none
+    else
+      info "Database tier: $cur"
+    fi
   fi
   SQL_JDBC_URL="jdbc:sqlserver://${SQL_FQDN}:1433;databaseName=${SQL_DB_NAME};encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30;"
 }
@@ -311,16 +325,32 @@ configure_cluster() {
 # ------------------------------------------------------------------------------
 # 5. Images
 # ------------------------------------------------------------------------------
-image_exists() {
-  local tags; tags="$(az acr repository show-tags -n "$ACR" --repository "$1" -o tsv 2>/dev/null || true)"
-  [[ $'\n'"$tags"$'\n' == *$'\nlatest\n'* ]]
+image_exists() { # image_exists <image> [tag]
+  local tag="${2:-latest}" tags; tags="$(az acr repository show-tags -n "$ACR" --repository "$1" -o tsv 2>/dev/null || true)"
+  [[ $'\n'"$tags"$'\n' == *$'\n'"$tag"$'\n'* ]]
+}
+
+# Content tag of the sources an image is built from, so a git pull that changes them rebuilds the
+# image automatically (a stale ":latest" from an older commit would otherwise be reused).
+src_rev() {
+  local parts=""
+  git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  case "$1" in
+    risk-service)     parts="$(git -C "$ROOT" rev-parse HEAD:backend/risk-service HEAD:hybrid_bench 2>/dev/null || true)" ;;
+    banking-frontend) parts="$(git -C "$ROOT" rev-parse HEAD:frontend 2>/dev/null || true)" ;;
+    aurabank-web)     parts="$(git -C "$ROOT" rev-parse HEAD:aurabank_web HEAD:aurabank_core 2>/dev/null || true)" ;;
+    *)                parts="$(git -C "$ROOT" rev-parse HEAD:backend 2>/dev/null || true)" ;;
+  esac
+  if [ -n "$parts" ]; then printf 'src-%s' "$(printf '%s' "$parts" | sha1sum | cut -c1-10)"; fi
+  return 0
 }
 
 wanted_rebuild() { [ "$REBUILD" = "all" ] || [[ ",${REBUILD}," == *",$1,"* ]]; }
 
 build_one() { # runs in a subshell
-  local img="$1" df="$2" ctx="$3"
-  if az acr build --registry "$ACR" --image "${img}:latest" --file "${ROOT}/${df}" "${ROOT}/${ctx}" \
+  local img="$1" df="$2" ctx="$3" rev; rev="$(src_rev "$img")"
+  local tags=(--image "${img}:latest"); [ -z "$rev" ] || tags+=(--image "${img}:${rev}")
+  if az acr build --registry "$ACR" "${tags[@]}" --file "${ROOT}/${df}" "${ROOT}/${ctx}" \
        >"${LOG_DIR}/${img}.log" 2>&1; then
     touch "${LOG_DIR}/${img}.ok"
   fi
@@ -345,10 +375,11 @@ build_images() {
   rm -f "${LOG_DIR}"/*.ok
   ensure_dd_agent
   BUILT=()
-  local todo=() e img df ctx dep
+  local todo=() e img df ctx dep rev
   for e in "${IMAGES[@]}"; do
     IFS='|' read -r img df ctx dep <<<"$e"
-    if wanted_rebuild "$img" || ! image_exists "$img"; then todo+=("$e"); else info "up to date: $img"; fi
+    rev="$(src_rev "$img")"
+    if wanted_rebuild "$img" || ! image_exists "$img" "${rev:-latest}"; then todo+=("$e"); else info "up to date: $img"; fi
   done
   [ "${#todo[@]}" -gt 0 ] || { info "All images already in ACR."; return 0; }
 
@@ -378,6 +409,17 @@ build_images() {
 # ------------------------------------------------------------------------------
 # 6/7. Deploy + self-heal
 # ------------------------------------------------------------------------------
+# kubectl apply that survives races ("AlreadyExists" when another apply creates the object first).
+kapply() { # kapply <manifest>
+  local f="$1" i err="${LOG_DIR}/kapply.err"
+  for i in 1 2 3 4; do
+    if sed "s/__ACR_NAME__/${ACR}/g" "$f" | kubectl apply -f - >/dev/null 2>"$err"; then return 0; fi
+    if grep -q "AlreadyExists" "$err"; then sleep 3; continue; fi
+    cat "$err" >&2; return 1
+  done
+  cat "$err" >&2; return 1
+}
+
 deploy_workloads() {
   log "[6/8] Deploying workloads"
   kubectl apply -f "${K8S_DIR}/00_namespace.yaml" >/dev/null
@@ -387,29 +429,40 @@ deploy_workloads() {
   done
   info "In-cluster dependencies (redis, postgres, kafka, mailhog) are up."
 
+  # Only deployments that already existed need a restart to pick up a new :latest image.
+  # Restarting brand-new ones doubles the pods and starves the nodes of CPU.
+  EXISTING_DEPLOYS="$(kubectl get deploy -n banking -o name 2>/dev/null | sed 's#.*/##')"
   local f
   for f in "${K8S_DIR}"/0[1-9]*.yaml "${K8S_DIR}"/10*.yaml; do
     [ -f "$f" ] || continue
-    sed "s/__ACR_NAME__/${ACR}/g" "$f" | kubectl apply -f - >/dev/null
+    # Datadog agent is observability only. With the dummy key it just crash-loops and burns CPU.
+    if [[ "$(basename "$f")" == 10_datadog* ]] && [[ "$DATADOG_API_KEY" =~ ^0+$ ]]; then
+      kubectl delete deployment dd-agent -n banking --ignore-not-found >/dev/null 2>&1 || true
+      info "skipped $(basename "$f") (no DATADOG_API_KEY set; services run fine without it)"
+      continue
+    fi
+    kapply "$f"
     info "applied $(basename "$f")"
   done
   # Re-pull freshly built images (tag is :latest)
   local dep
   for dep in "${BUILT[@]:-}"; do
-    [ -n "$dep" ] && kubectl rollout restart deployment/"$dep" -n banking >/dev/null 2>&1 || true
+    if [ -n "$dep" ] && grep -qx "$dep" <<<"$EXISTING_DEPLOYS"; then
+      kubectl rollout restart deployment/"$dep" -n banking >/dev/null 2>&1 || true
+    fi
   done
-  if [ "$RESET_DB" = "true" ]; then # fresh DB: let t24 (Flyway) migrate first, then the DB clients reconnect
-    kubectl rollout restart deployment/t24-mock-cbs -n banking >/dev/null 2>&1 || true
-    kubectl rollout status deployment/t24-mock-cbs -n banking --timeout=600s >/dev/null 2>&1 || true
-    kubectl rollout restart deployment/account-service deployment/notification-service -n banking >/dev/null 2>&1 || true
+  if [ "$RESET_DB" = "true" ]; then # DB was recreated: restart DB clients that were already running
+    for dep in t24-mock-cbs account-service notification-service; do
+      if grep -qx "$dep" <<<"$EXISTING_DEPLOYS"; then kubectl rollout restart deployment/"$dep" -n banking >/dev/null 2>&1 || true; fi
+    done
   fi
 }
 
 wait_until_ready() {
   log "[7/8] Waiting for every pod to be Ready (auto-adds nodes if pods are Pending)"
-  local deadline=$((SECONDS + READY_TIMEOUT)) strikes=0 notready unsched
+  local deadline=$((SECONDS + READY_TIMEOUT)) strikes=0 tick=0 notready unsched
   while (( SECONDS < deadline )); do
-    notready="$(kubectl get deploy -n banking -o json | jq -r '.items[] | select((.status.readyReplicas // 0) < (.spec.replicas // 1)) | .metadata.name' | paste -sd' ' -)"
+    notready="$(kubectl get deploy -n banking -o json | jq -r '.items[] | select(.metadata.name != "dd-agent") | select((.status.readyReplicas // 0) < (.spec.replicas // 1)) | .metadata.name' | paste -sd' ' -)"
     if [ -z "$notready" ]; then info "All deployments are Ready."; return 0; fi
 
     unsched="$(kubectl get pods -n banking -o json | jq '[.items[] | select(.status.phase=="Pending") | select(any(.status.conditions[]?; .type=="PodScheduled" and .status=="False"))] | length')"
@@ -423,6 +476,19 @@ wait_until_ready() {
     else
       strikes=0
       info "waiting for: ${notready}"
+      tick=$((tick + 1))
+      if (( tick % 3 == 0 )); then # once a minute: show WHY it is not ready yet
+        local d
+        for d in $notready; do
+          echo "      -- ${d}: $(kubectl get pods -n banking -l app="$d" -o jsonpath='{range .items[*]}{.status.containerStatuses[0].restartCount}{" restart(s) "}{.status.containerStatuses[0].lastState.terminated.reason}{"  "}{end}' 2>/dev/null)"
+          local lg errs
+          lg="$( { kubectl logs deploy/"$d" -n banking --previous --tail=400 2>/dev/null; kubectl logs deploy/"$d" -n banking --tail=400 2>/dev/null; } \
+                 | grep -vE 'dd\.trace|Picked up JAVA_TOOL|Sharing is only' || true)"
+          errs="$(grep -E 'Caused by|ERROR|Exception|Error:|FAILED|conflicted' <<<"$lg" | grep -v '^\s*at ' | tail -n 4 || true)"
+          if [ -n "$errs" ]; then echo "$errs" | cut -c1-260 | sed 's/^/         /'
+          else tail -n 2 <<<"$lg" | cut -c1-220 | sed 's/^/         /'; fi
+        done
+      fi
     fi
     sleep 20
   done
@@ -511,6 +577,10 @@ print_summary() {
 # main
 # ------------------------------------------------------------------------------
 main() {
+  if [ "$MODE" != "status" ] && command -v flock >/dev/null 2>&1; then
+    exec 9>"${TMPDIR:-/tmp}/aurabank-run.lock"
+    flock -n 9 || die "Another run_azure.sh is already running in this Cloud Shell (check your other tabs). Wait for it, or press Ctrl+C there first."
+  fi
   preflight
   log "[2/8] Azure infrastructure"
   pick_resource_group

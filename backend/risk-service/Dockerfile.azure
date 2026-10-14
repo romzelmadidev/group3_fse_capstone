@@ -1,0 +1,20 @@
+# Azure/AKS build for risk-service. Build context = REPO ROOT.
+# The service imports the top-level `hybrid_bench` package (models, Gate0, SAR generator).
+# docker-compose bind-mounts it at runtime; in AKS there is no mount, so bake it into the image.
+FROM registry.datadoghq.com/agent:7
+
+WORKDIR /app
+
+COPY backend/risk-service/requirements.txt ./
+RUN /opt/datadog-agent/embedded/bin/python3 -m pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt \
+    && /opt/datadog-agent/embedded/bin/python3 -m pip install --no-deps --trusted-host pypi.org --trusted-host files.pythonhosted.org xgboost
+
+COPY backend/risk-service/app ./app
+COPY hybrid_bench ./hybrid_bench
+RUN mkdir -p /app/data
+
+ENV PYTHONPATH=/app
+ENV MODELS_DIR=/app/hybrid_bench/models
+EXPOSE 8084
+
+ENTRYPOINT ["/opt/datadog-agent/embedded/bin/python3", "-m", "app.server"]

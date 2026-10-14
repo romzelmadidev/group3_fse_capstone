@@ -228,7 +228,11 @@ export const useToast = () => useContext(ToastContext);
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
   const push = useCallback((message, tone = 'ok') => {
+<<<<<<< HEAD
     const id = randomUUID();
+=======
+    const id = uuid();
+>>>>>>> 5a5ffb87ea81f93c4e7fd908237084066ad6b620
     setToasts((t) => [...t, { id, message, tone }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000);
   }, []);
