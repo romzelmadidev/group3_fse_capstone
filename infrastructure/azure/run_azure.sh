@@ -28,6 +28,8 @@
 #   RESET_DB         "true" deletes + recreates the Azure SQL database (DELETES ALL DATA);
 #                    use it once if a previous attempt left half-created tables
 #   DATADOG_API_KEY  real key to enable Datadog (default: dummy)
+#   EXPOSE_MAILHOG   "false" keeps the MailHog inbox private (default: true = public IP, NO auth,
+#                    anyone with the IP can read every OTP email; testing only)
 # ==============================================================================
 set -Eeuo pipefail
 trap 'echo "[ERROR] line $LINENO: command failed: $BASH_COMMAND" >&2' ERR
@@ -43,6 +45,7 @@ NODE_COUNT="${NODE_COUNT:-2}"
 MAX_NODES="${MAX_NODES:-4}"
 REBUILD="${REBUILD:-}"
 RESET_DB="${RESET_DB:-false}"
+EXPOSE_MAILHOG="${EXPOSE_MAILHOG:-true}"
 BUILD_PARALLEL="${BUILD_PARALLEL:-3}"
 READY_TIMEOUT="${READY_TIMEOUT:-1500}"
 DATADOG_API_KEY="${DATADOG_API_KEY:-00000000000000000000000000000000}"
@@ -416,6 +419,13 @@ deploy_workloads() {
     kapply "$f"
     info "applied $(basename "$f")"
   done
+  if [ "$EXPOSE_MAILHOG" = "false" ]; then
+    kubectl delete svc mailhog-public -n banking --ignore-not-found >/dev/null 2>&1 || true
+    info "MailHog stays private (EXPOSE_MAILHOG=false)"
+  else
+    kapply "${K8S_DIR}/11_mailhog_public.yaml"
+    info "applied 11_mailhog_public.yaml (public, unauthenticated inbox)"
+  fi
   # Re-pull freshly built images (tag is :latest)
   local dep
   for dep in "${BUILT[@]:-}"; do
@@ -505,6 +515,7 @@ expect() { # expect <label> <regex> <curl args...>  (retries ~2 min)
 smoke_test() {
   log "[8/8] Endpoints & smoke tests"
   GW_IP="$(svc_ip gateway-service)"; STAFF_IP="$(svc_ip banking-frontend)"; WEB_IP="$(svc_ip aurabank-customer-web)"
+  MAIL_IP=""; [ "$EXPOSE_MAILHOG" = "false" ] || MAIL_IP="$(svc_ip mailhog-public)"
   [ -n "$GW_IP" ] || die "Gateway has no public IP yet. Re-run in a minute: bash infrastructure/azure/run_azure.sh status"
   local fails=0
   expect "gateway /actuator/health"          '^(200|401|403)$' "http://${GW_IP}:8080/actuator/health" || fails=1
@@ -521,6 +532,10 @@ smoke_test() {
   else echo "    [FAIL] staff console has no public IP (public IP quota?)"; fails=1; fi
   if [ -n "$WEB_IP" ]; then expect "customer web portal" '^200$' "http://${WEB_IP}/" || fails=1
   else echo "    [FAIL] customer web portal has no public IP (public IP quota?)"; fails=1; fi
+  if [ "$EXPOSE_MAILHOG" != "false" ]; then
+    if [ -n "$MAIL_IP" ]; then expect "mail inbox (MailHog API)" '^200$' "http://${MAIL_IP}:8025/api/v2/messages" || fails=1
+    else echo "    [FAIL] mail inbox has no public IP (public IP quota?)"; fails=1; fi
+  fi
   return "$fails"
 }
 
@@ -537,8 +552,15 @@ print_summary() {
     echo " MOBILE APP: Login screen -> server icon (top right) -> select"
     echo "   'Azure Cloud' -> paste  http://${GW_IP:-<gateway-ip>}:8080  -> Save & Close"
     echo ""
-    echo " Mail inbox (OTP emails): kubectl port-forward svc/mailhog 8025:8025 -n banking"
-    echo "                          then open http://localhost:8025"
+    if [ -n "${MAIL_IP:-}" ]; then
+      echo " Mail inbox (OTP emails): http://${MAIL_IP}:8025"
+      echo "   WARNING: no authentication. Anyone with this IP can read every OTP email."
+      echo "   Testing only. Turn off with EXPOSE_MAILHOG=false or restrict loadBalancerSourceRanges"
+      echo "   in infrastructure/k8s/11_mailhog_public.yaml."
+    else
+      echo " Mail inbox (OTP emails): kubectl port-forward svc/mailhog 8025:8025 -n banking"
+      echo "                          then open http://localhost:8025"
+    fi
     echo " Save money when idle   : bash infrastructure/azure/pause_budget_azure.sh"
     echo " Resume                 : bash infrastructure/azure/run_azure.sh   (starts the cluster)"
     echo "===================================================================="
@@ -571,6 +593,7 @@ main() {
     ACR="$(first_name acr list)"; STORAGE=""
     kubectl get nodes; kubectl get pods -n banking -o wide
     GW_IP="$(svc_ip gateway-service)"; STAFF_IP="$(svc_ip banking-frontend)"; WEB_IP="$(svc_ip aurabank-customer-web)"
+    MAIL_IP=""; kubectl get svc mailhog-public -n banking >/dev/null 2>&1 && MAIL_IP="$(svc_ip mailhog-public)"
     print_summary; return 0
   fi
 

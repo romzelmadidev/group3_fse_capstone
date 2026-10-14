@@ -1,0 +1,24 @@
+# ==============================================================================
+# MailHog web inbox on a public IP (TESTING ONLY).
+# MailHog has NO authentication: anyone with this IP can read every OTP email.
+# Applied by infrastructure/azure/run_azure.sh unless EXPOSE_MAILHOG=false.
+# To restrict it, uncomment loadBalancerSourceRanges and list your own IP/CIDR.
+# SMTP (1025) stays internal on the ClusterIP service `mailhog`.
+# ==============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailhog-public
+  namespace: banking
+  labels:
+    app: mailhog
+spec:
+  type: LoadBalancer
+  # loadBalancerSourceRanges:
+  #   - 203.0.113.10/32
+  ports:
+    - port: 8025
+      name: http
+      targetPort: 8025
+  selector:
+    app: mailhog
